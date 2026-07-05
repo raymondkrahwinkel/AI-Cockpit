@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Zyra.Voice.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
+             x:Class="Zyra.Voice.App.Views.ClaudeSessionView"
+             x:DataType="vm:ClaudeSessionViewModel">
+
+    <Design.DataContext>
+        <vm:ClaudeSessionViewModel/>
+    </Design.DataContext>
+
+    <DockPanel Margin="8">
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <Button Content="Start session" Command="{Binding StartCommand}"/>
+            <TextBlock Text="{Binding Status}" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+            <TextBox Text="{Binding InputText}" PlaceholderText="Message Claude..." Width="600"
+                     AcceptsReturn="False"/>
+            <Button Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding !IsBusy}"/>
+        </StackPanel>
+
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Transcript}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
+                        <Border Padding="6" Margin="0,2" CornerRadius="4"
+                                Background="#22FFFFFF">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8"
+                                            IsVisible="{Binding IsPendingPermission}">
+                                    <Button Content="Allow" Command="{Binding AllowCommand}"/>
+                                    <Button Content="Deny" Command="{Binding DenyCommand}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding PermissionDecision}"
+                                           FontStyle="Italic"
+                                           IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+    </DockPanel>
+</UserControl>

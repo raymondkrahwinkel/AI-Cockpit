@@ -18,15 +18,19 @@ public partial class MainWindowViewModel : ViewModelBase, ITransientService
     [ObservableProperty]
     private string _status = "Ready.";
 
+    public ClaudeSessionViewModel ClaudeSession { get; }
+
     // Parameterless constructor kept for the Avalonia previewer design-time context.
     public MainWindowViewModel()
     {
+        ClaudeSession = new ClaudeSessionViewModel();
     }
 
-    public MainWindowViewModel(IAudioCaptureService captureService, IAudioPlaybackService playbackService)
+    public MainWindowViewModel(IAudioCaptureService captureService, IAudioPlaybackService playbackService, ClaudeSessionViewModel claudeSession)
     {
         _captureService = captureService;
         _playbackService = playbackService;
+        ClaudeSession = claudeSession;
     }
 
     [RelayCommand]

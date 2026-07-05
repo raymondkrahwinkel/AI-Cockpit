@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Zyra.Voice.Core\Zyra.Voice.Core.csproj" />
+    <ProjectReference Include="..\..\src\Zyra.Voice.Infrastructure\Zyra.Voice.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

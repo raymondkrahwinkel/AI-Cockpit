@@ -15,4 +15,9 @@
     <ProjectReference Include="..\Zyra.Voice.Core\Zyra.Voice.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Zyra.Voice.Core.Tests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
 </Project>
