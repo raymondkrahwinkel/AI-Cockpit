@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Zyra.Voice.App/Zyra.Voice.App.csproj" />
+    <Project Path="src/Zyra.Voice.Core/Zyra.Voice.Core.csproj" />
+    <Project Path="src/Zyra.Voice.Infrastructure/Zyra.Voice.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Zyra.Voice.Core.Tests/Zyra.Voice.Core.Tests.csproj" />
+  </Folder>
+</Solution>

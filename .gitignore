@@ -1,0 +1,21 @@
+# .NET build output
+bin/
+obj/
+out/
+
+# Rider / VS
+.idea/
+.vs/
+*.user
+*.suo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models / voices / generated audio - never commit
+*.onnx
+ggml-*.bin
+*.bin
+piper-voices/
+*.wav
