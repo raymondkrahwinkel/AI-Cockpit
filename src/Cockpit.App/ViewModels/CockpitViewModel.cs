@@ -5,7 +5,9 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.SessionSwitching;
 
 namespace Cockpit.App.ViewModels;
 
@@ -30,6 +32,7 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
     private readonly INotificationSettingsStore? _notificationSettingsStore;
+    private readonly ISessionSwitchSettingsStore? _sessionSwitchSettingsStore;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -64,6 +67,36 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
 
     [ObservableProperty]
     private string _notificationSettingsStatus = string.Empty;
+
+    /// <summary>Master switch for the arrow-key session switch (Ctrl+Arrow by default).</summary>
+    [ObservableProperty]
+    private bool _sessionSwitchEnabled = true;
+
+    /// <summary>The modifier that arms the arrow-key session switch. See <see cref="SessionSwitchModifier"/>.</summary>
+    [ObservableProperty]
+    private SessionSwitchModifierOption _selectedSessionSwitchModifier =
+        new("Ctrl", SessionSwitchModifier.Ctrl);
+
+    [ObservableProperty]
+    private string _sessionSwitchSettingsStatus = string.Empty;
+
+    /// <summary>Selectable modifiers for the session-switch gesture (bound by the Options flyout combo box).</summary>
+    public IReadOnlyList<SessionSwitchModifierOption> SessionSwitchModifiers { get; } =
+    [
+        new("Ctrl", SessionSwitchModifier.Ctrl),
+        new("Ctrl + Alt", SessionSwitchModifier.CtrlAlt),
+        new("Alt", SessionSwitchModifier.Alt),
+    ];
+
+    /// <summary>
+    /// The current switch settings as the view needs them for its KeyDown gate: whether the gesture is
+    /// enabled and which modifier arms it. Reflects the live (possibly unsaved) Options-flyout edits.
+    /// </summary>
+    public SessionSwitchSettings CurrentSessionSwitchSettings => new()
+    {
+        IsEnabled = SessionSwitchEnabled,
+        Modifier = SelectedSessionSwitchModifier.Value,
+    };
 
     /// <summary>Keeps each session's <see cref="ClaudeSessionViewModel.IsSelected"/> in sync with the active selection.</summary>
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
@@ -101,7 +134,8 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
         IAudioCaptureService captureService,
         IAudioPlaybackService playbackService,
         IAttentionNotifier attentionNotifier,
-        INotificationSettingsStore notificationSettingsStore)
+        INotificationSettingsStore notificationSettingsStore,
+        ISessionSwitchSettingsStore sessionSwitchSettingsStore)
     {
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
@@ -109,8 +143,10 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
         _playbackService = playbackService;
         _attentionNotifier = attentionNotifier;
         _notificationSettingsStore = notificationSettingsStore;
+        _sessionSwitchSettingsStore = sessionSwitchSettingsStore;
         NewSession();
         _ = LoadNotificationSettingsAsync();
+        _ = LoadSessionSwitchSettingsAsync();
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -148,6 +184,32 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
 
         await _notificationSettingsStore.SaveAsync(settings);
         NotificationSettingsStatus = "Saved.";
+    }
+
+    private async Task LoadSessionSwitchSettingsAsync()
+    {
+        if (_sessionSwitchSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _sessionSwitchSettingsStore.LoadAsync();
+        SessionSwitchEnabled = settings.IsEnabled;
+        SelectedSessionSwitchModifier = SessionSwitchModifiers.FirstOrDefault(option => option.Value == settings.Modifier)
+                                        ?? SessionSwitchModifiers[0];
+    }
+
+    /// <summary>Persists the session-switch settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveSessionSwitchSettingsAsync()
+    {
+        if (_sessionSwitchSettingsStore is null)
+        {
+            return;
+        }
+
+        await _sessionSwitchSettingsStore.SaveAsync(CurrentSessionSwitchSettings);
+        SessionSwitchSettingsStatus = "Saved.";
     }
 
     [RelayCommand]
@@ -271,6 +333,35 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     private void SelectSession(SessionPanelViewModel session)
     {
         SelectedSession = session;
+    }
+
+    /// <summary>
+    /// Moves the selection to the previous session in <see cref="Sessions"/>, wrapping from the first
+    /// to the last. No-op when there are no sessions; selects the only session when there is exactly
+    /// one. Drives the Ctrl+Left/Ctrl+Up keyboard switch — the modifier/enable gate lives in the view.
+    /// </summary>
+    public void SelectPreviousSession() => _StepSelection(-1);
+
+    /// <summary>
+    /// Moves the selection to the next session in <see cref="Sessions"/>, wrapping from the last to
+    /// the first. No-op when there are no sessions. Drives the Ctrl+Right/Ctrl+Down keyboard switch.
+    /// </summary>
+    public void SelectNextSession() => _StepSelection(1);
+
+    private void _StepSelection(int direction)
+    {
+        var count = Sessions.Count;
+        if (count == 0)
+        {
+            return;
+        }
+
+        // No current selection → land on the first (next) or last (previous) session.
+        var currentIndex = SelectedSession is null ? -1 : Sessions.IndexOf(SelectedSession);
+        var startIndex = currentIndex < 0 ? (direction > 0 ? -1 : 0) : currentIndex;
+
+        var nextIndex = ((startIndex + direction) % count + count) % count;
+        SelectedSession = Sessions[nextIndex];
     }
 
     [RelayCommand]

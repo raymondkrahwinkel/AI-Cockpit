@@ -55,6 +55,26 @@
                                             Classes="Accent" HorizontalAlignment="Left"/>
                                     <TextBlock Text="{Binding NotificationSettingsStatus}"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                                    <TextBlock Text="Session switching" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Switch sessions with modifier + arrows"
+                                              IsChecked="{Binding SessionSwitchEnabled}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Modifier"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox ItemsSource="{Binding SessionSwitchModifiers}"
+                                                  SelectedItem="{Binding SelectedSessionSwitchModifier}"
+                                                  DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Left/Up = previous, Right/Down = next. Word navigation in text fields stays intact."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <Button Content="Save" Command="{Binding SaveSessionSwitchSettingsCommand}"
+                                            Classes="Accent" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="{Binding SessionSwitchSettingsStatus}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>
