@@ -135,34 +135,22 @@ internal sealed class ClaudeCliSession : IClaudeSession, ISingletonService
                 _sessionId = sidProp.GetString();
             }
 
-            var type = root.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
-
-            // Assistant messages may carry multiple content blocks (text + tool_use); emit one
-            // event per block, plus a derived PermissionRequested for every tool_use (see remarks).
-            if (type == "assistant")
+            // A single line can carry multiple events (e.g. an assistant snapshot with several
+            // content blocks); every tool_use additionally gets a derived PermissionRequested
+            // since the CLI has no in-band feedback channel yet (see class remarks).
+            foreach (var evt in ClaudeStreamJsonParser.ParseLine(line))
             {
-                foreach (var evt in ClaudeStreamJsonParser.ParseAssistantContentBlocks(root, _sessionId))
+                _events.Writer.TryWrite(evt);
+                if (evt is ToolUseRequested toolUse)
                 {
-                    _events.Writer.TryWrite(evt);
-                    if (evt is ToolUseRequested toolUse)
+                    _events.Writer.TryWrite(new PermissionRequested
                     {
-                        _events.Writer.TryWrite(new PermissionRequested
-                        {
-                            SessionId = _sessionId,
-                            ToolUseId = toolUse.ToolUseId,
-                            ToolName = toolUse.ToolName,
-                            InputJson = toolUse.InputJson,
-                        });
-                    }
+                        SessionId = _sessionId,
+                        ToolUseId = toolUse.ToolUseId,
+                        ToolName = toolUse.ToolName,
+                        InputJson = toolUse.InputJson,
+                    });
                 }
-
-                return Task.CompletedTask;
-            }
-
-            var parsed = ClaudeStreamJsonParser.TryParseLine(line);
-            if (parsed is not null)
-            {
-                _events.Writer.TryWrite(parsed);
             }
         }
 

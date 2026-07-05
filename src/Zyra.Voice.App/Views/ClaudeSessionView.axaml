@@ -41,7 +41,20 @@
                         <Border Padding="6" Margin="0,2" CornerRadius="4"
                                 Background="#22FFFFFF">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+
+                                <!-- Thinking rows: dimmed, collapsed to a toggle by default so they read as
+                                     reasoning-in-the-background rather than part of the visible transcript flow. -->
+                                <StackPanel IsVisible="{Binding IsThinking}" Spacing="4">
+                                    <Button Content="Thinking..." Command="{Binding ToggleExpandedCommand}"
+                                            Opacity="0.6" FontStyle="Italic" Padding="2" Background="Transparent"/>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                               Opacity="0.6" FontStyle="Italic"
+                                               IsVisible="{Binding IsExpanded}"/>
+                                </StackPanel>
+
+                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                           IsVisible="{Binding !IsThinking}"/>
+
                                 <StackPanel Orientation="Horizontal" Spacing="8"
                                             IsVisible="{Binding IsPendingPermission}">
                                     <Button Content="Allow" Command="{Binding AllowCommand}"/>

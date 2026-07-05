@@ -2,15 +2,26 @@ namespace Zyra.Voice.Core.Claude;
 
 /// <summary>
 /// Base type for every typed event a <see cref="Abstractions.Claude.IClaudeSession"/> can raise.
-/// Mirrors (a strict subset of) the stream-json event vocabulary emitted by the
-/// <c>claude</c> CLI in <c>--input-format stream-json --output-format stream-json</c> mode.
-/// See https://code.claude.com/docs/en/headless.md and
-/// https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode.md.
+/// Mirrors the real stream-json event vocabulary emitted by the <c>claude</c> CLI in
+/// <c>--input-format stream-json --output-format stream-json --verbose --include-partial-messages</c>
+/// mode, as captured against a live process — see
+/// <c>Memory/Zyra-Voice/StreamJson-Schema.md</c> for the ground-truth field tables this model
+/// and <see cref="Infrastructure.Claude.ClaudeStreamJsonParser"/> are built against.
 /// </summary>
 public abstract record ClaudeSessionEvent
 {
     /// <summary>Session id reported by the CLI's <c>system/init</c> event, once known.</summary>
     public required string? SessionId { get; init; }
+
+    /// <summary>
+    /// Non-null when this event belongs to a nested Task/sub-agent tool call rather than the
+    /// top-level conversation; carried verbatim from the wrapper so a future agent-tree view
+    /// can attribute events to their owning sub-agent.
+    /// </summary>
+    public string? ParentToolUseId { get; init; }
+
+    /// <summary>Wrapper-level event uuid, when the wire event carries one.</summary>
+    public string? Uuid { get; init; }
 }
 
 /// <summary>
@@ -18,8 +29,19 @@ public abstract record ClaudeSessionEvent
 /// </summary>
 public sealed record SessionInitialized : ClaudeSessionEvent
 {
-    public required string Model { get; init; }
+    public required string Cwd { get; init; }
     public required IReadOnlyList<string> Tools { get; init; }
+}
+
+/// <summary>
+/// An extended-thinking block, streamed separately from visible assistant text so the UI can
+/// render it collapsed/dimmed. Covers both the <c>content_block_start</c> (empty
+/// thinking/signature) and accumulated <c>thinking_delta</c>/<c>signature_delta</c> content.
+/// </summary>
+public sealed record AssistantThinkingDelta : ClaudeSessionEvent
+{
+    public required int BlockIndex { get; init; }
+    public required string Thinking { get; init; }
 }
 
 /// <summary>
@@ -28,6 +50,7 @@ public sealed record SessionInitialized : ClaudeSessionEvent
 /// </summary>
 public sealed record AssistantTextDelta : ClaudeSessionEvent
 {
+    public required int BlockIndex { get; init; }
     public required string Text { get; init; }
 }
 
@@ -95,6 +118,43 @@ public sealed record TurnCompleted : ClaudeSessionEvent
     public required string Subtype { get; init; }
     public required string? Result { get; init; }
     public required bool IsError { get; init; }
+    public string? StopReason { get; init; }
+    public string? TerminalReason { get; init; }
+}
+
+/// <summary>
+/// Per-session/per-turn status and attention state, derived from the CLI's own
+/// <c>system/post_turn_summary</c> and <c>system/notification</c> events — the stream already
+/// carries the status/attention signal the cockpit needs, so this event is a direct mapping
+/// rather than a host-side heuristic. See <c>StreamJson-Schema.md</c> "Relevantie voor de cockpit".
+/// </summary>
+public sealed record SessionStatusChanged : ClaudeSessionEvent
+{
+    /// <summary>From <c>post_turn_summary.status_category</c> (e.g. "review_ready"), or <see langword="null"/> when this update came from a notification only.</summary>
+    public string? StatusCategory { get; init; }
+
+    /// <summary>From <c>post_turn_summary.status_detail</c>.</summary>
+    public string? StatusDetail { get; init; }
+
+    /// <summary>From <c>post_turn_summary.needs_action</c>.</summary>
+    public string? NeedsAction { get; init; }
+
+    /// <summary>From <c>notification.text</c>, when this update came from a notification.</summary>
+    public string? NotificationText { get; init; }
+
+    /// <summary>From <c>notification.priority</c> (e.g. "immediate"), when this update came from a notification.</summary>
+    public string? NotificationPriority { get; init; }
+}
+
+/// <summary>
+/// Rate-limit status for the account driving this session
+/// (<c>{"type":"rate_limit_event","rate_limit_info":{...}}</c>).
+/// </summary>
+public sealed record RateLimitInfo : ClaudeSessionEvent
+{
+    public required string Status { get; init; }
+    public required string RateLimitType { get; init; }
+    public long? ResetsAt { get; init; }
 }
 
 /// <summary>
@@ -105,4 +165,14 @@ public sealed record SessionError : ClaudeSessionEvent
 {
     public required string Message { get; init; }
     public Exception? Exception { get; init; }
+}
+
+/// <summary>
+/// Forward-compat catch-all for a wire line whose <c>type</c>/<c>subtype</c>/block-type this
+/// parser does not (yet) model. Carries the raw JSON so nothing is silently dropped and
+/// nothing crashes on an unrecognized shape.
+/// </summary>
+public sealed record UnknownEvent : ClaudeSessionEvent
+{
+    public required string RawJson { get; init; }
 }

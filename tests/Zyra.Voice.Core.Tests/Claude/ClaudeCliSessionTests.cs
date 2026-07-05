@@ -138,6 +138,92 @@ public class ClaudeCliSessionTests
     }
 
     [Fact]
+    public async Task Events_FullCapturedTurn_YieldsThinkingSeparateFromTextThenStatusThenRateLimitThenTurnCompleted()
+    {
+        // Verbatim capture from a live claude.exe v2.1.197 stream-json turn — see
+        // Memory/Zyra-Voice/StreamJson-Schema.md. Session/message ids shortened.
+        var process = new FakeClaudeCliProcess();
+        process.Enqueue("""{"type":"system","subtype":"init","cwd":"C:\\Users\\raymo","session_id":"S1","tools":["Task","Bash","Read"]}""");
+        process.Enqueue("""{"type":"stream_event","event":{"type":"message_start","message":{"model":"claude-opus-4-8","id":"msg_1","type":"message","role":"assistant","content":[],"stop_reason":null,"usage":{"input_tokens":2949}}},"session_id":"S1","parent_tool_use_id":null,"uuid":"u1"}""");
+        process.Enqueue("""{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}},"session_id":"S1","parent_tool_use_id":null,"uuid":"u2"}""");
+        process.Enqueue("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"hallo Raymond"}},"session_id":"S1","parent_tool_use_id":null,"uuid":"u3"}""");
+        process.Enqueue("""{"type":"assistant","message":{"model":"claude-opus-4-8","id":"msg_1","role":"assistant","content":[{"type":"text","text":"hallo Raymond"}],"stop_reason":null,"usage":{"input_tokens":2949}}}""");
+        process.Enqueue("""{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":128}},"session_id":"S1","parent_tool_use_id":null,"uuid":"u4"}""");
+        process.Enqueue("""{"type":"system","subtype":"post_turn_summary","summarizes_uuid":"x","status_category":"review_ready","status_detail":"done","needs_action":"","uuid":"u5","session_id":"S1"}""");
+        process.Enqueue("""{"type":"system","subtype":"notification","key":"stop-hook-error","text":"Stop hook error occurred","priority":"immediate","uuid":"u6","session_id":"S1"}""");
+        process.Enqueue("""{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1783260000,"rateLimitType":"five_hour","overageStatus":"rejected","isUsingOverage":false},"uuid":"u7","session_id":"S1"}""");
+        process.Enqueue("""{"type":"result","subtype":"success","is_error":false,"result":"hallo Raymond","stop_reason":"end_turn","session_id":"S1","num_turns":1,"terminal_reason":"completed"}""");
+        process.CompleteOutput();
+
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        var events = await CollectEventsAsync(session);
+
+        // message_start/content_block_start/message_delta carry no cockpit-visible payload today.
+        events.Should().HaveCount(7);
+        events[0].Should().BeOfType<SessionInitialized>();
+
+        events[1].Should().BeOfType<AssistantTextDelta>().Which.Text.Should().Be("hallo Raymond");
+        events.OfType<AssistantThinkingDelta>().Should().BeEmpty("the fixture's thinking block only had a block-start, no thinking_delta");
+
+        events[2].Should().BeOfType<AssistantTextCompleted>().Which.Text.Should().Be("hallo Raymond");
+
+        var reviewReady = events[3].Should().BeOfType<SessionStatusChanged>().Subject;
+        reviewReady.StatusCategory.Should().Be("review_ready");
+        reviewReady.NotificationText.Should().BeNull();
+
+        var notification = events[4].Should().BeOfType<SessionStatusChanged>().Subject;
+        notification.NotificationText.Should().Be("Stop hook error occurred");
+        notification.NotificationPriority.Should().Be("immediate");
+
+        var rateLimit = events[5].Should().BeOfType<RateLimitInfo>().Subject;
+        rateLimit.RateLimitType.Should().Be("five_hour");
+
+        var turn = events[6].Should().BeOfType<TurnCompleted>().Subject;
+        turn.Result.Should().Be("hallo Raymond");
+        turn.TerminalReason.Should().Be("completed");
+
+        session.SessionId.Should().Be("S1");
+    }
+
+    [Fact]
+    public async Task Events_ThinkingDeltaThenTextDelta_YieldsSeparateEventTypesInOrder()
+    {
+        var process = new FakeClaudeCliProcess();
+        process.Enqueue("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Weighing the options."}},"session_id":"S1","parent_tool_use_id":null,"uuid":"ta"}""");
+        process.Enqueue("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Here is my answer."}},"session_id":"S1","parent_tool_use_id":null,"uuid":"tb"}""");
+        process.CompleteOutput();
+
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        var events = await CollectEventsAsync(session);
+
+        events.Should().HaveCount(2);
+        events[0].Should().BeOfType<AssistantThinkingDelta>().Which.Thinking.Should().Be("Weighing the options.");
+        events[1].Should().BeOfType<AssistantTextDelta>().Which.Text.Should().Be("Here is my answer.");
+    }
+
+    [Fact]
+    public async Task Events_UnknownTypeLine_YieldsUnknownEvent_DoesNotCrashThePump()
+    {
+        var process = new FakeClaudeCliProcess();
+        process.Enqueue("""{"type":"some_brand_new_event","session_id":"S1","weird_field":42}""");
+        process.Enqueue("""{"type":"result","subtype":"success","is_error":false,"result":"still alive","session_id":"S1"}""");
+        process.CompleteOutput();
+
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        var events = await CollectEventsAsync(session);
+
+        events.Should().HaveCount(2);
+        events[0].Should().BeOfType<UnknownEvent>();
+        events[1].Should().BeOfType<TurnCompleted>().Which.Result.Should().Be("still alive");
+    }
+
+    [Fact]
     public async Task RespondToPermissionAsync_DoesNotThrow_AndCompletes()
     {
         var process = new FakeClaudeCliProcess();

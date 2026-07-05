@@ -26,6 +26,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
     private CancellationTokenSource? _lifetimeCancellation;
     private Task? _eventLoopTask;
     private TranscriptEntryViewModel? _currentAssistantEntry;
+    private TranscriptEntryViewModel? _currentThinkingEntry;
     private string? _lastUsedProfileLabel;
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
@@ -213,10 +214,22 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
         switch (evt)
         {
             case SessionInitialized init:
-                Status = $"Connected (model={init.Model}, {init.Tools.Count} tools).";
+                Status = $"Connected ({init.Tools.Count} tools, cwd={init.Cwd}).";
+                break;
+
+            case AssistantThinkingDelta thinking:
+                if (_currentThinkingEntry is null)
+                {
+                    _currentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty);
+                    Transcript.Add(_currentThinkingEntry);
+                }
+
+                _currentThinkingEntry.AppendText(thinking.Thinking);
                 break;
 
             case AssistantTextDelta delta:
+                // A text delta means the thinking block (if any) for this turn is done.
+                _currentThinkingEntry = null;
                 if (_currentAssistantEntry is null)
                 {
                     _currentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
@@ -227,6 +240,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
                 break;
 
             case AssistantTextCompleted completed:
+                _currentThinkingEntry = null;
                 if (_currentAssistantEntry is not null)
                 {
                     // Streaming deltas already built the text; nothing further to append.
@@ -278,6 +292,14 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
             case SessionError error:
                 Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message));
                 IsBusy = false;
+                break;
+
+            // SessionStatusChanged/RateLimitInfo/UnknownEvent are out of scope for the transcript
+            // view (per-session status overview and agent-tree rendering are later increments);
+            // ConsumeEventsAsync already delivers them to any future subscriber.
+            case SessionStatusChanged:
+            case RateLimitInfo:
+            case UnknownEvent:
                 break;
         }
     }

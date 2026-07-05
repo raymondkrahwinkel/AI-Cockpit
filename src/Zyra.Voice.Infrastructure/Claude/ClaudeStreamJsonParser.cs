@@ -5,27 +5,30 @@ namespace Zyra.Voice.Infrastructure.Claude;
 
 /// <summary>
 /// Parses a single JSON-lines stdout line from <c>claude --output-format stream-json</c>
-/// into a typed <see cref="ClaudeSessionEvent"/>, or <see langword="null"/> when the line
-/// carries no information F-C1 needs to surface (e.g. a non-text partial delta).
+/// into zero-or-more typed <see cref="ClaudeSessionEvent"/>s.
 /// </summary>
 /// <remarks>
-/// Grounded in https://code.claude.com/docs/en/headless.md ("Stream responses" /
-/// system-init / api_retry field tables) and
-/// https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode.md (stream-json
-/// message envelope shape). The exact <c>tool_use</c> / <c>tool_result</c> content-block
-/// shapes are the well-known Anthropic Messages API content block schema reused verbatim
-/// by Claude Code's assistant/user events; F-C1 has no logged-in CLI available to capture
-/// a live transcript, so this parser is verified against hand-written fixtures modeled on
-/// the documented shapes rather than a captured real session. Treat unrecognized
-/// <c>type</c>/<c>subtype</c> combinations as forward-compatible no-ops, not errors.
+/// Grounded in a real captured transcript from <c>claude.exe</c> v2.1.197
+/// (<c>-p --input-format stream-json --output-format stream-json --verbose --include-partial-messages</c>) —
+/// see <c>Memory/Zyra-Voice/StreamJson-Schema.md</c> for the full field-table this parser
+/// covers. <c>tool_use</c>/<c>tool_result</c> content-block shapes are the well-known
+/// Anthropic Messages API schema reused verbatim by Claude Code, documented but not yet
+/// verified against a captured live tool-turn. Unrecognized <c>type</c>/<c>subtype</c>/
+/// block-type combinations map to <see cref="UnknownEvent"/> rather than throwing or
+/// silently dropping the line, so forward-compat is a parse outcome, not a happy accident.
 /// </remarks>
 internal static class ClaudeStreamJsonParser
 {
-    public static ClaudeSessionEvent? TryParseLine(string line)
+    /// <summary>
+    /// Parses one stdout line into zero-or-more events. A single line can carry more than one
+    /// event (e.g. an <c>assistant</c> snapshot with several content blocks), so callers should
+    /// enumerate rather than assume one event per line.
+    /// </summary>
+    public static IEnumerable<ClaudeSessionEvent> ParseLine(string line)
     {
         if (string.IsNullOrWhiteSpace(line))
         {
-            return null;
+            yield break;
         }
 
         using var document = JsonDocument.Parse(line);
@@ -33,74 +36,97 @@ internal static class ClaudeStreamJsonParser
 
         if (!root.TryGetProperty("type", out var typeProp))
         {
-            return null;
+            yield return UnknownEventFrom(root, sessionId: null);
+            yield break;
         }
 
         var type = typeProp.GetString();
         var sessionId = root.TryGetProperty("session_id", out var sidProp) ? sidProp.GetString() : null;
 
-        return type switch
+        IEnumerable<ClaudeSessionEvent> events = type switch
         {
             "system" => ParseSystem(root, sessionId),
-            "assistant" => ParseAssistant(root, sessionId),
+            "assistant" => ParseAssistantContentBlocks(root, sessionId),
             "user" => ParseUser(root, sessionId),
             "stream_event" => ParseStreamEvent(root, sessionId),
-            "result" => ParseResult(root, sessionId),
-            _ => null,
+            "rate_limit_event" => ParseRateLimitEvent(root, sessionId),
+            "result" => [ParseResult(root, sessionId)],
+            _ => [UnknownEventFrom(root, sessionId)],
         };
+
+        foreach (var evt in events)
+        {
+            yield return evt;
+        }
     }
 
-    private static ClaudeSessionEvent? ParseSystem(JsonElement root, string? sessionId)
+    /// <summary>Back-compat single-event entry point kept for direct unit-testing of one-event lines.</summary>
+    public static ClaudeSessionEvent? TryParseLine(string line) => ParseLine(line).FirstOrDefault();
+
+    private static UnknownEvent UnknownEventFrom(JsonElement root, string? sessionId) =>
+        new() { SessionId = sessionId, RawJson = root.GetRawText() };
+
+    private static IEnumerable<ClaudeSessionEvent> ParseSystem(JsonElement root, string? sessionId)
     {
         var subtype = root.TryGetProperty("subtype", out var st) ? st.GetString() : null;
-        if (subtype != "init")
-        {
-            return null;
-        }
+        var uuid = root.TryGetProperty("uuid", out var uuidProp) ? uuidProp.GetString() : null;
 
-        var model = root.TryGetProperty("model", out var m) ? m.GetString() ?? string.Empty : string.Empty;
-        var tools = new List<string>();
-        if (root.TryGetProperty("tools", out var toolsProp) && toolsProp.ValueKind == JsonValueKind.Array)
+        switch (subtype)
         {
-            foreach (var t in toolsProp.EnumerateArray())
-            {
-                if (t.ValueKind == JsonValueKind.String)
+            case "init":
+                var cwd = root.TryGetProperty("cwd", out var cwdProp) ? cwdProp.GetString() ?? string.Empty : string.Empty;
+                var tools = new List<string>();
+                if (root.TryGetProperty("tools", out var toolsProp) && toolsProp.ValueKind == JsonValueKind.Array)
                 {
-                    tools.Add(t.GetString()!);
+                    foreach (var t in toolsProp.EnumerateArray())
+                    {
+                        if (t.ValueKind == JsonValueKind.String)
+                        {
+                            tools.Add(t.GetString() ?? string.Empty);
+                        }
+                    }
                 }
-            }
-        }
 
-        return new SessionInitialized { SessionId = sessionId, Model = model, Tools = tools };
+                yield return new SessionInitialized { SessionId = sessionId, Uuid = uuid, Cwd = cwd, Tools = tools };
+                yield break;
+
+            case "post_turn_summary":
+                var statusCategory = root.TryGetProperty("status_category", out var scProp) ? scProp.GetString() : null;
+                var statusDetail = root.TryGetProperty("status_detail", out var sdProp) ? sdProp.GetString() : null;
+                var needsAction = root.TryGetProperty("needs_action", out var naProp) ? naProp.GetString() : null;
+
+                yield return new SessionStatusChanged
+                {
+                    SessionId = sessionId,
+                    Uuid = uuid,
+                    StatusCategory = statusCategory,
+                    StatusDetail = statusDetail,
+                    NeedsAction = needsAction,
+                };
+                yield break;
+
+            case "notification":
+                var text = root.TryGetProperty("text", out var textProp) ? textProp.GetString() : null;
+                var priority = root.TryGetProperty("priority", out var prioProp) ? prioProp.GetString() : null;
+
+                yield return new SessionStatusChanged
+                {
+                    SessionId = sessionId,
+                    Uuid = uuid,
+                    NotificationText = text,
+                    NotificationPriority = priority,
+                };
+                yield break;
+
+            // "status", "thinking_tokens", "hook_started"/"hook_response" and any other
+            // system subtype are not (yet) surfaced to the cockpit UI — forward-compat.
+            default:
+                yield return UnknownEventFrom(root, sessionId);
+                yield break;
+        }
     }
 
-    private static ClaudeSessionEvent? ParseAssistant(JsonElement root, string? sessionId)
-    {
-        if (!root.TryGetProperty("message", out var message) ||
-            !message.TryGetProperty("content", out var content) ||
-            content.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        // F-C1: surface the first actionable content block. A message with multiple
-        // blocks (e.g. text followed by tool_use) will need multiple driver-side events;
-        // ClaudeCliSession iterates all blocks itself and calls this per-block via
-        // ParseAssistantContentBlock, not this method, for that reason. Kept here only
-        // for direct unit-testing convenience against a full assistant message line.
-        foreach (var block in content.EnumerateArray())
-        {
-            var parsed = ParseAssistantContentBlock(block, sessionId);
-            if (parsed is not null)
-            {
-                return parsed;
-            }
-        }
-
-        return null;
-    }
-
-    public static ClaudeSessionEvent? ParseAssistantContentBlock(JsonElement block, string? sessionId)
+    private static ClaudeSessionEvent? ParseAssistantContentBlock(JsonElement block, string? sessionId)
     {
         if (!block.TryGetProperty("type", out var blockType))
         {
@@ -112,6 +138,10 @@ internal static class ClaudeStreamJsonParser
             case "text":
                 var text = block.TryGetProperty("text", out var t) ? t.GetString() ?? string.Empty : string.Empty;
                 return new AssistantTextCompleted { SessionId = sessionId, Text = text };
+
+            case "thinking":
+                var thinking = block.TryGetProperty("thinking", out var thinkProp) ? thinkProp.GetString() ?? string.Empty : string.Empty;
+                return new AssistantThinkingDelta { SessionId = sessionId, BlockIndex = 0, Thinking = thinking };
 
             case "tool_use":
                 var id = block.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? string.Empty : string.Empty;
@@ -145,13 +175,13 @@ internal static class ClaudeStreamJsonParser
         }
     }
 
-    private static ClaudeSessionEvent? ParseUser(JsonElement root, string? sessionId)
+    private static IEnumerable<ClaudeSessionEvent> ParseUser(JsonElement root, string? sessionId)
     {
         if (!root.TryGetProperty("message", out var message) ||
             !message.TryGetProperty("content", out var content) ||
             content.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            yield break;
         }
 
         foreach (var block in content.EnumerateArray())
@@ -165,10 +195,8 @@ internal static class ClaudeStreamJsonParser
             var isError = block.TryGetProperty("is_error", out var errProp) && errProp.ValueKind == JsonValueKind.True;
             var contentText = ExtractToolResultText(block);
 
-            return new ToolResult { SessionId = sessionId, ToolUseId = toolUseId, Content = contentText, IsError = isError };
+            yield return new ToolResult { SessionId = sessionId, ToolUseId = toolUseId, Content = contentText, IsError = isError };
         }
-
-        return null;
     }
 
     private static string ExtractToolResultText(JsonElement toolResultBlock)
@@ -203,36 +231,116 @@ internal static class ClaudeStreamJsonParser
         return content.GetRawText();
     }
 
-    private static ClaudeSessionEvent? ParseStreamEvent(JsonElement root, string? sessionId)
+    private static IEnumerable<ClaudeSessionEvent> ParseStreamEvent(JsonElement root, string? sessionId)
     {
+        var parentToolUseId = root.TryGetProperty("parent_tool_use_id", out var parentProp) &&
+                               parentProp.ValueKind == JsonValueKind.String
+            ? parentProp.GetString()
+            : null;
+        var uuid = root.TryGetProperty("uuid", out var uuidProp) ? uuidProp.GetString() : null;
+
         if (!root.TryGetProperty("event", out var evt) ||
             !evt.TryGetProperty("type", out var evtType))
         {
-            return null;
+            yield return UnknownEventFrom(root, sessionId);
+            yield break;
         }
 
-        if (evtType.GetString() != "content_block_delta")
+        switch (evtType.GetString())
         {
-            return null;
-        }
+            // message_start/content_block_start/content_block_stop/message_stop carry no
+            // transcript-visible payload the cockpit needs yet beyond the lifecycle marker
+            // itself (block-start's empty thinking/signature placeholders are re-emitted by
+            // the accumulating deltas below); nothing to surface for them today.
+            case "message_start":
+            case "content_block_start":
+            case "content_block_stop":
+            case "message_stop":
+                yield break;
 
-        if (!evt.TryGetProperty("delta", out var delta) ||
-            !delta.TryGetProperty("type", out var deltaType) ||
-            deltaType.GetString() != "text_delta")
-        {
-            return null;
-        }
+            case "content_block_delta":
+                var index = evt.TryGetProperty("index", out var idxProp) ? idxProp.GetInt32() : 0;
 
-        var text = delta.TryGetProperty("text", out var textProp) ? textProp.GetString() ?? string.Empty : string.Empty;
-        return new AssistantTextDelta { SessionId = sessionId, Text = text };
+                if (!evt.TryGetProperty("delta", out var delta) || !delta.TryGetProperty("type", out var deltaType))
+                {
+                    yield return UnknownEventFrom(root, sessionId);
+                    yield break;
+                }
+
+                switch (deltaType.GetString())
+                {
+                    case "text_delta":
+                        var text = delta.TryGetProperty("text", out var textProp) ? textProp.GetString() ?? string.Empty : string.Empty;
+                        yield return new AssistantTextDelta { SessionId = sessionId, ParentToolUseId = parentToolUseId, Uuid = uuid, BlockIndex = index, Text = text };
+                        yield break;
+
+                    case "thinking_delta":
+                        var thinking = delta.TryGetProperty("thinking", out var thinkProp) ? thinkProp.GetString() ?? string.Empty : string.Empty;
+                        yield return new AssistantThinkingDelta { SessionId = sessionId, ParentToolUseId = parentToolUseId, Uuid = uuid, BlockIndex = index, Thinking = thinking };
+                        yield break;
+
+                    // signature_delta/input_json_delta carry no transcript-visible text.
+                    default:
+                        yield break;
+                }
+
+            // message_delta only carries stop_reason/usage at end-of-turn; the cockpit already
+            // gets its "turn finished" signal from the result event, so nothing to surface here.
+            case "message_delta":
+                yield break;
+
+            default:
+                yield return UnknownEventFrom(root, sessionId);
+                yield break;
+        }
     }
 
-    private static ClaudeSessionEvent? ParseResult(JsonElement root, string? sessionId)
+    private static IEnumerable<ClaudeSessionEvent> ParseRateLimitEvent(JsonElement root, string? sessionId)
+    {
+        var uuid = root.TryGetProperty("uuid", out var uuidProp) ? uuidProp.GetString() : null;
+
+        if (!root.TryGetProperty("rate_limit_info", out var info))
+        {
+            yield return UnknownEventFrom(root, sessionId);
+            yield break;
+        }
+
+        var status = info.TryGetProperty("status", out var statusProp) ? statusProp.GetString() ?? string.Empty : string.Empty;
+        var rateLimitType = info.TryGetProperty("rateLimitType", out var typeProp) ? typeProp.GetString() ?? string.Empty : string.Empty;
+        var resetsAt = info.TryGetProperty("resetsAt", out var resetsProp) && resetsProp.ValueKind == JsonValueKind.Number
+            ? resetsProp.GetInt64()
+            : (long?)null;
+
+        yield return new RateLimitInfo
+        {
+            SessionId = sessionId,
+            Uuid = uuid,
+            Status = status,
+            RateLimitType = rateLimitType,
+            ResetsAt = resetsAt,
+        };
+    }
+
+    private static ClaudeSessionEvent ParseResult(JsonElement root, string? sessionId)
     {
         var subtype = root.TryGetProperty("subtype", out var st) ? st.GetString() ?? string.Empty : string.Empty;
         var result = root.TryGetProperty("result", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() : null;
         var isError = root.TryGetProperty("is_error", out var errProp) && errProp.ValueKind == JsonValueKind.True;
+        var stopReason = root.TryGetProperty("stop_reason", out var stopProp) && stopProp.ValueKind == JsonValueKind.String
+            ? stopProp.GetString()
+            : null;
+        var terminalReason = root.TryGetProperty("terminal_reason", out var termProp) && termProp.ValueKind == JsonValueKind.String
+            ? termProp.GetString()
+            : null;
 
-        return new TurnCompleted { SessionId = sessionId, Subtype = subtype, Result = result, IsError = isError };
+        return new TurnCompleted
+        {
+            SessionId = sessionId,
+            Subtype = subtype,
+            Result = result,
+            IsError = isError,
+            StopReason = stopReason,
+            TerminalReason = terminalReason,
+        };
     }
 }

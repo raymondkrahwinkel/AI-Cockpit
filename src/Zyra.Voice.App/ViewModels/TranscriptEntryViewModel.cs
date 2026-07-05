@@ -9,6 +9,7 @@ namespace Zyra.Voice.App.ViewModels;
 public enum TranscriptEntryKind
 {
     AssistantText,
+    Thinking,
     ToolUse,
     ToolResult,
     Question,
@@ -25,8 +26,14 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 {
     public TranscriptEntryKind Kind { get; }
 
+    public bool IsThinking => Kind == TranscriptEntryKind.Thinking;
+
     [ObservableProperty]
     private string _text;
+
+    /// <summary>Collapsed by default for thinking rows so they read as dimmed/collapsible, not as regular transcript text.</summary>
+    [ObservableProperty]
+    private bool _isExpanded;
 
     /// <summary>Non-null only for <see cref="TranscriptEntryKind.ToolUse"/> rows awaiting an allow/deny decision.</summary>
     [ObservableProperty]
@@ -47,6 +54,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     {
         Text += delta;
     }
+
+    [RelayCommand]
+    private void ToggleExpanded() => IsExpanded = !IsExpanded;
 
     [RelayCommand]
     private void Allow() => PermissionDecision = "Allowed";
