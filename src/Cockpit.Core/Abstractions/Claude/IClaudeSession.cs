@@ -45,18 +45,14 @@ public interface IClaudeSession : IAsyncDisposable
 
     /// <summary>
     /// Live-switches the running session's permission mode via an Agent SDK control-protocol
-    /// request (<c>control_request</c>/<c>set_permission_mode</c> over stdin). UNVERIFIED: the
-    /// exact wire subtype/field names below are a best guess from the SDK's public
-    /// <c>Query.setPermissionMode(mode)</c> surface — this sandbox has no logged-in <c>claude</c>
-    /// CLI to confirm the request shape end-to-end against. Verify against a real session
-    /// before relying on this.
+    /// request (<c>control_request</c>/<c>set_permission_mode</c> over stdin). Verified end-to-end
+    /// against claude.exe 2.1.197 — the request returns <c>control_response success</c>.
     /// </summary>
     Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Live-switches the running session's model via a <c>control_request</c>/<c>set_model</c>
-    /// request. UNVERIFIED — see <see cref="SetPermissionModeAsync"/> remarks; same caveat
-    /// applies to the request shape here.
+    /// request. Verified against claude.exe 2.1.197 (returns <c>control_response success</c>).
     /// </summary>
     Task SetModelAsync(string? model, CancellationToken cancellationToken = default);
 
@@ -73,16 +69,14 @@ public interface IClaudeSession : IAsyncDisposable
 
     /// <summary>
     /// Interrupts the current in-flight turn via a <c>control_request</c>/<c>interrupt</c>
-    /// request. UNVERIFIED — see <see cref="SetPermissionModeAsync"/> remarks; same caveat
-    /// applies to the request shape here.
+    /// request. Verified against claude.exe 2.1.197 (returns <c>control_response success</c>).
     /// </summary>
     Task InterruptAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resolves an outstanding <see cref="PermissionRequested"/> decision.
-    /// F-C1 note: the CLI process spawned by <see cref="Abstractions.Claude.IClaudeSession"/>
-    /// implementations may not yet be wired to a live permission-prompt channel (see
-    /// ClaudeCliSession remarks); until then this only updates local/UI-observable state.
+    /// Resolves an outstanding <see cref="PermissionRequested"/> decision by feeding the operator's
+    /// allow/deny back to the CLI in-band through the cockpit's MCP permission server (see
+    /// ClaudeCliSession / PermissionCoordinator), correlated on <c>tool_use_id</c>.
     /// </summary>
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
