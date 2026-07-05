@@ -27,4 +27,16 @@ public sealed class ClaudeCliOptions
     /// Extra raw CLI arguments appended verbatim after the required stream-json flags.
     /// </summary>
     public IReadOnlyList<string> ExtraArguments { get; set; } = [];
+
+    /// <summary>
+    /// Loopback host the cockpit's shared MCP permission server binds to. Kept configurable but
+    /// intentionally loopback-only — the server exists solely for the locally spawned CLI processes.
+    /// </summary>
+    public string PermissionServerHost { get; set; } = "127.0.0.1";
+
+    /// <summary>
+    /// Fixed port for the MCP permission server, or 0 (default) to let the OS pick a free port
+    /// at startup.
+    /// </summary>
+    public int PermissionServerPort { get; set; }
 }

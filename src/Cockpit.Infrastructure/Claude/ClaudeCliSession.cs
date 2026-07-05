@@ -1,10 +1,11 @@
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Claude;
+using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Claude;
@@ -14,34 +15,34 @@ namespace Cockpit.Infrastructure.Claude;
 /// (see <see cref="ClaudeCliProcess"/> for the exact invocation and doc grounding).
 /// </summary>
 /// <remarks>
-/// Permission handling (F-C1 scope): the CLI's own interactive permission prompt only
-/// exists in the *terminal* UI; a headless stream-json process has no stdin channel for
-/// answering the CLI's own y/n prompt, and this driver does not yet wire a
-/// <c>--permission-prompt-tool</c> MCP server or a PreToolUse hook. Every
-/// <see cref="ToolUseRequested"/> is therefore additionally surfaced as a
-/// <see cref="PermissionRequested"/> event so the UI can show an allow/deny affordance,
-/// but <see cref="RespondToPermissionAsync"/> currently only records the decision — it does
-/// not feed back into the running CLI process (there is no channel to do so with
-/// <c>--permission-mode default</c> in headless mode without the extra MCP wiring). The
-/// documented next increment is a <c>--permission-prompt-tool</c> MCP server that this host
-/// implements and passes on the CLI command line, so <c>canUseTool</c>-equivalent decisions
-/// flow back in-band. Until then, run with <c>--permission-mode acceptEdits</c> or
-/// <c>bypassPermissions</c> if you need the CLI itself to proceed unattended.
+/// Permission handling: the CLI is spawned with <c>--permission-prompt-tool</c> pointing at the
+/// cockpit's shared in-process MCP server (see <c>PermissionMcpServer</c>). For any tool that
+/// genuinely needs approval, the CLI calls that tool over HTTP; the request carries no
+/// <c>session_id</c>, so it is correlated on <c>tool_use_id</c>. This session sees the
+/// <c>tool_use</c> (and its id) in its own stream first, registers the id as its own, and surfaces
+/// a <see cref="PermissionRequested"/> event for the UI. When the operator answers,
+/// <see cref="RespondToPermissionAsync"/> resolves the pending decision through the
+/// <see cref="IPermissionCoordinator"/>, which unblocks the MCP tool and feeds the allow/deny back
+/// in-band. Any still-pending decisions are denied on dispose so a closing session never leaves
+/// the CLI blocked.
 /// </remarks>
 internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
 {
     private readonly IClaudeCliProcess _process;
+    private readonly IPermissionCoordinator _permissionCoordinator;
     private readonly ILogger<ClaudeCliSession> _logger;
     private readonly Channel<ClaudeSessionEvent> _events = Channel.CreateUnbounded<ClaudeSessionEvent>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+    private readonly ConcurrentDictionary<string, byte> _pendingToolUseIds = new();
 
     private Task? _pumpTask;
     private CancellationTokenSource? _pumpCancellation;
     private string? _sessionId;
 
-    public ClaudeCliSession(IClaudeCliProcess process, ILogger<ClaudeCliSession> logger)
+    public ClaudeCliSession(IClaudeCliProcess process, IPermissionCoordinator permissionCoordinator, ILogger<ClaudeCliSession> logger)
     {
         _process = process;
+        _permissionCoordinator = permissionCoordinator;
         _logger = logger;
     }
 
@@ -81,11 +82,23 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
     {
-        // See class remarks: no in-band feedback channel to the CLI process yet in F-C1.
-        _logger.LogInformation(
-            "Permission decision recorded locally (not yet wired to CLI): tool_use_id={ToolUseId} allow={Allow}",
-            toolUseId,
-            allow);
+        var decision = allow
+            ? PermissionDecision.Allow()
+            : PermissionDecision.Deny("Denied by the cockpit operator.");
+
+        var resolved = _permissionCoordinator.Resolve(toolUseId, decision);
+        _pendingToolUseIds.TryRemove(toolUseId, out _);
+
+        if (!resolved)
+        {
+            // The CLI auto-allowed this tool (never prompted) or the request already resolved —
+            // the UI affordance was optimistic. Nothing to feed back in-band; just note it.
+            _logger.LogInformation(
+                "Permission decision had no pending CLI request to resolve: tool_use_id={ToolUseId} allow={Allow}",
+                toolUseId,
+                allow);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -179,13 +192,15 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
             }
 
             // A single line can carry multiple events (e.g. an assistant snapshot with several
-            // content blocks); every tool_use additionally gets a derived PermissionRequested
-            // since the CLI has no in-band feedback channel yet (see class remarks).
+            // content blocks). Each tool_use also gets a derived PermissionRequested and has its
+            // id tracked so the MCP permission call (which arrives without a session_id) can be
+            // correlated to this session on tool_use_id, and any still-pending ones denied on dispose.
             foreach (var evt in ClaudeStreamJsonParser.ParseLine(line))
             {
                 _events.Writer.TryWrite(evt);
                 if (evt is ToolUseRequested toolUse)
                 {
+                    _pendingToolUseIds.TryAdd(toolUse.ToolUseId, 0);
                     _events.Writer.TryWrite(new PermissionRequested
                     {
                         SessionId = _sessionId,
@@ -202,6 +217,10 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
 
     public async ValueTask DisposeAsync()
     {
+        // Unblock any tool call still waiting on an answer, or the disposing CLI process hangs.
+        _permissionCoordinator.DenyPending(_pendingToolUseIds.Keys, "Session closed before the operator responded.");
+        _pendingToolUseIds.Clear();
+
         _pumpCancellation?.Cancel();
         if (_pumpTask is not null)
         {

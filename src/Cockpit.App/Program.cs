@@ -1,5 +1,6 @@
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core;
@@ -52,7 +53,42 @@ sealed class Program
             return;
         }
 
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        // The MCP permission server (and any other IHostedService) must be running before the
+        // first session spawns a CLI, and torn down cleanly on exit. The app uses a plain
+        // ServiceProvider rather than a generic Host, so drive the hosted-service lifecycle here.
+        var hostedServices = Services.GetServices<IHostedService>().ToArray();
+        StartHostedServices(hostedServices);
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        finally
+        {
+            StopHostedServices(hostedServices);
+        }
+    }
+
+    private static void StartHostedServices(IReadOnlyList<IHostedService> hostedServices)
+    {
+        foreach (var service in hostedServices)
+        {
+            service.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
+    }
+
+    private static void StopHostedServices(IReadOnlyList<IHostedService> hostedServices)
+    {
+        foreach (var service in hostedServices)
+        {
+            try
+            {
+                service.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception)
+            {
+                // Best-effort shutdown: a failing stop must not mask the app exit.
+            }
+        }
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.

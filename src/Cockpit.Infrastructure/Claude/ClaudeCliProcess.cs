@@ -35,14 +35,20 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
     private readonly CockpitOptions _options;
     private readonly IClaudeExecutableLocator _executableLocator;
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
+    private readonly IPermissionServerState _permissionServerState;
     private Process? _process;
     private bool _started;
 
-    public ClaudeCliProcess(IOptions<CockpitOptions> options, IClaudeExecutableLocator executableLocator, WorkspaceTrustWriter workspaceTrustWriter)
+    public ClaudeCliProcess(
+        IOptions<CockpitOptions> options,
+        IClaudeExecutableLocator executableLocator,
+        WorkspaceTrustWriter workspaceTrustWriter,
+        IPermissionServerState permissionServerState)
     {
         _options = options.Value;
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
+        _permissionServerState = permissionServerState;
     }
 
     public bool HasExited => _started && (_process?.HasExited ?? true);
@@ -65,23 +71,7 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             ?? _executableLocator.FindBundledExecutable()
             ?? cli.ExecutablePath;
 
-        var arguments = new List<string>
-        {
-            "-p",
-            "--input-format", "stream-json",
-            "--output-format", "stream-json",
-            "--verbose",
-            "--include-partial-messages",
-            "--permission-mode", string.IsNullOrWhiteSpace(permissionMode) ? cli.PermissionMode : permissionMode,
-        };
-
-        if (!string.IsNullOrWhiteSpace(model))
-        {
-            arguments.Add("--model");
-            arguments.Add(model);
-        }
-
-        arguments.AddRange(cli.ExtraArguments);
+        var arguments = BuildArguments(cli, permissionMode, model, _permissionServerState);
 
         var startInfo = new ProcessStartInfo
         {
@@ -153,6 +143,50 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
         _process?.Dispose();
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Builds the CLI argument list for a spawn. Extracted (and <c>internal</c>) so the flag
+    /// construction — especially the permission-prompt/MCP wiring — is unit-testable without
+    /// spawning a real process.
+    /// </summary>
+    internal static List<string> BuildArguments(
+        ClaudeCliOptions cli,
+        string? permissionMode,
+        string? model,
+        IPermissionServerState permissionServerState)
+    {
+        var arguments = new List<string>
+        {
+            "-p",
+            "--input-format", "stream-json",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--include-partial-messages",
+            "--permission-mode", string.IsNullOrWhiteSpace(permissionMode) ? cli.PermissionMode : permissionMode,
+        };
+
+        // Route real permission enforcement through the cockpit's shared MCP server: the CLI calls
+        // our permission_prompt tool for any tool that genuinely needs approval, and the operator's
+        // allow/deny flows back in-band. --strict-mcp-config keeps the CLI from also loading the
+        // user's own MCP servers, so the only tool it sees is ours.
+        if (permissionServerState is { McpConfigPath: { } configPath, PermissionPromptToolName: { } toolName })
+        {
+            arguments.Add("--permission-prompt-tool");
+            arguments.Add(toolName);
+            arguments.Add("--mcp-config");
+            arguments.Add(configPath);
+            arguments.Add("--strict-mcp-config");
+        }
+
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            arguments.Add("--model");
+            arguments.Add(model);
+        }
+
+        arguments.AddRange(cli.ExtraArguments);
+        return arguments;
     }
 
     private Process RequireStartedProcess() =>
