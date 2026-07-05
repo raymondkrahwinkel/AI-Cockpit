@@ -1,7 +1,9 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.SessionSwitching;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -58,12 +60,15 @@ public class CockpitViewModelAttentionTests
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
+        var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
+        sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
             Substitute.For<IAudioCaptureService>(),
             Substitute.For<IAudioPlaybackService>(),
             _attentionNotifier,
-            notificationSettingsStore);
+            notificationSettingsStore,
+            sessionSwitchSettingsStore);
     }
 }

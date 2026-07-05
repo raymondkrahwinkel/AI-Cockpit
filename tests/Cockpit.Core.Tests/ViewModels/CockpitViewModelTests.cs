@@ -1,7 +1,9 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.SessionSwitching;
 using FluentAssertions;
 using NSubstitute;
 
@@ -136,6 +138,110 @@ public class CockpitViewModelTests
         vm.IsZoomed.Should().BeFalse();
     }
 
+    [Fact]
+    public void SelectNextSession_MovesToTheFollowingSession()
+    {
+        var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
+        vm.SelectSessionCommand.Execute(vm.Sessions[0]);
+
+        vm.SelectNextSession();
+
+        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+    }
+
+    [Fact]
+    public void SelectNextSession_FromTheLastSession_WrapsToTheFirst()
+    {
+        var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
+        vm.SelectSessionCommand.Execute(vm.Sessions[2]);
+
+        vm.SelectNextSession();
+
+        vm.SelectedSession.Should().Be(vm.Sessions[0]);
+    }
+
+    [Fact]
+    public void SelectPreviousSession_MovesToThePrecedingSession()
+    {
+        var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
+        vm.SelectSessionCommand.Execute(vm.Sessions[2]);
+
+        vm.SelectPreviousSession();
+
+        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+    }
+
+    [Fact]
+    public void SelectPreviousSession_FromTheFirstSession_WrapsToTheLast()
+    {
+        var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
+        vm.SelectSessionCommand.Execute(vm.Sessions[0]);
+
+        vm.SelectPreviousSession();
+
+        vm.SelectedSession.Should().Be(vm.Sessions[2]);
+    }
+
+    [Fact]
+    public void SelectNextSession_KeepsIsSelectedFlagsConsistent()
+    {
+        var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
+        vm.SelectSessionCommand.Execute(vm.Sessions[0]);
+
+        vm.SelectNextSession();
+
+        vm.Sessions[0].IsSelected.Should().BeFalse();
+        vm.Sessions[1].IsSelected.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SelectNextSession_WithASingleSession_StaysOnThatSession()
+    {
+        var vm = NewVm();
+        var only = vm.Sessions[0];
+
+        vm.SelectNextSession();
+        vm.SelectPreviousSession();
+
+        vm.SelectedSession.Should().Be(only);
+        only.IsSelected.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SelectNextSession_WithNoSessions_DoesNothing()
+    {
+        var vm = NewVm();
+        await vm.CloseSessionCommand.ExecuteAsync(vm.Sessions[0]);
+
+        vm.SelectNextSession();
+        vm.SelectPreviousSession();
+
+        vm.SelectedSession.Should().BeNull();
+        vm.Sessions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void CurrentSessionSwitchSettings_ReflectsTheLiveEnableAndModifierEdits()
+    {
+        var vm = NewVm();
+
+        vm.SessionSwitchEnabled = false;
+        vm.SelectedSessionSwitchModifier =
+            vm.SessionSwitchModifiers.Single(option => option.Value == SessionSwitchModifier.CtrlAlt);
+
+        vm.CurrentSessionSwitchSettings.IsEnabled.Should().BeFalse();
+        vm.CurrentSessionSwitchSettings.Modifier.Should().Be(SessionSwitchModifier.CtrlAlt);
+    }
+
     private static CockpitViewModel NewVm()
     {
         var captureService = Substitute.For<IAudioCaptureService>();
@@ -143,12 +249,15 @@ public class CockpitViewModelTests
         var attentionNotifier = Substitute.For<IAttentionNotifier>();
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
+        var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
+        sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
             captureService,
             playbackService,
             attentionNotifier,
-            notificationSettingsStore);
+            notificationSettingsStore,
+            sessionSwitchSettingsStore);
     }
 }
