@@ -15,6 +15,17 @@
 
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
             <Button Content="Start session" Command="{Binding StartCommand}"/>
+            <Button Content="Stop" Command="{Binding StopCommand}"
+                    ToolTip.Tip="Onderbreekt de lopende turn (control_request/interrupt)"/>
+            <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
+                      DisplayMemberBinding="{Binding Label}" MinWidth="150"
+                      ToolTip.Tip="Permission-mode voor deze sessie (live wisselbaar)"/>
+            <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                      DisplayMemberBinding="{Binding Label}" MinWidth="120"
+                      ToolTip.Tip="Model voor deze sessie (--model bij start, live wisselbaar)"/>
+            <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
+                      DisplayMemberBinding="{Binding Label}" MinWidth="100"
+                      ToolTip.Tip="Thinking-effort (ongeverifieerde mapping naar thinking-budget)"/>
             <TextBlock Text="{Binding Status}" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center"
                        IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
@@ -29,8 +40,9 @@
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-            <TextBox Text="{Binding InputText}" PlaceholderText="Message Claude..." Width="600"
-                     AcceptsReturn="False"/>
+            <TextBox x:Name="InputBox" Text="{Binding InputText}"
+                     PlaceholderText="Message Claude...  (Enter = versturen, Shift+Enter = nieuwe regel)" Width="600"
+                     AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
             <Button Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding !IsBusy}"/>
         </StackPanel>
 
@@ -53,11 +65,21 @@
                                 </StackPanel>
 
                                 <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                           IsVisible="{Binding !IsThinking}"/>
+                                           IsVisible="{Binding IsPlainText}"/>
+
+                                <!-- Tool results: collapsed by default; expand on demand. -->
+                                <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
+                                    <Button Content="▸ Tool result (klik om te tonen)" Command="{Binding ToggleExpandedCommand}"
+                                            Opacity="0.7" Padding="2" Background="Transparent" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Opacity="0.85"
+                                               IsVisible="{Binding IsExpanded}"/>
+                                </StackPanel>
 
                                 <StackPanel Orientation="Horizontal" Spacing="8"
                                             IsVisible="{Binding IsPendingPermission}">
                                     <Button Content="Allow" Command="{Binding AllowCommand}"/>
+                                    <Button Content="Always (exact)" Command="{Binding AllowAlwaysExactCommand}"/>
+                                    <Button Content="Always (wildcard)" Command="{Binding AllowAlwaysWildcardCommand}"/>
                                     <Button Content="Deny" Command="{Binding DenyCommand}"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding PermissionDecision}"

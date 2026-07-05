@@ -28,6 +28,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public bool IsThinking => Kind == TranscriptEntryKind.Thinking;
 
+    public bool IsToolResult => Kind == TranscriptEntryKind.ToolResult;
+
+    /// <summary>Plain rows rendered as a single wrapped text block (not thinking, not a collapsible tool result).</summary>
+    public bool IsPlainText => !IsThinking && !IsToolResult;
+
     [ObservableProperty]
     private string _text;
 
@@ -44,6 +49,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public string? ToolUseId { get; init; }
 
+    /// <summary>Tool name for a tool-use row; used to build the always-allow rule label.</summary>
+    public string? ToolName { get; init; }
+
     public TranscriptEntryViewModel(TranscriptEntryKind kind, string text)
     {
         Kind = kind;
@@ -59,8 +67,20 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 
     [RelayCommand]
-    private void Allow() => PermissionDecision = "Allowed";
+    private void Allow() => _SetDecision("Allowed");
 
     [RelayCommand]
-    private void Deny() => PermissionDecision = "Denied";
+    private void Deny() => _SetDecision("Denied");
+
+    [RelayCommand]
+    private void AllowAlwaysExact() => _SetDecision(ToolName is null ? "Always allowed (exact)" : $"Always allowed (exact: {ToolName})");
+
+    [RelayCommand]
+    private void AllowAlwaysWildcard() => _SetDecision(ToolName is null ? "Always allowed (wildcard)" : $"Always allowed ({ToolName}:*)");
+
+    private void _SetDecision(string decision)
+    {
+        PermissionDecision = decision;
+        IsPendingPermission = false;
+    }
 }

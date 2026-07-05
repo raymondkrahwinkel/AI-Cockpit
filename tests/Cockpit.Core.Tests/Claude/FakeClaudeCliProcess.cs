@@ -22,14 +22,20 @@ internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
 
     public ClaudeProfile? StartedWithProfile { get; private set; }
 
+    public string? StartedWithPermissionMode { get; private set; }
+
+    public string? StartedWithModel { get; private set; }
+
     public void Enqueue(string line) => _outputLines.Writer.TryWrite(line);
 
     public void CompleteOutput() => _outputLines.Writer.TryComplete();
 
-    public void Start(ClaudeProfile? profile = null)
+    public void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null)
     {
         Started = true;
         StartedWithProfile = profile;
+        StartedWithPermissionMode = permissionMode;
+        StartedWithModel = model;
     }
 
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)

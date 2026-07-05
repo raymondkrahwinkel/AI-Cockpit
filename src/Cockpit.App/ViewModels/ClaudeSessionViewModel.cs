@@ -34,6 +34,49 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
     /// <summary>Populated only while <see cref="ProfileSelectionKind.RequiresChoice"/> is pending the user's pick.</summary>
     public ObservableCollection<ClaudeProfile> ProfileChoices { get; } = [];
 
+    private static readonly PermissionModeOption[] _permissionModes =
+    [
+        new("Ask permissions", "default"),
+        new("Accept edits", "acceptEdits"),
+        new("Plan mode", "plan"),
+        new("Auto mode", "auto"),
+        new("Bypass permissions", "bypassPermissions"),
+    ];
+
+    /// <summary>Permission modes offered per session; the selected one becomes <c>--permission-mode</c> at launch.</summary>
+    public IReadOnlyList<PermissionModeOption> PermissionModes => _permissionModes;
+
+    [ObservableProperty]
+    private PermissionModeOption _selectedPermissionMode = _permissionModes[3]; // Auto mode by default, matching the desktop app.
+
+    private static readonly ModelOption[] _models =
+    [
+        new("Opus 4.8", "opus"),
+        new("Sonnet", "sonnet"),
+        new("Haiku", "haiku"),
+    ];
+
+    /// <summary>Models offered per session; the selected one becomes <c>--model</c> at launch and can be switched live.</summary>
+    public IReadOnlyList<ModelOption> Models => _models;
+
+    [ObservableProperty]
+    private ModelOption _selectedModel = _models[1]; // Sonnet by default.
+
+    // UNVERIFIED mapping — see EffortOption remarks: exact token budgets per level are a
+    // best guess, not confirmed against the SDK/CLI.
+    private static readonly EffortOption[] _efforts =
+    [
+        new("Low", "low", 4_000),
+        new("Medium", "medium", 16_000),
+        new("High", "high", 32_000),
+    ];
+
+    /// <summary>Thinking-effort levels offered per session; drives the thinking-budget control.</summary>
+    public IReadOnlyList<EffortOption> Efforts => _efforts;
+
+    [ObservableProperty]
+    private EffortOption _selectedEffort = _efforts[1]; // Medium by default.
+
     [ObservableProperty]
     private string _inputText = string.Empty;
 
@@ -128,7 +171,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
 
         try
         {
-            await _session.StartAsync(profile, _lifetimeCancellation.Token);
+            await _session.StartAsync(profile, SelectedPermissionMode.Value, SelectedModel.Value, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
             _lastUsedProfileLabel = profile?.Label;
             ActiveProfileLabel = profile?.Label;
@@ -137,6 +180,95 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
         catch (Exception ex)
         {
             Status = $"Failed to start: {ex.Message}";
+        }
+    }
+
+    /// <summary>Live-switches the running session's permission mode. No-op before the session has started.</summary>
+    partial void OnSelectedPermissionModeChanged(PermissionModeOption value)
+    {
+        if (_session is null || _eventLoopTask is null)
+        {
+            return;
+        }
+
+        _ = _SetPermissionModeSafeAsync(value.Value);
+    }
+
+    /// <summary>Live-switches the running session's model. No-op before the session has started.</summary>
+    partial void OnSelectedModelChanged(ModelOption value)
+    {
+        if (_session is null || _eventLoopTask is null)
+        {
+            return;
+        }
+
+        _ = _SetModelSafeAsync(value.Value);
+    }
+
+    /// <summary>
+    /// Live-switches the running session's thinking-effort level. UNVERIFIED: routed through
+    /// <see cref="IClaudeSession.SetModelAsync"/>'s sibling control-channel plumbing is not
+    /// available for thinking tokens on <see cref="IClaudeSession"/> yet (no
+    /// <c>SetMaxThinkingTokensAsync</c> member exists) — flagged as a gap for the parent to
+    /// confirm against the SDK's <c>setMaxThinkingTokens</c> before wiring further.
+    /// </summary>
+    partial void OnSelectedEffortChanged(EffortOption value)
+    {
+        // See remarks: no session-level control method exists yet to carry this live. The
+        // dropdown selection is tracked so a future increment can wire it once
+        // IClaudeSession grows a SetMaxThinkingTokensAsync (or equivalent) method.
+    }
+
+    [RelayCommand]
+    private async Task StopAsync()
+    {
+        if (_session is null || _eventLoopTask is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _session.InterruptAsync();
+            Status = "Interrupted.";
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Interrupt failed: {ex.Message}"));
+        }
+    }
+
+    private async Task _SetPermissionModeSafeAsync(string mode)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _session.SetPermissionModeAsync(mode);
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Permission-mode switch failed: {ex.Message}"));
+        }
+    }
+
+    private async Task _SetModelSafeAsync(string model)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _session.SetModelAsync(model);
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Model switch failed: {ex.Message}"));
         }
     }
 
@@ -209,7 +341,8 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
         }
     }
 
-    private void Apply(ClaudeSessionEvent evt)
+    /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="ConsumeEventsAsync"/>.</summary>
+    internal void Apply(ClaudeSessionEvent evt)
     {
         switch (evt)
         {
@@ -229,7 +362,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
 
             case AssistantTextDelta delta:
                 // A text delta means the thinking block (if any) for this turn is done.
-                _currentThinkingEntry = null;
+                _RemoveCurrentThinkingEntry();
                 if (_currentAssistantEntry is null)
                 {
                     _currentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
@@ -240,7 +373,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
                 break;
 
             case AssistantTextCompleted completed:
-                _currentThinkingEntry = null;
+                _RemoveCurrentThinkingEntry();
                 if (_currentAssistantEntry is not null)
                 {
                     // Streaming deltas already built the text; nothing further to append.
@@ -254,11 +387,13 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
                 break;
 
             case ToolUseRequested toolUse:
+                _RemoveCurrentThinkingEntry();
                 Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.ToolUse,
                     $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
                 {
                     ToolUseId = toolUse.ToolUseId,
+                    ToolName = toolUse.ToolName,
                 });
                 break;
 
@@ -282,6 +417,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
                 break;
 
             case TurnCompleted turn:
+                _RemoveCurrentThinkingEntry();
                 Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.TurnCompleted,
                     turn.IsError ? $"Turn failed ({turn.Subtype})" : $"Turn completed ({turn.Subtype})"));
@@ -290,6 +426,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
                 break;
 
             case SessionError error:
+                _RemoveCurrentThinkingEntry();
                 Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message));
                 IsBusy = false;
                 break;
@@ -302,6 +439,21 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
             case UnknownEvent:
                 break;
         }
+    }
+
+    /// <summary>
+    /// Removes the in-progress "Thinking..." transcript row, if any, once real text/tool-use
+    /// output or a turn boundary makes it stale. No-op when there is no current thinking entry.
+    /// </summary>
+    private void _RemoveCurrentThinkingEntry()
+    {
+        if (_currentThinkingEntry is null)
+        {
+            return;
+        }
+
+        Transcript.Remove(_currentThinkingEntry);
+        _currentThinkingEntry = null;
     }
 
     public async ValueTask DisposeAsync()

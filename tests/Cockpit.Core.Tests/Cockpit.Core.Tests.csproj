@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.App\Cockpit.App.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
   </ItemGroup>

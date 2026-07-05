@@ -51,10 +51,10 @@ internal sealed class ClaudeCliSession : IClaudeSession, ISingletonService
 
     public IAsyncEnumerable<ClaudeSessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public Task StartAsync(ClaudeProfile? profile = null, CancellationToken cancellationToken = default)
+    public Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default)
     {
         Profile = profile;
-        _process.Start(profile);
+        _process.Start(profile, permissionMode, model);
         _pumpCancellation = new CancellationTokenSource();
         _pumpTask = PumpOutputAsync(_pumpCancellation.Token);
         return Task.CompletedTask;
@@ -87,6 +87,38 @@ internal sealed class ClaudeCliSession : IClaudeSession, ISingletonService
             toolUseId,
             allow);
         return Task.CompletedTask;
+    }
+
+    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
+        _SendControlRequestAsync(new { subtype = "set_permission_mode", mode }, cancellationToken);
+
+    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
+        _SendControlRequestAsync(new { subtype = "set_model", model }, cancellationToken);
+
+    public Task InterruptAsync(CancellationToken cancellationToken = default) =>
+        _SendControlRequestAsync(new { subtype = "interrupt" }, cancellationToken);
+
+    /// <summary>
+    /// Builds and writes a single <c>control_request</c> line:
+    /// <c>{"type":"control_request","request_id":"...","request":{"subtype":"...", ...}}</c>.
+    /// UNVERIFIED wire shape — see <see cref="IClaudeSession.SetPermissionModeAsync"/> remarks.
+    /// The matching <c>control_response</c> (if any) is not correlated back to the caller here;
+    /// it will show up as an <see cref="UnknownEvent"/> in <see cref="Events"/> and is logged,
+    /// not awaited/blocked on, per the F-C1 driver scope.
+    /// </summary>
+    private async Task _SendControlRequestAsync(object request, CancellationToken cancellationToken)
+    {
+        var requestId = Guid.NewGuid().ToString();
+        var payload = new
+        {
+            type = "control_request",
+            request_id = requestId,
+            request,
+        };
+
+        var line = JsonSerializer.Serialize(payload);
+        _logger.LogInformation("Sending control_request {RequestId}: {Line}", requestId, line);
+        await _process.WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task PumpOutputAsync(CancellationToken cancellationToken)
@@ -133,6 +165,17 @@ internal sealed class ClaudeCliSession : IClaudeSession, ISingletonService
             if (root.TryGetProperty("session_id", out var sidProp) && sidProp.ValueKind == JsonValueKind.String)
             {
                 _sessionId = sidProp.GetString();
+            }
+
+            // Control-protocol replies to our own SetPermissionModeAsync/SetModelAsync/InterruptAsync
+            // control_requests (see _SendControlRequestAsync). Logged only, per F-C1 scope: nothing
+            // here currently correlates a response back to its request_id or blocks on it. UNVERIFIED
+            // wire shape — see IClaudeSession.SetPermissionModeAsync remarks.
+            if (root.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String
+                && typeProp.GetString() is "control_response" or "control_cancel_request")
+            {
+                _logger.LogInformation("Received {Type} line: {Line}", typeProp.GetString(), line);
+                return Task.CompletedTask;
             }
 
             // A single line can carry multiple events (e.g. an assistant snapshot with several

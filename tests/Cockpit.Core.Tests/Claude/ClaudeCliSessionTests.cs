@@ -52,6 +52,108 @@ public class ClaudeCliSessionTests
     }
 
     [Fact]
+    public async Task StartAsync_WithModel_PassesModelToProcess()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+
+        await session.StartAsync(model: "opus");
+
+        process.StartedWithModel.Should().Be("opus");
+    }
+
+    [Fact]
+    public async Task StartAsync_WithoutModel_LeavesStartedWithModelNull()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+
+        await session.StartAsync();
+
+        process.StartedWithModel.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SetPermissionModeAsync_WritesControlRequestWithSubtypeAndMode()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        await session.SetPermissionModeAsync("plan");
+
+        process.WrittenLines.Should().ContainSingle();
+        var written = process.WrittenLines[0];
+        written.Should().Contain("\"type\":\"control_request\"");
+        written.Should().Contain("\"subtype\":\"set_permission_mode\"");
+        written.Should().Contain("\"mode\":\"plan\"");
+        written.Should().Contain("\"request_id\":");
+    }
+
+    [Fact]
+    public async Task SetModelAsync_WritesControlRequestWithSubtypeAndModel()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        await session.SetModelAsync("haiku");
+
+        process.WrittenLines.Should().ContainSingle();
+        var written = process.WrittenLines[0];
+        written.Should().Contain("\"type\":\"control_request\"");
+        written.Should().Contain("\"subtype\":\"set_model\"");
+        written.Should().Contain("\"model\":\"haiku\"");
+        written.Should().Contain("\"request_id\":");
+    }
+
+    [Fact]
+    public async Task InterruptAsync_WritesControlRequestWithInterruptSubtype()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        await session.InterruptAsync();
+
+        process.WrittenLines.Should().ContainSingle();
+        var written = process.WrittenLines[0];
+        written.Should().Contain("\"type\":\"control_request\"");
+        written.Should().Contain("\"subtype\":\"interrupt\"");
+        written.Should().Contain("\"request_id\":");
+    }
+
+    [Fact]
+    public async Task SetPermissionModeAsync_EachCall_UsesAFreshRequestId()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        await session.SetPermissionModeAsync("plan");
+        await session.SetPermissionModeAsync("auto");
+
+        process.WrittenLines.Should().HaveCount(2);
+        process.WrittenLines[0].Should().NotBe(process.WrittenLines[1]);
+    }
+
+    [Fact]
+    public async Task Events_ControlResponseLine_DoesNotYieldAnEventAndDoesNotThrow()
+    {
+        var process = new FakeClaudeCliProcess();
+        process.Enqueue("""{"type":"control_response","response":{"subtype":"success","request_id":"abc"}}""");
+        process.Enqueue("""{"type":"result","subtype":"success","is_error":false,"result":"still alive","session_id":"S1"}""");
+        process.CompleteOutput();
+
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        var events = await CollectEventsAsync(session);
+
+        events.Should().ContainSingle().Which.Should().BeOfType<TurnCompleted>();
+    }
+
+    [Fact]
     public async Task SendUserMessageAsync_WritesStreamJsonUserMessageLine()
     {
         var process = new FakeClaudeCliProcess();

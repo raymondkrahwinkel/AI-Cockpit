@@ -47,7 +47,7 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
     public bool HasExited => _started && (_process?.HasExited ?? true);
 
-    public void Start(ClaudeProfile? profile = null)
+    public void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null)
     {
         var cli = _options.Claude;
         var workingDirectory = string.IsNullOrWhiteSpace(cli.WorkingDirectory)
@@ -72,8 +72,15 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             "--output-format", "stream-json",
             "--verbose",
             "--include-partial-messages",
-            "--permission-mode", cli.PermissionMode,
+            "--permission-mode", string.IsNullOrWhiteSpace(permissionMode) ? cli.PermissionMode : permissionMode,
         };
+
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            arguments.Add("--model");
+            arguments.Add(model);
+        }
+
         arguments.AddRange(cli.ExtraArguments);
 
         var startInfo = new ProcessStartInfo

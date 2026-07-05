@@ -28,14 +28,40 @@ public interface IClaudeSession : IAsyncDisposable
     /// pre-marked as trusted. Pass <see langword="null"/> to start without a profile (uses
     /// whatever the host process's own environment/config already provides). Must be called
     /// once before <see cref="SendUserMessageAsync"/> or <see cref="Events"/> produce anything.
+    /// <paramref name="model"/>, when non-null/whitespace, is passed as <c>--model &lt;value&gt;</c>
+    /// at launch (e.g. <c>"opus"</c>, <c>"sonnet"</c>, <c>"haiku"</c>).
     /// </summary>
-    Task StartAsync(ClaudeProfile? profile = null, CancellationToken cancellationToken = default);
+    Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a user message as a single stream-json line on the CLI's stdin.
     /// The session stays open for further turns afterwards.
     /// </summary>
     Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Live-switches the running session's permission mode via an Agent SDK control-protocol
+    /// request (<c>control_request</c>/<c>set_permission_mode</c> over stdin). UNVERIFIED: the
+    /// exact wire subtype/field names below are a best guess from the SDK's public
+    /// <c>Query.setPermissionMode(mode)</c> surface — this sandbox has no logged-in <c>claude</c>
+    /// CLI to confirm the request shape end-to-end against. Verify against a real session
+    /// before relying on this.
+    /// </summary>
+    Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Live-switches the running session's model via a <c>control_request</c>/<c>set_model</c>
+    /// request. UNVERIFIED — see <see cref="SetPermissionModeAsync"/> remarks; same caveat
+    /// applies to the request shape here.
+    /// </summary>
+    Task SetModelAsync(string? model, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Interrupts the current in-flight turn via a <c>control_request</c>/<c>interrupt</c>
+    /// request. UNVERIFIED — see <see cref="SetPermissionModeAsync"/> remarks; same caveat
+    /// applies to the request shape here.
+    /// </summary>
+    Task InterruptAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Resolves an outstanding <see cref="PermissionRequested"/> decision.

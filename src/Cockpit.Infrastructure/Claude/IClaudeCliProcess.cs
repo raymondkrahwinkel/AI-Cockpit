@@ -12,9 +12,10 @@ internal interface IClaudeCliProcess : IAsyncDisposable
     /// <summary>
     /// Starts the underlying process, optionally under a specific <see cref="ClaudeProfile"/>
     /// (its own <c>CLAUDE_CONFIG_DIR</c> and, if set, its own executable). Must be called
-    /// exactly once.
+    /// exactly once. <paramref name="model"/>, when non-null/whitespace, is passed as
+    /// <c>--model &lt;value&gt;</c> at launch.
     /// </summary>
-    void Start(ClaudeProfile? profile = null);
+    void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null);
 
     /// <summary>Writes a single line (without trailing newline) to the process's stdin and flushes.</summary>
     Task WriteLineAsync(string line, CancellationToken cancellationToken = default);

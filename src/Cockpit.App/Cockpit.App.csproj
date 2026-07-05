@@ -31,4 +31,8 @@
     <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Core.Tests" />
+  </ItemGroup>
 </Project>
