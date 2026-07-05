@@ -110,6 +110,27 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
+    <!-- ToggleButton (e.g. the Zoom toggle): flat like a neutral button, cockpit accent when
+         checked instead of the Fluent blue, so the active state matches the theme. -->
+    <Style Selector="ToggleButton">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="12,6"/>
+    </Style>
+    <Style Selector="ToggleButton:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="ToggleButton:checked:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
+    </Style>
+
     <!-- ComboBox: flat, hairline, compact -->
     <Style Selector="ComboBox">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
