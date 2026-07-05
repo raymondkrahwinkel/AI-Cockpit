@@ -97,4 +97,44 @@ public class PermissionCoordinatorTests
 
         coordinator.Resolve("toolu_e", PermissionDecision.Deny("late")).Should().BeFalse();
     }
+
+    [Fact]
+    public async Task RequestDecisionAsync_WithAMatchingRule_ShortCircuitsToAllowWithoutPrompting()
+    {
+        var coordinator = new PermissionCoordinator(NullLogger<PermissionCoordinator>.Instance);
+        var rules = new PermissionRuleSet([PermissionRule.ForWildcard("Bash")]);
+        coordinator.RegisterToolUse("toolu_f", rules);
+
+        // No Resolve is ever called: a matching rule must complete the request on its own.
+        var decision = await coordinator.RequestDecisionAsync("toolu_f", "Bash", """{"command":"ls"}""");
+
+        decision.IsAllowed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RequestDecisionAsync_WithANonMatchingRule_StillPromptsAndAwaitsResolve()
+    {
+        var coordinator = new PermissionCoordinator(NullLogger<PermissionCoordinator>.Instance);
+        var rules = new PermissionRuleSet([PermissionRule.ForWildcard("Bash")]);
+        coordinator.RegisterToolUse("toolu_g", rules);
+
+        var pending = coordinator.RequestDecisionAsync("toolu_g", "Edit", "{}");
+
+        pending.IsCompleted.Should().BeFalse("Edit is not covered by the Bash rule, so it must wait for the operator");
+        coordinator.Resolve("toolu_g", PermissionDecision.Deny("no")).Should().BeTrue();
+        (await pending).IsAllowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RegisterToolUse_WithNullChecker_PromptsAsNormal()
+    {
+        var coordinator = new PermissionCoordinator(NullLogger<PermissionCoordinator>.Instance);
+        coordinator.RegisterToolUse("toolu_h", ruleChecker: null);
+
+        var pending = coordinator.RequestDecisionAsync("toolu_h", "Bash", "{}");
+
+        pending.IsCompleted.Should().BeFalse();
+        coordinator.Resolve("toolu_h", PermissionDecision.Allow());
+        (await pending).IsAllowed.Should().BeTrue();
+    }
 }

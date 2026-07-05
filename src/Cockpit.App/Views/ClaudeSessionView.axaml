@@ -130,12 +130,23 @@
                                                IsVisible="{Binding IsExpanded}"/>
                                 </StackPanel>
 
+                                <!-- Bind to the parent session view model's commands (not the row's), passing
+                                     the row as the parameter, so allow/deny/always actually resolve the
+                                     session's pending decision and persist the always-allow rule. -->
                                 <StackPanel Orientation="Horizontal" Spacing="8"
                                             IsVisible="{Binding IsPendingPermission}">
-                                    <Button Content="Allow" Command="{Binding AllowCommand}" Classes="Accent"/>
-                                    <Button Content="Always (exact)" Command="{Binding AllowAlwaysExactCommand}"/>
-                                    <Button Content="Always (wildcard)" Command="{Binding AllowAlwaysWildcardCommand}"/>
-                                    <Button Content="Deny" Command="{Binding DenyCommand}"/>
+                                    <Button Content="Allow" Classes="Accent"
+                                            Command="{Binding $parent[ItemsControl].((vm:ClaudeSessionViewModel)DataContext).AllowToolCommand}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="Always (exact)"
+                                            Command="{Binding $parent[ItemsControl].((vm:ClaudeSessionViewModel)DataContext).AllowAlwaysExactToolCommand}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="Always (wildcard)"
+                                            Command="{Binding $parent[ItemsControl].((vm:ClaudeSessionViewModel)DataContext).AllowAlwaysWildcardToolCommand}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Content="Deny"
+                                            Command="{Binding $parent[ItemsControl].((vm:ClaudeSessionViewModel)DataContext).DenyToolCommand}"
+                                            CommandParameter="{Binding}"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding PermissionDecision}"
                                            FontStyle="Italic"

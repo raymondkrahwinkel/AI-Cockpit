@@ -1,4 +1,5 @@
 using Cockpit.Core.Claude;
+using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Abstractions.Claude;
@@ -84,6 +85,22 @@ public interface IClaudeSession : IAsyncDisposable
     /// ClaudeCliSession remarks); until then this only updates local/UI-observable state.
     /// </summary>
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Allows the outstanding decision for <paramref name="toolUseId"/> and persists an always-allow
+    /// rule for the session's profile so this tool call is auto-allowed from now on — both for the
+    /// rest of this session (the coordinator short-circuits future prompts) and across restarts
+    /// (the rule is saved per profile). <paramref name="scope"/> chooses whether the rule matches
+    /// only the same input (<see cref="PermissionRuleScope.Exact"/>, keyed on the
+    /// canonical form of <paramref name="proposedInputJson"/>) or every call to
+    /// <paramref name="toolName"/> (<see cref="PermissionRuleScope.Wildcard"/>).
+    /// </summary>
+    Task AllowPermissionAlwaysAsync(
+        string toolUseId,
+        string toolName,
+        string proposedInputJson,
+        PermissionRuleScope scope,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The live, ordered stream of typed transcript events for this session.

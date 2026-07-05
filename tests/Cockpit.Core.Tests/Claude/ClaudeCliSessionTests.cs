@@ -20,7 +20,7 @@ public class ClaudeCliSessionTests
     public async Task StartAsync_StartsUnderlyingProcess()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
 
         await session.StartAsync();
 
@@ -31,7 +31,7 @@ public class ClaudeCliSessionTests
     public async Task StartAsync_WithProfile_PassesProfileToProcessAndExposesItOnSession()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
 
         await session.StartAsync(profile);
@@ -44,7 +44,7 @@ public class ClaudeCliSessionTests
     public async Task StartAsync_WithoutProfile_LeavesProfileNull()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
 
         await session.StartAsync();
 
@@ -56,7 +56,7 @@ public class ClaudeCliSessionTests
     public async Task StartAsync_WithModel_PassesModelToProcess()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
 
         await session.StartAsync(model: "opus");
 
@@ -67,7 +67,7 @@ public class ClaudeCliSessionTests
     public async Task StartAsync_WithoutModel_LeavesStartedWithModelNull()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
 
         await session.StartAsync();
 
@@ -78,7 +78,7 @@ public class ClaudeCliSessionTests
     public async Task SetPermissionModeAsync_WritesControlRequestWithSubtypeAndMode()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.SetPermissionModeAsync("plan");
@@ -95,7 +95,7 @@ public class ClaudeCliSessionTests
     public async Task SetModelAsync_WritesControlRequestWithSubtypeAndModel()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.SetModelAsync("haiku");
@@ -112,7 +112,7 @@ public class ClaudeCliSessionTests
     public async Task SetMaxThinkingTokensAsync_WritesControlRequestWithSubtypeAndBudget()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.SetMaxThinkingTokensAsync(24_000);
@@ -129,7 +129,7 @@ public class ClaudeCliSessionTests
     public async Task InterruptAsync_WritesControlRequestWithInterruptSubtype()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.InterruptAsync();
@@ -145,7 +145,7 @@ public class ClaudeCliSessionTests
     public async Task SetPermissionModeAsync_EachCall_UsesAFreshRequestId()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.SetPermissionModeAsync("plan");
@@ -163,7 +163,7 @@ public class ClaudeCliSessionTests
         process.Enqueue("""{"type":"result","subtype":"success","is_error":false,"result":"still alive","session_id":"S1"}""");
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -175,7 +175,7 @@ public class ClaudeCliSessionTests
     public async Task SendUserMessageAsync_WritesStreamJsonUserMessageLine()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.SendUserMessageAsync("hello there");
@@ -191,7 +191,7 @@ public class ClaudeCliSessionTests
     public async Task SendUserMessageAsync_TextOnly_UsesPlainStringContent()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.SendUserMessageAsync("just text");
@@ -206,7 +206,7 @@ public class ClaudeCliSessionTests
     public async Task SendUserMessageAsync_EmptyImageList_UsesPlainStringContent()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.SendUserMessageAsync("no images", images: []);
@@ -219,7 +219,7 @@ public class ClaudeCliSessionTests
     public async Task SendUserMessageAsync_WithImage_UsesContentBlockArrayWithTextThenImage()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var image = ImageAttachment.FromBytes([1, 2, 3, 4], "image/png");
@@ -246,7 +246,7 @@ public class ClaudeCliSessionTests
     public async Task SendUserMessageAsync_WithMultipleImages_EmitsOneImageBlockPerAttachment()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         ImageAttachment[] images =
@@ -270,7 +270,7 @@ public class ClaudeCliSessionTests
         process.Enqueue("""{"type":"system","subtype":"init","session_id":"sess-abc","model":"claude-opus-4-6","tools":["Read"]}""");
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -288,7 +288,7 @@ public class ClaudeCliSessionTests
             """);
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -308,7 +308,7 @@ public class ClaudeCliSessionTests
         process.Enqueue("""{"type":"result","subtype":"success","is_error":false,"result":"All done.","session_id":"sess-1"}""");
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -325,7 +325,7 @@ public class ClaudeCliSessionTests
         process.Enqueue("{not valid json");
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -351,7 +351,7 @@ public class ClaudeCliSessionTests
         process.Enqueue("""{"type":"result","subtype":"success","is_error":false,"result":"hallo Raymond","stop_reason":"end_turn","session_id":"S1","num_turns":1,"terminal_reason":"completed"}""");
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -391,7 +391,7 @@ public class ClaudeCliSessionTests
         process.Enqueue("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Here is my answer."}},"session_id":"S1","parent_tool_use_id":null,"uuid":"tb"}""");
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -409,7 +409,7 @@ public class ClaudeCliSessionTests
         process.Enqueue("""{"type":"result","subtype":"success","is_error":false,"result":"still alive","session_id":"S1"}""");
         process.CompleteOutput();
 
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var events = await CollectEventsAsync(session);
@@ -423,7 +423,7 @@ public class ClaudeCliSessionTests
     public async Task RespondToPermissionAsync_DoesNotThrow_AndCompletes()
     {
         var process = new FakeClaudeCliProcess();
-        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         var act = async () => await session.RespondToPermissionAsync("toolu_1", allow: true);
@@ -436,7 +436,7 @@ public class ClaudeCliSessionTests
     {
         var process = Substitute.For<IClaudeCliProcess>();
         process.ReadLinesAsync(Arg.Any<CancellationToken>()).Returns(EmptyAsync());
-        var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
         await session.StartAsync();
 
         await session.DisposeAsync();

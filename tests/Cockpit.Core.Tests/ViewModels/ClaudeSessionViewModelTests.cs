@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Claude;
+using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
 using FluentAssertions;
 using NSubstitute;
@@ -234,6 +235,48 @@ public class ClaudeSessionViewModelTests
         vm.SelectedEffort = new EffortOption("High", "high", 24_000);
 
         session.DidNotReceive().SetMaxThinkingTokensAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AllowAlwaysExactTool_ResolvesTheSessionWithAnExactAlwaysRule()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session, Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
+        {
+            ToolUseId = "toolu_1",
+            ToolName = "Bash",
+            InputJson = """{"command":"ls"}""",
+            IsPendingPermission = true,
+        };
+
+        await vm.AllowAlwaysExactToolCommand.ExecuteAsync(entry);
+
+        await session.Received(1).AllowPermissionAlwaysAsync(
+            "toolu_1", "Bash", """{"command":"ls"}""", PermissionRuleScope.Exact, Arg.Any<CancellationToken>());
+        entry.IsPendingPermission.Should().BeFalse();
+        entry.PermissionDecision.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task AllowAlwaysWildcardTool_ResolvesTheSessionWithAWildcardAlwaysRule()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session, Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
+        {
+            ToolUseId = "toolu_2",
+            ToolName = "Bash",
+            InputJson = """{"command":"ls"}""",
+            IsPendingPermission = true,
+        };
+
+        await vm.AllowAlwaysWildcardToolCommand.ExecuteAsync(entry);
+
+        await session.Received(1).AllowPermissionAlwaysAsync(
+            "toolu_2", "Bash", """{"command":"ls"}""", PermissionRuleScope.Wildcard, Arg.Any<CancellationToken>());
     }
 
     private static ClaudeSessionViewModel NewVm()

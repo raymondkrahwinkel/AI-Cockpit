@@ -12,11 +12,24 @@ namespace Cockpit.Core.Abstractions.Claude;
 public interface IPermissionCoordinator
 {
     /// <summary>
-    /// Called by the MCP permission tool. Registers a pending decision for
-    /// <paramref name="toolUseId"/> and returns a task that completes once a session resolves it
-    /// (via <see cref="Resolve"/>) or the request is cancelled. There is intentionally no short
-    /// timeout — the operator may take arbitrarily long — but <paramref name="cancellationToken"/>
-    /// (the MCP request's own token) still aborts the wait if the CLI drops the call.
+    /// Called by a session when it first sees a <c>tool_use</c>, associating that
+    /// <paramref name="toolUseId"/> with the owning profile's always-allow rules. This lets
+    /// <see cref="RequestDecisionAsync"/> short-circuit a prompt the operator already opted out of,
+    /// without the app-wide coordinator needing to know which profile owns which session. Passing
+    /// <see langword="null"/> (a profile-less session, or one with no rules yet) simply means every
+    /// call still prompts.
+    /// </summary>
+    void RegisterToolUse(string toolUseId, IPermissionRuleChecker? ruleChecker);
+
+    /// <summary>
+    /// Called by the MCP permission tool. If an always-allow rule registered for
+    /// <paramref name="toolUseId"/> (see <see cref="RegisterToolUse"/>) already covers this call,
+    /// returns <see cref="PermissionDecision.Allow"/> immediately without raising a prompt.
+    /// Otherwise registers a pending decision and returns a task that completes once a session
+    /// resolves it (via <see cref="Resolve"/>) or the request is cancelled. There is intentionally
+    /// no short timeout — the operator may take arbitrarily long — but
+    /// <paramref name="cancellationToken"/> (the MCP request's own token) still aborts the wait if
+    /// the CLI drops the call.
     /// </summary>
     Task<PermissionDecision> RequestDecisionAsync(
         string toolUseId,

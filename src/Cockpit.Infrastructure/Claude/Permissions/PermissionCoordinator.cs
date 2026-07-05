@@ -15,10 +15,19 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
 {
     private readonly ILogger<PermissionCoordinator> _logger;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<PermissionDecision>> _pending = new();
+    private readonly ConcurrentDictionary<string, IPermissionRuleChecker> _ruleCheckers = new();
 
     public PermissionCoordinator(ILogger<PermissionCoordinator> logger)
     {
         _logger = logger;
+    }
+
+    public void RegisterToolUse(string toolUseId, IPermissionRuleChecker? ruleChecker)
+    {
+        if (ruleChecker is not null)
+        {
+            _ruleCheckers[toolUseId] = ruleChecker;
+        }
     }
 
     public async Task<PermissionDecision> RequestDecisionAsync(
@@ -27,6 +36,17 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
         string proposedInputJson,
         CancellationToken cancellationToken = default)
     {
+        if (_ruleCheckers.TryGetValue(toolUseId, out var ruleChecker)
+            && ruleChecker.IsAlwaysAllowed(toolName, proposedInputJson))
+        {
+            _ruleCheckers.TryRemove(toolUseId, out _);
+            _logger.LogInformation(
+                "Permission auto-allowed by a saved rule for {ToolName} (tool_use_id={ToolUseId})",
+                toolName,
+                toolUseId);
+            return PermissionDecision.Allow();
+        }
+
         var completion = new TaskCompletionSource<PermissionDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pending.TryAdd(toolUseId, completion))
         {
@@ -52,6 +72,7 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
         finally
         {
             _pending.TryRemove(toolUseId, out _);
+            _ruleCheckers.TryRemove(toolUseId, out _);
         }
     }
 
@@ -76,6 +97,7 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
     {
         foreach (var toolUseId in toolUseIds)
         {
+            _ruleCheckers.TryRemove(toolUseId, out _);
             if (_pending.TryGetValue(toolUseId, out var completion))
             {
                 completion.TrySetResult(PermissionDecision.Deny(reason));

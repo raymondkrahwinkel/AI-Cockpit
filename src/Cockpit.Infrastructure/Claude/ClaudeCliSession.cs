@@ -30,19 +30,29 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
 {
     private readonly IClaudeCliProcess _process;
     private readonly IPermissionCoordinator _permissionCoordinator;
+    private readonly IPermissionRuleStore _permissionRuleStore;
     private readonly ILogger<ClaudeCliSession> _logger;
     private readonly Channel<ClaudeSessionEvent> _events = Channel.CreateUnbounded<ClaudeSessionEvent>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
     private readonly ConcurrentDictionary<string, byte> _pendingToolUseIds = new();
 
+    // The profile's always-allow rules, loaded on start and grown as the operator picks "always".
+    // Registered with the coordinator per tool_use so it can short-circuit prompts already opted out of.
+    private PermissionRuleSet _permissionRules = new();
+
     private Task? _pumpTask;
     private CancellationTokenSource? _pumpCancellation;
     private string? _sessionId;
 
-    public ClaudeCliSession(IClaudeCliProcess process, IPermissionCoordinator permissionCoordinator, ILogger<ClaudeCliSession> logger)
+    public ClaudeCliSession(
+        IClaudeCliProcess process,
+        IPermissionCoordinator permissionCoordinator,
+        IPermissionRuleStore permissionRuleStore,
+        ILogger<ClaudeCliSession> logger)
     {
         _process = process;
         _permissionCoordinator = permissionCoordinator;
+        _permissionRuleStore = permissionRuleStore;
         _logger = logger;
     }
 
@@ -52,13 +62,16 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
 
     public IAsyncEnumerable<ClaudeSessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default)
     {
         Profile = profile;
+
+        var savedRules = await _permissionRuleStore.LoadAsync(profile?.Label, cancellationToken).ConfigureAwait(false);
+        _permissionRules = new PermissionRuleSet(savedRules);
+
         _process.Start(profile, permissionMode, model);
         _pumpCancellation = new CancellationTokenSource();
         _pumpTask = PumpOutputAsync(_pumpCancellation.Token);
-        return Task.CompletedTask;
     }
 
     public async Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
@@ -126,6 +139,27 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
         }
 
         return Task.CompletedTask;
+    }
+
+    public async Task AllowPermissionAlwaysAsync(
+        string toolUseId,
+        string toolName,
+        string proposedInputJson,
+        PermissionRuleScope scope,
+        CancellationToken cancellationToken = default)
+    {
+        var rule = scope == PermissionRuleScope.Wildcard
+            ? PermissionRule.ForWildcard(toolName)
+            : PermissionRule.ForExact(toolName, proposedInputJson);
+
+        // Add to the live set first so any in-flight/immediately-following call for this profile is
+        // covered even before the (slower) disk write finishes, then persist for next launch.
+        if (_permissionRules.Add(rule))
+        {
+            await _permissionRuleStore.AddAsync(Profile?.Label, rule, cancellationToken).ConfigureAwait(false);
+        }
+
+        await RespondToPermissionAsync(toolUseId, allow: true, cancellationToken).ConfigureAwait(false);
     }
 
     public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
@@ -231,6 +265,12 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
                 if (evt is ToolUseRequested toolUse)
                 {
                     _pendingToolUseIds.TryAdd(toolUse.ToolUseId, 0);
+
+                    // Hand the profile's always-allow rules to the coordinator keyed on this id, so a
+                    // matching rule short-circuits the MCP prompt (which arrives without a session_id)
+                    // straight to allow instead of surfacing a decision the operator already made.
+                    _permissionCoordinator.RegisterToolUse(toolUse.ToolUseId, _permissionRules);
+
                     _events.Writer.TryWrite(new PermissionRequested
                     {
                         SessionId = _sessionId,

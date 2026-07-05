@@ -62,6 +62,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// <summary>Tool name for a tool-use row; used to build the always-allow rule label.</summary>
     public string? ToolName { get; init; }
 
+    /// <summary>The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule.</summary>
+    public string? InputJson { get; init; }
+
     public TranscriptEntryViewModel(TranscriptEntryKind kind, string text)
     {
         Kind = kind;
@@ -78,22 +81,4 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     /// <summary>Keeps the chevron glyph in sync — <see cref="ToggleGlyph"/> is computed, not observable, on its own.</summary>
     partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(ToggleGlyph));
-
-    [RelayCommand]
-    private void Allow() => _SetDecision("Allowed");
-
-    [RelayCommand]
-    private void Deny() => _SetDecision("Denied");
-
-    [RelayCommand]
-    private void AllowAlwaysExact() => _SetDecision(ToolName is null ? "Always allowed (exact)" : $"Always allowed (exact: {ToolName})");
-
-    [RelayCommand]
-    private void AllowAlwaysWildcard() => _SetDecision(ToolName is null ? "Always allowed (wildcard)" : $"Always allowed ({ToolName}:*)");
-
-    private void _SetDecision(string decision)
-    {
-        PermissionDecision = decision;
-        IsPendingPermission = false;
-    }
 }

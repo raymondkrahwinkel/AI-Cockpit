@@ -18,6 +18,11 @@ internal sealed class RecordingPermissionCoordinator : IPermissionCoordinator
 
     public List<(string ToolUseId, string Reason)> Denied { get; } = [];
 
+    public List<(string ToolUseId, IPermissionRuleChecker? RuleChecker)> Registered { get; } = [];
+
+    public void RegisterToolUse(string toolUseId, IPermissionRuleChecker? ruleChecker) =>
+        Registered.Add((toolUseId, ruleChecker));
+
     public Task<PermissionDecision> RequestDecisionAsync(
         string toolUseId,
         string toolName,

@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Claude;
+using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
@@ -132,6 +133,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         {
             ToolUseId = "sample-tool-1",
             ToolName = "Edit",
+            InputJson = "{\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"}",
         });
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolResult,
@@ -145,6 +147,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         {
             ToolUseId = "sample-tool-2",
             ToolName = "Bash",
+            InputJson = "{\"command\":\"dotnet build\"}",
             IsPendingPermission = true,
         });
 
@@ -421,6 +424,20 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         await RespondToPermissionAsync(entry, allow: false);
     }
 
+    /// <summary>Allows the call and persists a rule matching only this exact tool + input for the session's profile.</summary>
+    [RelayCommand]
+    private async Task AllowAlwaysExactToolAsync(TranscriptEntryViewModel entry)
+    {
+        await AllowAlwaysAsync(entry, PermissionRuleScope.Exact);
+    }
+
+    /// <summary>Allows the call and persists a rule matching every future call to this tool for the session's profile.</summary>
+    [RelayCommand]
+    private async Task AllowAlwaysWildcardToolAsync(TranscriptEntryViewModel entry)
+    {
+        await AllowAlwaysAsync(entry, PermissionRuleScope.Wildcard);
+    }
+
     private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow)
     {
         if (_session is null || entry.ToolUseId is null)
@@ -431,6 +448,21 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         entry.PermissionDecision = allow ? "Allowed" : "Denied";
         entry.IsPendingPermission = false;
         await _session.RespondToPermissionAsync(entry.ToolUseId, allow);
+    }
+
+    private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
+    {
+        if (_session is null || entry.ToolUseId is null || entry.ToolName is null)
+        {
+            return;
+        }
+
+        entry.PermissionDecision = scope == PermissionRuleScope.Wildcard
+            ? $"Always allowed ({entry.ToolName}:*)"
+            : $"Always allowed (exact: {entry.ToolName})";
+        entry.IsPendingPermission = false;
+
+        await _session.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
 
     private async Task ConsumeEventsAsync(CancellationToken cancellationToken)
@@ -506,6 +538,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                 {
                     ToolUseId = toolUse.ToolUseId,
                     ToolName = toolUse.ToolName,
+                    InputJson = toolUse.InputJson,
                 });
                 break;
 
