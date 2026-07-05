@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -30,6 +31,12 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
     private string? _lastUsedProfileLabel;
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
+
+    /// <summary>Images pasted into the input, sent with the next message and cleared afterwards.</summary>
+    public ObservableCollection<ImageAttachmentViewModel> PendingAttachments { get; } = [];
+
+    /// <summary>True while at least one image is queued, so the chip strip can hide when empty.</summary>
+    public bool HasPendingAttachments => PendingAttachments.Count > 0;
 
     /// <summary>Populated only while <see cref="ProfileSelectionKind.RequiresChoice"/> is pending the user's pick.</summary>
     public ObservableCollection<ClaudeProfile> ProfileChoices { get; } = [];
@@ -179,13 +186,37 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
             ToolName = "Bash",
             IsPendingPermission = true,
         });
+
+        _TrackPendingAttachments();
+
+        // A sample pasted-image chip so the previewer/Screenshotter render the attachment strip.
+        // Decoding the Bitmap needs Avalonia's imaging platform: the previewer and the headless
+        // Screenshotter both initialize an Application, the unit-test host does not — so guard on
+        // that rather than decode (and crash) when no platform is present.
+        if (Application.Current is not null)
+        {
+            AddPastedImage(Convert.FromBase64String(_SampleChipPng));
+        }
     }
+
+    // 64x64 solid-blue PNG, design-time only: seeds one attachment chip for the Avalonia previewer.
+    private const string _SampleChipPng =
+        "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJ" +
+        "cEhZcwAADsMAAA7DAcdvqGQAAACJSURBVHhe5cgxAQAADMOg+je9CYgEDh623dkSmoQmoUloEpqEJqFJaBKahCah" +
+        "SWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgS" +
+        "moQmoUloEpqEJqFJaBKahCahSWgSmoQmYXlhqOHSNEsP9wAAAABJRU5ErkJggg==";
 
     public ClaudeSessionViewModel(IClaudeSession session, IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)
     {
         _session = session;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
+        _TrackPendingAttachments();
+    }
+
+    private void _TrackPendingAttachments()
+    {
+        PendingAttachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPendingAttachments));
     }
 
     [RelayCommand]
@@ -351,17 +382,36 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
         }
     }
 
+    /// <summary>
+    /// Queues a pasted image as a pending attachment for the next message. Called from the view's
+    /// CTRL+V handler, which owns the Avalonia clipboard read; the view model only sees PNG bytes so
+    /// it stays free of UI-toolkit types and unit-testable.
+    /// </summary>
+    public void AddPastedImage(byte[] pngBytes)
+    {
+        PendingAttachments.Add(new ImageAttachmentViewModel(pngBytes, a => PendingAttachments.Remove(a)));
+    }
+
     [RelayCommand]
     private async Task SendAsync()
     {
-        if (_session is null || string.IsNullOrWhiteSpace(InputText))
+        if (_session is null || (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0))
         {
             return;
         }
 
         var text = InputText;
+        var images = PendingAttachments
+            .Select(a => Core.Claude.ImageAttachment.FromBytes(a.PngBytes, a.MediaType))
+            .ToList();
+
         InputText = string.Empty;
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"> {text}"));
+        PendingAttachments.Clear();
+
+        var echo = images.Count == 0
+            ? $"> {text}"
+            : $"> {text} [+{images.Count} image{(images.Count == 1 ? "" : "s")}]";
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, echo));
         _currentAssistantEntry = null;
         IsBusy = true;
         _needsAttention = false;
@@ -369,7 +419,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
 
         try
         {
-            await _session.SendUserMessageAsync(text);
+            await _session.SendUserMessageAsync(text, images);
         }
         catch (Exception ex)
         {

@@ -56,12 +56,38 @@
             </StackPanel>
         </Border>
 
-        <!-- Input bar: dark multiline textbox + accent Send. -->
+        <!-- Input bar: pending-attachment chips on top, then dark multiline textbox + accent Send. -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="True">
+
+            <!-- Pasted-image chips: removable thumbnail + x. Hidden when there are no attachments. -->
+            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding PendingAttachments}" Margin="0,0,0,8"
+                          IsVisible="{Binding HasPendingAttachments}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ImageAttachmentViewModel">
+                        <Border Background="{StaticResource CockpitPanelBgBrush}"
+                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource CockpitControlRadius}"
+                                Padding="4" Margin="0,0,6,6">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Image Source="{Binding Thumbnail}" Height="44" MaxWidth="72" Stretch="Uniform"/>
+                                <Button Content="✕" Command="{Binding RemoveCommand}" Classes="Subtle"
+                                        VerticalAlignment="Top" Padding="4,0"
+                                        ToolTip.Tip="Verwijder afbeelding"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
             <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding !IsBusy}"
                     Classes="Accent" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
             <TextBox x:Name="InputBox" Text="{Binding InputText}"
-                     PlaceholderText="Message Claude...  (Enter = versturen, Shift+Enter = nieuwe regel)"
+                     PlaceholderText="Message Claude...  (Enter = versturen, Shift+Enter = nieuwe regel, Ctrl+V = plak tekst of afbeelding)"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
         </DockPanel>
 

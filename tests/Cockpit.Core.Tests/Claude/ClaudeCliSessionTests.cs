@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -167,6 +168,82 @@ public class ClaudeCliSessionTests
         written.Should().Contain("\"type\":\"user\"");
         written.Should().Contain("\"role\":\"user\"");
         written.Should().Contain("hello there");
+    }
+
+    [Fact]
+    public async Task SendUserMessageAsync_TextOnly_UsesPlainStringContent()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        await session.SendUserMessageAsync("just text");
+
+        using var document = JsonDocument.Parse(process.WrittenLines.Should().ContainSingle().Subject);
+        var content = document.RootElement.GetProperty("message").GetProperty("content");
+        content.ValueKind.Should().Be(JsonValueKind.String);
+        content.GetString().Should().Be("just text");
+    }
+
+    [Fact]
+    public async Task SendUserMessageAsync_EmptyImageList_UsesPlainStringContent()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        await session.SendUserMessageAsync("no images", images: []);
+
+        using var document = JsonDocument.Parse(process.WrittenLines.Should().ContainSingle().Subject);
+        document.RootElement.GetProperty("message").GetProperty("content").ValueKind.Should().Be(JsonValueKind.String);
+    }
+
+    [Fact]
+    public async Task SendUserMessageAsync_WithImage_UsesContentBlockArrayWithTextThenImage()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        var image = ImageAttachment.FromBytes([1, 2, 3, 4], "image/png");
+        await session.SendUserMessageAsync("look at this", [image]);
+
+        using var document = JsonDocument.Parse(process.WrittenLines.Should().ContainSingle().Subject);
+        var content = document.RootElement.GetProperty("message").GetProperty("content");
+        content.ValueKind.Should().Be(JsonValueKind.Array);
+        content.GetArrayLength().Should().Be(2);
+
+        var textBlock = content[0];
+        textBlock.GetProperty("type").GetString().Should().Be("text");
+        textBlock.GetProperty("text").GetString().Should().Be("look at this");
+
+        var imageBlock = content[1];
+        imageBlock.GetProperty("type").GetString().Should().Be("image");
+        var source = imageBlock.GetProperty("source");
+        source.GetProperty("type").GetString().Should().Be("base64");
+        source.GetProperty("media_type").GetString().Should().Be("image/png");
+        source.GetProperty("data").GetString().Should().Be(Convert.ToBase64String([1, 2, 3, 4]));
+    }
+
+    [Fact]
+    public async Task SendUserMessageAsync_WithMultipleImages_EmitsOneImageBlockPerAttachment()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        ImageAttachment[] images =
+        [
+            ImageAttachment.FromBytes([10], "image/png"),
+            ImageAttachment.FromBytes([20], "image/jpeg"),
+        ];
+        await session.SendUserMessageAsync("two", images);
+
+        using var document = JsonDocument.Parse(process.WrittenLines.Should().ContainSingle().Subject);
+        var content = document.RootElement.GetProperty("message").GetProperty("content");
+        content.GetArrayLength().Should().Be(3);
+        content[1].GetProperty("source").GetProperty("media_type").GetString().Should().Be("image/png");
+        content[2].GetProperty("source").GetProperty("media_type").GetString().Should().Be("image/jpeg");
     }
 
     [Fact]

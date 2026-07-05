@@ -61,23 +61,49 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
         return Task.CompletedTask;
     }
 
-    public async Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
+    public async Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {
         // Wire shape per https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode.md:
         // {"type":"user","message":{"role":"user","content":"..."}}
         // One user-message object per stdin line keeps the same persistent session/turn loop alive.
+        // With attachments, content becomes an array of blocks (text + one image block per attachment) —
+        // shape verified against claude.exe 2.1.197. Text-only keeps the plain-string content.
+        object content = images is { Count: > 0 }
+            ? _BuildContentBlocks(text, images)
+            : text;
+
         var payload = new
         {
             type = "user",
             message = new
             {
                 role = "user",
-                content = text,
+                content,
             },
         };
 
         var line = JsonSerializer.Serialize(payload);
         await _process.WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static object[] _BuildContentBlocks(string text, IReadOnlyList<ImageAttachment> images)
+    {
+        var blocks = new List<object> { new { type = "text", text } };
+        foreach (var image in images)
+        {
+            blocks.Add(new
+            {
+                type = "image",
+                source = new
+                {
+                    type = "base64",
+                    media_type = image.MediaType,
+                    data = image.Base64Data,
+                },
+            });
+        }
+
+        return [.. blocks];
     }
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)

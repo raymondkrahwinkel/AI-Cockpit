@@ -35,9 +35,12 @@ public interface IClaudeSession : IAsyncDisposable
 
     /// <summary>
     /// Sends a user message as a single stream-json line on the CLI's stdin.
-    /// The session stays open for further turns afterwards.
+    /// The session stays open for further turns afterwards. When <paramref name="images"/> is
+    /// non-empty, the message content becomes an array of blocks (one <c>text</c> block plus one
+    /// <c>image</c> block per attachment) instead of a plain string — the shape verified against
+    /// claude.exe 2.1.197. Text-only messages keep the plain-string content shape.
     /// </summary>
-    Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default);
+    Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Live-switches the running session's permission mode via an Agent SDK control-protocol
