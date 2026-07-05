@@ -31,6 +31,20 @@ sealed class Program
             return;
         }
 
+        var screenshotIndex = Array.IndexOf(args, "--screenshot");
+        if (screenshotIndex >= 0)
+        {
+            if (screenshotIndex + 1 >= args.Length)
+            {
+                Console.Error.WriteLine("--screenshot requires an output PNG path argument.");
+                Environment.Exit(1);
+                return;
+            }
+
+            Screenshotter.Run(args[screenshotIndex + 1]);
+            return;
+        }
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
