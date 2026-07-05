@@ -1,5 +1,7 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Notifications;
 using FluentAssertions;
 using NSubstitute;
 
@@ -138,10 +140,15 @@ public class CockpitViewModelTests
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
+        var attentionNotifier = Substitute.For<IAttentionNotifier>();
+        var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
+        notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
             captureService,
-            playbackService);
+            playbackService,
+            attentionNotifier,
+            notificationSettingsStore);
     }
 }

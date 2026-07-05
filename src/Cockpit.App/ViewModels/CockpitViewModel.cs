@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Notifications;
 
 namespace Cockpit.App.ViewModels;
 
@@ -25,7 +28,13 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     private readonly Func<ClaudeTtyViewModel>? _ttySessionFactory;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
+    private readonly IAttentionNotifier? _attentionNotifier;
+    private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly List<byte> _recordedPcm = [];
+
+    // Last observed status per session, so a NeedsAttention notification fires only on the edge into
+    // that state — not on every property change while a session already needs attention.
+    private readonly Dictionary<SessionPanelViewModel, SessionStatus> _lastStatus = [];
     private CancellationTokenSource? _recordingCancellation;
     private int _sessionCounter;
 
@@ -40,6 +49,21 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
 
     [ObservableProperty]
     private string _audioStatus = "Ready.";
+
+    /// <summary>Master switch for presence-aware notifications (toast when present, Discord webhook when away).</summary>
+    [ObservableProperty]
+    private bool _notificationsEnabled = true;
+
+    /// <summary>Discord webhook URL POSTed to when the operator is away. Empty disables the away channel.</summary>
+    [ObservableProperty]
+    private string _webhookUrl = string.Empty;
+
+    /// <summary>Idle minutes before the operator counts as "away" (when the PC is not locked).</summary>
+    [ObservableProperty]
+    private int _idleThresholdMinutes = (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
+
+    [ObservableProperty]
+    private string _notificationSettingsStatus = string.Empty;
 
     /// <summary>Keeps each session's <see cref="ClaudeSessionViewModel.IsSelected"/> in sync with the active selection.</summary>
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
@@ -75,13 +99,55 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
         Func<ClaudeSessionViewModel> sessionFactory,
         Func<ClaudeTtyViewModel> ttySessionFactory,
         IAudioCaptureService captureService,
-        IAudioPlaybackService playbackService)
+        IAudioPlaybackService playbackService,
+        IAttentionNotifier attentionNotifier,
+        INotificationSettingsStore notificationSettingsStore)
     {
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
         _captureService = captureService;
         _playbackService = playbackService;
+        _attentionNotifier = attentionNotifier;
+        _notificationSettingsStore = notificationSettingsStore;
         NewSession();
+        _ = LoadNotificationSettingsAsync();
+    }
+
+    private async Task LoadNotificationSettingsAsync()
+    {
+        if (_notificationSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _notificationSettingsStore.LoadAsync();
+        NotificationsEnabled = settings.IsEnabled;
+        WebhookUrl = settings.WebhookUrl ?? string.Empty;
+        IdleThresholdMinutes = (int)settings.IdleThreshold.TotalMinutes;
+    }
+
+    /// <summary>Persists the notification settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveNotificationSettingsAsync()
+    {
+        if (_notificationSettingsStore is null)
+        {
+            return;
+        }
+
+        var minutes = IdleThresholdMinutes > 0
+            ? IdleThresholdMinutes
+            : (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
+
+        var settings = new NotificationSettings
+        {
+            IsEnabled = NotificationsEnabled,
+            WebhookUrl = string.IsNullOrWhiteSpace(WebhookUrl) ? null : WebhookUrl.Trim(),
+            IdleThreshold = TimeSpan.FromMinutes(minutes),
+        };
+
+        await _notificationSettingsStore.SaveAsync(settings);
+        NotificationSettingsStatus = "Saved.";
     }
 
     [RelayCommand]
@@ -160,8 +226,45 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
         _sessionCounter++;
         session.Title = $"Claude {_sessionCounter}";
 
+        _lastStatus[session] = session.SessionStatus;
+        session.PropertyChanged += OnSessionPropertyChanged;
+
         Sessions.Add(session);
         SelectedSession = session;
+    }
+
+    /// <summary>
+    /// Edge-triggered attention routing: fires the presence-aware notifier once, on the transition
+    /// into <see cref="SessionStatus.NeedsAttention"/> — not on every status touch while it stays
+    /// there. The notifier itself decides present-toast vs away-webhook.
+    /// </summary>
+    private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(SessionPanelViewModel.SessionStatus) || sender is not SessionPanelViewModel session)
+        {
+            return;
+        }
+
+        var previous = _lastStatus.GetValueOrDefault(session, SessionStatus.Idle);
+        _lastStatus[session] = session.SessionStatus;
+
+        if (session.SessionStatus == SessionStatus.NeedsAttention && previous != SessionStatus.NeedsAttention)
+        {
+            NotifyAttention(session);
+        }
+    }
+
+    private void NotifyAttention(SessionPanelViewModel session)
+    {
+        if (_attentionNotifier is null)
+        {
+            return;
+        }
+
+        var notification = new AttentionNotification(session.Title, session.SessionStatusLabel);
+        // Fire-and-forget: notification delivery must not block the UI thread that raised the status
+        // change. The notifier swallows and logs its own transport failures.
+        _ = _attentionNotifier.NotifyAttentionAsync(notification);
     }
 
     [RelayCommand]
@@ -178,6 +281,9 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
         {
             return;
         }
+
+        session.PropertyChanged -= OnSessionPropertyChanged;
+        _lastStatus.Remove(session);
 
         Sessions.RemoveAt(index);
         await session.DisposeAsync();

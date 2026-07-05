@@ -33,6 +33,32 @@
                      primary session overview per the cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                    <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
+                            Foreground="{StaticResource CockpitTextFaintBrush}">
+                        <Button.Flyout>
+                            <Flyout Placement="RightEdgeAlignedBottom">
+                                <StackPanel Spacing="8" Width="260">
+                                    <TextBlock Text="Notifications" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Enable presence-aware notifications"
+                                              IsChecked="{Binding NotificationsEnabled}"/>
+                                    <TextBlock Text="Discord webhook URL (used when away)"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                    <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Away after (idle minutes)"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
+                                                       Increment="1" FormatString="0" Width="90"/>
+                                    </StackPanel>
+                                    <Button Content="Save" Command="{Binding SaveNotificationSettingsCommand}"
+                                            Classes="Accent" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="{Binding NotificationSettingsStatus}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
                     <Button Content="Tools" HorizontalAlignment="Stretch" Classes="Subtle"
                             Foreground="{StaticResource CockpitTextFaintBrush}">
                         <Button.Flyout>
