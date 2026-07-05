@@ -165,6 +165,77 @@ public class ClaudeSessionViewModelTests
         vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
     }
 
+    [Fact]
+    public void Efforts_MapEachLevelToItsThinkingBudget()
+    {
+        var vm = NewVm();
+
+        vm.Efforts.Select(e => (e.Value, e.MaxThinkingTokens)).Should().Equal(
+            ("low", 4_000),
+            ("medium", 12_000),
+            ("high", 24_000),
+            ("xhigh", 48_000),
+            ("max", 64_000));
+    }
+
+    [Fact]
+    public async Task StartAsync_AppliesTheSelectedEffortsBudgetOnceLive()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var profileStore = Substitute.For<IClaudeProfileStore>();
+        var profile = new ClaudeProfile("default", @"C:\fake\.claude");
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
+        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        loginChecker.IsLoggedIn(profile).Returns(true);
+
+        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker)
+        {
+            SelectedEffort = new EffortOption("High", "high", 24_000),
+        };
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        await session.Received(1).SetMaxThinkingTokensAsync(24_000, Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SelectedEffortChanged_WhileLive_SendsTheNewBudget()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var profileStore = Substitute.For<IClaudeProfileStore>();
+        var profile = new ClaudeProfile("default", @"C:\fake\.claude");
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
+        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        loginChecker.IsLoggedIn(profile).Returns(true);
+        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker);
+        await vm.StartCommand.ExecuteAsync(null);
+        session.ClearReceivedCalls();
+
+        vm.SelectedEffort = new EffortOption("Max", "max", 64_000);
+
+        await session.Received(1).SetMaxThinkingTokensAsync(64_000, Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public void SelectedEffortChanged_BeforeStart_DoesNotTouchTheSession()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var profileStore = Substitute.For<IClaudeProfileStore>();
+        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker);
+
+        vm.SelectedEffort = new EffortOption("High", "high", 24_000);
+
+        session.DidNotReceive().SetMaxThinkingTokensAsync(Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
     private static ClaudeSessionViewModel NewVm()
     {
         var session = Substitute.For<IClaudeSession>();

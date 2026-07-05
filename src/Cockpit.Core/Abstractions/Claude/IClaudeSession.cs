@@ -60,6 +60,17 @@ public interface IClaudeSession : IAsyncDisposable
     Task SetModelAsync(string? model, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Live-switches the running session's thinking budget via a
+    /// <c>control_request</c>/<c>set_max_thinking_tokens</c> request, carrying the budget as
+    /// <c>maxThinkingTokens</c>. This is the live surface behind the per-session effort control:
+    /// "effort" maps to a thinking-token budget because that is the only budget the control
+    /// protocol can set mid-session. Verified against claude.exe 2.1.197 — the sibling subtypes
+    /// <c>set_thinking</c>/<c>set_thinking_tokens</c>/<c>set_effort</c> are rejected as
+    /// "Unsupported control request subtype".
+    /// </summary>
+    Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Interrupts the current in-flight turn via a <c>control_request</c>/<c>interrupt</c>
     /// request. UNVERIFIED — see <see cref="SetPermissionModeAsync"/> remarks; same caveat
     /// applies to the request shape here.

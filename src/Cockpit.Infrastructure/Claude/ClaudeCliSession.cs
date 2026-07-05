@@ -134,6 +134,9 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
     public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
         _SendControlRequestAsync(new { subtype = "set_model", model }, cancellationToken);
 
+    public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) =>
+        _SendControlRequestAsync(new { subtype = "set_max_thinking_tokens", maxThinkingTokens }, cancellationToken);
+
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         _SendControlRequestAsync(new { subtype = "interrupt" }, cancellationToken);
 
@@ -206,8 +209,9 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
                 _sessionId = sidProp.GetString();
             }
 
-            // Control-protocol replies to our own SetPermissionModeAsync/SetModelAsync/InterruptAsync
-            // control_requests (see _SendControlRequestAsync). Logged only, per F-C1 scope: nothing
+            // Control-protocol replies to our own SetPermissionModeAsync/SetModelAsync/
+            // SetMaxThinkingTokensAsync/InterruptAsync control_requests (see _SendControlRequestAsync).
+            // Logged only, per F-C1 scope: nothing
             // here currently correlates a response back to its request_id or blocks on it. UNVERIFIED
             // wire shape — see IClaudeSession.SetPermissionModeAsync remarks.
             if (root.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String

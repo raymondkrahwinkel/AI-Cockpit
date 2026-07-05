@@ -69,13 +69,16 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     [ObservableProperty]
     private ModelOption _selectedModel = _models[1]; // Sonnet by default.
 
-    // UNVERIFIED mapping — see EffortOption remarks: exact token budgets per level are a
-    // best guess, not confirmed against the SDK/CLI.
+    // "Effort" maps to a thinking-token budget: that budget is the one live control the protocol
+    // exposes (set_max_thinking_tokens, verified against claude.exe 2.1.197), so the effort level
+    // simply picks a budget the session runs with and can switch mid-flight.
     private static readonly EffortOption[] _efforts =
     [
         new("Low", "low", 4_000),
-        new("Medium", "medium", 16_000),
-        new("High", "high", 32_000),
+        new("Medium", "medium", 12_000),
+        new("High", "high", 24_000),
+        new("Extra high", "xhigh", 48_000),
+        new("Max", "max", 64_000),
     ];
 
     /// <summary>Thinking-effort levels offered per session; drives the thinking-budget control.</summary>
@@ -244,6 +247,11 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             _lastUsedProfileLabel = profile?.Label;
             ActiveProfileLabel = profile?.Label;
             Status = profile is null ? "Session started." : $"Session started ({profile.Label}).";
+
+            // Thinking budget has no launch flag — the control request is the only path — so apply
+            // the selected effort once the session is live, otherwise it runs at the CLI default
+            // until the operator first touches the dropdown.
+            await _SetMaxThinkingTokensSafeAsync(SelectedEffort.MaxThinkingTokens);
         }
         catch (Exception ex)
         {
@@ -273,18 +281,15 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         _ = _SetModelSafeAsync(value.Value);
     }
 
-    /// <summary>
-    /// Live-switches the running session's thinking-effort level. UNVERIFIED: routed through
-    /// <see cref="IClaudeSession.SetModelAsync"/>'s sibling control-channel plumbing is not
-    /// available for thinking tokens on <see cref="IClaudeSession"/> yet (no
-    /// <c>SetMaxThinkingTokensAsync</c> member exists) — flagged as a gap for the parent to
-    /// confirm against the SDK's <c>setMaxThinkingTokens</c> before wiring further.
-    /// </summary>
+    /// <summary>Live-switches the running session's thinking budget. No-op before the session has started.</summary>
     partial void OnSelectedEffortChanged(EffortOption value)
     {
-        // See remarks: no session-level control method exists yet to carry this live. The
-        // dropdown selection is tracked so a future increment can wire it once
-        // IClaudeSession grows a SetMaxThinkingTokensAsync (or equivalent) method.
+        if (_session is null || _eventLoopTask is null)
+        {
+            return;
+        }
+
+        _ = _SetMaxThinkingTokensSafeAsync(value.MaxThinkingTokens);
     }
 
     [RelayCommand]
@@ -337,6 +342,23 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         catch (Exception ex)
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Model switch failed: {ex.Message}"));
+        }
+    }
+
+    private async Task _SetMaxThinkingTokensSafeAsync(int maxThinkingTokens)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _session.SetMaxThinkingTokensAsync(maxThinkingTokens);
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Effort switch failed: {ex.Message}"));
         }
     }
 

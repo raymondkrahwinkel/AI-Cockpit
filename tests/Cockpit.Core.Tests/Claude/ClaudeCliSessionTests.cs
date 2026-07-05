@@ -109,6 +109,23 @@ public class ClaudeCliSessionTests
     }
 
     [Fact]
+    public async Task SetMaxThinkingTokensAsync_WritesControlRequestWithSubtypeAndBudget()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync();
+
+        await session.SetMaxThinkingTokensAsync(24_000);
+
+        process.WrittenLines.Should().ContainSingle();
+        var written = process.WrittenLines[0];
+        written.Should().Contain("\"type\":\"control_request\"");
+        written.Should().Contain("\"subtype\":\"set_max_thinking_tokens\"");
+        written.Should().Contain("\"maxThinkingTokens\":24000");
+        written.Should().Contain("\"request_id\":");
+    }
+
+    [Fact]
     public async Task InterruptAsync_WritesControlRequestWithInterruptSubtype()
     {
         var process = new FakeClaudeCliProcess();
