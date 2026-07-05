@@ -1,4 +1,4 @@
-# Zyra.Voice
+# Cockpit
 
 Voice front-end for Zyra: microphone capture and audio playback, built on SoundFlow.
 
@@ -9,7 +9,7 @@ brain integration, or VAD yet — those are later phases.
 ## Running the audio spike
 
 ```
-dotnet run --project src/Zyra.Voice.App -- --audio-spike
+dotnet run --project src/Cockpit.App -- --audio-spike
 ```
 
 Lists the default input/output devices, records ~2s of 16 kHz mono PCM, prints the byte count,
@@ -18,7 +18,7 @@ duration and RMS level, then plays a 440 Hz test tone followed by the recorded b
 ## Running the app
 
 ```
-dotnet run --project src/Zyra.Voice.App
+dotnet run --project src/Cockpit.App
 ```
 
 Opens the Avalonia window with Record/Play buttons and a status label.

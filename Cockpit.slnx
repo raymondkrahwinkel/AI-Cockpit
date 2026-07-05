@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Cockpit.App/Cockpit.App.csproj" />
+    <Project Path="src/Cockpit.Core/Cockpit.Core.csproj" />
+    <Project Path="src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj" />
+  </Folder>
+</Solution>
