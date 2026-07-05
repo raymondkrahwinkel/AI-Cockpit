@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Cockpit.Infrastructure.Configuration;
 
@@ -10,7 +11,11 @@ namespace Cockpit.Infrastructure.Configuration;
 /// </summary>
 internal sealed class CockpitConfigFileAccess(string configFilePath)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     public string ConfigFilePath => configFilePath;
 
@@ -22,7 +27,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath)
         }
 
         await using var stream = File.OpenRead(configFilePath);
-        return await JsonSerializer.DeserializeAsync<CockpitConfigFile>(stream, cancellationToken: cancellationToken)
+        return await JsonSerializer.DeserializeAsync<CockpitConfigFile>(stream, SerializerOptions, cancellationToken)
             .ConfigureAwait(false);
     }
 
