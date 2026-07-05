@@ -44,6 +44,10 @@
             <CornerRadius x:Key="CockpitPanelRadius">10</CornerRadius>
             <Thickness x:Key="CockpitHairlineThickness">1</Thickness>
 
+            <!-- Typography: the transcript uses a terminal font so tool blocks and code read as a
+                 Claude-TTY surface; the same family the TTY panel renders with. -->
+            <FontFamily x:Key="CockpitMonoFont">Cascadia Mono, Consolas, monospace</FontFamily>
+
         </ResourceDictionary>
     </Styles.Resources>
 
@@ -99,6 +103,13 @@
         <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
+    <!-- Compact button: denser secondary action (Stop) that must not compete with the accent. -->
+    <Style Selector="Button.Compact">
+        <Setter Property="Padding" Value="8,3"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+
     <!-- ComboBox: flat, hairline, compact -->
     <Style Selector="ComboBox">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
@@ -107,6 +118,16 @@
         <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
         <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
         <Setter Property="Padding" Value="8,4"/>
+    </Style>
+
+    <!-- Compact selectors: the per-session mode/model/effort pickers are context controls, not the
+         focus — shrink them (smaller font, tighter padding, faint text) so the transcript dominates. -->
+    <Style Selector="ComboBox.Compact">
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
     <!-- TextBox: dark input surface -->
@@ -123,10 +144,43 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
+    <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
+    <Style Selector="TextBlock.transcript">
+        <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+    </Style>
+
+    <!-- Tool rows (Bash(cmd…), Edit(…), tool results): mono, dimmed, one-line-feel toggles so they
+         read as quiet, collapsible tool blocks rather than prose. -->
+    <Style Selector="Button.toolRow">
+        <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="TextBlock.toolBody">
+        <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+    </Style>
+
     <!-- Cockpit sidebar session item: accent left-border marks the active session; inactive items
          get no border so the eye lands on the one selection, not a grid of colored edges. -->
     <Style Selector="Border.inactive">
         <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
+    <!-- Active session panel (main grid): the selected panel carries the Claude-orange edge so the
+         one you're driving jumps out of the grid; inactive panels keep the quiet hairline. -->
+    <Style Selector="Border.panel">
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+    <Style Selector="Border.panel.active">
+        <Setter Property="BorderThickness" Value="1.5"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+
+    <!-- Needs-attention sidebar item: a soft accent-tinted fill so it reads louder than a plain dot. -->
+    <Style Selector="Border.attention">
+        <Setter Property="Background" Value="#2E2A26"/>
     </Style>
 
     <!-- TabControl / TabItem: flat, quiet, accent underline for the selected tab -->
