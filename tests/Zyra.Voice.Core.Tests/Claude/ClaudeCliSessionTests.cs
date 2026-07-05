@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Zyra.Voice.Core.Claude;
+using Zyra.Voice.Core.Profiles;
 using Zyra.Voice.Infrastructure.Claude;
 
 namespace Zyra.Voice.Core.Tests.Claude;
@@ -23,6 +24,31 @@ public class ClaudeCliSessionTests
         await session.StartAsync();
 
         process.Started.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task StartAsync_WithProfile_PassesProfileToProcessAndExposesItOnSession()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+        var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
+
+        await session.StartAsync(profile);
+
+        process.StartedWithProfile.Should().Be(profile);
+        session.Profile.Should().Be(profile);
+    }
+
+    [Fact]
+    public async Task StartAsync_WithoutProfile_LeavesProfileNull()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, NullLogger<ClaudeCliSession>.Instance);
+
+        await session.StartAsync();
+
+        process.StartedWithProfile.Should().BeNull();
+        session.Profile.Should().BeNull();
     }
 
     [Fact]

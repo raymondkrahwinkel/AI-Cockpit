@@ -1,3 +1,5 @@
+using Zyra.Voice.Core.Profiles;
+
 namespace Zyra.Voice.Infrastructure.Claude;
 
 /// <summary>
@@ -7,8 +9,12 @@ namespace Zyra.Voice.Infrastructure.Claude;
 /// </summary>
 internal interface IClaudeCliProcess : IAsyncDisposable
 {
-    /// <summary>Starts the underlying process. Must be called exactly once.</summary>
-    void Start();
+    /// <summary>
+    /// Starts the underlying process, optionally under a specific <see cref="ClaudeProfile"/>
+    /// (its own <c>CLAUDE_CONFIG_DIR</c> and, if set, its own executable). Must be called
+    /// exactly once.
+    /// </summary>
+    void Start(ClaudeProfile? profile = null);
 
     /// <summary>Writes a single line (without trailing newline) to the process's stdin and flushes.</summary>
     Task WriteLineAsync(string line, CancellationToken cancellationToken = default);

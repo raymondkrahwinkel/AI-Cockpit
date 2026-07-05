@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using Zyra.Voice.Core.Profiles;
 using Zyra.Voice.Infrastructure.Claude;
 
 namespace Zyra.Voice.Core.Tests.Claude;
@@ -19,11 +20,17 @@ internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
 
     public bool HasExited { get; private set; }
 
+    public ClaudeProfile? StartedWithProfile { get; private set; }
+
     public void Enqueue(string line) => _outputLines.Writer.TryWrite(line);
 
     public void CompleteOutput() => _outputLines.Writer.TryComplete();
 
-    public void Start() => Started = true;
+    public void Start(ClaudeProfile? profile = null)
+    {
+        Started = true;
+        StartedWithProfile = profile;
+    }
 
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)
     {

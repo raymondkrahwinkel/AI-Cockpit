@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Options;
+using Zyra.Voice.Core.Abstractions.Claude;
 using Zyra.Voice.Core.Configuration;
+using Zyra.Voice.Core.Profiles;
 
 namespace Zyra.Voice.Infrastructure.Claude;
 
@@ -20,15 +22,48 @@ namespace Zyra.Voice.Infrastructure.Claude;
 /// exercised against a real process here. It is deliberately kept as a thin, mockable seam
 /// (<see cref="IClaudeCliProcess"/>) so <c>ClaudeCliSession</c>'s turn-taking logic is unit
 /// tested against a fake; the live end-to-end run requires Raymond's logged-in environment.
+///
+/// Auth-aware spawn (this increment): when started under a <see cref="ClaudeProfile"/>,
+/// <c>CLAUDE_CONFIG_DIR</c> is set to the profile's config directory so the spawned CLI reads
+/// that profile's own login/config — the real process environment (HOME/USERPROFILE, PATH,
+/// etc.) is otherwise inherited as-is. No <c>--bare</c> (would skip reading the token) and no
+/// <c>ANTHROPIC_API_KEY</c> is ever set (that would switch the CLI to API-key billing instead
+/// of the subscription route — see Decisions.md auth section).
 /// </remarks>
 internal sealed class ClaudeCliProcess : IClaudeCliProcess
 {
-    private readonly Process _process;
+    private readonly ZyraVoiceOptions _options;
+    private readonly IClaudeExecutableLocator _executableLocator;
+    private readonly WorkspaceTrustWriter _workspaceTrustWriter;
+    private Process? _process;
     private bool _started;
 
-    public ClaudeCliProcess(IOptions<ZyraVoiceOptions> options)
+    public ClaudeCliProcess(IOptions<ZyraVoiceOptions> options, IClaudeExecutableLocator executableLocator, WorkspaceTrustWriter workspaceTrustWriter)
     {
-        var cli = options.Value.Claude;
+        _options = options.Value;
+        _executableLocator = executableLocator;
+        _workspaceTrustWriter = workspaceTrustWriter;
+    }
+
+    public bool HasExited => _started && (_process?.HasExited ?? true);
+
+    public void Start(ClaudeProfile? profile = null)
+    {
+        var cli = _options.Claude;
+        var workingDirectory = string.IsNullOrWhiteSpace(cli.WorkingDirectory)
+            ? Directory.GetCurrentDirectory()
+            : cli.WorkingDirectory;
+
+        if (profile is not null)
+        {
+            // Trust must land before the process starts, or the CLI shows its interactive
+            // trust dialog with nothing able to answer it headlessly.
+            _workspaceTrustWriter.MarkWorkingDirectoryTrusted(profile.ConfigDir, Path.GetFullPath(workingDirectory));
+        }
+
+        var executablePath = profile?.ExecutablePath
+            ?? _executableLocator.FindBundledExecutable()
+            ?? cli.ExecutablePath;
 
         var arguments = new List<string>
         {
@@ -43,7 +78,8 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = cli.ExecutablePath,
+            FileName = executablePath,
+            WorkingDirectory = workingDirectory,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -56,33 +92,31 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             startInfo.ArgumentList.Add(arg);
         }
 
-        if (!string.IsNullOrWhiteSpace(cli.WorkingDirectory))
+        if (profile is not null)
         {
-            startInfo.WorkingDirectory = cli.WorkingDirectory;
+            // Real user env (HOME/USERPROFILE, PATH, ...) is inherited by default
+            // (UseShellExecute=false); only CLAUDE_CONFIG_DIR is overridden here.
+            startInfo.EnvironmentVariables["CLAUDE_CONFIG_DIR"] = profile.ConfigDir;
         }
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-    }
-
-    public bool HasExited => _started && _process.HasExited;
-
-    public void Start()
-    {
         _process.Start();
         _started = true;
     }
 
     public async Task WriteLineAsync(string line, CancellationToken cancellationToken = default)
     {
-        await _process.StandardInput.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
-        await _process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        var process = RequireStartedProcess();
+        await process.StandardInput.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);
+        await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async IAsyncEnumerable<string> ReadLinesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var process = RequireStartedProcess();
         while (!cancellationToken.IsCancellationRequested)
         {
-            var line = await _process.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+            var line = await process.StandardOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false);
             if (line is null)
             {
                 yield break;
@@ -94,14 +128,14 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
     public async ValueTask DisposeAsync()
     {
-        if (_started && !_process.HasExited)
+        if (_started && _process is { HasExited: false } process)
         {
             try
             {
-                _process.StandardInput.Close();
-                if (!_process.WaitForExit(TimeSpan.FromSeconds(3)))
+                process.StandardInput.Close();
+                if (!process.WaitForExit(TimeSpan.FromSeconds(3)))
                 {
-                    _process.Kill(entireProcessTree: true);
+                    process.Kill(entireProcessTree: true);
                 }
             }
             catch (InvalidOperationException)
@@ -110,7 +144,10 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             }
         }
 
-        _process.Dispose();
+        _process?.Dispose();
         await Task.CompletedTask;
     }
+
+    private Process RequireStartedProcess() =>
+        _process ?? throw new InvalidOperationException($"{nameof(ClaudeCliProcess)}.{nameof(Start)} must be called before I/O.");
 }

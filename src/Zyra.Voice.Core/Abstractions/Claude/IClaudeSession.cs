@@ -1,4 +1,5 @@
 using Zyra.Voice.Core.Claude;
+using Zyra.Voice.Core.Profiles;
 
 namespace Zyra.Voice.Core.Abstractions.Claude;
 
@@ -14,10 +15,21 @@ public interface IClaudeSession : IAsyncDisposable
     string? SessionId { get; }
 
     /// <summary>
-    /// Starts the underlying <c>claude</c> process. Must be called once before
-    /// <see cref="SendUserMessageAsync"/> or <see cref="Events"/> produce anything.
+    /// The profile the running session was started under, once <see cref="StartAsync"/> has
+    /// been called with one; <see langword="null"/> before start or when started profile-less
+    /// (falls back to whatever environment/config the host process already has).
     /// </summary>
-    Task StartAsync(CancellationToken cancellationToken = default);
+    ClaudeProfile? Profile { get; }
+
+    /// <summary>
+    /// Starts the underlying <c>claude</c> process under the given profile — spawning with
+    /// <c>CLAUDE_CONFIG_DIR</c> set to <paramref name="profile"/>'s config directory (real
+    /// user env, e.g. HOME/USERPROFILE, still inherited) and that profile's working directory
+    /// pre-marked as trusted. Pass <see langword="null"/> to start without a profile (uses
+    /// whatever the host process's own environment/config already provides). Must be called
+    /// once before <see cref="SendUserMessageAsync"/> or <see cref="Events"/> produce anything.
+    /// </summary>
+    Task StartAsync(ClaudeProfile? profile = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a user message as a single stream-json line on the CLI's stdin.

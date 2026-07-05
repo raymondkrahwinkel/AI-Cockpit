@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Zyra.Voice.Core.Abstractions;
 using Zyra.Voice.Core.Abstractions.Claude;
 using Zyra.Voice.Core.Claude;
+using Zyra.Voice.Core.Profiles;
 
 namespace Zyra.Voice.Infrastructure.Claude;
 
@@ -46,11 +47,14 @@ internal sealed class ClaudeCliSession : IClaudeSession, ISingletonService
 
     public string? SessionId => _sessionId;
 
+    public ClaudeProfile? Profile { get; private set; }
+
     public IAsyncEnumerable<ClaudeSessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public Task StartAsync(CancellationToken cancellationToken = default)
+    public Task StartAsync(ClaudeProfile? profile = null, CancellationToken cancellationToken = default)
     {
-        _process.Start();
+        Profile = profile;
+        _process.Start(profile);
         _pumpCancellation = new CancellationTokenSource();
         _pumpTask = PumpOutputAsync(_pumpCancellation.Token);
         return Task.CompletedTask;

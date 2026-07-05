@@ -4,7 +4,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Zyra.Voice.Core.Abstractions;
 using Zyra.Voice.Core.Abstractions.Claude;
+using Zyra.Voice.Core.Abstractions.Profiles;
 using Zyra.Voice.Core.Claude;
+using Zyra.Voice.Core.Profiles;
 
 namespace Zyra.Voice.App.ViewModels;
 
@@ -19,11 +21,17 @@ namespace Zyra.Voice.App.ViewModels;
 public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, IAsyncDisposable
 {
     private readonly IClaudeSession? _session;
+    private readonly IClaudeProfileStore? _profileStore;
+    private readonly IClaudeProfileLoginChecker? _loginChecker;
     private CancellationTokenSource? _lifetimeCancellation;
     private Task? _eventLoopTask;
     private TranscriptEntryViewModel? _currentAssistantEntry;
+    private string? _lastUsedProfileLabel;
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
+
+    /// <summary>Populated only while <see cref="ProfileSelectionKind.RequiresChoice"/> is pending the user's pick.</summary>
+    public ObservableCollection<ClaudeProfile> ProfileChoices { get; } = [];
 
     [ObservableProperty]
     private string _inputText = string.Empty;
@@ -34,20 +42,82 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>True while <see cref="ProfileChoices"/> should be shown for the user to pick from.</summary>
+    [ObservableProperty]
+    private bool _isChoosingProfile;
+
+    [ObservableProperty]
+    private ClaudeProfile? _selectedProfile;
+
+    /// <summary>Label of the profile the running session was started under, once known.</summary>
+    [ObservableProperty]
+    private string? _activeProfileLabel;
+
     // Parameterless constructor kept for the Avalonia previewer design-time context.
     public ClaudeSessionViewModel()
     {
     }
 
-    public ClaudeSessionViewModel(IClaudeSession session)
+    public ClaudeSessionViewModel(IClaudeSession session, IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)
     {
         _session = session;
+        _profileStore = profileStore;
+        _loginChecker = loginChecker;
     }
 
     [RelayCommand]
     private async Task StartAsync()
     {
-        if (_session is null || _eventLoopTask is not null)
+        if (_session is null || _profileStore is null || _loginChecker is null || _eventLoopTask is not null)
+        {
+            return;
+        }
+
+        Status = "Checking profiles...";
+
+        var profiles = await _profileStore.LoadAsync();
+        var statuses = profiles.Select(p => new ClaudeProfileStatus(p, _loginChecker.IsLoggedIn(p))).ToList();
+        var outcome = ProfileSelector.Select(statuses, _lastUsedProfileLabel);
+
+        switch (outcome.Kind)
+        {
+            case ProfileSelectionKind.LoginRequired:
+                Status = "No logged-in Claude profile found. Run 'claude /login' in a terminal, then try again.";
+                return;
+
+            case ProfileSelectionKind.RequiresChoice:
+                ProfileChoices.Clear();
+                foreach (var candidate in outcome.Candidates)
+                {
+                    ProfileChoices.Add(candidate);
+                }
+
+                SelectedProfile = outcome.Candidates[0];
+                IsChoosingProfile = true;
+                Status = "Choose a profile to start the session.";
+                return;
+
+            case ProfileSelectionKind.UseSilently:
+                await StartWithProfileAsync(outcome.SingleProfile);
+                return;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ConfirmProfileChoiceAsync()
+    {
+        if (SelectedProfile is null)
+        {
+            return;
+        }
+
+        IsChoosingProfile = false;
+        await StartWithProfileAsync(SelectedProfile);
+    }
+
+    private async Task StartWithProfileAsync(ClaudeProfile? profile)
+    {
+        if (_session is null)
         {
             return;
         }
@@ -57,9 +127,11 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
 
         try
         {
-            await _session.StartAsync(_lifetimeCancellation.Token);
+            await _session.StartAsync(profile, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
-            Status = "Session started.";
+            _lastUsedProfileLabel = profile?.Label;
+            ActiveProfileLabel = profile?.Label;
+            Status = profile is null ? "Session started." : $"Session started ({profile.Label}).";
         }
         catch (Exception ex)
         {
