@@ -1,6 +1,7 @@
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Cockpit.App.ViewModels;
 using Cockpit.Core;
 using Cockpit.Infrastructure;
 
@@ -22,6 +23,12 @@ sealed class Program
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(Program).Assembly);
+
+        // Factory delegate so CockpitViewModel can mint a new ClaudeSessionViewModel (and,
+        // transitively, its own IClaudeSession/CLI process) per "New session" click without
+        // holding an injected IServiceProvider itself (service-locator anti-pattern — Code.md §2).
+        services.AddTransient<Func<ClaudeSessionViewModel>>(
+            provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());
 
         Services = services.BuildServiceProvider();
 

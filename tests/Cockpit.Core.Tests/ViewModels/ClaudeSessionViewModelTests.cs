@@ -98,6 +98,73 @@ public class ClaudeSessionViewModelTests
         act.Should().NotThrow();
     }
 
+    [Fact]
+    public void Apply_PermissionRequested_SetsStatusToNeedsAttention()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Bash", InputJson = "{}" });
+
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Bash", InputJson = "{}" });
+
+        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+    }
+
+    [Fact]
+    public void Apply_SessionStatusChangedWithNeedsAction_SetsStatusToNeedsAttention()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new SessionStatusChanged { SessionId = "S1", NeedsAction = "answer_question" });
+
+        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+    }
+
+    [Fact]
+    public void Apply_SessionStatusChangedWithoutNeedsAction_LeavesStatusIdle()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new SessionStatusChanged { SessionId = "S1", StatusCategory = "review_ready" });
+
+        vm.SessionStatus.Should().Be(SessionStatus.Idle);
+    }
+
+    [Fact]
+    public void Apply_TurnCompleted_SetsStatusToDone()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        vm.SessionStatus.Should().Be(SessionStatus.Done);
+    }
+
+    [Fact]
+    public async Task SendAsync_WhileTurnInFlight_SetsStatusToBusy()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var profileStore = Substitute.For<IClaudeProfileStore>();
+        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker) { InputText = "hello" };
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.SessionStatus.Should().Be(SessionStatus.Busy);
+    }
+
+    [Fact]
+    public void Apply_TurnCompletedAfterPermissionRequest_PriorityGoesToNeedsAttention()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Bash", InputJson = "{}" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Bash", InputJson = "{}" });
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+    }
+
     private static ClaudeSessionViewModel NewVm()
     {
         var session = Substitute.For<IClaudeSession>();

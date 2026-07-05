@@ -123,6 +123,12 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
 
+    <!-- Cockpit sidebar session item: accent left-border marks the active session; inactive items
+         get no border so the eye lands on the one selection, not a grid of colored edges. -->
+    <Style Selector="Border.inactive">
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
     <!-- TabControl / TabItem: flat, quiet, accent underline for the selected tab -->
     <Style Selector="TabControl">
         <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>

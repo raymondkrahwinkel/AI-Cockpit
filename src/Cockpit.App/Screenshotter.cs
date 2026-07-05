@@ -20,7 +20,7 @@ internal static class Screenshotter
 
         var window = new MainWindow
         {
-            DataContext = new ViewModels.MainWindowViewModel(),
+            DataContext = new ViewModels.CockpitViewModel(),
             Width = WindowWidth,
             Height = WindowHeight,
         };

@@ -86,6 +86,47 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>Display title for this session's sidebar/grid panel, e.g. "Claude 1". Set by <see cref="CockpitViewModel"/>.</summary>
+    [ObservableProperty]
+    private string _title = "Claude";
+
+    /// <summary>True while this is <see cref="CockpitViewModel.SelectedSession"/> — drives the sidebar's active-item highlight. Set by <see cref="CockpitViewModel"/>.</summary>
+    [ObservableProperty]
+    private bool _isSelected;
+
+    /// <summary>Coarse status for the sidebar/grid overview — see <see cref="ViewModels.SessionStatus"/>.</summary>
+    [ObservableProperty]
+    private SessionStatus _sessionStatus = SessionStatus.Idle;
+
+    /// <summary>Short human-readable label for <see cref="SessionStatus"/>, for the sidebar status row.</summary>
+    public string SessionStatusLabel => SessionStatus switch
+    {
+        SessionStatus.Busy => "Busy",
+        SessionStatus.WaitingForInput => "Waiting for input",
+        SessionStatus.NeedsAttention => "Needs attention",
+        SessionStatus.Done => "Done",
+        _ => "Idle",
+    };
+
+    /// <summary>Theme brush resource key for the status dot — resolved in the view via a converter.</summary>
+    public string SessionStatusBrushKey => SessionStatus switch
+    {
+        SessionStatus.Busy => "CockpitStatusBusyBrush",
+        SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => "CockpitStatusWaitingBrush",
+        SessionStatus.Done => "CockpitStatusDoneBrush",
+        _ => "CockpitTextFaintBrush",
+    };
+
+    /// <summary>Keeps the derived status label/brush in sync whenever <see cref="SessionStatus"/> changes.</summary>
+    partial void OnSessionStatusChanged(SessionStatus value)
+    {
+        OnPropertyChanged(nameof(SessionStatusLabel));
+        OnPropertyChanged(nameof(SessionStatusBrushKey));
+    }
+
+    /// <summary>True while a pending permission decision or CLI <c>needs_action</c> signal is outstanding, driving <see cref="SessionStatus.NeedsAttention"/>.</summary>
+    private bool _needsAttention;
+
     /// <summary>True while <see cref="ProfileChoices"/> should be shown for the user to pick from.</summary>
     [ObservableProperty]
     private bool _isChoosingProfile;
@@ -323,6 +364,8 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"> {text}"));
         _currentAssistantEntry = null;
         IsBusy = true;
+        _needsAttention = false;
+        _RecomputeStatus();
 
         try
         {
@@ -332,6 +375,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Send failed: {ex.Message}"));
             IsBusy = false;
+            _RecomputeStatus();
         }
     }
 
@@ -448,6 +492,8 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
                     entry.IsPendingPermission = true;
                 }
 
+                _needsAttention = true;
+                _RecomputeStatus();
                 break;
 
             case Question question:
@@ -461,22 +507,50 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
                     turn.IsError ? $"Turn failed ({turn.Subtype})" : $"Turn completed ({turn.Subtype})"));
                 _currentAssistantEntry = null;
                 IsBusy = false;
+                _RecomputeStatus();
                 break;
 
             case SessionError error:
                 _RemoveCurrentThinkingEntry();
                 Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message));
                 IsBusy = false;
+                _RecomputeStatus();
                 break;
 
-            // SessionStatusChanged/RateLimitInfo/UnknownEvent are out of scope for the transcript
-            // view (per-session status overview and agent-tree rendering are later increments);
-            // ConsumeEventsAsync already delivers them to any future subscriber.
-            case SessionStatusChanged:
+            case SessionStatusChanged statusChanged:
+                // needs_action non-empty is the CLI telling the host the session wants attention
+                // (e.g. a pending question) — same "jump out in the sidebar" signal as a pending
+                // tool permission. RateLimitInfo/UnknownEvent stay out of scope for status (per-session
+                // status overview and agent-tree rendering are later increments); ConsumeEventsAsync
+                // already delivers them to any future subscriber.
+                if (!string.IsNullOrEmpty(statusChanged.NeedsAction))
+                {
+                    _needsAttention = true;
+                }
+
+                _RecomputeStatus();
+                break;
+
             case RateLimitInfo:
             case UnknownEvent:
                 break;
         }
+    }
+
+    /// <summary>
+    /// Derives <see cref="SessionStatus"/> from the flags this view model already tracks:
+    /// busy while a turn is in flight, needs-attention while a permission/needs_action signal is
+    /// outstanding (takes priority over busy so it still surfaces if a new send arrives before the
+    /// user reacts), done once a turn completed and nothing is pending, idle otherwise.
+    /// </summary>
+    private void _RecomputeStatus()
+    {
+        SessionStatus = (_needsAttention, IsBusy) switch
+        {
+            (true, _) => SessionStatus.NeedsAttention,
+            (false, true) => SessionStatus.Busy,
+            (false, false) => Transcript.Any(t => t.Kind == TranscriptEntryKind.TurnCompleted) ? SessionStatus.Done : SessionStatus.Idle,
+        };
     }
 
     /// <summary>

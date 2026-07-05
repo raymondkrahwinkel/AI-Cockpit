@@ -28,7 +28,7 @@ namespace Cockpit.Infrastructure.Claude;
 /// flow back in-band. Until then, run with <c>--permission-mode acceptEdits</c> or
 /// <c>bypassPermissions</c> if you need the CLI itself to proceed unattended.
 /// </remarks>
-internal sealed class ClaudeCliSession : IClaudeSession, ISingletonService
+internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
 {
     private readonly IClaudeCliProcess _process;
     private readonly ILogger<ClaudeCliSession> _logger;
