@@ -22,16 +22,17 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     private static readonly Core.Audio.AudioFormat AudioFormat = new();
 
     private readonly Func<ClaudeSessionViewModel>? _sessionFactory;
+    private readonly Func<ClaudeTtyViewModel>? _ttySessionFactory;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
     private readonly List<byte> _recordedPcm = [];
     private CancellationTokenSource? _recordingCancellation;
     private int _sessionCounter;
 
-    public ObservableCollection<ClaudeSessionViewModel> Sessions { get; } = [];
+    public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
     [ObservableProperty]
-    private ClaudeSessionViewModel? _selectedSession;
+    private SessionPanelViewModel? _selectedSession;
 
     /// <summary>True while the grid is collapsed to show only <see cref="SelectedSession"/> at full width.</summary>
     [ObservableProperty]
@@ -41,7 +42,7 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     private string _audioStatus = "Ready.";
 
     /// <summary>Keeps each session's <see cref="ClaudeSessionViewModel.IsSelected"/> in sync with the active selection.</summary>
-    partial void OnSelectedSessionChanged(ClaudeSessionViewModel? oldValue, ClaudeSessionViewModel? newValue)
+    partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
     {
         if (oldValue is not null)
         {
@@ -61,18 +62,23 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     {
         var waiting = new ClaudeSessionViewModel { Title = "Claude 1", ActiveProfileLabel = "werk", SessionStatus = SessionStatus.NeedsAttention };
         var busy = new ClaudeSessionViewModel { Title = "Claude 2", ActiveProfileLabel = "privé", SessionStatus = SessionStatus.Busy };
-        var done = new ClaudeSessionViewModel { Title = "Claude 3", ActiveProfileLabel = "werk", SessionStatus = SessionStatus.Done };
+        var tty = new ClaudeTtyViewModel { Title = "Claude 3", ActiveProfileLabel = "werk (TTY)", SessionStatus = SessionStatus.Busy };
 
         Sessions.Add(waiting);
         Sessions.Add(busy);
-        Sessions.Add(done);
+        Sessions.Add(tty);
         _sessionCounter = Sessions.Count;
         SelectedSession = waiting;
     }
 
-    public CockpitViewModel(Func<ClaudeSessionViewModel> sessionFactory, IAudioCaptureService captureService, IAudioPlaybackService playbackService)
+    public CockpitViewModel(
+        Func<ClaudeSessionViewModel> sessionFactory,
+        Func<ClaudeTtyViewModel> ttySessionFactory,
+        IAudioCaptureService captureService,
+        IAudioPlaybackService playbackService)
     {
         _sessionFactory = sessionFactory;
+        _ttySessionFactory = ttySessionFactory;
         _captureService = captureService;
         _playbackService = playbackService;
         NewSession();
@@ -125,6 +131,7 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
         AudioStatus = "Playback done.";
     }
 
+    /// <summary>Starts a default SDK-mode session (headless stream-json rendered as the chat UI).</summary>
     [RelayCommand]
     private void NewSession()
     {
@@ -133,7 +140,23 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
             return;
         }
 
-        var session = _sessionFactory();
+        AddSession(_sessionFactory());
+    }
+
+    /// <summary>Starts a TTY-mode session (the real interactive <c>claude</c> TUI in a terminal panel) — the #9 experiment.</summary>
+    [RelayCommand]
+    private void NewTtySession()
+    {
+        if (_ttySessionFactory is null)
+        {
+            return;
+        }
+
+        AddSession(_ttySessionFactory());
+    }
+
+    private void AddSession(SessionPanelViewModel session)
+    {
         _sessionCounter++;
         session.Title = $"Claude {_sessionCounter}";
 
@@ -142,13 +165,13 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     }
 
     [RelayCommand]
-    private void SelectSession(ClaudeSessionViewModel session)
+    private void SelectSession(SessionPanelViewModel session)
     {
         SelectedSession = session;
     }
 
     [RelayCommand]
-    private async Task CloseSessionAsync(ClaudeSessionViewModel session)
+    private async Task CloseSessionAsync(SessionPanelViewModel session)
     {
         var index = Sessions.IndexOf(session);
         if (index < 0)

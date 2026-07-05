@@ -19,7 +19,7 @@ namespace Cockpit.App.ViewModels;
 /// Visual layout has not been verified against a running Avalonia window in this sandbox
 /// (no display available here) — treat the XAML as unverified until Raymond runs it.
 /// </remarks>
-public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, IAsyncDisposable
+public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly IClaudeSession? _session;
     private readonly IClaudeProfileStore? _profileStore;
@@ -93,44 +93,6 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
     [ObservableProperty]
     private bool _isBusy;
 
-    /// <summary>Display title for this session's sidebar/grid panel, e.g. "Claude 1". Set by <see cref="CockpitViewModel"/>.</summary>
-    [ObservableProperty]
-    private string _title = "Claude";
-
-    /// <summary>True while this is <see cref="CockpitViewModel.SelectedSession"/> — drives the sidebar's active-item highlight. Set by <see cref="CockpitViewModel"/>.</summary>
-    [ObservableProperty]
-    private bool _isSelected;
-
-    /// <summary>Coarse status for the sidebar/grid overview — see <see cref="ViewModels.SessionStatus"/>.</summary>
-    [ObservableProperty]
-    private SessionStatus _sessionStatus = SessionStatus.Idle;
-
-    /// <summary>Short human-readable label for <see cref="SessionStatus"/>, for the sidebar status row.</summary>
-    public string SessionStatusLabel => SessionStatus switch
-    {
-        SessionStatus.Busy => "Busy",
-        SessionStatus.WaitingForInput => "Waiting for input",
-        SessionStatus.NeedsAttention => "Needs attention",
-        SessionStatus.Done => "Done",
-        _ => "Idle",
-    };
-
-    /// <summary>Theme brush resource key for the status dot — resolved in the view via a converter.</summary>
-    public string SessionStatusBrushKey => SessionStatus switch
-    {
-        SessionStatus.Busy => "CockpitStatusBusyBrush",
-        SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => "CockpitStatusWaitingBrush",
-        SessionStatus.Done => "CockpitStatusDoneBrush",
-        _ => "CockpitTextFaintBrush",
-    };
-
-    /// <summary>Keeps the derived status label/brush in sync whenever <see cref="SessionStatus"/> changes.</summary>
-    partial void OnSessionStatusChanged(SessionStatus value)
-    {
-        OnPropertyChanged(nameof(SessionStatusLabel));
-        OnPropertyChanged(nameof(SessionStatusBrushKey));
-    }
-
     /// <summary>True while a pending permission decision or CLI <c>needs_action</c> signal is outstanding, driving <see cref="SessionStatus.NeedsAttention"/>.</summary>
     private bool _needsAttention;
 
@@ -140,10 +102,6 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
 
     [ObservableProperty]
     private ClaudeProfile? _selectedProfile;
-
-    /// <summary>Label of the profile the running session was started under, once known.</summary>
-    [ObservableProperty]
-    private string? _activeProfileLabel;
 
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
@@ -618,7 +576,7 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
         _currentThinkingEntry = null;
     }
 
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         _lifetimeCancellation?.Cancel();
 

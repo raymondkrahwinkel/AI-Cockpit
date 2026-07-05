@@ -1,7 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
-             xmlns:views="using:Cockpit.App.Views"
              xmlns:conv="using:Cockpit.App.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -21,8 +20,14 @@
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8">
 
-                <Button DockPanel.Dock="Top" Content="+ Nieuwe sessie" Command="{Binding NewSessionCommand}"
-                        Classes="Accent" HorizontalAlignment="Stretch" Margin="0,0,0,8"/>
+                <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+                    <Button Content="+ Nieuwe sessie" Command="{Binding NewSessionCommand}"
+                            Classes="Accent" HorizontalAlignment="Stretch"/>
+                    <Button Content="+ Nieuwe sessie (TTY)" Command="{Binding NewTtySessionCommand}"
+                            Classes="Subtle" HorizontalAlignment="Stretch"
+                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                            ToolTip.Tip="Experiment: de echte interactieve claude-TUI in een paneel"/>
+                </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
                      primary session overview per the cockpit's design goal (sidebar = sessions, not tools). -->
@@ -49,7 +54,7 @@
                 <ScrollViewer>
                     <ItemsControl ItemsSource="{Binding Sessions}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ClaudeSessionViewModel">
+                            <DataTemplate x:DataType="vm:SessionPanelViewModel">
                                 <Border Margin="0,0,0,4" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
                                         Background="{StaticResource CockpitPanelBgBrush}"
                                         BorderThickness="2,0,0,0"
@@ -98,19 +103,21 @@
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ClaudeSessionViewModel">
+                        <DataTemplate x:DataType="vm:SessionPanelViewModel">
                             <Border Margin="4" BorderThickness="1"
                                     BorderBrush="{StaticResource CockpitHairlineBrush}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
-                                <views:ClaudeSessionView DataContext="{Binding}"/>
+                                <!-- ContentControl + ViewLocator picks ClaudeSessionView (SDK) or
+                                     ClaudeTtyView (TTY) from the panel view model's type. -->
+                                <ContentControl Content="{Binding}"/>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
                 <!-- Zoom mode: only the selected session, full width/height. -->
-                <views:ClaudeSessionView DataContext="{Binding SelectedSession}"
-                                         IsVisible="{Binding $parent[DockPanel].((vm:CockpitViewModel)DataContext).IsZoomed}"/>
+                <ContentControl Content="{Binding SelectedSession}"
+                                IsVisible="{Binding $parent[DockPanel].((vm:CockpitViewModel)DataContext).IsZoomed}"/>
             </Grid>
         </DockPanel>
     </Grid>

@@ -31,6 +31,10 @@ sealed class Program
         services.AddTransient<Func<ClaudeSessionViewModel>>(
             provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());
 
+        // Same factory pattern for the TTY-mode panel (#9 experiment).
+        services.AddTransient<Func<ClaudeTtyViewModel>>(
+            provider => () => provider.GetRequiredService<ClaudeTtyViewModel>());
+
         Services = services.BuildServiceProvider();
 
         if (args.Contains("--audio-spike"))

@@ -16,7 +16,7 @@ public partial class CockpitView : UserControl
     /// as a bindable CommandParameter — simplest wiring for a whole-row click target.</summary>
     private void OnSessionItemPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is Border { DataContext: ClaudeSessionViewModel session } && DataContext is CockpitViewModel cockpit)
+        if (sender is Border { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
         {
             cockpit.SelectSessionCommand.Execute(session);
         }

@@ -99,6 +99,30 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public void NewTtySession_AddsATtyPanelAndSelectsIt()
+    {
+        var vm = NewVm();
+
+        vm.NewTtySessionCommand.Execute(null);
+
+        vm.Sessions.Should().HaveCount(2);
+        vm.Sessions[1].Should().BeOfType<ClaudeTtyViewModel>();
+        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+        vm.SelectedSession!.IsSelected.Should().BeTrue();
+    }
+
+    [Fact]
+    public void NewTtySession_ContinuesTheSharedTitleCounter()
+    {
+        var vm = NewVm();
+
+        vm.NewTtySessionCommand.Execute(null);
+
+        vm.Sessions[0].Title.Should().Be("Claude 1");
+        vm.Sessions[1].Title.Should().Be("Claude 2");
+    }
+
+    [Fact]
     public void ToggleZoom_FlipsIsZoomed()
     {
         var vm = NewVm();
@@ -114,6 +138,10 @@ public class CockpitViewModelTests
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
-        return new CockpitViewModel(() => new ClaudeSessionViewModel(), captureService, playbackService);
+        return new CockpitViewModel(
+            () => new ClaudeSessionViewModel(),
+            () => new ClaudeTtyViewModel(),
+            captureService,
+            playbackService);
     }
 }
