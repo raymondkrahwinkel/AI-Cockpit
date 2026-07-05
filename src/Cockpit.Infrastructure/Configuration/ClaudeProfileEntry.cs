@@ -1,17 +1,8 @@
 using Cockpit.Core.Profiles;
 
-namespace Cockpit.Infrastructure.Claude;
+namespace Cockpit.Infrastructure.Configuration;
 
-/// <summary>
-/// JSON shape persisted under the <c>profiles</c> section of <c>cockpit.json</c>.
-/// Kept as a plain DTO separate from <see cref="ClaudeProfile"/> so the on-disk shape can
-/// evolve independently of the domain record.
-/// </summary>
-internal sealed class ClaudeProfileConfigFile
-{
-    public List<ClaudeProfileEntry> Profiles { get; set; } = [];
-}
-
+/// <summary>On-disk shape of a single <see cref="ClaudeProfile"/> in the <c>profiles</c> section.</summary>
 internal sealed class ClaudeProfileEntry
 {
     public string Label { get; set; } = string.Empty;

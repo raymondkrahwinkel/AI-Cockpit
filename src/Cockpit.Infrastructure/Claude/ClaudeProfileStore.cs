@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Claude;
 
@@ -14,31 +14,22 @@ namespace Cockpit.Infrastructure.Claude;
 /// </summary>
 internal sealed class ClaudeProfileStore : IClaudeProfileStore, ISingletonService
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
-
-    private readonly string _configFilePath;
+    private readonly CockpitConfigFileAccess _configFile;
 
     public ClaudeProfileStore()
-        : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "cockpit.json"))
+        : this(CockpitConfigPath.Default)
     {
     }
 
     /// <summary>Test seam: point the store at an arbitrary config file path.</summary>
     internal ClaudeProfileStore(string configFilePath)
     {
-        _configFilePath = configFilePath;
+        _configFile = new CockpitConfigFileAccess(configFilePath);
     }
 
     public async Task<IReadOnlyList<ClaudeProfile>> LoadAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(_configFilePath))
-        {
-            return AutoDetectDefaultProfiles();
-        }
-
-        await using var stream = File.OpenRead(_configFilePath);
-        var configFile = await JsonSerializer.DeserializeAsync<ClaudeProfileConfigFile>(stream, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
 
         if (configFile is null || configFile.Profiles.Count == 0)
         {
@@ -48,22 +39,10 @@ internal sealed class ClaudeProfileStore : IClaudeProfileStore, ISingletonServic
         return configFile.Profiles.Select(entry => entry.ToDomain()).ToList();
     }
 
-    public async Task SaveAsync(IReadOnlyList<ClaudeProfile> profiles, CancellationToken cancellationToken = default)
-    {
-        var directory = Path.GetDirectoryName(_configFilePath);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var configFile = new ClaudeProfileConfigFile
-        {
-            Profiles = profiles.Select(ClaudeProfileEntry.FromDomain).ToList(),
-        };
-
-        await using var stream = File.Create(_configFilePath);
-        await JsonSerializer.SerializeAsync(stream, configFile, SerializerOptions, cancellationToken).ConfigureAwait(false);
-    }
+    public Task SaveAsync(IReadOnlyList<ClaudeProfile> profiles, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(
+            file => file.Profiles = profiles.Select(ClaudeProfileEntry.FromDomain).ToList(),
+            cancellationToken);
 
     private static IReadOnlyList<ClaudeProfile> AutoDetectDefaultProfiles()
     {

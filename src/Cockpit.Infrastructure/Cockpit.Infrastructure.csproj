@@ -9,6 +9,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
+    <!-- SessionSwitch (lock/unlock) presence events for the Windows presence detector. The package is
+         Windows-only at runtime but restores/builds on any host, keeping Infrastructure a plain net10.0
+         assembly (no Windows target framework needed). -->
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.9" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
     <PackageReference Include="SoundFlow" Version="1.4.1" />
   </ItemGroup>
