@@ -33,6 +33,16 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// <summary>Plain rows rendered as a single wrapped text block (not thinking, not a collapsible tool result).</summary>
     public bool IsPlainText => !IsThinking && !IsToolResult;
 
+    /// <summary>
+    /// Presentational only: the echoed user message is an <see cref="TranscriptEntryKind.AssistantText"/>
+    /// row prefixed with "&gt; " (see <c>ClaudeSessionViewModel.SendAsync</c>) — styled muted so it reads
+    /// as the user's own line rather than assistant output.
+    /// </summary>
+    public bool IsUserRow => Kind == TranscriptEntryKind.AssistantText && Text.StartsWith("> ", StringComparison.Ordinal);
+
+    /// <summary>Chevron glyph for the tool-result collapse toggle; presentational only.</summary>
+    public string ToggleGlyph => IsExpanded ? "▾ Tool result" : "▸ Tool result (klik om te tonen)";
+
     [ObservableProperty]
     private string _text;
 
@@ -65,6 +75,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
+
+    /// <summary>Keeps the chevron glyph in sync — <see cref="ToggleGlyph"/> is computed, not observable, on its own.</summary>
+    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(ToggleGlyph));
 
     [RelayCommand]
     private void Allow() => _SetDecision("Allowed");

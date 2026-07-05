@@ -16,7 +16,10 @@
         <vm:MainWindowViewModel/>
     </Design.DataContext>
 
-    <TabControl>
+    <TabControl SelectedIndex="0" Background="{StaticResource CockpitWindowBgBrush}">
+        <TabItem Header="Claude session (F-C1)">
+            <views:ClaudeSessionView DataContext="{Binding ClaudeSession}"/>
+        </TabItem>
         <TabItem Header="Audio (F0)">
             <StackPanel Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                 <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
@@ -24,11 +27,8 @@
                     <Button Content="Stop" Command="{Binding StopRecordingCommand}"/>
                     <Button Content="Play" Command="{Binding PlayCommand}"/>
                 </StackPanel>
-                <TextBlock Text="{Binding Status}" HorizontalAlignment="Center"/>
+                <TextBlock Text="{Binding Status}" HorizontalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
-        </TabItem>
-        <TabItem Header="Claude session (F-C1)">
-            <views:ClaudeSessionView DataContext="{Binding ClaudeSession}"/>
         </TabItem>
     </TabControl>
 

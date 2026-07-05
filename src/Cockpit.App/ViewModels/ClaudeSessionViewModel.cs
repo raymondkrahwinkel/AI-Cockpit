@@ -97,9 +97,47 @@ public partial class ClaudeSessionViewModel : ViewModelBase, ITransientService, 
     [ObservableProperty]
     private string? _activeProfileLabel;
 
-    // Parameterless constructor kept for the Avalonia previewer design-time context.
+    // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
+    // few sample transcript rows so the previewer/Screenshotter render the styled components
+    // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
+    // DI-backed session.
     public ClaudeSessionViewModel()
     {
+        Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
+        ActiveProfileLabel = "raymond@work";
+
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "> los de bug op in ClaudeSessionView"));
+
+        var thinking = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking,
+            "De gebruiker vraagt om de layout-bug te fixen. Ik bekijk eerst de XAML-structuur...")
+        {
+            IsExpanded = false,
+        };
+        Transcript.Add(thinking);
+
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
+            "Ik heb de oorzaak gevonden: de DockPanel-volgorde zorgde ervoor dat de ScrollViewer werd platgedrukt. Ik verplaats de top- en bottom-docks vóór de laatste child."));
+
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
+            "Tool: Edit({\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"})")
+        {
+            ToolUseId = "sample-tool-1",
+            ToolName = "Edit",
+        });
+
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolResult,
+            "Tool result: The file D:\\Projects\\dotnet\\Cockpit\\src\\Cockpit.App\\Views\\ClaudeSessionView.axaml has been updated successfully.")
+        {
+            IsExpanded = false,
+        });
+
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
+            "Tool: Bash({\"command\":\"dotnet build\"})")
+        {
+            ToolUseId = "sample-tool-2",
+            ToolName = "Bash",
+            IsPendingPermission = true,
+        });
     }
 
     public ClaudeSessionViewModel(IClaudeSession session, IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)

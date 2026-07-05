@@ -5,85 +5,116 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
              x:Class="Cockpit.App.Views.ClaudeSessionView"
-             x:DataType="vm:ClaudeSessionViewModel">
+             x:DataType="vm:ClaudeSessionViewModel"
+             Background="{StaticResource CockpitWindowBgBrush}">
 
     <Design.DataContext>
         <vm:ClaudeSessionViewModel/>
     </Design.DataContext>
 
-    <DockPanel Margin="8">
+    <DockPanel Margin="16">
 
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-            <Button Content="Start session" Command="{Binding StartCommand}"/>
-            <Button Content="Stop" Command="{Binding StopCommand}"
-                    ToolTip.Tip="Onderbreekt de lopende turn (control_request/interrupt)"/>
-            <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
-                      DisplayMemberBinding="{Binding Label}" MinWidth="150"
-                      ToolTip.Tip="Permission-mode voor deze sessie (live wisselbaar)"/>
-            <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
-                      DisplayMemberBinding="{Binding Label}" MinWidth="120"
-                      ToolTip.Tip="Model voor deze sessie (--model bij start, live wisselbaar)"/>
-            <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
-                      DisplayMemberBinding="{Binding Label}" MinWidth="100"
-                      ToolTip.Tip="Thinking-effort (ongeverifieerde mapping naar thinking-budget)"/>
-            <TextBlock Text="{Binding Status}" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center"
-                       IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-        </StackPanel>
+        <!-- Top bar: primary action (Start/Stop) gets the accent; dropdowns stay compact and
+             neutral so the eye lands on the action, not the controls. -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12,10" Margin="0,0,0,10">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Content="Start session" Command="{Binding StartCommand}" Classes="Accent"/>
+                    <Button Content="Stop" Command="{Binding StopCommand}"
+                            ToolTip.Tip="Onderbreekt de lopende turn (control_request/interrupt)"/>
+                    <Border Width="1" Height="20" Background="{StaticResource CockpitHairlineBrush}" Margin="4,0"/>
+                    <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
+                              DisplayMemberBinding="{Binding Label}" MinWidth="140"
+                              ToolTip.Tip="Permission-mode voor deze sessie (live wisselbaar)"/>
+                    <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                              DisplayMemberBinding="{Binding Label}" MinWidth="110"
+                              ToolTip.Tip="Model voor deze sessie (--model bij start, live wisselbaar)"/>
+                    <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
+                              DisplayMemberBinding="{Binding Label}" MinWidth="100"
+                              ToolTip.Tip="Thinking-effort (ongeverifieerde mapping naar thinking-budget)"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Status}" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
 
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
-                    IsVisible="{Binding IsChoosingProfile}">
-            <TextBlock Text="Profile:" VerticalAlignment="Center"/>
-            <ComboBox ItemsSource="{Binding ProfileChoices}" SelectedItem="{Binding SelectedProfile}"
-                      DisplayMemberBinding="{Binding Label}" Width="200"/>
-            <Button Content="Use profile" Command="{Binding ConfirmProfileChoiceCommand}"/>
-        </StackPanel>
+        <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12,10" Margin="0,0,0,10"
+                IsVisible="{Binding IsChoosingProfile}">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <TextBlock Text="Profile:" VerticalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <ComboBox ItemsSource="{Binding ProfileChoices}" SelectedItem="{Binding SelectedProfile}"
+                          DisplayMemberBinding="{Binding Label}" Width="200"/>
+                <Button Content="Use profile" Command="{Binding ConfirmProfileChoiceCommand}" Classes="Accent"/>
+            </StackPanel>
+        </Border>
 
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+        <!-- Input bar: dark multiline textbox + accent Send. -->
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,10,0,0" VerticalAlignment="Bottom">
             <TextBox x:Name="InputBox" Text="{Binding InputText}"
                      PlaceholderText="Message Claude...  (Enter = versturen, Shift+Enter = nieuwe regel)" Width="600"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
-            <Button Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding !IsBusy}"/>
+            <Button Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding !IsBusy}" Classes="Accent"
+                    VerticalAlignment="Bottom"/>
         </StackPanel>
 
         <ScrollViewer>
             <ItemsControl ItemsSource="{Binding Transcript}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                        <Border Padding="6" Margin="0,2" CornerRadius="4"
-                                Background="#22FFFFFF">
-                            <StackPanel Spacing="4">
+                        <Border Padding="10,8" Margin="0,3" CornerRadius="{StaticResource CockpitControlRadius}"
+                                Background="{StaticResource CockpitPanelBgBrush}"
+                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
 
                                 <!-- Thinking rows: dimmed, collapsed to a toggle by default so they read as
                                      reasoning-in-the-background rather than part of the visible transcript flow. -->
                                 <StackPanel IsVisible="{Binding IsThinking}" Spacing="4">
                                     <Button Content="Thinking..." Command="{Binding ToggleExpandedCommand}"
-                                            Opacity="0.6" FontStyle="Italic" Padding="2" Background="Transparent"/>
+                                            Classes="Subtle" FontStyle="Italic"
+                                            Foreground="{StaticResource CockpitTextFaintBrush}"/>
                                     <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                               Opacity="0.6" FontStyle="Italic"
+                                               FontStyle="Italic"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"
                                                IsVisible="{Binding IsExpanded}"/>
                                 </StackPanel>
 
+                                <!-- User rows ("> ...") are muted so they read as the user's own line, not assistant output.
+                                     No local Foreground here — the "userRow" style class (Theme.axaml) needs to be able
+                                     to override the default TextBlock foreground, and a local value always wins over styles. -->
                                 <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                           IsVisible="{Binding IsPlainText}"/>
+                                           IsVisible="{Binding IsPlainText}"
+                                           Classes.userRow="{Binding IsUserRow}"/>
 
-                                <!-- Tool results: collapsed by default; expand on demand. -->
+                                <!-- Tool results: collapsed by default; expand on demand via chevron. -->
                                 <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
-                                    <Button Content="▸ Tool result (klik om te tonen)" Command="{Binding ToggleExpandedCommand}"
-                                            Opacity="0.7" Padding="2" Background="Transparent" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" Opacity="0.85"
+                                    <Button Content="{Binding ToggleGlyph}"
+                                            Command="{Binding ToggleExpandedCommand}"
+                                            Classes="Subtle" HorizontalAlignment="Left"
+                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                                IsVisible="{Binding IsExpanded}"/>
                                 </StackPanel>
 
                                 <StackPanel Orientation="Horizontal" Spacing="8"
                                             IsVisible="{Binding IsPendingPermission}">
-                                    <Button Content="Allow" Command="{Binding AllowCommand}"/>
+                                    <Button Content="Allow" Command="{Binding AllowCommand}" Classes="Accent"/>
                                     <Button Content="Always (exact)" Command="{Binding AllowAlwaysExactCommand}"/>
                                     <Button Content="Always (wildcard)" Command="{Binding AllowAlwaysWildcardCommand}"/>
                                     <Button Content="Deny" Command="{Binding DenyCommand}"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding PermissionDecision}"
                                            FontStyle="Italic"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"
                                            IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>

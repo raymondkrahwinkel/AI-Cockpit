@@ -1,0 +1,138 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Cockpit dark theme: flat, hairline-bordered, quiet. Tokens are consumed as
+         DynamicResource so a future light/alt theme can swap this dictionary wholesale. -->
+    <Styles.Resources>
+        <ResourceDictionary>
+
+            <!-- Surfaces -->
+            <Color x:Key="CockpitWindowBgColor">#16181D</Color>
+            <Color x:Key="CockpitPanelBgColor">#1E2128</Color>
+            <Color x:Key="CockpitSecondaryBgColor">#131519</Color>
+            <Color x:Key="CockpitHairlineColor">#2C2F37</Color>
+
+            <SolidColorBrush x:Key="CockpitWindowBgBrush" Color="{StaticResource CockpitWindowBgColor}"/>
+            <SolidColorBrush x:Key="CockpitPanelBgBrush" Color="{StaticResource CockpitPanelBgColor}"/>
+            <SolidColorBrush x:Key="CockpitSecondaryBgBrush" Color="{StaticResource CockpitSecondaryBgColor}"/>
+            <SolidColorBrush x:Key="CockpitHairlineBrush" Color="{StaticResource CockpitHairlineColor}"/>
+
+            <!-- Text -->
+            <Color x:Key="CockpitTextPrimaryColor">#E6E7EA</Color>
+            <Color x:Key="CockpitTextSecondaryColor">#9498A3</Color>
+            <Color x:Key="CockpitTextFaintColor">#6B6F79</Color>
+
+            <SolidColorBrush x:Key="CockpitTextPrimaryBrush" Color="{StaticResource CockpitTextPrimaryColor}"/>
+            <SolidColorBrush x:Key="CockpitTextSecondaryBrush" Color="{StaticResource CockpitTextSecondaryColor}"/>
+            <SolidColorBrush x:Key="CockpitTextFaintBrush" Color="{StaticResource CockpitTextFaintColor}"/>
+
+            <!-- Accent + status -->
+            <Color x:Key="CockpitAccentColor">#D97757</Color>
+            <Color x:Key="CockpitStatusBusyColor">#4A90E2</Color>
+            <Color x:Key="CockpitStatusWaitingColor">#E0A33E</Color>
+            <Color x:Key="CockpitStatusDoneColor">#5AA576</Color>
+
+            <SolidColorBrush x:Key="CockpitAccentBrush" Color="{StaticResource CockpitAccentColor}"/>
+            <SolidColorBrush x:Key="CockpitAccentHoverBrush" Color="#E08867"/>
+            <SolidColorBrush x:Key="CockpitAccentPressedBrush" Color="#C4694A"/>
+            <SolidColorBrush x:Key="CockpitStatusBusyBrush" Color="{StaticResource CockpitStatusBusyColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusWaitingBrush" Color="{StaticResource CockpitStatusWaitingColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusDoneBrush" Color="{StaticResource CockpitStatusDoneColor}"/>
+
+            <!-- Geometry -->
+            <CornerRadius x:Key="CockpitControlRadius">6</CornerRadius>
+            <CornerRadius x:Key="CockpitPanelRadius">10</CornerRadius>
+            <Thickness x:Key="CockpitHairlineThickness">1</Thickness>
+
+        </ResourceDictionary>
+    </Styles.Resources>
+
+    <!-- Window chrome -->
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>
+    </Style>
+
+    <!-- Base text -->
+    <Style Selector="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+
+    <!-- Echoed user message in the transcript ("> ..."): muted so it reads as the user's own line. -->
+    <Style Selector="TextBlock.userRow">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+
+    <!-- Buttons: flat, hairline border, rounded corners. Accent reserved for primary actions
+         via the "Accent" style class (applied explicitly, not globally). -->
+    <Style Selector="Button">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="12,6"/>
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+    </Style>
+
+    <Style Selector="Button.Accent">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="Button.Accent:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.Accent:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentPressedBrush}"/>
+    </Style>
+
+    <!-- Subtle buttons used as toggles (chevrons, "Thinking..." collapsers) — no chrome, just text. -->
+    <Style Selector="Button.Subtle">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="2"/>
+    </Style>
+    <Style Selector="Button.Subtle:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+
+    <!-- ComboBox: flat, hairline, compact -->
+    <Style Selector="ComboBox">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="8,4"/>
+    </Style>
+
+    <!-- TextBox: dark input surface -->
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="CaretBrush" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="8,6"/>
+    </Style>
+    <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
+    <!-- TabControl / TabItem: flat, quiet, accent underline for the selected tab -->
+    <Style Selector="TabControl">
+        <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>
+    </Style>
+    <Style Selector="TabItem">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="Padding" Value="14,8"/>
+    </Style>
+    <Style Selector="TabItem:selected">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+
+</Styles>
