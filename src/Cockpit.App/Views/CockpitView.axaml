@@ -122,6 +122,10 @@
                                               IsChecked="{Binding SingleSessionLayout}"/>
                                     <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
                                                Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <CheckBox Content="Minimize to tray when closing the window"
+                                              IsChecked="{Binding MinimizeToTrayOnClose}"/>
+                                    <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                     <Button Content="Save" Command="{Binding SaveLayoutSettingsCommand}"
                                             Classes="Accent" HorizontalAlignment="Left"/>
                                     <TextBlock Text="{Binding LayoutSettingsStatus}"

@@ -7,13 +7,17 @@ internal sealed class LayoutSettingsEntry
 {
     public bool SingleSessionLayout { get; set; }
 
+    public bool MinimizeToTrayOnClose { get; set; }
+
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
         SingleSessionLayout = settings.SingleSessionLayout,
+        MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose,
     };
 
     public LayoutSettings ToDomain() => new()
     {
         SingleSessionLayout = SingleSessionLayout,
+        MinimizeToTrayOnClose = MinimizeToTrayOnClose,
     };
 }

@@ -88,6 +88,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _singleSessionLayout;
 
+    /// <summary>When true, closing the window hides it to the system tray and keeps the app running (#33). Read by MainWindow on close.</summary>
+    [ObservableProperty]
+    private bool _minimizeToTrayOnClose;
+
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
 
@@ -366,6 +370,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var settings = await _layoutSettingsStore.LoadAsync();
         SingleSessionLayout = settings.SingleSessionLayout;
+        MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
     }
 
     /// <summary>Persists the layout settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
@@ -377,7 +382,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _layoutSettingsStore.SaveAsync(new LayoutSettings { SingleSessionLayout = SingleSessionLayout });
+        await _layoutSettingsStore.SaveAsync(new LayoutSettings
+        {
+            SingleSessionLayout = SingleSessionLayout,
+            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+        });
         LayoutSettingsStatus = "Saved.";
     }
 

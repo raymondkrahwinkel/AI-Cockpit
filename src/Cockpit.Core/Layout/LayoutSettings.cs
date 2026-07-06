@@ -9,4 +9,7 @@ public sealed record LayoutSettings
 {
     /// <summary>When true, the cockpit shows only the selected session full-size; you switch sessions from the sidebar. Off = the adaptive grid.</summary>
     public bool SingleSessionLayout { get; init; }
+
+    /// <summary>When true, closing the window hides it to the system tray and keeps the app running instead of quitting (#33). Off by default.</summary>
+    public bool MinimizeToTrayOnClose { get; init; }
 }
