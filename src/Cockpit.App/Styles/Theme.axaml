@@ -56,13 +56,14 @@
         <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>
     </Style>
 
-    <!-- Base text -->
-    <Style Selector="TextBlock">
+    <!-- Base text. :is() so SelectableTextBlock (transcript rows, T3) inherits the same treatment as
+         plain TextBlock — an exact-type selector would skip the derived SelectableTextBlock. -->
+    <Style Selector=":is(TextBlock)">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
     <!-- Echoed user message in the transcript ("> ..."): muted so it reads as the user's own line. -->
-    <Style Selector="TextBlock.userRow">
+    <Style Selector=":is(TextBlock).userRow">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
@@ -191,7 +192,7 @@
     </Style>
 
     <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
-    <Style Selector="TextBlock.transcript">
+    <Style Selector=":is(TextBlock).transcript">
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
         <Setter Property="FontSize" Value="12.5"/>
     </Style>
@@ -202,9 +203,32 @@
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
         <Setter Property="FontSize" Value="12"/>
     </Style>
-    <Style Selector="TextBlock.toolBody">
+    <Style Selector=":is(TextBlock).toolBody">
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
         <Setter Property="FontSize" Value="12"/>
+    </Style>
+
+    <!-- Structured/code result box (T6): a monospace panel a shade darker than the row, so JSON/code
+         results read as a code block rather than prose. The copy button floats top-right. -->
+    <Style Selector="Border.codeBox">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="8,6"/>
+    </Style>
+    <Style Selector="Button.copyBtn">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="Margin" Value="0,2,2,0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
+    <Style Selector="Button.copyBtn:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
     <!-- Cockpit sidebar session item: accent left-border marks the active session; inactive items

@@ -77,6 +77,17 @@ public partial class ClaudeSessionView : UserControl
         ScrollToBottomButton.IsVisible = false;
     }
 
+    /// <summary>Copies a tool result's formatted text to the clipboard (T6) — the button sits on the row,
+    /// so its DataContext is the row whose result was rendered.</summary>
+    private void _OnCopyResultClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: TranscriptEntryViewModel entry }
+            && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
+        {
+            _ = clipboard.SetTextAsync(entry.ResultDisplayText);
+        }
+    }
+
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
     {
         if (_IsPasteGesture(e))

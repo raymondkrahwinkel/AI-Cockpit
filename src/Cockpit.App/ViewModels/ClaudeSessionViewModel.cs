@@ -83,6 +83,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>True while a pending permission decision or CLI <c>needs_action</c> signal is outstanding, driving <see cref="SessionStatus.NeedsAttention"/>.</summary>
     private bool _needsAttention;
 
+    /// <summary>True once at least one turn has finished, so an idle session reads as Done rather than Idle — independent of whether a (success) turn added a transcript row (T4).</summary>
+    private bool _hasCompletedATurn;
+
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
     // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
@@ -112,7 +115,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             InputJson = "{\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"}",
             IsExpanded = true,
         };
-        editTool.SetResult("The file src/Cockpit.App/Views/ClaudeSessionView.axaml has been updated successfully.", isError: false);
+        editTool.SetResult("{\"success\":true,\"file\":\"ClaudeSessionView.axaml\",\"changesApplied\":3,\"warnings\":[]}", isError: false);
         Transcript.Add(editTool);
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
@@ -537,10 +540,16 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
             case TurnCompleted turn:
                 _RemoveCurrentThinkingEntry();
-                Transcript.Add(new TranscriptEntryViewModel(
-                    TranscriptEntryKind.TurnCompleted,
-                    turn.IsError ? $"Turn failed ({turn.Subtype})" : $"Turn completed ({turn.Subtype})"));
+                // Only surface a turn row when it failed — a plain "Turn completed (success)" row is
+                // noise in the transcript (T4). The Done status still fires below.
+                if (turn.IsError)
+                {
+                    Transcript.Add(new TranscriptEntryViewModel(
+                        TranscriptEntryKind.TurnCompleted, $"Turn failed ({turn.Subtype})"));
+                }
+
                 _currentAssistantEntry = null;
+                _hasCompletedATurn = true;
                 IsBusy = false;
                 _RecomputeStatus();
                 break;
@@ -584,7 +593,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         {
             (true, _) => SessionStatus.NeedsAttention,
             (false, true) => SessionStatus.Busy,
-            (false, false) => Transcript.Any(t => t.Kind == TranscriptEntryKind.TurnCompleted) ? SessionStatus.Done : SessionStatus.Idle,
+            (false, false) => _hasCompletedATurn ? SessionStatus.Done : SessionStatus.Idle,
         };
     }
 

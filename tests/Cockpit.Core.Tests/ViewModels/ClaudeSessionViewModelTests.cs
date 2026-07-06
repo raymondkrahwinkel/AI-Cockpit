@@ -140,10 +140,22 @@ public class ClaudeSessionViewModelTests
         var vm = NewVm();
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
-        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+        // A failed turn is surfaced as a row; a successful one is not (T4), so use an error here.
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error", Result = "boom", IsError = true });
 
         vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.Thinking);
         vm.Transcript.Should().Contain(t => t.Kind == TranscriptEntryKind.TurnCompleted);
+    }
+
+    [Fact]
+    public void Apply_SuccessfulTurnCompleted_AddsNoTurnRow()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.TurnCompleted);
+        vm.SessionStatus.Should().Be(SessionStatus.Done);
     }
 
     [Fact]
@@ -221,7 +233,40 @@ public class ClaudeSessionViewModelTests
 
         var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
         toolUse.IsResultError.Should().BeTrue();
-        toolUse.ResultToggleGlyph.Should().Contain("error");
+        toolUse.HasResult.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ToolHeader_CompactsToToolNameAndAShortHint()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested
+        {
+            SessionId = "S1", ToolUseId = "toolu_3", ToolName = "Bash", InputJson = """{"command":"dotnet build"}""",
+        });
+
+        var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
+        toolUse.ToolHeader.Should().Contain("Bash").And.Contain("dotnet build");
+    }
+
+    [Fact]
+    public void ResultIsCodeLike_ForJsonResult_IsTrueAndPrettyPrinted()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: X");
+        entry.SetResult("""{"a":1,"b":[2,3]}""", isError: false);
+
+        entry.ResultIsCodeLike.Should().BeTrue();
+        entry.ResultDisplayText.Should().Contain("\n");
+    }
+
+    [Fact]
+    public void ResultIsCodeLike_ForShortPlainResult_IsFalse()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: X");
+        entry.SetResult("done", isError: false);
+
+        entry.ResultIsCodeLike.Should().BeFalse();
+        entry.ResultDisplayText.Should().Be("done");
     }
 
     [Fact]

@@ -108,7 +108,7 @@
                                     <Button Content="Thinking..." Command="{Binding ToggleExpandedCommand}"
                                             Classes="Subtle toolRow" FontStyle="Italic"
                                             Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                Classes="transcript"
                                                FontStyle="Italic"
                                                Foreground="{StaticResource CockpitTextFaintBrush}"
@@ -118,27 +118,39 @@
                                 <!-- User rows ("> ...") are muted so they read as the user's own line, not assistant output.
                                      No local Foreground here — the "userRow" style class (Theme.axaml) needs to be able
                                      to override the default TextBlock foreground, and a local value always wins over styles. -->
-                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                            Classes="transcript"
                                            IsVisible="{Binding IsPlainText}"
                                            Classes.userRow="{Binding IsUserRow}"/>
 
-                                <!-- Tool-use rows: the call line, plus its coupled result as an expandable
-                                     section beneath it (L14 — matched on tool_use_id), so a result stays
-                                     attached to the call it belongs to instead of drifting to a loose row. -->
+                                <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
+                                     to the full input plus the coupled result (L14, matched on tool_use_id).
+                                     A structured/code result renders in a monospace code box with a copy
+                                     button (T6); a plain result stays inline text. -->
                                 <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
-                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                               Classes="toolBody"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                    <StackPanel IsVisible="{Binding HasResult}" Spacing="4">
-                                        <Button Content="{Binding ResultToggleGlyph}"
-                                                Command="{Binding ToggleExpandedCommand}"
-                                                Classes="Subtle toolRow" HorizontalAlignment="Left"
-                                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                        <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap"
-                                                   Classes="toolBody"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                   IsVisible="{Binding IsExpanded}"/>
+                                    <Button Content="{Binding ToolHeader}" Command="{Binding ToggleExpandedCommand}"
+                                            Classes="Subtle toolRow" HorizontalAlignment="Left"
+                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
+                                        <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                             Classes="toolBody"
+                                                             Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        <StackPanel IsVisible="{Binding HasResult}" Spacing="4">
+                                            <Border IsVisible="{Binding ResultIsCodeLike}" Classes="codeBox">
+                                                <Grid>
+                                                    <ScrollViewer HorizontalScrollBarVisibility="Auto" MaxHeight="280">
+                                                        <SelectableTextBlock Text="{Binding ResultDisplayText}" Classes="toolBody"/>
+                                                    </ScrollViewer>
+                                                    <Button Content="Copy" Classes="copyBtn" Click="_OnCopyResultClick"
+                                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                            ToolTip.Tip="Copy result to clipboard"/>
+                                                </Grid>
+                                            </Border>
+                                            <SelectableTextBlock Text="{Binding ResultText}" TextWrapping="Wrap"
+                                                                 Classes="toolBody"
+                                                                 Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                                 IsVisible="{Binding !ResultIsCodeLike}"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
 
@@ -148,7 +160,7 @@
                                             Command="{Binding ToggleExpandedCommand}"
                                             Classes="Subtle toolRow" HorizontalAlignment="Left"
                                             Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                Classes="toolBody"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                                IsVisible="{Binding IsExpanded}"/>
