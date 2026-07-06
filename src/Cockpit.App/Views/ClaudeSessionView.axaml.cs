@@ -107,7 +107,10 @@ public partial class ClaudeSessionView : UserControl
         }
 
         e.Handled = true;
-        if (DataContext is ClaudeSessionViewModel { IsBusy: false } vm && vm.SendCommand.CanExecute(null))
+        // Enter mirrors the Send button: SendAsync queues the message itself when a turn is in flight
+        // (T8), so gate only on there being something to send — not on IsBusy, which used to block
+        // Enter while busy and left queueing reachable via the Send button only.
+        if (DataContext is ClaudeSessionViewModel vm && vm.SendCommand.CanExecute(null))
         {
             vm.SendCommand.Execute(null);
         }
