@@ -73,6 +73,18 @@ sealed class Program
             // otherwise the server's graceful stop waits on the still-open SSE streams (bug #32).
             DisposeCockpit();
             StopHostedServices(hostedServices);
+
+            // Dispose the container last: nothing else disposes the singleton AudioEngine (SoundFlow's
+            // MiniAudioEngine), whose native audio thread otherwise keeps the process alive after the
+            // window closes — the graceful session/host teardown alone left a zombie on Linux (#32).
+            try
+            {
+                (Services as IDisposable)?.Dispose();
+            }
+            catch (Exception)
+            {
+                // Best-effort container disposal must not mask the app exit.
+            }
         }
     }
 
