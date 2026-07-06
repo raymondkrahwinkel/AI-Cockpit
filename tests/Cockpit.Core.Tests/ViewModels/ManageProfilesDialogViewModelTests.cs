@@ -100,6 +100,31 @@ public class ManageProfilesDialogViewModelTests
     }
 
     [Fact]
+    public async Task RemoveThenSave_PersistsTheListWithoutTheRemovedProfile()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new ClaudeProfile("default", "/home/r/.claude"),
+            new ClaudeProfile("personal", "/home/r/.claude-personal"),
+            new ClaudeProfile("work", "/home/r/.claude-work"),
+        ]);
+        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        loginChecker.IsLoggedIn(Arg.Any<ClaudeProfile>()).Returns(true);
+        var vm = new ManageProfilesDialogViewModel(store, loginChecker);
+        await vm.LoadAsync();
+        vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "default");
+
+        vm.RemoveProfileCommand.Execute(null);
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<ClaudeProfile>>(list =>
+                list.Count == 2 && list.All(p => p.Label != "default")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public void ToProfile_CollapsesEmptyExecutableAndPurposeToNull()
     {
         var editable = new EditableProfileViewModel(new ClaudeProfile("work", "/home/r/.claude-work"), isLoggedIn: false)
