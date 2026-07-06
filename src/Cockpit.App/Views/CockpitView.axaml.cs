@@ -24,7 +24,7 @@ public partial class CockpitView : UserControl
         // has focus. Tunnelling (handledEventsToo not needed) would pre-empt a focused TextBox's own
         // Ctrl+Left/Right word-navigation, so we listen on the bubbling KeyDown and bail out when the
         // focus sits in an editable element — that keeps word-nav intact while typing.
-        if (e.Root is InputElement root)
+        if (e.RootVisual is InputElement root)
         {
             root.AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Bubble);
         }
@@ -32,7 +32,7 @@ public partial class CockpitView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        if (e.Root is InputElement root)
+        if (e.RootVisual is InputElement root)
         {
             root.RemoveHandler(KeyDownEvent, OnRootKeyDown);
         }

@@ -7,45 +7,46 @@ namespace Cockpit.Core.Tests.Profiles;
 /// Exercises the auto-detect logic against a fake directory-existence predicate — no real
 /// filesystem access, so this covers arbitrary "home" layouts without touching disk.
 /// </summary>
+/// <remarks>
+/// Paths are built with <see cref="Path.Combine(string, string)"/> rather than hard-coded with a
+/// backslash: the label derivation relies on <see cref="Path.GetFileName(string)"/>, which only
+/// splits on the running OS's separator, so a literal <c>C:\...</c> string would parse as one
+/// segment on Linux and break the test off Windows.
+/// </remarks>
 public class ClaudeProfileAutoDetectorTests
 {
+    private static readonly string Home = Path.Combine("fake-home");
+    private static readonly string DefaultDir = Path.Combine(Home, ".claude");
+    private static readonly string PersonalDir = Path.Combine(Home, ".claude-personal");
+    private static readonly string WorkDir = Path.Combine(Home, ".claude-work");
+
     [Fact]
     public void Detect_AllCandidatesExist_ReturnsProfileForEachWithDerivedLabels()
     {
-        var candidates = new[]
-        {
-            @"C:\fake-home\.claude",
-            @"C:\fake-home\.claude-personal",
-            @"C:\fake-home\.claude-work",
-        };
+        var candidates = new[] { DefaultDir, PersonalDir, WorkDir };
 
         var profiles = ClaudeProfileAutoDetector.Detect(candidates, _ => true);
 
         profiles.Should().HaveCount(3);
-        profiles.Should().Contain(p => p.Label == "default" && p.ConfigDir == @"C:\fake-home\.claude");
-        profiles.Should().Contain(p => p.Label == "personal" && p.ConfigDir == @"C:\fake-home\.claude-personal");
-        profiles.Should().Contain(p => p.Label == "work" && p.ConfigDir == @"C:\fake-home\.claude-work");
+        profiles.Should().Contain(p => p.Label == "default" && p.ConfigDir == DefaultDir);
+        profiles.Should().Contain(p => p.Label == "personal" && p.ConfigDir == PersonalDir);
+        profiles.Should().Contain(p => p.Label == "work" && p.ConfigDir == WorkDir);
     }
 
     [Fact]
     public void Detect_OnlySomeCandidatesExist_SkipsMissingOnes()
     {
-        var candidates = new[]
-        {
-            @"C:\fake-home\.claude",
-            @"C:\fake-home\.claude-personal",
-            @"C:\fake-home\.claude-work",
-        };
+        var candidates = new[] { DefaultDir, PersonalDir, WorkDir };
 
         var profiles = ClaudeProfileAutoDetector.Detect(candidates, dir => dir.EndsWith(".claude"));
 
-        profiles.Should().ContainSingle().Which.ConfigDir.Should().Be(@"C:\fake-home\.claude");
+        profiles.Should().ContainSingle().Which.ConfigDir.Should().Be(DefaultDir);
     }
 
     [Fact]
     public void Detect_NoCandidatesExist_ReturnsEmpty()
     {
-        var candidates = new[] { @"C:\fake-home\.claude" };
+        var candidates = new[] { DefaultDir };
 
         var profiles = ClaudeProfileAutoDetector.Detect(candidates, _ => false);
 
