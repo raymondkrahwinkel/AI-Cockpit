@@ -14,25 +14,33 @@
 
     <DockPanel Margin="12">
 
+        <!-- Session name above the panel (L5): the dialog's optional name, else "Claude N". -->
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
+                   Margin="2,0,0,6"/>
+
         <!-- Top bar: the session was started from the New-session dialog (#31), so there is no Start
-             button — only Stop plus the live mode/model/effort selectors, kept compact so the eye lands
-             on the transcript rather than a row of controls. Status sits inline to save a row. -->
+             button — only Stop plus the live mode/model/effort selectors. They share one compact height
+             and surface so they read as one aligned row. Status sits inline to save a row. -->
         <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitPanelRadius}" Padding="10,7" Margin="0,0,0,8">
             <StackPanel Spacing="6">
                 <WrapPanel Orientation="Horizontal">
-                    <Button Content="Stop" Command="{Binding StopCommand}" Classes="Compact" Margin="0,0,10,4"
+                    <Button Content="Stop" Command="{Binding StopCommand}" Classes="Compact"
+                            VerticalAlignment="Center" Margin="0,0,6,4"
                             ToolTip.Tip="Interrupts the running turn (control_request/interrupt)"/>
                     <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104" Margin="0,0,4,4"
+                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104"
+                              VerticalAlignment="Center" Margin="0,0,6,4"
                               IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
                               ToolTip.Tip="Permission mode for this session (live-switchable; bypass is locked once the session is launched in it)"/>
                     <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="84" Margin="0,0,4,4"
+                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
+                              VerticalAlignment="Center" Margin="0,0,6,4"
                               ToolTip.Tip="Model for this session (--model at launch, live-switchable)"/>
                     <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="80" Margin="0,0,4,4"
+                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
+                              VerticalAlignment="Center" Margin="0,0,0,4"
                               ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
                 </WrapPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">

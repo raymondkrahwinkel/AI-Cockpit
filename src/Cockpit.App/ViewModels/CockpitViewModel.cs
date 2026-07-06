@@ -57,6 +57,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public int GridColumns => Sessions.Count <= 1 ? 1 : 2;
 
+    /// <summary>
+    /// TTY mode hosts the real claude TUI via ConPTY, which is Windows-only in this build; the sidebar
+    /// hides "+ New session (TTY)" on other platforms rather than offer a session whose view can't load
+    /// (it resolved to a "Not Found" placeholder on Linux).
+    /// </summary>
+    public bool IsTtySupported { get; } = OperatingSystem.IsWindows();
+
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
 
@@ -300,7 +307,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var session = _sessionFactory();
-        AddSession(session);
+        AddSession(session, result.SessionName);
         await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort);
     }
 
@@ -323,14 +330,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var session = _ttySessionFactory();
-        AddSession(session);
+        AddSession(session, result.SessionName);
         session.LaunchConfigured(result.Profile);
     }
 
-    private void AddSession(SessionPanelViewModel session)
+    /// <summary>Opens the Manage-profiles dialog from the sidebar, independent of creating a session (L2).</summary>
+    [RelayCommand]
+    private async Task ManageProfilesAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowManageProfilesDialogAsync();
+    }
+
+    private void AddSession(SessionPanelViewModel session, string? name = null)
     {
         _sessionCounter++;
-        session.Title = $"Claude {_sessionCounter}";
+        // A friendly name from the dialog wins; otherwise fall back to the running "Claude N" counter.
+        session.Title = string.IsNullOrWhiteSpace(name) ? $"Claude {_sessionCounter}" : name.Trim();
 
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;

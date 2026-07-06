@@ -91,7 +91,7 @@ public class NewSessionDialogViewModelTests
     {
         var vm = NewVm(out _);
         NewSessionResult? result = new(new ClaudeProfile("x", "y"), SessionOptionCatalog.DefaultPermissionMode,
-            SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+            SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort, null);
         var closed = false;
         vm.CloseRequested += r => { result = r; closed = true; };
 

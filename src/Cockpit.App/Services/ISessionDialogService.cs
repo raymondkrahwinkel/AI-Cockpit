@@ -10,4 +10,7 @@ public interface ISessionDialogService
 {
     /// <summary>Shows the New-session dialog and returns the confirmed choices, or null if cancelled.</summary>
     Task<NewSessionResult?> ShowNewSessionDialogAsync(SessionKind kind);
+
+    /// <summary>Shows the Manage-profiles dialog on its own (e.g. from the sidebar), over the main window.</summary>
+    Task ShowManageProfilesDialogAsync();
 }

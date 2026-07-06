@@ -103,10 +103,15 @@
         <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
-    <!-- Compact button: denser secondary action (Stop) that must not compete with the accent. -->
+    <!-- Compact button: denser secondary action (Stop) that must not compete with the accent. Shares
+         the compact selectors' height/surface so the session top bar (Stop + mode/model/effort) reads
+         as one aligned row of controls. -->
     <Style Selector="Button.Compact">
-        <Setter Property="Padding" Value="8,3"/>
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="MinHeight" Value="28"/>
         <Setter Property="FontSize" Value="12"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
@@ -156,9 +161,10 @@
     <!-- Compact selectors: the per-session mode/model/effort pickers are context controls, not the
          focus — shrink them (smaller font, tighter padding, faint text) so the transcript dominates. -->
     <Style Selector="ComboBox.Compact">
-        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="Padding" Value="8,0"/>
         <Setter Property="FontSize" Value="12"/>
-        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="MinHeight" Value="28"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>

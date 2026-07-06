@@ -11,4 +11,5 @@ public sealed record NewSessionResult(
     ClaudeProfile Profile,
     PermissionModeOption Mode,
     ModelOption Model,
-    EffortOption Effort);
+    EffortOption Effort,
+    string? SessionName);

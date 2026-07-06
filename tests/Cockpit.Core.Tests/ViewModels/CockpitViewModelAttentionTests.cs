@@ -73,7 +73,7 @@ public class CockpitViewModelAttentionTests
             new ClaudeProfile("default", @"C:\fake\.claude"),
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
-            SessionOptionCatalog.DefaultEffort));
+            SessionOptionCatalog.DefaultEffort, null));
 
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),

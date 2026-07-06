@@ -44,6 +44,13 @@
         <StackPanel Margin="16" Spacing="12">
 
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBox Grid.Column="1" Text="{Binding SessionName}"
+                         PlaceholderText="Optional — defaults to Claude N"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
                 <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 <StackPanel Grid.Column="1" Spacing="3">

@@ -25,14 +25,19 @@
                             Classes="Accent" HorizontalAlignment="Stretch"/>
                     <Button Content="+ New session (TTY)" Command="{Binding NewTtySessionCommand}"
                             Classes="Subtle" HorizontalAlignment="Stretch"
+                            IsVisible="{Binding IsTtySupported}"
                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                            ToolTip.Tip="Experiment: the real interactive claude TUI in a panel"/>
+                            ToolTip.Tip="Experiment: the real interactive claude TUI in a panel (Windows only)"/>
                 </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
                      primary session overview per the cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                    <Button Content="Profiles" HorizontalAlignment="Stretch" Classes="Subtle"
+                            Command="{Binding ManageProfilesCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Add, edit or remove Claude profiles"/>
                     <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
                             Foreground="{StaticResource CockpitTextFaintBrush}">
                         <Button.Flyout>

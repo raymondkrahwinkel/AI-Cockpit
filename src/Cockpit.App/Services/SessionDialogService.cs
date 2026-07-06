@@ -56,6 +56,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return await dialog.ShowDialog<NewSessionResult?>(owner);
     }
 
+    public async Task ShowManageProfilesDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            await ShowManageProfilesAsync(owner);
+        }
+    }
+
     private async Task ShowManageProfilesAsync(Window owner)
     {
         var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker);

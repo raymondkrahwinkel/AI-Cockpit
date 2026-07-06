@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -18,6 +20,15 @@ public partial class ClaudeSessionView : UserControl
         // Enter sends the message; Shift+Enter inserts a newline. Tunnel so we pre-empt the
         // TextBox's own Enter handling (which would otherwise insert a newline).
         InputBox.AddHandler(InputElement.KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        // Focus the input as soon as a session panel appears, so a freshly created session is ready to
+        // type in without a click (L10). Deferred so focus lands after the panel is laid out.
+        Dispatcher.UIThread.Post(() => InputBox.Focus());
     }
 
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)

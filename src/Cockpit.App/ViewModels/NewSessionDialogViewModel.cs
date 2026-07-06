@@ -44,6 +44,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
+    /// <summary>Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "Claude N".</summary>
+    [ObservableProperty]
+    private string _sessionName = string.Empty;
+
     [ObservableProperty]
     private ClaudeProfile? _selectedProfile;
 
@@ -143,7 +147,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
-        CloseRequested?.Invoke(new NewSessionResult(SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort));
+        var name = string.IsNullOrWhiteSpace(SessionName) ? null : SessionName.Trim();
+        CloseRequested?.Invoke(new NewSessionResult(SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name));
     }
 
     [RelayCommand]

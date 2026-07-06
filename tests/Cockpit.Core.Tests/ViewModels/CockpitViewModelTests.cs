@@ -57,6 +57,23 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task NewSession_WithADialogName_UsesItAsTheSessionTitle()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns(new NewSessionResult(
+            new ClaudeProfile("default", @"C:\fake\.claude"),
+            SessionOptionCatalog.DefaultPermissionMode,
+            SessionOptionCatalog.DefaultModel,
+            SessionOptionCatalog.DefaultEffort,
+            "My debug session"));
+        var vm = NewVm(dialogService);
+
+        await vm.NewSessionCommand.ExecuteAsync(null);
+
+        vm.Sessions[0].Title.Should().Be("My debug session");
+    }
+
+    [Fact]
     public async Task NewSession_AssignsIncrementingTitles()
     {
         var vm = NewVm();
@@ -311,7 +328,7 @@ public class CockpitViewModelTests
             new ClaudeProfile("default", @"C:\fake\.claude"),
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
-            SessionOptionCatalog.DefaultEffort));
+            SessionOptionCatalog.DefaultEffort, null));
         return dialogService;
     }
 }
