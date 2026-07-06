@@ -165,6 +165,15 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
+
+        <!-- Scroll-to-bottom affordance: shown only when scrolled up (#21), jumps back to the newest
+             row and resumes following. On top of the transcript (last Grid child), bottom-right. -->
+        <Button x:Name="ScrollToBottomButton" Content="↓" IsVisible="False"
+                Classes="Accent" Click="_OnScrollToBottomClick"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Width="32" Height="32" Padding="0" Margin="0,0,10,10"
+                FontSize="15" CornerRadius="16"
+                ToolTip.Tip="Jump to the newest message"/>
         </Grid>
 
     </DockPanel>

@@ -65,6 +65,16 @@ public partial class ClaudeSessionView : UserControl
             _stickToBottom = TranscriptScrollAnchor.IsAtBottom(
                 TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
         }
+
+        // Offer the jump-to-newest button only while scrolled up (i.e. not following the tail).
+        ScrollToBottomButton.IsVisible = !_stickToBottom;
+    }
+
+    private void _OnScrollToBottomClick(object? sender, RoutedEventArgs e)
+    {
+        _stickToBottom = true;
+        TranscriptScroll.ScrollToEnd();
+        ScrollToBottomButton.IsVisible = false;
     }
 
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
