@@ -27,7 +27,8 @@
                             ToolTip.Tip="Onderbreekt de lopende turn (control_request/interrupt)"/>
                     <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104" Margin="0,0,4,4"
-                              ToolTip.Tip="Permission-mode voor deze sessie (live wisselbaar)"/>
+                              IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
+                              ToolTip.Tip="Permission mode for this session (live-switchable; bypass is locked once the session is launched in it)"/>
                     <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="84" Margin="0,0,4,4"
                               ToolTip.Tip="Model voor deze sessie (--model bij start, live wisselbaar)"/>

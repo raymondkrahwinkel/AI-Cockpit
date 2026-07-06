@@ -42,53 +42,38 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>Populated only while <see cref="ProfileSelectionKind.RequiresChoice"/> is pending the user's pick.</summary>
     public ObservableCollection<ClaudeProfile> ProfileChoices { get; } = [];
 
-    // Only the CLI's four real --permission-mode values: default/acceptEdits/plan/bypassPermissions.
-    // (There is no "auto" mode — passing it made the CLI silently fall back to default while the
-    // dropdown claimed otherwise; see bug #15.)
-    private static readonly PermissionModeOption[] _permissionModes =
-    [
-        new("Ask permissions", "default"),
-        new("Accept edits", "acceptEdits"),
-        new("Plan mode", "plan"),
-        new("Bypass permissions", "bypassPermissions"),
-    ];
-
-    /// <summary>Permission modes offered per session; the selected one becomes <c>--permission-mode</c> at launch.</summary>
-    public IReadOnlyList<PermissionModeOption> PermissionModes => _permissionModes;
+    /// <summary>
+    /// Permission modes offered in the running panel: the three live-switchable modes
+    /// (<see cref="SessionOptionCatalog.LivePermissionModes"/>), or — once a session was launched in
+    /// bypass — a single locked "Bypass permissions" entry, since the CLI cannot switch a running
+    /// session into or out of bypass. The dialog offers the full four via the catalog.
+    /// </summary>
+    public IReadOnlyList<PermissionModeOption> PermissionModes =>
+        IsPermissionModeLocked ? [SelectedPermissionMode] : SessionOptionCatalog.LivePermissionModes;
 
     [ObservableProperty]
-    private PermissionModeOption _selectedPermissionMode = _permissionModes[0]; // Ask permissions by default.
+    private PermissionModeOption _selectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
 
-    private static readonly ModelOption[] _models =
-    [
-        new("Opus 4.8", "opus"),
-        new("Sonnet", "sonnet"),
-        new("Haiku", "haiku"),
-    ];
+    /// <summary>
+    /// True once the session was launched in bypass: bypass is terminal (launch-only), so the panel
+    /// dropdown is disabled rather than offering a switch the CLI would reject — no dead control (#15).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isPermissionModeLocked;
+
+    partial void OnIsPermissionModeLockedChanged(bool value) => OnPropertyChanged(nameof(PermissionModes));
 
     /// <summary>Models offered per session; the selected one becomes <c>--model</c> at launch and can be switched live.</summary>
-    public IReadOnlyList<ModelOption> Models => _models;
+    public IReadOnlyList<ModelOption> Models => SessionOptionCatalog.Models;
 
     [ObservableProperty]
-    private ModelOption _selectedModel = _models[1]; // Sonnet by default.
-
-    // "Effort" maps to a thinking-token budget: that budget is the one live control the protocol
-    // exposes (set_max_thinking_tokens, verified against claude.exe 2.1.197), so the effort level
-    // simply picks a budget the session runs with and can switch mid-flight.
-    private static readonly EffortOption[] _efforts =
-    [
-        new("Low", "low", 4_000),
-        new("Medium", "medium", 12_000),
-        new("High", "high", 24_000),
-        new("Extra high", "xhigh", 48_000),
-        new("Max", "max", 64_000),
-    ];
+    private ModelOption _selectedModel = SessionOptionCatalog.DefaultModel;
 
     /// <summary>Thinking-effort levels offered per session; drives the thinking-budget control.</summary>
-    public IReadOnlyList<EffortOption> Efforts => _efforts;
+    public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
     [ObservableProperty]
-    private EffortOption _selectedEffort = _efforts[1]; // Medium by default.
+    private EffortOption _selectedEffort = SessionOptionCatalog.DefaultEffort;
 
     [ObservableProperty]
     private string _inputText = string.Empty;

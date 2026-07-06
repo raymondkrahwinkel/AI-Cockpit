@@ -167,6 +167,26 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public void PermissionModes_WhenNotLocked_OfferOnlyTheThreeLiveModes()
+    {
+        var vm = NewVm();
+
+        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
+    }
+
+    [Fact]
+    public void PermissionModes_WhenLockedToBypass_CollapseToThatSingleLockedEntry()
+    {
+        var vm = NewVm();
+        vm.SelectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode("bypassPermissions");
+
+        vm.IsPermissionModeLocked = true;
+
+        vm.PermissionModes.Should().ContainSingle()
+            .Which.Value.Should().Be("bypassPermissions");
+    }
+
+    [Fact]
     public void Efforts_MapEachLevelToItsThinkingBudget()
     {
         var vm = NewVm();
