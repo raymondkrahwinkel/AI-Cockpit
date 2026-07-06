@@ -373,6 +373,18 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             return;
         }
 
+        // Sending before the session has started reaches the CLI process before its I/O is wired and
+        // surfaces a raw "Start must be called before I/O" error (#16). Post-#31 a session starts as
+        // soon as it is created, so this only bites a failed-to-start panel — guard it with a plain
+        // message and keep the typed text rather than clearing it into a raw error. Queued dispatch
+        // never lands here: a queue only exists once a turn was in flight, i.e. after a successful start.
+        if (_eventLoopTask is null)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.Error, "The session has not started yet — nothing was sent."));
+            return;
+        }
+
         var text = InputText;
         var images = PendingAttachments
             .Select(a => Core.Claude.ImageAttachment.FromBytes(a.PngBytes, a.MediaType))

@@ -309,21 +309,35 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task SendAsync_WhileTurnInFlight_SetsStatusToBusy()
     {
+        var (vm, _) = await StartedVm();
+        vm.InputText = "hello";
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.SessionStatus.Should().Be(SessionStatus.Busy);
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SendAsync_BeforeStart_ShowsAFriendlyErrorAndKeepsTheText()
+    {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session) { InputText = "hello" };
 
         await vm.SendCommand.ExecuteAsync(null);
 
-        vm.SessionStatus.Should().Be(SessionStatus.Busy);
+        vm.InputText.Should().Be("hello");
+        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.Error)
+            .Which.Text.Should().Contain("not started");
+        await session.DidNotReceive().SendUserMessageAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task SendAsync_WhileBusy_QueuesTheMessageInsteadOfSending()
     {
-        var session = Substitute.For<IClaudeSession>();
-        session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session) { InputText = "first" };
+        var (vm, session) = await StartedVm();
+        vm.InputText = "first";
 
         await vm.SendCommand.ExecuteAsync(null); // first send goes out immediately, turn now in flight
         vm.InputText = "second";
@@ -333,14 +347,14 @@ public class ClaudeSessionViewModelTests
         vm.InputText.Should().BeEmpty();
         await session.Received(1).SendUserMessageAsync("first", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         await session.DidNotReceive().SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        await vm.DisposeAsync();
     }
 
     [Fact]
     public async Task TurnCompleted_DispatchesTheNextQueuedMessage()
     {
-        var session = Substitute.For<IClaudeSession>();
-        session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session) { InputText = "first" };
+        var (vm, session) = await StartedVm();
+        vm.InputText = "first";
         await vm.SendCommand.ExecuteAsync(null);
         vm.InputText = "second";
         await vm.SendCommand.ExecuteAsync(null);
@@ -350,14 +364,14 @@ public class ClaudeSessionViewModelTests
         vm.QueuedMessages.Should().BeEmpty();
         await session.Received(1).SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
         vm.SessionStatus.Should().Be(SessionStatus.Busy);
+        await vm.DisposeAsync();
     }
 
     [Fact]
     public async Task RemovingAQueuedChip_CancelsThatMessage()
     {
-        var session = Substitute.For<IClaudeSession>();
-        session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session) { InputText = "first" };
+        var (vm, session) = await StartedVm();
+        vm.InputText = "first";
         await vm.SendCommand.ExecuteAsync(null);
         vm.InputText = "cancel me";
         await vm.SendCommand.ExecuteAsync(null);
@@ -367,6 +381,7 @@ public class ClaudeSessionViewModelTests
         vm.QueuedMessages.Should().BeEmpty();
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
         await session.DidNotReceive().SendUserMessageAsync("cancel me", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        await vm.DisposeAsync();
     }
 
     [Fact]
@@ -490,6 +505,17 @@ public class ClaudeSessionViewModelTests
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
         return new ClaudeSessionViewModel(session);
+    }
+
+    /// <summary>A started session (its event loop is live), so send-path tests exercise sending after start rather than the not-started guard (#16).</summary>
+    private static async Task<(ClaudeSessionViewModel Vm, IClaudeSession Session)> StartedVm()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session);
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+        return (vm, session);
     }
 
     private static async IAsyncEnumerable<ClaudeSessionEvent> EmptyEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)
