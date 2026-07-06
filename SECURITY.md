@@ -7,9 +7,12 @@ security seriously.
 
 **Please do not open a public issue for security vulnerabilities.**
 
-Report a vulnerability privately through GitHub's
-[**Report a vulnerability**](https://github.com/raymondkrahwinkel/AI-Cockpit/security/advisories/new)
-(the repository's Security → Advisories tab).
+Report a vulnerability privately by **email to raymond@krahwinkel.nl**. Put "AI-Cockpit security" in
+the subject so it is easy to spot.
+
+Once GitHub private vulnerability reporting is enabled for this repository, you can alternatively use
+the **Security → Advisories → Report a vulnerability** button on the repo. (If that page shows a 404,
+the feature is not enabled yet — use email.)
 
 Reports are acknowledged as soon as possible and you will be kept posted while a fix is worked on.
 Please allow reasonable time to ship a fix before disclosing the issue publicly (coordinated
