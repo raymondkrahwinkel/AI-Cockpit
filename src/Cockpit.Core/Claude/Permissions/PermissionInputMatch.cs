@@ -75,6 +75,16 @@ public static class PermissionInputMatch
                 builder.Append(']');
                 break;
 
+            case JsonValueKind.String:
+                // Re-serialize the decoded string through the same encoder so a value the two
+                // sources escaped differently canonicalizes identically. The stream tool_use JSON
+                // carries a '>' as the literal character, while the MCP permission_prompt JSON emits
+                // it as the ">" unicode escape; GetRawText() keeps each source's raw form, so an
+                // exact rule for any input with '>' / '<' / '&' (i.e. most shell commands) never
+                // matched. GetString() decodes both to the same char before re-encoding. See bug #27.
+                builder.Append(JsonSerializer.Serialize(element.GetString()));
+                break;
+
             default:
                 builder.Append(element.GetRawText());
                 break;

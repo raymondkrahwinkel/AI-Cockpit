@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Cockpit.Core.Claude.Permissions;
 using FluentAssertions;
 
@@ -40,6 +41,25 @@ public class PermissionRuleTests
         var rule = PermissionRule.ForExact("Edit", """{"file_path":"a.txt","old_string":"x"}""");
 
         rule.Matches("Edit", """{ "old_string": "x",  "file_path": "a.txt" }""").Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(">")]
+    [InlineData("<")]
+    [InlineData("&")]
+    public void Exact_MatchesWhenSourcesEscapeSpecialCharactersDifferently(string special)
+    {
+        // The stream tool_use JSON carries '>' / '<' / '&' literally; the MCP permission_prompt JSON
+        // emits them as \uXXXX escapes — exactly what System.Text.Json produces here. Both must
+        // canonicalize to the same fingerprint, otherwise "Always (exact)" re-prompts forever for
+        // most shell commands (bug #27).
+        var command = $"echo a {special} b";
+        var literalInput = $$"""{"command":"echo a {{special}} b"}""";
+        var escapedInput = JsonSerializer.Serialize(new { command });
+
+        var rule = PermissionRule.ForExact("Bash", literalInput);
+
+        rule.Matches("Bash", escapedInput).Should().BeTrue();
     }
 
     [Fact]
