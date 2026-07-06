@@ -29,7 +29,7 @@ public class CockpitViewModelAttentionTests
 
         session.SessionStatus = SessionStatus.NeedsAttention;
 
-        _attentionNotifier.Received(1).NotifyAttentionAsync(
+        await _attentionNotifier.Received(1).NotifyAttentionAsync(
             Arg.Is<AttentionNotification>(n => n.Title == session.Title && n.Body == "Needs attention"),
             Arg.Any<CancellationToken>());
     }
@@ -46,7 +46,7 @@ public class CockpitViewModelAttentionTests
         session.SessionStatus = SessionStatus.NeedsAttention;
 
         // Two distinct edges into NeedsAttention → two notifications, not one per property change.
-        _attentionNotifier.Received(2).NotifyAttentionAsync(Arg.Any<AttentionNotification>(), Arg.Any<CancellationToken>());
+        await _attentionNotifier.Received(2).NotifyAttentionAsync(Arg.Any<AttentionNotification>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

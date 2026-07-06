@@ -245,6 +245,22 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task GridColumns_IsOneForZeroOrOneSessionAndTwoForMore()
+    {
+        var vm = NewVm();
+        vm.GridColumns.Should().Be(1);
+
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        vm.GridColumns.Should().Be(1);
+
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        vm.GridColumns.Should().Be(2);
+
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        vm.GridColumns.Should().Be(2);
+    }
+
+    [Fact]
     public void CurrentSessionSwitchSettings_ReflectsTheLiveEnableAndModifierEdits()
     {
         var vm = NewVm();

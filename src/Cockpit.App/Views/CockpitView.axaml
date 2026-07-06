@@ -170,7 +170,7 @@
                 <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !IsZoomed}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <UniformGrid Columns="2"/>
+                            <UniformGrid Columns="{Binding GridColumns}"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>

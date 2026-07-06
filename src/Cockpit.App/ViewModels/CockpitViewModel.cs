@@ -50,6 +50,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>False when no session is open, driving the empty-state welcome screen vs. the session grid (#31).</summary>
     public bool HasSessions => Sessions.Count > 0;
 
+    /// <summary>
+    /// Column count for the adaptive session grid (#24): one session fills the width; two or more lay
+    /// out in two columns (so 3–4 form a 2×2), rather than the old fixed two that left a single session
+    /// pinned to the left half.
+    /// </summary>
+    public int GridColumns => Sessions.Count <= 1 ? 1 : 2;
+
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
 
@@ -155,7 +162,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionSwitchSettingsStore = sessionSwitchSettingsStore;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
-        Sessions.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSessions));
+        Sessions.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasSessions));
+            OnPropertyChanged(nameof(GridColumns));
+        };
         _ = LoadNotificationSettingsAsync();
         _ = LoadSessionSwitchSettingsAsync();
     }
