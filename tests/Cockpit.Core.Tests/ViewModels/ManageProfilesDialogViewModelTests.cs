@@ -49,17 +49,54 @@ public class ManageProfilesDialogViewModelTests
     }
 
     [Fact]
-    public void RemoveProfile_DropsTheSelectedRow()
+    public void RemoveProfile_AsksForConfirmationWithoutDroppingTheRowYet()
     {
         var vm = new ManageProfilesDialogViewModel(Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
         vm.AddProfileCommand.Execute(null);
-        vm.AddProfileCommand.Execute(null);
-        var toRemove = vm.SelectedProfile;
+        var target = vm.SelectedProfile;
 
         vm.RemoveProfileCommand.Execute(null);
 
-        vm.Profiles.Should().NotContain(toRemove!);
-        vm.Profiles.Should().ContainSingle();
+        vm.IsConfirmingRemove.Should().BeTrue();
+        vm.PendingRemovalLabel.Should().Be(target!.Label);
+        vm.Profiles.Should().Contain(target); // not dropped until confirmed
+    }
+
+    [Fact]
+    public async Task ConfirmRemove_DropsTheRowAndPersistsImmediately()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new ClaudeProfile("default", "/home/r/.claude"),
+            new ClaudeProfile("personal", "/home/r/.claude-personal"),
+        ]);
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        await vm.LoadAsync();
+        vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "default");
+        vm.RemoveProfileCommand.Execute(null);
+
+        await vm.ConfirmRemoveCommand.ExecuteAsync(null);
+
+        vm.IsConfirmingRemove.Should().BeFalse();
+        vm.Profiles.Should().ContainSingle().Which.Label.Should().Be("personal");
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<ClaudeProfile>>(list => list.Count == 1 && list[0].Label == "personal"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void CancelRemove_KeepsTheRow()
+    {
+        var vm = new ManageProfilesDialogViewModel(Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        vm.AddProfileCommand.Execute(null);
+        var target = vm.SelectedProfile;
+        vm.RemoveProfileCommand.Execute(null);
+
+        vm.CancelRemoveCommand.Execute(null);
+
+        vm.IsConfirmingRemove.Should().BeFalse();
+        vm.Profiles.Should().Contain(target!);
     }
 
     [Fact]
@@ -97,31 +134,6 @@ public class ManageProfilesDialogViewModelTests
 
         await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<ClaudeProfile>>(), Arg.Any<CancellationToken>());
         vm.StatusMessage.Should().NotBeNullOrEmpty();
-    }
-
-    [Fact]
-    public async Task RemoveThenSave_PersistsTheListWithoutTheRemovedProfile()
-    {
-        var store = Substitute.For<IClaudeProfileStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(
-        [
-            new ClaudeProfile("default", "/home/r/.claude"),
-            new ClaudeProfile("personal", "/home/r/.claude-personal"),
-            new ClaudeProfile("work", "/home/r/.claude-work"),
-        ]);
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
-        loginChecker.IsLoggedIn(Arg.Any<ClaudeProfile>()).Returns(true);
-        var vm = new ManageProfilesDialogViewModel(store, loginChecker);
-        await vm.LoadAsync();
-        vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "default");
-
-        vm.RemoveProfileCommand.Execute(null);
-        await vm.SaveCommand.ExecuteAsync(null);
-
-        await store.Received(1).SaveAsync(
-            Arg.Is<IReadOnlyList<ClaudeProfile>>(list =>
-                list.Count == 2 && list.All(p => p.Label != "default")),
-            Arg.Any<CancellationToken>());
     }
 
     [Fact]

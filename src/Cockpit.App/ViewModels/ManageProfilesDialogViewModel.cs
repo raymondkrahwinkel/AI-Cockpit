@@ -77,6 +77,15 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         SelectedProfile = added;
     }
 
+    /// <summary>True while a remove is awaiting confirmation, so the footer shows a "Remove 'X'?" prompt.</summary>
+    [ObservableProperty]
+    private bool _isConfirmingRemove;
+
+    /// <summary>Label of the profile pending removal, for the confirmation prompt.</summary>
+    [ObservableProperty]
+    private string _pendingRemovalLabel = string.Empty;
+
+    /// <summary>Starts a remove: asks for confirmation rather than dropping the row silently.</summary>
     [RelayCommand(CanExecute = nameof(HasSelectedProfile))]
     private void RemoveProfile()
     {
@@ -85,14 +94,44 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             return;
         }
 
+        PendingRemovalLabel = SelectedProfile.Label;
+        IsConfirmingRemove = true;
+    }
+
+    /// <summary>
+    /// Confirms the remove: drops the selected profile and persists the reduced list immediately, so a
+    /// removal takes effect without a separate Save (and isn't lost if another row is mid-edit).
+    /// </summary>
+    [RelayCommand]
+    private async Task ConfirmRemoveAsync()
+    {
+        IsConfirmingRemove = false;
+        if (SelectedProfile is null)
+        {
+            return;
+        }
+
         var index = Profiles.IndexOf(SelectedProfile);
         Profiles.Remove(SelectedProfile);
         SelectedProfile = Profiles.Count == 0 ? null : Profiles[Math.Min(index, Profiles.Count - 1)];
+
+        if (_profileStore is not null)
+        {
+            await _profileStore.SaveAsync(Profiles.Select(profile => profile.ToProfile()).ToList());
+            StatusMessage = "Removed.";
+        }
     }
+
+    [RelayCommand]
+    private void CancelRemove() => IsConfirmingRemove = false;
 
     private bool HasSelectedProfile => SelectedProfile is not null;
 
-    partial void OnSelectedProfileChanged(EditableProfileViewModel? value) => RemoveProfileCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedProfileChanged(EditableProfileViewModel? value)
+    {
+        RemoveProfileCommand.NotifyCanExecuteChanged();
+        IsConfirmingRemove = false;
+    }
 
     [RelayCommand]
     private async Task SaveAsync()
