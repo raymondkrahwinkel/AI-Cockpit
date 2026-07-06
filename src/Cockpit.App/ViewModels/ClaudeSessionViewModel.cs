@@ -168,14 +168,25 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         }
 
         // Set the live selectors before starting: the session has no event loop yet, so these do not
-        // fire a live control request — they are the launch values StartWithProfileAsync reads.
+        // fire a live control request — they are the launch values StartWithProfileAsync reads. For
+        // bypass, lock immediately (right after selecting it) so the dropdown shows the single locked
+        // "Bypass permissions" entry without a frame where the selection sits outside the bound list.
+        var isBypass = mode.Value == SessionOptionCatalog.BypassPermissionModeValue;
         SelectedPermissionMode = mode;
+        IsPermissionModeLocked = isBypass;
         SelectedModel = model;
         SelectedEffort = effort;
 
         await StartWithProfileAsync(profile);
 
-        IsPermissionModeLocked = mode.Value == SessionOptionCatalog.BypassPermissionModeValue;
+        // StartWithProfileAsync swallows launch failures (it only sets Status); it leaves _eventLoopTask
+        // null when the CLI never started. In that case unlock and reset the mode so a failed bypass
+        // launch doesn't strand the panel on a phantom, disabled "Bypass permissions" with no session.
+        if (_eventLoopTask is null)
+        {
+            IsPermissionModeLocked = false;
+            SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
+        }
     }
 
     private async Task StartWithProfileAsync(ClaudeProfile? profile)

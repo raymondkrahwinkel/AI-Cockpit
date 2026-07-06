@@ -67,6 +67,24 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public async Task StartConfigured_WhenTheLaunchFailsInBypass_DoesNotStrandThePanelOnAPhantomLock()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        session.StartAsync(Arg.Any<ClaudeProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("bad executable")));
+        var vm = new ClaudeSessionViewModel(session);
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.IsPermissionModeLocked.Should().BeFalse();
+        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public async Task StartConfigured_InALiveMode_LeavesThePermissionModeUnlocked()
     {
         var session = Substitute.For<IClaudeSession>();

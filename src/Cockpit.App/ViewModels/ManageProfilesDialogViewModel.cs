@@ -102,6 +102,14 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             return;
         }
 
+        // A profile needs at least a label and a config directory to be usable; refuse to persist a
+        // half-filled row (e.g. a freshly added one) rather than write junk the picker can't launch.
+        if (Profiles.Any(profile => string.IsNullOrWhiteSpace(profile.Label) || string.IsNullOrWhiteSpace(profile.ConfigDir)))
+        {
+            StatusMessage = "Every profile needs a label and a config directory.";
+            return;
+        }
+
         var profiles = Profiles.Select(profile => profile.ToProfile()).ToList();
         await _profileStore.SaveAsync(profiles);
         CloseRequested?.Invoke();

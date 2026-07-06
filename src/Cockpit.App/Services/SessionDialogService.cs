@@ -38,10 +38,19 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         // Managing profiles from within the New-session dialog opens the Manage dialog over it, then
         // reloads the picker so any added/edited/removed profile (and its defaults) shows immediately.
+        // async void via the Action event: guard it so a dialog/store failure can't tear the process
+        // down — worst case the picker just doesn't refresh.
         viewModel.ManageProfilesRequested += async () =>
         {
-            await ShowManageProfilesAsync(dialog);
-            await viewModel.LoadAsync();
+            try
+            {
+                await ShowManageProfilesAsync(dialog);
+                await viewModel.LoadAsync();
+            }
+            catch
+            {
+                // Managing profiles is best-effort from here; a failure must not crash the app.
+            }
         };
 
         return await dialog.ShowDialog<NewSessionResult?>(owner);

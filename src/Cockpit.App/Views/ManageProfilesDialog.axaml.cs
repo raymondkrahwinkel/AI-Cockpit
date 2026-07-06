@@ -29,6 +29,9 @@ public partial class ManageProfilesDialog : Window
         }
     }
 
+    // async void: these are UI event handlers, so an unobserved exception from the picker (no desktop
+    // portal, permission denied) would tear down the process. A failed/cancelled pick is non-fatal —
+    // the operator just keeps the current path — so swallow it here rather than crash the app.
     private async void OnBrowseConfigDir(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not ManageProfilesDialogViewModel { SelectedProfile: { } profile })
@@ -36,16 +39,23 @@ public partial class ManageProfilesDialog : Window
             return;
         }
 
-        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        try
         {
-            Title = "Select the profile's config directory",
-            AllowMultiple = false,
-        });
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select the profile's config directory",
+                AllowMultiple = false,
+            });
 
-        var path = folders.FirstOrDefault()?.TryGetLocalPath();
-        if (!string.IsNullOrEmpty(path))
+            var path = folders.FirstOrDefault()?.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                profile.ConfigDir = path;
+            }
+        }
+        catch
         {
-            profile.ConfigDir = path;
+            // Picker unavailable/failed — keep the current value.
         }
     }
 
@@ -56,16 +66,23 @@ public partial class ManageProfilesDialog : Window
             return;
         }
 
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        try
         {
-            Title = "Select the claude executable",
-            AllowMultiple = false,
-        });
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Select the claude executable",
+                AllowMultiple = false,
+            });
 
-        var path = files.FirstOrDefault()?.TryGetLocalPath();
-        if (!string.IsNullOrEmpty(path))
+            var path = files.FirstOrDefault()?.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                profile.ExecutablePath = path;
+            }
+        }
+        catch
         {
-            profile.ExecutablePath = path;
+            // Picker unavailable/failed — keep the current value.
         }
     }
 }

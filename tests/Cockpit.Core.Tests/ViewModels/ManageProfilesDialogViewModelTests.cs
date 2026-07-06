@@ -87,6 +87,19 @@ public class ManageProfilesDialogViewModelTests
     }
 
     [Fact]
+    public async Task Save_WithAnEmptyConfigDir_DoesNotPersistAndReportsIt()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        vm.AddProfileCommand.Execute(null); // seeds a "new profile" with an empty config directory
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<ClaudeProfile>>(), Arg.Any<CancellationToken>());
+        vm.StatusMessage.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
     public void ToProfile_CollapsesEmptyExecutableAndPurposeToNull()
     {
         var editable = new EditableProfileViewModel(new ClaudeProfile("work", "/home/r/.claude-work"), isLoggedIn: false)
