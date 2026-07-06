@@ -42,6 +42,7 @@ internal static class Screenshotter
     private static AppBuilder BuildHeadlessAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UseSkia()
+            .With(Program.CockpitFontOptions())
             .UseHeadless(new AvaloniaHeadlessPlatformOptions
             {
                 UseHeadlessDrawing = false,

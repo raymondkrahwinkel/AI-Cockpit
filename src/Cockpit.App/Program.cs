@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Media;
+using Avalonia.Media.Fonts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -132,5 +134,20 @@ sealed class Program
             .WithDeveloperTools()
 #endif
             .WithInterFont()
+            .With(CockpitFontOptions())
             .LogToTrace();
+
+    // Emoji fallback so Claude's ✅/🔧/📊/⚠️ render as glyphs instead of tofu boxes — the UI fonts
+    // (Inter, Cascadia Mono) carry no emoji. Skia picks the first installed family per platform
+    // (Segoe UI Emoji on Windows, Noto Color Emoji on Linux, Apple Color Emoji on macOS). Shared so
+    // the headless Screenshotter renders the same fallbacks it verifies against.
+    internal static FontManagerOptions CockpitFontOptions() => new()
+    {
+        FontFallbacks =
+        [
+            new FontFallback { FontFamily = new FontFamily("Segoe UI Emoji") },
+            new FontFallback { FontFamily = new FontFamily("Noto Color Emoji") },
+            new FontFallback { FontFamily = new FontFamily("Apple Color Emoji") },
+        ],
+    };
 }
