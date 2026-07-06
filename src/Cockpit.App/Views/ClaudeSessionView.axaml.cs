@@ -101,6 +101,18 @@ public partial class ClaudeSessionView : UserControl
             return;
         }
 
+        // Arrow Up on an empty input recalls the most recently queued message back into the box for
+        // editing (mirrors shell history). Guarded on an empty input so it never clobbers text you are
+        // typing and Up otherwise moves the caret as usual.
+        if (e.Key == Key.Up
+            && string.IsNullOrEmpty(InputBox.Text)
+            && DataContext is ClaudeSessionViewModel recallVm
+            && recallVm.RecallLastQueuedMessage())
+        {
+            e.Handled = true;
+            return;
+        }
+
         // Esc interrupts the running turn (like the claude TUI), mirroring the Stop button. Only while
         // a turn is in flight, so Esc is otherwise free to do its normal thing (clear selection, etc.).
         if (e.Key == Key.Escape)

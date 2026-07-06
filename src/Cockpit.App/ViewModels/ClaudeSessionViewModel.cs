@@ -415,6 +415,30 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         await _DispatchMessageAsync(text, images);
     }
 
+    /// <summary>
+    /// Pulls the most recently queued message back into the input for editing (Arrow Up on an empty
+    /// input) — its text and any images are restored and the chip is removed. Returns false when the
+    /// queue is empty, so the key handler can let Arrow Up do its normal thing.
+    /// </summary>
+    public bool RecallLastQueuedMessage()
+    {
+        if (QueuedMessages.Count == 0)
+        {
+            return false;
+        }
+
+        var last = QueuedMessages[^1];
+        QueuedMessages.RemoveAt(QueuedMessages.Count - 1);
+
+        InputText = last.Text;
+        foreach (var image in last.Images)
+        {
+            AddPastedImage(Convert.FromBase64String(image.Base64Data));
+        }
+
+        return true;
+    }
+
     /// <summary>Sends a message to the session now, echoing it into the transcript and marking the turn busy.</summary>
     private async Task _DispatchMessageAsync(string text, IReadOnlyList<Core.Claude.ImageAttachment> images)
     {

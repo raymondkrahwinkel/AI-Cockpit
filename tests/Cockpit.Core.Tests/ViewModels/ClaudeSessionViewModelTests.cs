@@ -383,6 +383,34 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public async Task RecallLastQueuedMessage_PullsTheNewestQueuedMessageBackIntoTheInput()
+    {
+        var (vm, _) = await StartedVm();
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.InputText = "queued one";
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.InputText = "queued two";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        var recalled = vm.RecallLastQueuedMessage();
+
+        recalled.Should().BeTrue();
+        vm.InputText.Should().Be("queued two");
+        vm.QueuedMessages.Select(m => m.Text).Should().Equal("queued one");
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public void RecallLastQueuedMessage_WithAnEmptyQueue_ReturnsFalseAndLeavesInputUntouched()
+    {
+        var vm = NewVm();
+
+        vm.RecallLastQueuedMessage().Should().BeFalse();
+        vm.InputText.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task RemovingAQueuedChip_CancelsThatMessage()
     {
         var (vm, session) = await StartedVm();
