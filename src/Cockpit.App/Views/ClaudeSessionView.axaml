@@ -125,8 +125,11 @@
                                            Classes.userRow="{Binding IsUserRow}"/>
 
                                 <!-- Assistant prose renders as markdown (T9). The user echo stays on the plain
-                                     path above: its "> " prefix would otherwise read as a blockquote. -->
+                                     path above: its "> " prefix would otherwise read as a blockquote.
+                                     SelectionEnabled keeps the transcript copyable (T3) — without it the
+                                     markdown rows are the one part of the conversation you cannot select. -->
                                 <md:MarkdownScrollViewer Markdown="{Binding Text}"
+                                                         SelectionEnabled="True"
                                                          IsVisible="{Binding IsAssistantMarkdown}"/>
 
                                 <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
