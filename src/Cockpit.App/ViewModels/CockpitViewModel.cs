@@ -6,9 +6,11 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.TranscriptDisplay;
 
@@ -40,6 +42,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly ISessionSwitchSettingsStore? _sessionSwitchSettingsStore;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
+    private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -111,12 +114,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _transcriptDisplaySettingsStatus = string.Empty;
 
+    /// <summary>When true, sending "exit" closes the session after its turn completes (T10). Applied to all open sessions.</summary>
+    [ObservableProperty]
+    private bool _autoCloseOnExit;
+
+    [ObservableProperty]
+    private string _sessionBehaviorSettingsStatus = string.Empty;
+
     /// <summary>Pushes the timestamp toggle to every open session as it changes, so the switch takes effect live.</summary>
     partial void OnShowTimestampsChanged(bool value)
     {
         foreach (var session in Sessions)
         {
             session.ShowTimestamps = value;
+        }
+    }
+
+    /// <summary>Pushes the auto-close-on-exit toggle to every open session as it changes.</summary>
+    partial void OnAutoCloseOnExitChanged(bool value)
+    {
+        foreach (var session in Sessions)
+        {
+            session.AutoCloseOnExit = value;
         }
     }
 
@@ -177,7 +196,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAttentionNotifier attentionNotifier,
         INotificationSettingsStore notificationSettingsStore,
         ISessionSwitchSettingsStore sessionSwitchSettingsStore,
-        ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore)
+        ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore,
+        ISessionBehaviorSettingsStore sessionBehaviorSettingsStore)
     {
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
@@ -188,6 +208,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _notificationSettingsStore = notificationSettingsStore;
         _sessionSwitchSettingsStore = sessionSwitchSettingsStore;
         _transcriptDisplaySettingsStore = transcriptDisplaySettingsStore;
+        _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
         Sessions.CollectionChanged += (_, _) =>
@@ -198,6 +219,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadNotificationSettingsAsync();
         _ = LoadSessionSwitchSettingsAsync();
         _ = LoadTranscriptDisplaySettingsAsync();
+        _ = LoadSessionBehaviorSettingsAsync();
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -285,6 +307,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _transcriptDisplaySettingsStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = ShowTimestamps });
         TranscriptDisplaySettingsStatus = "Saved.";
+    }
+
+    private async Task LoadSessionBehaviorSettingsAsync()
+    {
+        if (_sessionBehaviorSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _sessionBehaviorSettingsStore.LoadAsync();
+        AutoCloseOnExit = settings.AutoCloseOnExit;
+    }
+
+    /// <summary>Persists the session-behaviour settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveSessionBehaviorSettingsAsync()
+    {
+        if (_sessionBehaviorSettingsStore is null)
+        {
+            return;
+        }
+
+        await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = AutoCloseOnExit });
+        SessionBehaviorSettingsStatus = "Saved.";
     }
 
     [RelayCommand]
@@ -400,6 +446,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Start the session on the current transcript-display preference; OnShowTimestampsChanged keeps
         // it live afterwards (T7).
         session.ShowTimestamps = ShowTimestamps;
+        // Same for the auto-close-on-exit behaviour (T10); the session raises CloseRequested when an
+        // "exit" turn completes and the cockpit runs its normal close flow.
+        session.AutoCloseOnExit = AutoCloseOnExit;
+        session.CloseRequested += OnSessionCloseRequested;
 
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;
@@ -426,6 +476,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (session.SessionStatus == SessionStatus.NeedsAttention && previous != SessionStatus.NeedsAttention)
         {
             NotifyAttention(session);
+        }
+    }
+
+    /// <summary>A session asked to close itself (T10: an "exit" turn finished) — run the normal close flow.</summary>
+    private void OnSessionCloseRequested(object? sender, EventArgs e)
+    {
+        if (sender is SessionPanelViewModel session)
+        {
+            _ = CloseSessionAsync(session);
         }
     }
 
@@ -487,6 +546,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         session.PropertyChanged -= OnSessionPropertyChanged;
+        session.CloseRequested -= OnSessionCloseRequested;
         _lastStatus.Remove(session);
 
         Sessions.RemoveAt(index);
@@ -553,6 +613,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         foreach (var session in Sessions.ToList())
         {
             session.PropertyChanged -= OnSessionPropertyChanged;
+            session.CloseRequested -= OnSessionCloseRequested;
             await session.DisposeAsync();
         }
 

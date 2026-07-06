@@ -27,6 +27,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     private TranscriptEntryViewModel? _currentAssistantEntry;
     private TranscriptEntryViewModel? _currentThinkingEntry;
 
+    /// <summary>Set when an "exit" message is dispatched with auto-close on, so the next completed turn closes the session (T10).</summary>
+    private bool _closeAfterTurn;
+
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
     /// <summary>False until the first transcript row arrives, so the panel can show a calm empty-state hint instead of a void.</summary>
@@ -414,6 +417,14 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             return;
         }
 
+        // "exit" closes the session once its turn completes when the operator enabled it (T10). The
+        // message is still sent normally so any session-end/Stop-hooks on Claude's side run first; the
+        // close then fires from the TurnCompleted handler. Armed at dispatch so a queued "exit" counts too.
+        if (AutoCloseOnExit && text.Trim().Equals("exit", StringComparison.OrdinalIgnoreCase))
+        {
+            _closeAfterTurn = true;
+        }
+
         var echo = images.Count == 0
             ? $"> {text}"
             : $"> {text} [+{images.Count} image{(images.Count == 1 ? "" : "s")}]";
@@ -631,6 +642,15 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _RecomputeStatus();
+                // "exit" turn finished → ask the cockpit to close this session (T10). Skip draining the
+                // queue: the session is going away, so anything still queued is moot.
+                if (_closeAfterTurn)
+                {
+                    _closeAfterTurn = false;
+                    RaiseCloseRequested();
+                    break;
+                }
+
                 // A completed turn (success or error result) frees the session, so send the next queued
                 // message (T8). A SessionError event does not drain the queue — the chips stay so a
                 // broken session isn't cascaded through every queued message.

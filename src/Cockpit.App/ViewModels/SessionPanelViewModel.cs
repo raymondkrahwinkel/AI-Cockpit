@@ -35,6 +35,26 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private bool _showTimestamps;
 
     /// <summary>
+    /// When true, sending "exit" closes this session once its turn completes (T10). Set by
+    /// <see cref="CockpitViewModel"/> from the saved session-behaviour setting and updated live on toggle.
+    /// </summary>
+    [ObservableProperty]
+    private bool _autoCloseOnExit;
+
+    /// <summary>
+    /// Raised when the session asks to be closed by itself (T10: after an "exit" turn completes), so
+    /// <see cref="CockpitViewModel"/> can run its normal close/teardown flow. The panel never closes
+    /// itself — the cockpit owns the session collection.
+    /// </summary>
+    public event EventHandler? CloseRequested;
+
+    /// <summary>Signals <see cref="CockpitViewModel"/> to close this session through its own flow.</summary>
+    protected void RaiseCloseRequested() => CloseRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Test seam: raise <see cref="CloseRequested"/> directly to exercise the cockpit's close wiring.</summary>
+    internal void RequestSelfClose() => RaiseCloseRequested();
+
+    /// <summary>
     /// True while a close is awaiting confirmation for this panel, so its sidebar row shows an inline
     /// "Close? / Keep" prompt rather than dropping a busy session on a single click (mirrors the
     /// Manage-profiles remove confirm, L11).

@@ -102,6 +102,18 @@
                                             Classes="Accent" HorizontalAlignment="Left"/>
                                     <TextBlock Text="{Binding TranscriptDisplaySettingsStatus}"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                                    <TextBlock Text="Session" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Close a session when you type &quot;exit&quot;"
+                                              IsChecked="{Binding AutoCloseOnExit}"/>
+                                    <TextBlock Text="The message is still sent; the session closes once that turn finishes."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <Button Content="Save" Command="{Binding SaveSessionBehaviorSettingsCommand}"
+                                            Classes="Accent" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="{Binding SessionBehaviorSettingsStatus}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>

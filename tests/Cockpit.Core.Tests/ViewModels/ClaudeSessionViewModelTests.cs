@@ -406,6 +406,57 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public async Task ExitMessage_WithAutoCloseOn_IsStillSentAndClosesTheSessionWhenTheTurnCompletes()
+    {
+        var (vm, session) = await StartedVm();
+        vm.AutoCloseOnExit = true;
+        var closeRequested = false;
+        vm.CloseRequested += (_, _) => closeRequested = true;
+        vm.InputText = "exit";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        await session.Received(1).SendUserMessageAsync("exit", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        closeRequested.Should().BeFalse(); // not until the turn finishes
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "bye", IsError = false });
+
+        closeRequested.Should().BeTrue();
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ExitMessage_WithAutoCloseOff_DoesNotCloseTheSession()
+    {
+        var (vm, _) = await StartedVm();
+        vm.AutoCloseOnExit = false;
+        var closeRequested = false;
+        vm.CloseRequested += (_, _) => closeRequested = true;
+        vm.InputText = "exit";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        closeRequested.Should().BeFalse();
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task NonExitMessage_WithAutoCloseOn_DoesNotCloseTheSession()
+    {
+        var (vm, _) = await StartedVm();
+        vm.AutoCloseOnExit = true;
+        var closeRequested = false;
+        vm.CloseRequested += (_, _) => closeRequested = true;
+        vm.InputText = "hello";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        closeRequested.Should().BeFalse();
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public void Apply_TurnCompletedAfterPermissionRequest_PriorityGoesToNeedsAttention()
     {
         var vm = NewVm();
