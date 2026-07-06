@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctxt="clr-namespace:ColorTextBlock.Avalonia;assembly=ColorTextBlock.Avalonia">
 
     <!-- Cockpit dark theme: flat, hairline-bordered, quiet. Tokens are consumed as
          DynamicResource so a future light/alt theme can swap this dictionary wholesale. -->
@@ -54,6 +55,16 @@
     <!-- Window chrome -->
     <Style Selector="Window">
         <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>
+    </Style>
+
+    <!-- Markdown code blocks (T9): ColorTextBlock's CCode picks its monospace family by name-matching
+         the system font list without checking the family can produce glyphs, which selects the
+         fontconfig-aliased but unrenderable "Consolas" on Linux and crashes the first code-block
+         render (whistyun/Markdown.Avalonia#185). CCode already owns the property's default-value
+         metadata, so override via a style setter — on MonospaceFontFamily, not FontFamily, because
+         CCode binds FontFamily from it at local-value priority (a FontFamily setter would lose). -->
+    <Style Selector="ctxt|CCode">
+        <Setter Property="MonospaceFontFamily" Value="Cascadia Mono, Noto Sans Mono, DejaVu Sans Mono, monospace"/>
     </Style>
 
     <!-- Base text. :is() so SelectableTextBlock (transcript rows, T3) inherits the same treatment as

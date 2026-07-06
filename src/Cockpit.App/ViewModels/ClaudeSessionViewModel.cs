@@ -104,8 +104,12 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         };
         Transcript.Add(thinking);
 
+        // Markdown-rich sample so the previewer/Screenshotter exercise the markdown path (T9):
+        // heading, bold, inline code, a fenced code block, and a list.
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
-            "Found the cause: the DockPanel order flattened the ScrollViewer. Moving the top and bottom docks before the last child."));
+            "Found the cause — the **DockPanel order** flattened the `ScrollViewer`.\n\n" +
+            "```csharp\nDockPanel.SetDock(topBar, Dock.Top);\n```\n\n" +
+            "- move the top and bottom docks first\n- keep the transcript as the fill child"));
 
         var editTool = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
             "Tool: Edit({\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"})")

@@ -270,6 +270,33 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public void AssistantTextRow_RendersAsMarkdown()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "Some **bold** prose.");
+
+        entry.IsAssistantMarkdown.Should().BeTrue();
+        entry.IsPlainNonMarkdown.Should().BeFalse();
+    }
+
+    [Fact]
+    public void UserEchoRow_StaysOnThePlainPath()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "> build the project");
+
+        entry.IsAssistantMarkdown.Should().BeFalse();
+        entry.IsPlainNonMarkdown.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ErrorRow_StaysOnThePlainPath()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Error, "Send failed: boom");
+
+        entry.IsAssistantMarkdown.Should().BeFalse();
+        entry.IsPlainNonMarkdown.Should().BeTrue();
+    }
+
+    [Fact]
     public void Apply_TurnCompleted_SetsStatusToDone()
     {
         var vm = NewVm();

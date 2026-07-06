@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:md="https://github.com/whistyun/Markdown.Avalonia"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
@@ -120,8 +121,13 @@
                                      to override the default TextBlock foreground, and a local value always wins over styles. -->
                                 <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                            Classes="transcript"
-                                           IsVisible="{Binding IsPlainText}"
+                                           IsVisible="{Binding IsPlainNonMarkdown}"
                                            Classes.userRow="{Binding IsUserRow}"/>
+
+                                <!-- Assistant prose renders as markdown (T9). The user echo stays on the plain
+                                     path above: its "> " prefix would otherwise read as a blockquote. -->
+                                <md:MarkdownScrollViewer Markdown="{Binding Text}"
+                                                         IsVisible="{Binding IsAssistantMarkdown}"/>
 
                                 <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
                                      to the full input plus the coupled result (L14, matched on tool_use_id).

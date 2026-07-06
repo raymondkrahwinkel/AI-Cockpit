@@ -36,6 +36,12 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// <summary>Plain rows rendered as a single wrapped text block (assistant/user text — not thinking, a tool-use, or a standalone tool result).</summary>
     public bool IsPlainText => !IsThinking && !IsToolResult && !IsToolUse;
 
+    /// <summary>Assistant prose renders as markdown (T9); the echoed user line stays plain because its "&gt; " prefix would read as a blockquote.</summary>
+    public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText && !IsUserRow;
+
+    /// <summary>Plain rows that bypass the markdown renderer: the user echo, questions, and errors.</summary>
+    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown;
+
     /// <summary>
     /// Presentational only: the echoed user message is an <see cref="TranscriptEntryKind.AssistantText"/>
     /// row prefixed with "&gt; " (see <c>ClaudeSessionViewModel.SendAsync</c>) — styled muted so it reads

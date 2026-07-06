@@ -24,6 +24,11 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
+    <!-- Markdown transcript rendering (T9). The only Avalonia-12-compatible release is this alpha;
+         its ColorTextBlock dependency defaults code blocks to the Windows-only "Consolas" family,
+         which a Theme.axaml style on CCode.MonospaceFontFamily overrides (Linux crash,
+         whistyun/Markdown.Avalonia#185). -->
+    <PackageReference Include="Markdown.Avalonia" Version="12.0.0-a3" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <!-- TTY-mode experiment (#9): SvcSystems.UI.Terminal is a pure XTerm.NET renderer control
          (Feed for pty output, UserInput/Send for keystrokes, SizeChanged for resize). Chosen over
