@@ -47,6 +47,9 @@ public partial class ClaudeTtyView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
+            // The profile may already have been configured (dialog confirmed) before this view existed;
+            // pull any pending launch now that we are subscribed. The VM's guard makes this fire once.
+            _viewModel.TryRaiseLaunch();
         }
 
         EnsureModel();

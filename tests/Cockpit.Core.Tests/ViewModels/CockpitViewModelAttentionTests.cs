@@ -1,8 +1,10 @@
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
 using NSubstitute;
 
@@ -11,17 +13,18 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// <summary>
 /// The edge-triggered attention wiring on <see cref="CockpitViewModel"/>: entering
 /// <see cref="SessionStatus.NeedsAttention"/> fires the notifier exactly once, and only on the edge —
-/// not again while the session stays in that state, and not after the session is closed.
+/// not again while the session stays in that state, and not after the session is closed. A session is
+/// created through the New-session dialog (faked), since #31 the constructor no longer seeds one.
 /// </summary>
 public class CockpitViewModelAttentionTests
 {
     private readonly IAttentionNotifier _attentionNotifier = Substitute.For<IAttentionNotifier>();
 
     [Fact]
-    public void EnteringNeedsAttention_FiresTheNotifierOnce()
+    public async Task EnteringNeedsAttention_FiresTheNotifierOnce()
     {
         var vm = NewVm();
-        vm.NewSessionCommand.Execute(null);
+        await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions[0];
 
         session.SessionStatus = SessionStatus.NeedsAttention;
@@ -32,10 +35,10 @@ public class CockpitViewModelAttentionTests
     }
 
     [Fact]
-    public void StayingInNeedsAttention_DoesNotRefire_OnAFurtherStatusTouch()
+    public async Task StayingInNeedsAttention_DoesNotRefire_OnAFurtherStatusTouch()
     {
         var vm = NewVm();
-        vm.NewSessionCommand.Execute(null);
+        await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions[0];
 
         session.SessionStatus = SessionStatus.NeedsAttention;
@@ -50,7 +53,7 @@ public class CockpitViewModelAttentionTests
     public async Task ClosedSession_NoLongerFires()
     {
         var vm = NewVm();
-        vm.NewSessionCommand.Execute(null);
+        await vm.NewSessionCommand.ExecuteAsync(null);
         var session = vm.Sessions[0];
 
         await vm.CloseSessionCommand.ExecuteAsync(session);
@@ -65,9 +68,17 @@ public class CockpitViewModelAttentionTests
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
         var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
         sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns(new NewSessionResult(
+            new ClaudeProfile("default", @"C:\fake\.claude"),
+            SessionOptionCatalog.DefaultPermissionMode,
+            SessionOptionCatalog.DefaultModel,
+            SessionOptionCatalog.DefaultEffort));
+
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
+            dialogService,
             Substitute.For<IAudioCaptureService>(),
             Substitute.For<IAudioPlaybackService>(),
             _attentionNotifier,

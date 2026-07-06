@@ -1,0 +1,78 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.NewSessionDialog"
+        x:DataType="vm:NewSessionDialogViewModel"
+        Title="{Binding HeaderText}"
+        Width="440" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:NewSessionDialogViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Footer: login status of the chosen profile on the left, Cancel/Start on the right. Start
+             is disabled unless the profile is logged in (CanStart), so it never launches into a failure. -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8"
+                             Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                    <TextBlock Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="Start" Command="{Binding ConfirmCommand}" Classes="Accent"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Body: profile picker (with its config directory shown) then, for SDK sessions, the start
+             mode/model/effort — initialised from the profile's saved defaults, still overridable. -->
+        <StackPanel Margin="16" Spacing="12">
+
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Spacing="3">
+                    <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                    <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
+                               FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Grid>
+
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
+                <TextBlock Grid.Column="0" Text="Mode" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
+                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
+                <TextBlock Grid.Column="0" Text="Model" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
+                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
+                <TextBlock Grid.Column="0" Text="Effort" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <ComboBox Grid.Column="1" ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
+                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+            </Grid>
+
+        </StackPanel>
+    </DockPanel>
+</Window>

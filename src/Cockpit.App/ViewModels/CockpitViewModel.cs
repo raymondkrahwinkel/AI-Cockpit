@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
@@ -30,6 +31,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private readonly Func<ClaudeSessionViewModel>? _sessionFactory;
     private readonly Func<ClaudeTtyViewModel>? _ttySessionFactory;
+    private readonly ISessionDialogService? _dialogService;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
@@ -136,6 +138,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public CockpitViewModel(
         Func<ClaudeSessionViewModel> sessionFactory,
         Func<ClaudeTtyViewModel> ttySessionFactory,
+        ISessionDialogService dialogService,
         IAudioCaptureService captureService,
         IAudioPlaybackService playbackService,
         IAttentionNotifier attentionNotifier,
@@ -144,6 +147,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
+        _dialogService = dialogService;
         _captureService = captureService;
         _playbackService = playbackService;
         _attentionNotifier = attentionNotifier;
@@ -266,28 +270,50 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AudioStatus = "Playback done.";
     }
 
-    /// <summary>Starts a default SDK-mode session (headless stream-json rendered as the chat UI).</summary>
+    /// <summary>
+    /// Opens the New-session dialog and, once confirmed, mints an SDK-mode session (headless stream-json
+    /// rendered as the chat UI) and starts it immediately with the chosen profile and options (#31).
+    /// </summary>
     [RelayCommand]
-    private void NewSession()
+    private async Task NewSessionAsync()
     {
-        if (_sessionFactory is null)
+        if (_sessionFactory is null || _dialogService is null)
         {
             return;
         }
 
-        AddSession(_sessionFactory());
+        var result = await _dialogService.ShowNewSessionDialogAsync(SessionKind.Sdk);
+        if (result is null)
+        {
+            return;
+        }
+
+        var session = _sessionFactory();
+        AddSession(session);
+        await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort);
     }
 
-    /// <summary>Starts a TTY-mode session (the real interactive <c>claude</c> TUI in a terminal panel) — the #9 experiment.</summary>
+    /// <summary>
+    /// Opens the New-session dialog and, once confirmed, mints a TTY-mode session (the real interactive
+    /// <c>claude</c> TUI in a terminal panel — the #9 experiment) under the chosen profile.
+    /// </summary>
     [RelayCommand]
-    private void NewTtySession()
+    private async Task NewTtySessionAsync()
     {
-        if (_ttySessionFactory is null)
+        if (_ttySessionFactory is null || _dialogService is null)
         {
             return;
         }
 
-        AddSession(_ttySessionFactory());
+        var result = await _dialogService.ShowNewSessionDialogAsync(SessionKind.Tty);
+        if (result is null)
+        {
+            return;
+        }
+
+        var session = _ttySessionFactory();
+        AddSession(session);
+        session.LaunchConfigured(result.Profile);
     }
 
     private void AddSession(SessionPanelViewModel session)

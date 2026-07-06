@@ -5,7 +5,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
-using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
@@ -23,13 +22,10 @@ namespace Cockpit.App.ViewModels;
 public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly IClaudeSession? _session;
-    private readonly IClaudeProfileStore? _profileStore;
-    private readonly IClaudeProfileLoginChecker? _loginChecker;
     private CancellationTokenSource? _lifetimeCancellation;
     private Task? _eventLoopTask;
     private TranscriptEntryViewModel? _currentAssistantEntry;
     private TranscriptEntryViewModel? _currentThinkingEntry;
-    private string? _lastUsedProfileLabel;
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
@@ -38,9 +34,6 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
     /// <summary>True while at least one image is queued, so the chip strip can hide when empty.</summary>
     public bool HasPendingAttachments => PendingAttachments.Count > 0;
-
-    /// <summary>Populated only while <see cref="ProfileSelectionKind.RequiresChoice"/> is pending the user's pick.</summary>
-    public ObservableCollection<ClaudeProfile> ProfileChoices { get; } = [];
 
     /// <summary>
     /// Permission modes offered in the running panel: the three live-switchable modes
@@ -86,13 +79,6 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
     /// <summary>True while a pending permission decision or CLI <c>needs_action</c> signal is outstanding, driving <see cref="SessionStatus.NeedsAttention"/>.</summary>
     private bool _needsAttention;
-
-    /// <summary>True while <see cref="ProfileChoices"/> should be shown for the user to pick from.</summary>
-    [ObservableProperty]
-    private bool _isChoosingProfile;
-
-    [ObservableProperty]
-    private ClaudeProfile? _selectedProfile;
 
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
@@ -157,11 +143,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         "SWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgS" +
         "moQmoUloEpqEJqFJaBKahCahSWgSmoQmYXlhqOHSNEsP9wAAAABJRU5ErkJggg==";
 
-    public ClaudeSessionViewModel(IClaudeSession session, IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)
+    public ClaudeSessionViewModel(IClaudeSession session)
     {
         _session = session;
-        _profileStore = profileStore;
-        _loginChecker = loginChecker;
         _TrackPendingAttachments();
     }
 
@@ -170,54 +154,28 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         PendingAttachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPendingAttachments));
     }
 
-    [RelayCommand]
-    private async Task StartAsync()
+    /// <summary>
+    /// Starts the session immediately under the profile and options chosen up front in the New-session
+    /// dialog (#31) — this replaces the old in-panel Start button and inline profile picker. When
+    /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
+    /// on a running session (#15).
+    /// </summary>
+    public async Task StartConfiguredAsync(ClaudeProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort)
     {
-        if (_session is null || _profileStore is null || _loginChecker is null || _eventLoopTask is not null)
+        if (_eventLoopTask is not null)
         {
             return;
         }
 
-        Status = "Checking profiles...";
+        // Set the live selectors before starting: the session has no event loop yet, so these do not
+        // fire a live control request — they are the launch values StartWithProfileAsync reads.
+        SelectedPermissionMode = mode;
+        SelectedModel = model;
+        SelectedEffort = effort;
 
-        var profiles = await _profileStore.LoadAsync();
-        var statuses = profiles.Select(p => new ClaudeProfileStatus(p, _loginChecker.IsLoggedIn(p))).ToList();
-        var outcome = ProfileSelector.Select(statuses, _lastUsedProfileLabel);
+        await StartWithProfileAsync(profile);
 
-        switch (outcome.Kind)
-        {
-            case ProfileSelectionKind.LoginRequired:
-                Status = "No logged-in Claude profile found. Run 'claude /login' in a terminal, then try again.";
-                return;
-
-            case ProfileSelectionKind.RequiresChoice:
-                ProfileChoices.Clear();
-                foreach (var candidate in outcome.Candidates)
-                {
-                    ProfileChoices.Add(candidate);
-                }
-
-                SelectedProfile = outcome.Candidates[0];
-                IsChoosingProfile = true;
-                Status = "Choose a profile to start the session.";
-                return;
-
-            case ProfileSelectionKind.UseSilently:
-                await StartWithProfileAsync(outcome.SingleProfile);
-                return;
-        }
-    }
-
-    [RelayCommand]
-    private async Task ConfirmProfileChoiceAsync()
-    {
-        if (SelectedProfile is null)
-        {
-            return;
-        }
-
-        IsChoosingProfile = false;
-        await StartWithProfileAsync(SelectedProfile);
+        IsPermissionModeLocked = mode.Value == SessionOptionCatalog.BypassPermissionModeValue;
     }
 
     private async Task StartWithProfileAsync(ClaudeProfile? profile)
@@ -234,7 +192,6 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         {
             await _session.StartAsync(profile, SelectedPermissionMode.Value, SelectedModel.Value, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
-            _lastUsedProfileLabel = profile?.Label;
             ActiveProfileLabel = profile?.Label;
             Status = profile is null ? "Session started." : $"Session started ({profile.Label}).";
 

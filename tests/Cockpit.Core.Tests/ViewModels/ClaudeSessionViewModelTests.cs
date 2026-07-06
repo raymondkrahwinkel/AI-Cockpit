@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
-using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
@@ -11,34 +10,74 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
-/// Exercises <see cref="ClaudeSessionViewModel"/>'s transcript-shaping logic (the
-/// "Thinking..." row lifecycle and the model launch argument) against a fake
-/// <see cref="IClaudeSession"/>. <c>Apply</c> is invoked directly (it is <c>internal</c>,
-/// visible here via <c>InternalsVisibleTo</c> on <c>Cockpit.App</c>) rather than through
-/// <c>ConsumeEventsAsync</c>'s <c>Dispatcher.UIThread.InvokeAsync</c>, since no Avalonia
-/// application/dispatcher is initialized in this test host.
+/// Exercises <see cref="ClaudeSessionViewModel"/>'s transcript-shaping logic (the "Thinking..." row
+/// lifecycle) and the configured start path (<see cref="ClaudeSessionViewModel.StartConfiguredAsync"/>,
+/// which the New-session dialog drives) against a fake <see cref="IClaudeSession"/>. <c>Apply</c> is
+/// invoked directly (it is <c>internal</c>, visible via <c>InternalsVisibleTo</c>) rather than through
+/// <c>ConsumeEventsAsync</c>'s dispatcher, since no Avalonia dispatcher is initialized in this host.
 /// </summary>
 public class ClaudeSessionViewModelTests
 {
+    private static readonly ClaudeProfile Profile = new("default", @"C:\fake\.claude");
+
     [Fact]
-    public async Task StartAsync_UsesSelectedModel_WhenStartingSession()
+    public async Task StartConfigured_LaunchesWithTheChosenModel()
     {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
-        var profileStore = Substitute.For<IClaudeProfileStore>();
-        var profile = new ClaudeProfile("default", @"C:\fake\.claude");
-        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
-        loginChecker.IsLoggedIn(profile).Returns(true);
+        var vm = new ClaudeSessionViewModel(session);
 
-        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker)
-        {
-            SelectedModel = new ModelOption("Haiku", "haiku"),
-        };
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, new ModelOption("Haiku", "haiku"), SessionOptionCatalog.DefaultEffort);
 
-        await vm.StartCommand.ExecuteAsync(null);
+        await session.Received(1).StartAsync(Profile, Arg.Any<string?>(), "haiku", Arg.Any<CancellationToken>());
 
-        await session.Received(1).StartAsync(profile, Arg.Any<string?>(), "haiku", Arg.Any<CancellationToken>());
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartConfigured_AppliesTheChosenEffortsBudgetOnceLive()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session);
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, new EffortOption("High", "high", 24_000));
+
+        await session.Received(1).SetMaxThinkingTokensAsync(24_000, Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartConfigured_InBypass_LocksThePanelPermissionMode()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session);
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.IsPermissionModeLocked.Should().BeTrue();
+        vm.PermissionModes.Should().ContainSingle().Which.Value.Should().Be("bypassPermissions");
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartConfigured_InALiveMode_LeavesThePermissionModeUnlocked()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session);
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.ResolvePermissionMode("plan"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.IsPermissionModeLocked.Should().BeFalse();
+        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
 
         await vm.DisposeAsync();
     }
@@ -145,9 +184,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
-        var profileStore = Substitute.For<IClaudeProfileStore>();
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
-        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker) { InputText = "hello" };
+        var vm = new ClaudeSessionViewModel(session) { InputText = "hello" };
 
         await vm.SendCommand.ExecuteAsync(null);
 
@@ -167,26 +204,6 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
-    public void PermissionModes_WhenNotLocked_OfferOnlyTheThreeLiveModes()
-    {
-        var vm = NewVm();
-
-        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
-    }
-
-    [Fact]
-    public void PermissionModes_WhenLockedToBypass_CollapseToThatSingleLockedEntry()
-    {
-        var vm = NewVm();
-        vm.SelectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode("bypassPermissions");
-
-        vm.IsPermissionModeLocked = true;
-
-        vm.PermissionModes.Should().ContainSingle()
-            .Which.Value.Should().Be("bypassPermissions");
-    }
-
-    [Fact]
     public void Efforts_MapEachLevelToItsThinkingBudget()
     {
         var vm = NewVm();
@@ -200,26 +217,11 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
-    public async Task StartAsync_AppliesTheSelectedEffortsBudgetOnceLive()
+    public void PermissionModes_WhenNotLocked_OfferOnlyTheThreeLiveModes()
     {
-        var session = Substitute.For<IClaudeSession>();
-        session.Events.Returns(EmptyEvents());
-        var profileStore = Substitute.For<IClaudeProfileStore>();
-        var profile = new ClaudeProfile("default", @"C:\fake\.claude");
-        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
-        loginChecker.IsLoggedIn(profile).Returns(true);
+        var vm = NewVm();
 
-        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker)
-        {
-            SelectedEffort = new EffortOption("High", "high", 24_000),
-        };
-
-        await vm.StartCommand.ExecuteAsync(null);
-
-        await session.Received(1).SetMaxThinkingTokensAsync(24_000, Arg.Any<CancellationToken>());
-
-        await vm.DisposeAsync();
+        vm.PermissionModes.Select(mode => mode.Value).Should().Equal("default", "acceptEdits", "plan");
     }
 
     [Fact]
@@ -227,13 +229,9 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
-        var profileStore = Substitute.For<IClaudeProfileStore>();
-        var profile = new ClaudeProfile("default", @"C:\fake\.claude");
-        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
-        loginChecker.IsLoggedIn(profile).Returns(true);
-        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker);
-        await vm.StartCommand.ExecuteAsync(null);
+        var vm = new ClaudeSessionViewModel(session);
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         session.ClearReceivedCalls();
 
         vm.SelectedEffort = new EffortOption("Max", "max", 64_000);
@@ -248,9 +246,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
-        var profileStore = Substitute.For<IClaudeProfileStore>();
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
-        var vm = new ClaudeSessionViewModel(session, profileStore, loginChecker);
+        var vm = new ClaudeSessionViewModel(session);
 
         vm.SelectedEffort = new EffortOption("High", "high", 24_000);
 
@@ -262,7 +258,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session, Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ClaudeSessionViewModel(session);
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
         {
             ToolUseId = "toolu_1",
@@ -284,7 +280,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session, Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ClaudeSessionViewModel(session);
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
         {
             ToolUseId = "toolu_2",
@@ -303,9 +299,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<IClaudeSession>();
         session.Events.Returns(EmptyEvents());
-        var profileStore = Substitute.For<IClaudeProfileStore>();
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
-        return new ClaudeSessionViewModel(session, profileStore, loginChecker);
+        return new ClaudeSessionViewModel(session);
     }
 
     private static async IAsyncEnumerable<ClaudeSessionEvent> EmptyEvents([EnumeratorCancellation] CancellationToken cancellationToken = default)

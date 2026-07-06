@@ -14,17 +14,16 @@
 
     <DockPanel Margin="12">
 
-        <!-- Top bar: primary action (Start) carries the accent; Stop is a quiet secondary and the
-             mode/model/effort pickers are compact context controls, so the eye lands on the action
-             and then the transcript, not a row of dropdowns. Status sits inline to save a row. -->
+        <!-- Top bar: the session was started from the New-session dialog (#31), so there is no Start
+             button — only Stop plus the live mode/model/effort selectors, kept compact so the eye lands
+             on the transcript rather than a row of controls. Status sits inline to save a row. -->
         <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitPanelRadius}" Padding="10,7" Margin="0,0,0,8">
             <StackPanel Spacing="6">
                 <WrapPanel Orientation="Horizontal">
-                    <Button Content="Start session" Command="{Binding StartCommand}" Classes="Accent" Margin="0,0,6,4"/>
                     <Button Content="Stop" Command="{Binding StopCommand}" Classes="Compact" Margin="0,0,10,4"
-                            ToolTip.Tip="Onderbreekt de lopende turn (control_request/interrupt)"/>
+                            ToolTip.Tip="Interrupts the running turn (control_request/interrupt)"/>
                     <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104" Margin="0,0,4,4"
                               IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
@@ -43,18 +42,6 @@
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
-                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                CornerRadius="{StaticResource CockpitPanelRadius}" Padding="10,7" Margin="0,0,0,8"
-                IsVisible="{Binding IsChoosingProfile}">
-            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <TextBlock Text="Profile:" VerticalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ComboBox ItemsSource="{Binding ProfileChoices}" SelectedItem="{Binding SelectedProfile}"
-                          DisplayMemberBinding="{Binding Label}" Width="200"/>
-                <Button Content="Use profile" Command="{Binding ConfirmProfileChoiceCommand}" Classes="Accent"/>
             </StackPanel>
         </Border>
 
