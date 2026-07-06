@@ -279,12 +279,27 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
-    public void UserEchoRow_StaysOnThePlainPath()
+    public void UserRow_RendersAsItsOwnBubbleNotMarkdownNorPlain()
     {
-        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "> build the project");
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "build the project");
 
+        entry.IsUserRow.Should().BeTrue();
         entry.IsAssistantMarkdown.Should().BeFalse();
-        entry.IsPlainNonMarkdown.Should().BeTrue();
+        entry.IsPlainNonMarkdown.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SendingAMessage_EchoesItAsAUserRowWithoutAPrefix()
+    {
+        var (vm, _) = await StartedVm();
+        vm.InputText = "hello there";
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        var echo = vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.UserText).Subject;
+        echo.Text.Should().Be("hello there");
+        echo.IsUserRow.Should().BeTrue();
+        await vm.DisposeAsync();
     }
 
     [Fact]

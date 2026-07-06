@@ -27,6 +27,11 @@
             <SolidColorBrush x:Key="CockpitTextSecondaryBrush" Color="{StaticResource CockpitTextSecondaryColor}"/>
             <SolidColorBrush x:Key="CockpitTextFaintBrush" Color="{StaticResource CockpitTextFaintColor}"/>
 
+            <!-- User message bubble (T2): a calm cool-slate fill, distinct from the warm-neutral panel so
+                 the operator's own lines read as "mine" on the right without shouting. -->
+            <Color x:Key="CockpitUserBubbleColor">#28313B</Color>
+            <SolidColorBrush x:Key="CockpitUserBubbleBrush" Color="{StaticResource CockpitUserBubbleColor}"/>
+
             <!-- Accent + status -->
             <Color x:Key="CockpitAccentColor">#D97757</Color>
             <Color x:Key="CockpitStatusBusyColor">#4A90E2</Color>
@@ -73,9 +78,20 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
-    <!-- Echoed user message in the transcript ("> ..."): muted so it reads as the user's own line. -->
-    <Style Selector=":is(TextBlock).userRow">
-        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    <!-- Transcript row surface (T2). The base row is a full-width card (assistant/tool/thinking on the
+         left); a user row flips to a right-aligned, width-capped bubble with its own tint. State is set
+         only through these classes — never inline on the Border — so the setters win. -->
+    <Style Selector="Border.transcriptRow">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Border.transcriptRow.userRow">
+        <Setter Property="Background" Value="{StaticResource CockpitUserBubbleBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitUserBubbleBrush}"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="MaxWidth" Value="520"/>
     </Style>
 
     <!-- Buttons: flat, hairline border, rounded corners. Accent reserved for primary actions

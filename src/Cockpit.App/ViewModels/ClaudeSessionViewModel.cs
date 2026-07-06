@@ -111,7 +111,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
         ActiveProfileLabel = "raymond@work";
 
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "> fix the layout bug in ClaudeSessionView"));
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "fix the layout bug in ClaudeSessionView"));
 
         var thinking = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking,
             "The user wants the layout bug fixed. Let me look at the XAML structure first...")
@@ -146,6 +146,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             InputJson = "{\"command\":\"dotnet build\"}",
             IsPendingPermission = true,
         });
+
 
         _TrackPendingAttachments();
 
@@ -425,10 +426,13 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             _closeAfterTurn = true;
         }
 
-        var echo = images.Count == 0
-            ? $"> {text}"
-            : $"> {text} [+{images.Count} image{(images.Count == 1 ? "" : "s")}]";
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, echo));
+        var imageSuffix = images.Count == 0
+            ? string.Empty
+            : $"[+{images.Count} image{(images.Count == 1 ? "" : "s")}]";
+        var echo = string.IsNullOrEmpty(text)
+            ? imageSuffix
+            : images.Count == 0 ? text : $"{text}  {imageSuffix}";
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, echo));
         _currentAssistantEntry = null;
         IsBusy = true;
         _needsAttention = false;

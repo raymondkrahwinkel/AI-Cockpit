@@ -130,9 +130,11 @@
             <ItemsControl ItemsSource="{Binding Transcript}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
-                        <Border Padding="8,5" Margin="0,2" CornerRadius="{StaticResource CockpitControlRadius}"
-                                Background="{StaticResource CockpitPanelBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                        <!-- Row surface: background/border/alignment come from the transcriptRow style classes
+                             (Theme.axaml), never inline — an inline (local) value would beat the .userRow
+                             setters and the user bubble could not right-align or re-tint (T2). -->
+                        <Border Classes="transcriptRow" Classes.userRow="{Binding IsUserRow}"
+                                Padding="8,5" Margin="0,2" CornerRadius="{StaticResource CockpitControlRadius}">
                             <StackPanel Spacing="4">
 
                                 <!-- Arrival timestamp (T7): a small faint label at the top of the row, shown
@@ -155,16 +157,18 @@
                                                IsVisible="{Binding IsExpanded}"/>
                                 </StackPanel>
 
-                                <!-- User rows ("> ...") are muted so they read as the user's own line, not assistant output.
-                                     No local Foreground here — the "userRow" style class (Theme.axaml) needs to be able
-                                     to override the default TextBlock foreground, and a local value always wins over styles. -->
+                                <!-- The user's own message (T2): plain, selectable text; the enclosing row Border
+                                     right-aligns and tints it into a bubble (Border.transcriptRow.userRow). -->
                                 <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                            Classes="transcript"
-                                           IsVisible="{Binding IsPlainNonMarkdown}"
-                                           Classes.userRow="{Binding IsUserRow}"/>
+                                           IsVisible="{Binding IsUserRow}"/>
 
-                                <!-- Assistant prose renders as markdown (T9). The user echo stays on the plain
-                                     path above: its "> " prefix would otherwise read as a blockquote.
+                                <!-- Questions / errors / turn-result rows: plain wrapped text, not a bubble or markdown. -->
+                                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                           Classes="transcript"
+                                           IsVisible="{Binding IsPlainNonMarkdown}"/>
+
+                                <!-- Assistant prose renders as markdown (T9), left/stretch.
                                      SelectionEnabled keeps the transcript copyable (T3) — without it the
                                      markdown rows are the one part of the conversation you cannot select. -->
                                 <md:MarkdownScrollViewer Markdown="{Binding Text}"

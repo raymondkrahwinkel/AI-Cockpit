@@ -10,6 +10,7 @@ namespace Cockpit.App.ViewModels;
 public enum TranscriptEntryKind
 {
     AssistantText,
+    UserText,
     Thinking,
     ToolUse,
     ToolResult,
@@ -33,21 +34,17 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public bool IsToolUse => Kind == TranscriptEntryKind.ToolUse;
 
-    /// <summary>Plain rows rendered as a single wrapped text block (assistant/user text — not thinking, a tool-use, or a standalone tool result).</summary>
+    /// <summary>Rows not rendered as thinking, a tool-use, or a standalone tool result — assistant/user text, questions, errors.</summary>
     public bool IsPlainText => !IsThinking && !IsToolResult && !IsToolUse;
 
-    /// <summary>Assistant prose renders as markdown (T9); the echoed user line stays plain because its "&gt; " prefix would read as a blockquote.</summary>
-    public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText && !IsUserRow;
+    /// <summary>Assistant prose renders as markdown (T9).</summary>
+    public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;
 
-    /// <summary>Plain rows that bypass the markdown renderer: the user echo, questions, and errors.</summary>
-    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown;
+    /// <summary>The user's own message, rendered as a right-aligned bubble (T2) — plain text, not markdown.</summary>
+    public bool IsUserRow => Kind == TranscriptEntryKind.UserText;
 
-    /// <summary>
-    /// Presentational only: the echoed user message is an <see cref="TranscriptEntryKind.AssistantText"/>
-    /// row prefixed with "&gt; " (see <c>ClaudeSessionViewModel.SendAsync</c>) — styled muted so it reads
-    /// as the user's own line rather than assistant output.
-    /// </summary>
-    public bool IsUserRow => Kind == TranscriptEntryKind.AssistantText && Text.StartsWith("> ", StringComparison.Ordinal);
+    /// <summary>Plain rows that are neither the user bubble nor markdown: questions, errors, turn results.</summary>
+    public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow;
 
     /// <summary>Chevron glyph for a standalone (orphan) tool-result row; presentational only.</summary>
     public string ToggleGlyph => IsExpanded ? "▾ Tool result" : "▸ Tool result (click to show)";
