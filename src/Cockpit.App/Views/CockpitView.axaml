@@ -114,6 +114,18 @@
                                             Classes="Accent" HorizontalAlignment="Left"/>
                                     <TextBlock Text="{Binding SessionBehaviorSettingsStatus}"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                                    <TextBlock Text="Layout" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Show one session at a time (no grid)"
+                                              IsChecked="{Binding SingleSessionLayout}"/>
+                                    <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <Button Content="Save" Command="{Binding SaveLayoutSettingsCommand}"
+                                            Classes="Accent" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="{Binding LayoutSettingsStatus}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>
@@ -223,7 +235,10 @@
 
             <!-- Session grid + zoom, shown once at least one session exists. -->
             <DockPanel Margin="12" IsVisible="{Binding HasSessions}">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
+                     where it would be a no-op (the single pane is always shown) — no dead control. -->
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
+                            IsVisible="{Binding !SingleSessionLayout}">
                     <ToggleButton Content="Zoom" IsChecked="{Binding IsZoomed}"
                                   IsEnabled="{Binding SelectedSession, Converter={x:Static ObjectConverters.IsNotNull}}"
                                   ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
@@ -231,7 +246,7 @@
 
                 <Grid>
                 <!-- Grid mode: every session gets an auto-sized panel. -->
-                <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !IsZoomed}">
+                <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !ShowSinglePane}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <UniformGrid Columns="{Binding GridColumns}"/>
@@ -253,9 +268,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- Zoom mode: only the selected session, full width/height. -->
+                <!-- Single-pane: only the selected session, full width/height (a transient Zoom or the
+                     persistent single-session layout #24). -->
                 <ContentControl Content="{Binding SelectedSession}"
-                                IsVisible="{Binding $parent[DockPanel].((vm:CockpitViewModel)DataContext).IsZoomed}"/>
+                                IsVisible="{Binding $parent[DockPanel].((vm:CockpitViewModel)DataContext).ShowSinglePane}"/>
                 </Grid>
             </DockPanel>
         </Grid>

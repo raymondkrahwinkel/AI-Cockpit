@@ -5,11 +5,13 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
+using Cockpit.Core.Layout;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -76,6 +78,8 @@ public class CockpitViewModelAttentionTests
         transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
         sessionBehaviorSettingsStore.LoadAsync().Returns(new SessionBehaviorSettings());
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
         var dialogService = Substitute.For<ISessionDialogService>();
         dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns(new NewSessionResult(
             new ClaudeProfile("default", @"C:\fake\.claude"),
@@ -93,6 +97,7 @@ public class CockpitViewModelAttentionTests
             notificationSettingsStore,
             sessionSwitchSettingsStore,
             transcriptDisplaySettingsStore,
-            sessionBehaviorSettingsStore);
+            sessionBehaviorSettingsStore,
+            layoutSettingsStore);
     }
 }

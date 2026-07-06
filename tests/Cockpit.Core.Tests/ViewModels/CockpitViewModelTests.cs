@@ -5,11 +5,13 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
+using Cockpit.Core.Layout;
 using FluentAssertions;
 using NSubstitute;
 
@@ -93,6 +95,20 @@ public class CockpitViewModelTests
         vm.AutoCloseOnExit = true;
 
         vm.Sessions.Should().OnlyContain(s => s.AutoCloseOnExit);
+    }
+
+    [Fact]
+    public void ShowSinglePane_IsTrueWhenEitherZoomedOrSingleLayout()
+    {
+        var vm = NewVm();
+        vm.ShowSinglePane.Should().BeFalse();
+
+        vm.IsZoomed = true;
+        vm.ShowSinglePane.Should().BeTrue();
+
+        vm.IsZoomed = false;
+        vm.SingleSessionLayout = true;
+        vm.ShowSinglePane.Should().BeTrue();
     }
 
     [Fact]
@@ -423,6 +439,8 @@ public class CockpitViewModelTests
         transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
         sessionBehaviorSettingsStore.LoadAsync().Returns(new SessionBehaviorSettings());
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
@@ -433,7 +451,8 @@ public class CockpitViewModelTests
             notificationSettingsStore,
             sessionSwitchSettingsStore,
             transcriptDisplaySettingsStore,
-            sessionBehaviorSettingsStore);
+            sessionBehaviorSettingsStore,
+            layoutSettingsStore);
     }
 
     private static ISessionDialogService DefaultDialogService()

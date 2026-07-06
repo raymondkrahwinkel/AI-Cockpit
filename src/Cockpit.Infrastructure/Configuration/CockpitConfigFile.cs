@@ -22,4 +22,6 @@ internal sealed class CockpitConfigFile
     public TranscriptDisplaySettingsEntry? TranscriptDisplay { get; set; }
 
     public SessionBehaviorSettingsEntry? SessionBehavior { get; set; }
+
+    public LayoutSettingsEntry? Layout { get; set; }
 }

@@ -5,10 +5,12 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
+using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.SessionSwitching;
@@ -43,6 +45,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionSwitchSettingsStore? _sessionSwitchSettingsStore;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
+    private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -76,6 +79,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>True while the grid is collapsed to show only <see cref="SelectedSession"/> at full width.</summary>
     [ObservableProperty]
     private bool _isZoomed;
+
+    /// <summary>
+    /// When true, the cockpit always shows one session at a time (single-session layout, #24), switched
+    /// from the sidebar — instead of the multi-session grid. Persisted; the Zoom button is a transient
+    /// per-view version of the same thing.
+    /// </summary>
+    [ObservableProperty]
+    private bool _singleSessionLayout;
+
+    [ObservableProperty]
+    private string _layoutSettingsStatus = string.Empty;
+
+    /// <summary>True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.</summary>
+    public bool ShowSinglePane => SingleSessionLayout || IsZoomed;
+
+    partial void OnIsZoomedChanged(bool value) => OnPropertyChanged(nameof(ShowSinglePane));
+
+    partial void OnSingleSessionLayoutChanged(bool value) => OnPropertyChanged(nameof(ShowSinglePane));
 
     [ObservableProperty]
     private string _audioStatus = "Ready.";
@@ -197,7 +218,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         INotificationSettingsStore notificationSettingsStore,
         ISessionSwitchSettingsStore sessionSwitchSettingsStore,
         ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore,
-        ISessionBehaviorSettingsStore sessionBehaviorSettingsStore)
+        ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
+        ILayoutSettingsStore layoutSettingsStore)
     {
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
@@ -209,6 +231,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionSwitchSettingsStore = sessionSwitchSettingsStore;
         _transcriptDisplaySettingsStore = transcriptDisplaySettingsStore;
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
+        _layoutSettingsStore = layoutSettingsStore;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
         Sessions.CollectionChanged += (_, _) =>
@@ -220,6 +243,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadSessionSwitchSettingsAsync();
         _ = LoadTranscriptDisplaySettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
+        _ = LoadLayoutSettingsAsync();
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -331,6 +355,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = AutoCloseOnExit });
         SessionBehaviorSettingsStatus = "Saved.";
+    }
+
+    private async Task LoadLayoutSettingsAsync()
+    {
+        if (_layoutSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _layoutSettingsStore.LoadAsync();
+        SingleSessionLayout = settings.SingleSessionLayout;
+    }
+
+    /// <summary>Persists the layout settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveLayoutSettingsAsync()
+    {
+        if (_layoutSettingsStore is null)
+        {
+            return;
+        }
+
+        await _layoutSettingsStore.SaveAsync(new LayoutSettings { SingleSessionLayout = SingleSessionLayout });
+        LayoutSettingsStatus = "Saved.";
     }
 
     [RelayCommand]
