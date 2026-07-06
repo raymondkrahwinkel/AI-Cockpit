@@ -92,6 +92,16 @@
                                             Classes="Accent" HorizontalAlignment="Left"/>
                                     <TextBlock Text="{Binding SessionSwitchSettingsStatus}"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                                    <TextBlock Text="Transcript" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Show a timestamp on each message"
+                                              IsChecked="{Binding ShowTimestamps}"/>
+                                    <Button Content="Save" Command="{Binding SaveTranscriptDisplaySettingsCommand}"
+                                            Classes="Accent" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="{Binding TranscriptDisplaySettingsStatus}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>

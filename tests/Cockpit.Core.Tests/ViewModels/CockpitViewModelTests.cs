@@ -3,9 +3,11 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.TranscriptDisplay;
 using FluentAssertions;
 using NSubstitute;
 
@@ -54,6 +56,29 @@ public class CockpitViewModelTests
         vm.SelectedSession.Should().Be(vm.Sessions[0]);
         vm.SelectedSession!.IsSelected.Should().BeTrue();
         vm.SelectedSession.Title.Should().Be("Claude 1");
+    }
+
+    [Fact]
+    public async Task ShowTimestamps_TogglesEveryOpenSessionLive()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+
+        vm.ShowTimestamps = true;
+
+        vm.Sessions.Should().OnlyContain(s => s.ShowTimestamps);
+    }
+
+    [Fact]
+    public async Task ShowTimestamps_WhenOn_AppliesToASessionCreatedAfterwards()
+    {
+        var vm = NewVm();
+        vm.ShowTimestamps = true;
+
+        await vm.NewSessionCommand.ExecuteAsync(null);
+
+        vm.Sessions.Single().ShowTimestamps.Should().BeTrue();
     }
 
     [Fact]
@@ -368,6 +393,8 @@ public class CockpitViewModelTests
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
         var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
         sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
+        var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
+        transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
@@ -376,7 +403,8 @@ public class CockpitViewModelTests
             playbackService,
             attentionNotifier,
             notificationSettingsStore,
-            sessionSwitchSettingsStore);
+            sessionSwitchSettingsStore,
+            transcriptDisplaySettingsStore);
     }
 
     private static ISessionDialogService DefaultDialogService()

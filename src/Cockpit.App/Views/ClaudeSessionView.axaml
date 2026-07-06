@@ -135,6 +135,13 @@
                                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
                             <StackPanel Spacing="4">
 
+                                <!-- Arrival timestamp (T7): a small faint label at the top of the row, shown
+                                     only when the operator enables timestamps in Options. The toggle lives on
+                                     the session view model, so bind up to it via the ItemsControl's DataContext. -->
+                                <TextBlock Text="{Binding TimestampText}" FontSize="10"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                           IsVisible="{Binding $parent[ItemsControl].((vm:ClaudeSessionViewModel)DataContext).ShowTimestamps}"/>
+
                                 <!-- Thinking rows: dimmed, collapsed to a toggle by default so they read as
                                      reasoning-in-the-background rather than part of the visible transcript flow. -->
                                 <StackPanel IsVisible="{Binding IsThinking}" Spacing="4">

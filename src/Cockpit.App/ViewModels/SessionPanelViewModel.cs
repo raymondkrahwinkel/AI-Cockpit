@@ -27,6 +27,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string? _activeProfileLabel;
 
     /// <summary>
+    /// When true, transcript rows show their arrival timestamp (T7). Set by <see cref="CockpitViewModel"/>
+    /// from the saved transcript-display setting and updated live when it is toggled in Options. Lives on
+    /// the shared base so both session kinds carry it uniformly, though only the SDK chat renders it.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showTimestamps;
+
+    /// <summary>
     /// True while a close is awaiting confirmation for this panel, so its sidebar row shows an inline
     /// "Close? / Keep" prompt rather than dropping a busy session on a single click (mirrors the
     /// Manage-profiles remove confirm, L11).

@@ -397,6 +397,15 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public void TimestampText_IsTheArrivalTimeAsHoursAndMinutes()
+    {
+        var entry = new TranscriptEntryViewModel(
+            TranscriptEntryKind.AssistantText, "hi", new DateTimeOffset(2026, 7, 6, 14, 7, 0, TimeSpan.Zero));
+
+        entry.TimestampText.Should().Be("14:07");
+    }
+
+    [Fact]
     public void Apply_TurnCompletedAfterPermissionRequest_PriorityGoesToNeedsAttention()
     {
         var vm = NewVm();

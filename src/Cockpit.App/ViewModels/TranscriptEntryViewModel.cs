@@ -127,10 +127,23 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// <summary>The proposed tool input as raw JSON; needed to build an exact-scope always-allow rule.</summary>
     public string? InputJson { get; init; }
 
+    /// <summary>When this row was created — its arrival time, shown as a small timestamp when the operator enables it (T7).</summary>
+    public DateTimeOffset Timestamp { get; }
+
+    /// <summary>The <see cref="Timestamp"/> as a short wall-clock label (e.g. "14:07") for the transcript row.</summary>
+    public string TimestampText => Timestamp.ToString("HH:mm");
+
     public TranscriptEntryViewModel(TranscriptEntryKind kind, string text)
+        : this(kind, text, DateTimeOffset.Now)
+    {
+    }
+
+    /// <summary>Test seam: fix the arrival timestamp so the "HH:mm" label is deterministic.</summary>
+    internal TranscriptEntryViewModel(TranscriptEntryKind kind, string text, DateTimeOffset timestamp)
     {
         Kind = kind;
         _text = text;
+        Timestamp = timestamp;
     }
 
     public void AppendText(string delta)

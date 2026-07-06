@@ -3,9 +3,11 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.TranscriptDisplay;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.ViewModels;
@@ -68,6 +70,8 @@ public class CockpitViewModelAttentionTests
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
         var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
         sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
+        var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
+        transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var dialogService = Substitute.For<ISessionDialogService>();
         dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns(new NewSessionResult(
             new ClaudeProfile("default", @"C:\fake\.claude"),
@@ -83,6 +87,7 @@ public class CockpitViewModelAttentionTests
             Substitute.For<IAudioPlaybackService>(),
             _attentionNotifier,
             notificationSettingsStore,
-            sessionSwitchSettingsStore);
+            sessionSwitchSettingsStore,
+            transcriptDisplaySettingsStore);
     }
 }

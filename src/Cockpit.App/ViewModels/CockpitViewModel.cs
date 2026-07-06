@@ -7,8 +7,10 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.TranscriptDisplay;
 
 namespace Cockpit.App.ViewModels;
 
@@ -37,6 +39,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAttentionNotifier? _attentionNotifier;
     private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly ISessionSwitchSettingsStore? _sessionSwitchSettingsStore;
+    private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -101,6 +104,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _sessionSwitchSettingsStatus = string.Empty;
 
+    /// <summary>When true, every transcript row shows its arrival timestamp (T7). Applied to all open sessions.</summary>
+    [ObservableProperty]
+    private bool _showTimestamps;
+
+    [ObservableProperty]
+    private string _transcriptDisplaySettingsStatus = string.Empty;
+
+    /// <summary>Pushes the timestamp toggle to every open session as it changes, so the switch takes effect live.</summary>
+    partial void OnShowTimestampsChanged(bool value)
+    {
+        foreach (var session in Sessions)
+        {
+            session.ShowTimestamps = value;
+        }
+    }
+
     /// <summary>Selectable modifiers for the session-switch gesture (bound by the Options flyout combo box).</summary>
     public IReadOnlyList<SessionSwitchModifierOption> SessionSwitchModifiers { get; } =
     [
@@ -157,7 +176,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAudioPlaybackService playbackService,
         IAttentionNotifier attentionNotifier,
         INotificationSettingsStore notificationSettingsStore,
-        ISessionSwitchSettingsStore sessionSwitchSettingsStore)
+        ISessionSwitchSettingsStore sessionSwitchSettingsStore,
+        ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore)
     {
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
@@ -167,6 +187,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _attentionNotifier = attentionNotifier;
         _notificationSettingsStore = notificationSettingsStore;
         _sessionSwitchSettingsStore = sessionSwitchSettingsStore;
+        _transcriptDisplaySettingsStore = transcriptDisplaySettingsStore;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
         Sessions.CollectionChanged += (_, _) =>
@@ -176,6 +197,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         };
         _ = LoadNotificationSettingsAsync();
         _ = LoadSessionSwitchSettingsAsync();
+        _ = LoadTranscriptDisplaySettingsAsync();
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -239,6 +261,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _sessionSwitchSettingsStore.SaveAsync(CurrentSessionSwitchSettings);
         SessionSwitchSettingsStatus = "Saved.";
+    }
+
+    private async Task LoadTranscriptDisplaySettingsAsync()
+    {
+        if (_transcriptDisplaySettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _transcriptDisplaySettingsStore.LoadAsync();
+        ShowTimestamps = settings.ShowTimestamps;
+    }
+
+    /// <summary>Persists the transcript-display settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveTranscriptDisplaySettingsAsync()
+    {
+        if (_transcriptDisplaySettingsStore is null)
+        {
+            return;
+        }
+
+        await _transcriptDisplaySettingsStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = ShowTimestamps });
+        TranscriptDisplaySettingsStatus = "Saved.";
     }
 
     [RelayCommand]
@@ -351,6 +397,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionCounter++;
         // A friendly name from the dialog wins; otherwise fall back to the running "Claude N" counter.
         session.Title = string.IsNullOrWhiteSpace(name) ? $"Claude {_sessionCounter}" : name.Trim();
+        // Start the session on the current transcript-display preference; OnShowTimestampsChanged keeps
+        // it live afterwards (T7).
+        session.ShowTimestamps = ShowTimestamps;
 
         _lastStatus[session] = session.SessionStatus;
         session.PropertyChanged += OnSessionPropertyChanged;
