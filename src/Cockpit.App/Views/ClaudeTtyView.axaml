@@ -6,8 +6,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
              x:Class="Cockpit.App.Views.ClaudeTtyView"
-             x:DataType="vm:ClaudeTtyViewModel"
-             Background="{StaticResource CockpitWindowBgBrush}">
+             x:DataType="vm:ClaudeTtyViewModel">
 
     <Design.DataContext>
         <vm:ClaudeTtyViewModel/>
