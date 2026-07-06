@@ -123,9 +123,14 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         // Markdown-rich sample so the previewer/Screenshotter exercise the markdown path (T9):
         // heading, bold, inline code, a fenced code block, and a list.
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
-            "Found the cause — the **DockPanel order** flattened the `ScrollViewer`.\n\n" +
+            "## Wat er is\n\n" +
+            "- `release.yml` builds **only the desktop client** and attaches it to the release.\n" +
+            "- There is a `Dockerfile` but **no workflow** pushing the server image.\n\n" +
             "```csharp\nDockPanel.SetDock(topBar, Dock.Top);\n```\n\n" +
-            "- move the top and bottom docks first\n- keep the transcript as the fill child"));
+            "| Repo | History | Status |\n|------|---------|--------|\n" +
+            "| Playground-RK *(private)* | full dev history, `498` commits | your work repo |\n" +
+            "| EveTogether *(public)* | squashed base, `3` commits | official repo |\n\n" +
+            "More on the [metadata-action](https://github.com/docker/metadata-action) (clickable)."));
 
         var editTool = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
             "Tool: Edit({\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"})")

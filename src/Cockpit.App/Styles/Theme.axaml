@@ -1,6 +1,5 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ctxt="clr-namespace:ColorTextBlock.Avalonia;assembly=ColorTextBlock.Avalonia">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Cockpit dark theme: flat, hairline-bordered, quiet. Tokens are consumed as
          DynamicResource so a future light/alt theme can swap this dictionary wholesale. -->
@@ -62,15 +61,6 @@
         <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>
     </Style>
 
-    <!-- Markdown code blocks (T9): ColorTextBlock's CCode picks its monospace family by name-matching
-         the system font list without checking the family can produce glyphs, which selects the
-         fontconfig-aliased but unrenderable "Consolas" on Linux and crashes the first code-block
-         render (whistyun/Markdown.Avalonia#185). CCode already owns the property's default-value
-         metadata, so override via a style setter — on MonospaceFontFamily, not FontFamily, because
-         CCode binds FontFamily from it at local-value priority (a FontFamily setter would lose). -->
-    <Style Selector="ctxt|CCode">
-        <Setter Property="MonospaceFontFamily" Value="Cascadia Mono, Noto Sans Mono, DejaVu Sans Mono, monospace"/>
-    </Style>
 
     <!-- Base text. :is() so SelectableTextBlock (transcript rows, T3) inherits the same treatment as
          plain TextBlock — an exact-type selector would skip the derived SelectableTextBlock. -->
@@ -78,18 +68,17 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
-    <!-- Transcript row surface (T2). The base row is a full-width card (assistant/tool/thinking on the
-         left); a user row flips to a right-aligned, width-capped bubble with its own tint. State is set
-         only through these classes — never inline on the Border — so the setters win. -->
+    <!-- Transcript row surface (T2 + look&feel pass). Assistant/tool/thinking rows are flat — no card,
+         so the transcript reads calm (the approved mockup); only a user row is a right-aligned, tinted
+         bubble. State is set only through these classes — never inline on the Border — so the setters
+         win (the Avalonia local-value gotcha). -->
     <Style Selector="Border.transcriptRow">
-        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="HorizontalAlignment" Value="Stretch"/>
     </Style>
     <Style Selector="Border.transcriptRow.userRow">
         <Setter Property="Background" Value="{StaticResource CockpitUserBubbleBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitUserBubbleBrush}"/>
         <Setter Property="HorizontalAlignment" Value="Right"/>
         <Setter Property="MaxWidth" Value="520"/>
     </Style>

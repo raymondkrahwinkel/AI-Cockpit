@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
-             xmlns:md="https://github.com/whistyun/Markdown.Avalonia"
+             xmlns:views="using:Cockpit.App.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
@@ -168,12 +168,12 @@
                                            Classes="transcript"
                                            IsVisible="{Binding IsPlainNonMarkdown}"/>
 
-                                <!-- Assistant prose renders as markdown (T9), left/stretch.
-                                     SelectionEnabled keeps the transcript copyable (T3) — without it the
-                                     markdown rows are the one part of the conversation you cannot select. -->
-                                <md:MarkdownScrollViewer Markdown="{Binding Text}"
-                                                         SelectionEnabled="True"
-                                                         IsVisible="{Binding IsAssistantMarkdown}"/>
+                                <!-- Assistant prose renders as markdown via the cockpit's own thin renderer
+                                     (MarkdownView) — themed to match, with selectable text and clickable
+                                     links, replacing Markdown.Avalonia (T9 / look&feel pass). -->
+                                <views:MarkdownView Markdown="{Binding Text}"
+                                                    HorizontalAlignment="Stretch"
+                                                    IsVisible="{Binding IsAssistantMarkdown}"/>
 
                                 <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
                                      to the full input plus the coupled result (L14, matched on tool_use_id).
