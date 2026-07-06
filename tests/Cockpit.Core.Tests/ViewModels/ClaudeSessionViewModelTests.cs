@@ -319,6 +319,69 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public async Task SendAsync_WhileBusy_QueuesTheMessageInsteadOfSending()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session) { InputText = "first" };
+
+        await vm.SendCommand.ExecuteAsync(null); // first send goes out immediately, turn now in flight
+        vm.InputText = "second";
+        await vm.SendCommand.ExecuteAsync(null); // second lands in the queue while busy
+
+        vm.QueuedMessages.Select(m => m.Text).Should().Equal("second");
+        vm.InputText.Should().BeEmpty();
+        await session.Received(1).SendUserMessageAsync("first", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        await session.DidNotReceive().SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TurnCompleted_DispatchesTheNextQueuedMessage()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session) { InputText = "first" };
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.InputText = "second";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        vm.QueuedMessages.Should().BeEmpty();
+        await session.Received(1).SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        vm.SessionStatus.Should().Be(SessionStatus.Busy);
+    }
+
+    [Fact]
+    public async Task RemovingAQueuedChip_CancelsThatMessage()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(session) { InputText = "first" };
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.InputText = "cancel me";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.QueuedMessages.Single().RemoveCommand.Execute(null);
+
+        vm.QueuedMessages.Should().BeEmpty();
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+        await session.DidNotReceive().SendUserMessageAsync("cancel me", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void CanSend_IsFalseWithoutContentAndTrueOnceTextIsTyped()
+    {
+        var vm = NewVm();
+
+        vm.CanSend.Should().BeFalse();
+
+        vm.InputText = "hi";
+
+        vm.CanSend.Should().BeTrue();
+    }
+
+    [Fact]
     public void Apply_TurnCompletedAfterPermissionRequest_PriorityGoesToNeedsAttention()
     {
         var vm = NewVm();

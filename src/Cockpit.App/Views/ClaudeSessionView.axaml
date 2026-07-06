@@ -53,8 +53,38 @@
             </StackPanel>
         </Border>
 
-        <!-- Input bar: pending-attachment chips on top, then dark multiline textbox + accent Send. -->
+        <!-- Input bar: queued-message chips, then pending-attachment chips, then dark multiline textbox + accent Send. -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="True">
+
+            <!-- Queued messages (T8): typed while a turn was in flight, dispatched when it completes.
+                 Each is a cancellable chip; hidden when the queue is empty. -->
+            <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding QueuedMessages}" Margin="0,0,0,8"
+                          IsVisible="{Binding HasQueuedMessages}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:QueuedMessageViewModel">
+                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                CornerRadius="{StaticResource CockpitControlRadius}"
+                                Padding="8,4" Margin="0,0,6,6">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Queued" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                <TextBlock Text="{Binding DisplayText}" FontSize="12" VerticalAlignment="Center"
+                                           MaxWidth="360" TextTrimming="CharacterEllipsis"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <Button Content="✕" Command="{Binding RemoveCommand}" Classes="Subtle"
+                                        VerticalAlignment="Center" Padding="4,0"
+                                        ToolTip.Tip="Cancel this queued message"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
             <!-- Pasted-image chips: removable thumbnail + x. Hidden when there are no attachments. -->
             <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding PendingAttachments}" Margin="0,0,0,8"
@@ -81,7 +111,9 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding !IsBusy}"
+            <!-- Send stays enabled while busy (T8): a send mid-turn queues the message rather than
+                 being blocked. CanSend gates on there being text/an image, so it is not a dead control. -->
+            <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"
                     Classes="Accent" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
             <TextBox x:Name="InputBox" Text="{Binding InputText}"
                      PlaceholderText="Message Claude...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"

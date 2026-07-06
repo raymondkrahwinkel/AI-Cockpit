@@ -38,6 +38,19 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>True while at least one image is queued, so the chip strip can hide when empty.</summary>
     public bool HasPendingAttachments => PendingAttachments.Count > 0;
 
+    /// <summary>Messages typed while a turn was in flight, dispatched in order as turns complete (T8).</summary>
+    public ObservableCollection<QueuedMessageViewModel> QueuedMessages { get; } = [];
+
+    /// <summary>True while the send queue holds a message, so the queued-chip strip can hide when empty.</summary>
+    public bool HasQueuedMessages => QueuedMessages.Count > 0;
+
+    /// <summary>
+    /// True when there is text or an image to act on, so Send is enabled exactly when it will do
+    /// something. It does not gate on <see cref="IsBusy"/>: while a turn runs, Send queues the message
+    /// (T8) rather than being disabled, so you can keep typing ahead without losing input.
+    /// </summary>
+    public bool CanSend => !string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0;
+
     /// <summary>
     /// Permission modes offered in the running panel: the three live-switchable modes
     /// (<see cref="SessionOptionCatalog.LivePermissionModes"/>), or — once a session was launched in
@@ -133,6 +146,10 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
         _TrackPendingAttachments();
 
+        // A sample queued message so the previewer/Screenshotter render the send-queue strip (T8).
+        QueuedMessages.Add(new QueuedMessageViewModel(
+            "run the tests once the build finishes", [], m => QueuedMessages.Remove(m)));
+
         // A sample pasted-image chip so the previewer/Screenshotter render the attachment strip.
         // Decoding the Bitmap needs Avalonia's imaging platform: the previewer and the headless
         // Screenshotter both initialize an Application, the unit-test host does not — so guard on
@@ -158,9 +175,17 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
     private void _TrackPendingAttachments()
     {
-        PendingAttachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPendingAttachments));
+        PendingAttachments.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasPendingAttachments));
+            OnPropertyChanged(nameof(CanSend));
+        };
         Transcript.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTranscript));
+        QueuedMessages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueuedMessages));
     }
+
+    /// <summary>Keeps the Send button's enabled state in sync as the input text changes (T8 CanSend).</summary>
+    partial void OnInputTextChanged(string value) => OnPropertyChanged(nameof(CanSend));
 
     /// <summary>
     /// Starts the session immediately under the profile and options chosen up front in the New-session
@@ -356,6 +381,27 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         InputText = string.Empty;
         PendingAttachments.Clear();
 
+        // The CLI rejects mid-turn input, so while a turn is in flight the message goes onto the local
+        // send queue as a cancellable chip and is dispatched when the turn completes (T8), instead of
+        // being blocked or silently dropped. The echo row is added at dispatch time so the transcript
+        // stays in send order.
+        if (IsBusy)
+        {
+            QueuedMessages.Add(new QueuedMessageViewModel(text, images, m => QueuedMessages.Remove(m)));
+            return;
+        }
+
+        await _DispatchMessageAsync(text, images);
+    }
+
+    /// <summary>Sends a message to the session now, echoing it into the transcript and marking the turn busy.</summary>
+    private async Task _DispatchMessageAsync(string text, IReadOnlyList<Core.Claude.ImageAttachment> images)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
         var echo = images.Count == 0
             ? $"> {text}"
             : $"> {text} [+{images.Count} image{(images.Count == 1 ? "" : "s")}]";
@@ -375,6 +421,23 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             IsBusy = false;
             _RecomputeStatus();
         }
+    }
+
+    /// <summary>
+    /// Dispatches the next queued message (T8) once a turn frees the session. Fire-and-forget: the
+    /// synchronous part of the dispatch flips <see cref="IsBusy"/> back on before the first await, so
+    /// the status settles immediately. No-op when the queue is empty.
+    /// </summary>
+    private void _TryDispatchNextQueued()
+    {
+        if (QueuedMessages.Count == 0)
+        {
+            return;
+        }
+
+        var next = QueuedMessages[0];
+        QueuedMessages.RemoveAt(0);
+        _ = _DispatchMessageAsync(next.Text, next.Images);
     }
 
     [RelayCommand]
@@ -556,6 +619,10 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _RecomputeStatus();
+                // A completed turn (success or error result) frees the session, so send the next queued
+                // message (T8). A SessionError event does not drain the queue — the chips stay so a
+                // broken session isn't cascaded through every queued message.
+                _TryDispatchNextQueued();
                 break;
 
             case SessionError error:
