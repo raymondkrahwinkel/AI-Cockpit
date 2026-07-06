@@ -220,6 +220,7 @@
                             <!-- The active panel carries the accent edge (Theme "panel.active") so the
                                  session you're driving jumps out of the grid; others keep the hairline. -->
                             <Border Margin="4" Classes="panel"
+                                    Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
                                 <!-- ContentControl + ViewLocator picks ClaudeSessionView (SDK) or

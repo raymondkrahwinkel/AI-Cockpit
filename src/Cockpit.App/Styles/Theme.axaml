@@ -219,6 +219,13 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
     </Style>
+    <!-- Needs-attention grid panel: an amber edge so a session that needs you jumps out of the grid
+         even while you're driving another one. The active panel's orange edge below still wins when a
+         panel is both selected and waiting (that one already has your eye). -->
+    <Style Selector="Border.panel.attention">
+        <Setter Property="BorderThickness" Value="1.5"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitStatusWaitingBrush}"/>
+    </Style>
     <Style Selector="Border.panel.active">
         <Setter Property="BorderThickness" Value="1.5"/>
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
