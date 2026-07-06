@@ -38,11 +38,18 @@ public class PermissionCoordinatorTests
     }
 
     [Fact]
-    public void Resolve_WithNoPendingRequest_ReturnsFalse()
+    public async Task Resolve_BeforeTheRequestArrives_IsHeldAndHonouredWhenItDoes()
     {
+        // #28 race: the operator answers the prompt (derived from the stream tool_use) before the CLI's
+        // MCP call registers the request. The decision must be held, not dropped, so it doesn't hang.
         var coordinator = new PermissionCoordinator(NullLogger<PermissionCoordinator>.Instance);
 
-        coordinator.Resolve("unknown", PermissionDecision.Allow()).Should().BeFalse();
+        coordinator.Resolve("toolu_early", PermissionDecision.Deny("answered first")).Should().BeTrue();
+
+        var decision = await coordinator.RequestDecisionAsync("toolu_early", "Write", "{}");
+
+        decision.IsAllowed.Should().BeFalse();
+        decision.DenyMessage.Should().Be("answered first");
     }
 
     [Fact]

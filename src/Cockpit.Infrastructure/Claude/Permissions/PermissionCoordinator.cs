@@ -17,6 +17,16 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
     private readonly ConcurrentDictionary<string, TaskCompletionSource<PermissionDecision>> _pending = new();
     private readonly ConcurrentDictionary<string, IPermissionRuleChecker> _ruleCheckers = new();
 
+    // Allow/Deny answers that arrived before the CLI's MCP call registered the pending request (#28):
+    // the operator can click on the prompt — derived from the stream tool_use — before the permission
+    // tool is invoked. Holding the decision here rather than dropping it means whichever side arrives
+    // first, the other picks it up, so the prompt never hangs.
+    private readonly ConcurrentDictionary<string, PermissionDecision> _earlyDecisions = new();
+
+    // Ids whose request already completed, so a late/duplicate Resolve is rejected rather than held as
+    // an early answer for a request that will never come.
+    private readonly ConcurrentDictionary<string, byte> _completed = new();
+
     public PermissionCoordinator(ILogger<PermissionCoordinator> logger)
     {
         _logger = logger;
@@ -47,6 +57,17 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
             return PermissionDecision.Allow();
         }
 
+        // The operator already answered before this MCP call arrived (#28) — honour it, don't re-prompt.
+        if (_earlyDecisions.TryRemove(toolUseId, out var earlyDecision))
+        {
+            _ruleCheckers.TryRemove(toolUseId, out _);
+            _logger.LogInformation(
+                "Permission {Outcome} for tool_use_id={ToolUseId} (answered before the request arrived)",
+                earlyDecision.IsAllowed ? "allowed" : "denied",
+                toolUseId);
+            return earlyDecision;
+        }
+
         var completion = new TaskCompletionSource<PermissionDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pending.TryAdd(toolUseId, completion))
         {
@@ -73,6 +94,8 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
         {
             _pending.TryRemove(toolUseId, out _);
             _ruleCheckers.TryRemove(toolUseId, out _);
+            _earlyDecisions.TryRemove(toolUseId, out _);
+            _completed[toolUseId] = 0;
         }
     }
 
@@ -80,8 +103,20 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
     {
         if (!_pending.TryGetValue(toolUseId, out var completion))
         {
-            _logger.LogWarning("No pending permission request for tool_use_id={ToolUseId} to resolve", toolUseId);
-            return false;
+            if (_completed.ContainsKey(toolUseId))
+            {
+                // A late/duplicate answer for a request that already finished — ignore it.
+                _logger.LogWarning("No pending permission request for tool_use_id={ToolUseId} to resolve", toolUseId);
+                return false;
+            }
+
+            // The request hasn't been registered yet — the operator answered first (#28). Hold the
+            // decision so the MCP call picks it up when it arrives, instead of dropping it and hanging.
+            _earlyDecisions[toolUseId] = decision;
+            _logger.LogInformation(
+                "Permission answered for tool_use_id={ToolUseId} before its request arrived — held for the pending MCP call",
+                toolUseId);
+            return true;
         }
 
         var resolved = completion.TrySetResult(decision);
@@ -98,6 +133,7 @@ internal sealed class PermissionCoordinator : IPermissionCoordinator, ISingleton
         foreach (var toolUseId in toolUseIds)
         {
             _ruleCheckers.TryRemove(toolUseId, out _);
+            _earlyDecisions.TryRemove(toolUseId, out _);
             if (_pending.TryGetValue(toolUseId, out var completion))
             {
                 completion.TrySetResult(PermissionDecision.Deny(reason));
