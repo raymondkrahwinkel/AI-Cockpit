@@ -456,6 +456,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>
+    /// Close affordance entry point (#11): a busy session flips its sidebar row to an inline Close/Keep
+    /// prompt first, so a running turn is never killed on a single click; an idle/waiting/done session
+    /// closes straight away.
+    /// </summary>
+    [RelayCommand]
+    private async Task RequestCloseSessionAsync(SessionPanelViewModel session)
+    {
+        if (session.RequiresCloseConfirmation)
+        {
+            session.IsConfirmingClose = true;
+            return;
+        }
+
+        await CloseSessionAsync(session);
+    }
+
+    /// <summary>Confirms a pending close from the inline prompt and tears the session down.</summary>
+    [RelayCommand]
+    private async Task ConfirmCloseSessionAsync(SessionPanelViewModel session)
+    {
+        session.IsConfirmingClose = false;
+        await CloseSessionAsync(session);
+    }
+
+    /// <summary>Dismisses the inline close prompt, keeping the session.</summary>
+    [RelayCommand]
+    private void CancelCloseSession(SessionPanelViewModel session)
+    {
+        session.IsConfirmingClose = false;
+    }
+
     [RelayCommand]
     private void ToggleZoom()
     {

@@ -13,6 +13,18 @@
         <vm:CockpitViewModel/>
     </Design.DataContext>
 
+    <UserControl.Styles>
+        <!-- The per-session close ✕ stays invisible until its sidebar row is hovered, so the overview
+             reads calm; hovering reveals the affordance. Opacity (not IsVisible) keeps the row layout
+             stable, and the target is only practically clickable while hovered (thus visible). -->
+        <Style Selector="Border.sessionItem Button.closeSession">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Border.sessionItem:pointerover Button.closeSession">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+    </UserControl.Styles>
+
     <Grid ColumnDefinitions="180,*">
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor. -->
@@ -108,7 +120,7 @@
                             <DataTemplate x:DataType="vm:SessionPanelViewModel">
                                 <!-- Active item: accent left-border. Needs-attention: accent-tinted fill
                                      (Theme "attention") so it reads louder than the status dot alone. -->
-                                <Border Margin="0,0,0,4" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
+                                <Border Classes="sessionItem" Margin="0,0,0,4" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
                                         Background="{StaticResource CockpitPanelBgBrush}"
                                         BorderThickness="2,0,0,0"
                                         BorderBrush="{StaticResource CockpitAccentBrush}"
@@ -116,20 +128,45 @@
                                         Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                         Cursor="Hand"
                                         PointerPressed="OnSessionItemPointerPressed">
-                                    <StackPanel>
-                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <Ellipse Width="8" Height="8"
-                                                     Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
-                                            <TextBlock Text="⚠" Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                                                       IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
-                                                       ToolTip.Tip="Needs attention"/>
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock Text="{Binding ActiveProfileLabel}"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
-                                            <TextBlock Text="{Binding SessionStatusLabel}"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                    <StackPanel Spacing="4">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <StackPanel Grid.Column="0" Spacing="2">
+                                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <Ellipse Width="8" Height="8"
+                                                             Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                    <TextBlock Text="⚠" Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                               IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
+                                                               ToolTip.Tip="Needs attention"/>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="{Binding ActiveProfileLabel}"
+                                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
+                                                    <TextBlock Text="{Binding SessionStatusLabel}"
+                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                                </StackPanel>
+                                            </StackPanel>
+
+                                            <!-- Hover-revealed close ✕, hidden while the confirm prompt is up. -->
+                                            <Button Grid.Column="1" Classes="Subtle closeSession" Content="✕"
+                                                    VerticalAlignment="Top" Padding="4,0" FontSize="12"
+                                                    Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                    IsVisible="{Binding !IsConfirmingClose}"
+                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="Close session"/>
+                                        </Grid>
+
+                                        <!-- Inline close confirm for a busy session (L11 pattern): Close / Keep. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsConfirmingClose}">
+                                            <TextBlock Text="Close?" FontSize="11" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <Button Content="Close" Classes="Compact"
+                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).ConfirmCloseSessionCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Content="Keep" Classes="Compact"
+                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).CancelCloseSessionCommand}"
+                                                    CommandParameter="{Binding}"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>

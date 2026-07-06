@@ -144,6 +144,64 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task RequestCloseSession_WhenTheSessionIsIdle_ClosesItImmediately()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions[0];
+        session.SessionStatus = SessionStatus.Idle;
+
+        await vm.RequestCloseSessionCommand.ExecuteAsync(session);
+
+        vm.Sessions.Should().NotContain(session);
+        session.IsConfirmingClose.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RequestCloseSession_WhenTheSessionIsBusy_AsksForConfirmationAndKeepsTheSession()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions[0];
+        session.SessionStatus = SessionStatus.Busy;
+
+        await vm.RequestCloseSessionCommand.ExecuteAsync(session);
+
+        vm.Sessions.Should().Contain(session);
+        session.IsConfirmingClose.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ConfirmCloseSession_ClosesTheSessionAndClearsTheConfirmFlag()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions[0];
+        session.SessionStatus = SessionStatus.Busy;
+        await vm.RequestCloseSessionCommand.ExecuteAsync(session);
+
+        await vm.ConfirmCloseSessionCommand.ExecuteAsync(session);
+
+        vm.Sessions.Should().NotContain(session);
+        session.IsConfirmingClose.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CancelCloseSession_KeepsTheSessionAndClearsTheConfirmFlag()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions[0];
+        session.SessionStatus = SessionStatus.Busy;
+        await vm.RequestCloseSessionCommand.ExecuteAsync(session);
+
+        vm.CancelCloseSessionCommand.Execute(session);
+
+        vm.Sessions.Should().Contain(session);
+        session.IsConfirmingClose.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task NewTtySession_AddsATtyPanelAndSelectsIt()
     {
         var vm = NewVm();

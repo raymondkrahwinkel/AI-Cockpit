@@ -26,6 +26,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string? _activeProfileLabel;
 
+    /// <summary>
+    /// True while a close is awaiting confirmation for this panel, so its sidebar row shows an inline
+    /// "Close? / Keep" prompt rather than dropping a busy session on a single click (mirrors the
+    /// Manage-profiles remove confirm, L11).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isConfirmingClose;
+
+    /// <summary>
+    /// True when closing would interrupt a running turn, so the close asks first. Idle/waiting/done
+    /// sessions close on a single click.
+    /// </summary>
+    public bool RequiresCloseConfirmation => SessionStatus == SessionStatus.Busy;
+
     /// <summary>Short human-readable label for <see cref="SessionStatus"/>, for the sidebar status row.</summary>
     public string SessionStatusLabel => SessionStatus switch
     {
@@ -50,6 +64,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         OnPropertyChanged(nameof(SessionStatusLabel));
         OnPropertyChanged(nameof(SessionStatusBrushKey));
+        OnPropertyChanged(nameof(RequiresCloseConfirmation));
     }
 
     public abstract ValueTask DisposeAsync();
