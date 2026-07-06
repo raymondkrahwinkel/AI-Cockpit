@@ -156,6 +156,8 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         string? model,
         IPermissionServerState permissionServerState)
     {
+        var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? cli.PermissionMode : permissionMode;
+
         var arguments = new List<string>
         {
             "-p",
@@ -163,14 +165,21 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             "--output-format", "stream-json",
             "--verbose",
             "--include-partial-messages",
-            "--permission-mode", string.IsNullOrWhiteSpace(permissionMode) ? cli.PermissionMode : permissionMode,
+            "--permission-mode", effectiveMode,
         };
 
         // Route real permission enforcement through the cockpit's shared MCP server: the CLI calls
         // our permission_prompt tool for any tool that genuinely needs approval, and the operator's
         // allow/deny flows back in-band. --strict-mcp-config keeps the CLI from also loading the
         // user's own MCP servers, so the only tool it sees is ours.
-        if (permissionServerState is { McpConfigPath: { } configPath, PermissionPromptToolName: { } toolName })
+        //
+        // bypassPermissions allows every tool with no prompt, so wiring the prompt tool there is
+        // pointless and re-introduces the very prompts the operator asked to bypass — skip it so
+        // bypass actually bypasses (bug #15). Other modes (acceptEdits included, which only
+        // auto-accepts edits and still gates Bash et al.) keep the prompt tool.
+        var bypassesPermissions = string.Equals(effectiveMode, "bypassPermissions", StringComparison.Ordinal);
+
+        if (!bypassesPermissions && permissionServerState is { McpConfigPath: { } configPath, PermissionPromptToolName: { } toolName })
         {
             arguments.Add("--permission-prompt-tool");
             arguments.Add(toolName);

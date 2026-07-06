@@ -42,12 +42,14 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>Populated only while <see cref="ProfileSelectionKind.RequiresChoice"/> is pending the user's pick.</summary>
     public ObservableCollection<ClaudeProfile> ProfileChoices { get; } = [];
 
+    // Only the CLI's four real --permission-mode values: default/acceptEdits/plan/bypassPermissions.
+    // (There is no "auto" mode — passing it made the CLI silently fall back to default while the
+    // dropdown claimed otherwise; see bug #15.)
     private static readonly PermissionModeOption[] _permissionModes =
     [
         new("Ask permissions", "default"),
         new("Accept edits", "acceptEdits"),
         new("Plan mode", "plan"),
-        new("Auto mode", "auto"),
         new("Bypass permissions", "bypassPermissions"),
     ];
 
@@ -55,7 +57,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     public IReadOnlyList<PermissionModeOption> PermissionModes => _permissionModes;
 
     [ObservableProperty]
-    private PermissionModeOption _selectedPermissionMode = _permissionModes[3]; // Auto mode by default, matching the desktop app.
+    private PermissionModeOption _selectedPermissionMode = _permissionModes[0]; // Ask permissions by default.
 
     private static readonly ModelOption[] _models =
     [

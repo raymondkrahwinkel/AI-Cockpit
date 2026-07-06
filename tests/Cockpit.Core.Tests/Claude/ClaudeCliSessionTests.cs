@@ -149,7 +149,7 @@ public class ClaudeCliSessionTests
         await session.StartAsync();
 
         await session.SetPermissionModeAsync("plan");
-        await session.SetPermissionModeAsync("auto");
+        await session.SetPermissionModeAsync("bypassPermissions");
 
         process.WrittenLines.Should().HaveCount(2);
         process.WrittenLines[0].Should().NotBe(process.WrittenLines[1]);

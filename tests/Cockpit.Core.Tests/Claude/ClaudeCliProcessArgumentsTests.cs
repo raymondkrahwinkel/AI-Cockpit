@@ -50,6 +50,39 @@ public class ClaudeCliProcessArgumentsTests
     }
 
     [Fact]
+    public void BuildArguments_InBypassPermissionsMode_OmitsThePromptToolEvenWhenTheServerIsReady()
+    {
+        // bypassPermissions means "no prompts" — wiring the prompt tool would re-introduce the very
+        // prompts the operator bypassed, so bypass must actually bypass (bug #15).
+        var state = new StubPermissionServerState
+        {
+            McpConfigPath = @"C:\Users\x\AppData\Roaming\Cockpit\mcp-permission.json",
+            PermissionPromptToolName = "mcp__cockpit__permission_prompt",
+        };
+
+        var args = ClaudeCliProcess.BuildArguments(new ClaudeCliOptions(), permissionMode: "bypassPermissions", model: null, state);
+
+        args.Should().ContainInOrder("--permission-mode", "bypassPermissions");
+        args.Should().NotContain("--permission-prompt-tool");
+        args.Should().NotContain("--mcp-config");
+        args.Should().NotContain("--strict-mcp-config");
+    }
+
+    [Fact]
+    public void BuildArguments_InAcceptEditsMode_KeepsThePromptTool_SinceNonEditToolsAreStillGated()
+    {
+        var state = new StubPermissionServerState
+        {
+            McpConfigPath = @"C:\Users\x\AppData\Roaming\Cockpit\mcp-permission.json",
+            PermissionPromptToolName = "mcp__cockpit__permission_prompt",
+        };
+
+        var args = ClaudeCliProcess.BuildArguments(new ClaudeCliOptions(), permissionMode: "acceptEdits", model: null, state);
+
+        args.Should().Contain("--permission-prompt-tool");
+    }
+
+    [Fact]
     public void BuildArguments_UsesExplicitPermissionMode_OverTheOptionsDefault()
     {
         var options = new ClaudeCliOptions { PermissionMode = "default" };
