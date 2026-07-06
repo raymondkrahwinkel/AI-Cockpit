@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Configuration;
@@ -82,6 +83,12 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
+            // claude speaks UTF-8 (→, ✅, emoji in tool output); without pinning the redirected streams
+            // to UTF-8 .NET decodes them with the OS default code page (ANSI/OEM on Windows) and mangles
+            // them (mojibake — bug #23). BOM-less, so the input side stays a clean JSON byte stream.
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
+            StandardInputEncoding = new UTF8Encoding(false),
         };
 
         foreach (var arg in arguments)

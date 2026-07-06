@@ -177,10 +177,9 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
     /// <summary>
     /// Builds and writes a single <c>control_request</c> line:
     /// <c>{"type":"control_request","request_id":"...","request":{"subtype":"...", ...}}</c>.
-    /// UNVERIFIED wire shape — see <see cref="IClaudeSession.SetPermissionModeAsync"/> remarks.
-    /// The matching <c>control_response</c> (if any) is not correlated back to the caller here;
-    /// it will show up as an <see cref="UnknownEvent"/> in <see cref="Events"/> and is logged,
-    /// not awaited/blocked on, per the F-C1 driver scope.
+    /// This wire shape is verified against claude 2.1.197 (each subtype returns a
+    /// <c>control_response</c> success). The matching <c>control_response</c> is not correlated back
+    /// to the caller here; it is logged, not awaited/blocked on, per the F-C1 driver scope.
     /// </summary>
     private async Task _SendControlRequestAsync(object request, CancellationToken cancellationToken)
     {
@@ -245,9 +244,8 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
 
             // Control-protocol replies to our own SetPermissionModeAsync/SetModelAsync/
             // SetMaxThinkingTokensAsync/InterruptAsync control_requests (see _SendControlRequestAsync).
-            // Logged only, per F-C1 scope: nothing
-            // here currently correlates a response back to its request_id or blocks on it. UNVERIFIED
-            // wire shape — see IClaudeSession.SetPermissionModeAsync remarks.
+            // Logged only, per F-C1 scope: nothing here currently correlates a response back to its
+            // request_id or blocks on it.
             if (root.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String
                 && typeProp.GetString() is "control_response" or "control_cancel_request")
             {
