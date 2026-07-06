@@ -171,6 +171,7 @@
         <Button x:Name="ScrollToBottomButton" Content="↓" IsVisible="False"
                 Classes="Accent" Click="_OnScrollToBottomClick"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 Width="32" Height="32" Padding="0" Margin="0,0,10,10"
                 FontSize="15" CornerRadius="16"
                 ToolTip.Tip="Jump to the newest message"/>
