@@ -53,6 +53,25 @@ public class ClaudeProfileStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsPerProfileDefaults()
+    {
+        var store = new ClaudeProfileStore(_configFilePath);
+        var profiles = new List<ClaudeProfile>
+        {
+            new("personal", @"C:\Users\raymo\.claude-personal",
+                Defaults: new ProfileDefaults("bypassPermissions", "opus", "high")),
+            new("work", @"C:\Users\raymo\.claude-work"),
+        };
+
+        await store.SaveAsync(profiles);
+        var loaded = await store.LoadAsync();
+
+        // The first profile's defaults survive the round-trip; the second keeps null defaults
+        // (no defaults section written), so the two are not conflated.
+        loaded.Should().BeEquivalentTo(profiles);
+    }
+
+    [Fact]
     public async Task SaveAsync_CreatesConfigDirectory_WhenAbsent()
     {
         var nestedConfigPath = Path.Combine(_tempDir, "nested", "cockpit.json");

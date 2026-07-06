@@ -13,13 +13,16 @@ internal sealed class ClaudeProfileEntry
 
     public string? Purpose { get; set; }
 
+    public ProfileDefaultsEntry? Defaults { get; set; }
+
     public static ClaudeProfileEntry FromDomain(ClaudeProfile profile) => new()
     {
         Label = profile.Label,
         ConfigDir = profile.ConfigDir,
         ExecutablePath = profile.ExecutablePath,
         Purpose = profile.Purpose,
+        Defaults = profile.Defaults is null ? null : ProfileDefaultsEntry.FromDomain(profile.Defaults),
     };
 
-    public ClaudeProfile ToDomain() => new(Label, ConfigDir, ExecutablePath, Purpose);
+    public ClaudeProfile ToDomain() => new(Label, ConfigDir, ExecutablePath, Purpose, Defaults?.ToDomain());
 }

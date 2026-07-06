@@ -15,4 +15,13 @@ namespace Cockpit.Core.Profiles;
 /// at spawn time" (see <see cref="IClaudeExecutableLocator"/>).
 /// </param>
 /// <param name="Purpose">Short free-text description of what this profile is for.</param>
-public sealed record ClaudeProfile(string Label, string ConfigDir, string? ExecutablePath = null, string? Purpose = null);
+/// <param name="Defaults">
+/// Start defaults (mode/model/effort) the New-session dialog pre-selects for this profile.
+/// <see langword="null"/> falls back to the app defaults.
+/// </param>
+public sealed record ClaudeProfile(
+    string Label,
+    string ConfigDir,
+    string? ExecutablePath = null,
+    string? Purpose = null,
+    ProfileDefaults? Defaults = null);
