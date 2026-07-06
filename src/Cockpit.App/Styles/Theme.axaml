@@ -182,6 +182,13 @@
     <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
     </Style>
+    <!-- Focused input: cockpit accent border instead of the default Fluent-blue focus ring (L10). -->
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+    </Style>
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+    </Style>
 
     <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
     <Style Selector="TextBlock.transcript">

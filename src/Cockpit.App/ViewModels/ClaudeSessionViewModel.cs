@@ -29,6 +29,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
     public ObservableCollection<TranscriptEntryViewModel> Transcript { get; } = [];
 
+    /// <summary>False until the first transcript row arrives, so the panel can show a calm empty-state hint instead of a void.</summary>
+    public bool HasTranscript => Transcript.Count > 0;
+
     /// <summary>Images pasted into the input, sent with the next message and cleared afterwards.</summary>
     public ObservableCollection<ImageAttachmentViewModel> PendingAttachments { get; } = [];
 
@@ -152,6 +155,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     private void _TrackPendingAttachments()
     {
         PendingAttachments.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPendingAttachments));
+        Transcript.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTranscript));
     }
 
     /// <summary>
@@ -204,7 +208,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             await _session.StartAsync(profile, SelectedPermissionMode.Value, SelectedModel.Value, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
             ActiveProfileLabel = profile?.Label;
-            Status = profile is null ? "Session started." : $"Session started ({profile.Label}).";
+            // The profile is shown separately (ActiveProfileLabel), so keep the status itself clean
+            // rather than repeating it — "Session started. · personal" read as a duplicate (L6).
+            Status = "Session started.";
 
             // Thinking budget has no launch flag — the control request is the only path — so apply
             // the selected effort once the session is live, otherwise it runs at the CLI default

@@ -88,7 +88,13 @@
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
         </DockPanel>
 
-        <ScrollViewer>
+        <Grid>
+        <!-- Empty-state hint fills the transcript area until the first row arrives, so a fresh session
+             is a calm prompt rather than a black void (L6). -->
+        <TextBlock Text="Ready — type a message below to start." IsVisible="{Binding !HasTranscript}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13"
+                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+        <ScrollViewer IsVisible="{Binding HasTranscript}">
             <ItemsControl ItemsSource="{Binding Transcript}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
@@ -159,6 +165,7 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
+        </Grid>
 
     </DockPanel>
 </UserControl>
