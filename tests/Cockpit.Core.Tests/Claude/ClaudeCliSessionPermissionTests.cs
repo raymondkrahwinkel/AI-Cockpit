@@ -146,10 +146,58 @@ public class ClaudeCliSessionPermissionTests
         registration.RuleChecker!.IsAlwaysAllowed("Bash", """{"command":"anything"}""").Should().BeTrue();
     }
 
+    [Fact]
+    public async Task InBypassMode_AToolUse_DoesNotDeriveAPermissionRequest()
+    {
+        var coordinator = new RecordingPermissionCoordinator();
+        var process = new FakeClaudeCliProcess();
+        process.Enqueue("""{"type":"assistant","session_id":"S1","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_b","name":"Read","input":{"file_path":"a.txt"}}]}}""");
+        process.CompleteOutput();
+        var session = new ClaudeCliSession(process, coordinator, new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync(permissionMode: "bypassPermissions");
+
+        var events = await CollectEventsAsync(session);
+
+        // Bypass runs every tool ungated, so surfacing an allow/deny prompt would be a dead control.
+        events.Should().NotContain(e => e is Core.Claude.PermissionRequested);
+        events.Should().Contain(e => e is Core.Claude.ToolUseRequested);
+        coordinator.Registered.Should().BeEmpty();
+
+        await session.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task InAGatedMode_AToolUse_DerivesAPermissionRequest()
+    {
+        var coordinator = new RecordingPermissionCoordinator();
+        var process = new FakeClaudeCliProcess();
+        process.Enqueue("""{"type":"assistant","session_id":"S1","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_g","name":"Bash","input":{"command":"ls"}}]}}""");
+        process.CompleteOutput();
+        var session = new ClaudeCliSession(process, coordinator, new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
+        await session.StartAsync(permissionMode: "default");
+
+        var events = await CollectEventsAsync(session);
+
+        events.Should().Contain(e => e is Core.Claude.PermissionRequested);
+
+        await session.DisposeAsync();
+    }
+
     private static async Task DrainEventsAsync(ClaudeCliSession session)
     {
         await foreach (var _ in session.Events)
         {
         }
+    }
+
+    private static async Task<List<Core.Claude.ClaudeSessionEvent>> CollectEventsAsync(ClaudeCliSession session)
+    {
+        var events = new List<Core.Claude.ClaudeSessionEvent>();
+        await foreach (var evt in session.Events)
+        {
+            events.Add(evt);
+        }
+
+        return events;
     }
 }

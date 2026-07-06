@@ -74,17 +74,12 @@ sealed class Program
             DisposeCockpit();
             StopHostedServices(hostedServices);
 
-            // Dispose the container last: nothing else disposes the singleton AudioEngine (SoundFlow's
-            // MiniAudioEngine), whose native audio thread otherwise keeps the process alive after the
-            // window closes — the graceful session/host teardown alone left a zombie on Linux (#32).
-            try
-            {
-                (Services as IDisposable)?.Dispose();
-            }
-            catch (Exception)
-            {
-                // Best-effort container disposal must not mask the app exit.
-            }
+            // Force a prompt exit. The graceful teardown above has killed the child processes and
+            // stopped the MCP host, but the singleton SoundFlow AudioEngine keeps a native audio thread
+            // running that otherwise blocks the runtime from exiting (a zombie that lingered for minutes
+            // on Linux — bug #32). Disposing the container to stop it cleanly can itself hang on the
+            // miniaudio thread join, so hard-exit instead: the OS reclaims everything immediately.
+            Environment.Exit(0);
         }
     }
 

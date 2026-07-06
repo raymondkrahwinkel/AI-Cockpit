@@ -44,6 +44,11 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
     private CancellationTokenSource? _pumpCancellation;
     private string? _sessionId;
 
+    // In bypass mode the CLI runs every tool with no gating (the prompt tool isn't even wired), so a
+    // per-tool allow/deny prompt would be a dead control — claude has already proceeded. Track it so
+    // the pump doesn't derive PermissionRequested for a session that can't be gated (bug #15).
+    private bool _bypassPermissions;
+
     public ClaudeCliSession(
         IClaudeCliProcess process,
         IPermissionCoordinator permissionCoordinator,
@@ -65,6 +70,7 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
     public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default)
     {
         Profile = profile;
+        _bypassPermissions = string.Equals(permissionMode, "bypassPermissions", StringComparison.Ordinal);
 
         var savedRules = await _permissionRuleStore.LoadAsync(profile?.Label, cancellationToken).ConfigureAwait(false);
         _permissionRules = new PermissionRuleSet(savedRules);
@@ -260,7 +266,7 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
             foreach (var evt in ClaudeStreamJsonParser.ParseLine(line))
             {
                 _events.Writer.TryWrite(evt);
-                if (evt is ToolUseRequested toolUse)
+                if (evt is ToolUseRequested toolUse && !_bypassPermissions)
                 {
                     _pendingToolUseIds.TryAdd(toolUse.ToolUseId, 0);
 
