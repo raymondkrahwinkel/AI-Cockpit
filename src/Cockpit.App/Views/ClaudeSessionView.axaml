@@ -74,7 +74,7 @@
                                 <Image Source="{Binding Thumbnail}" Height="44" MaxWidth="72" Stretch="Uniform"/>
                                 <Button Content="✕" Command="{Binding RemoveCommand}" Classes="Subtle"
                                         VerticalAlignment="Top" Padding="4,0"
-                                        ToolTip.Tip="Verwijder afbeelding"/>
+                                        ToolTip.Tip="Remove image"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -84,7 +84,7 @@
             <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding !IsBusy}"
                     Classes="Accent" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
             <TextBox x:Name="InputBox" Text="{Binding InputText}"
-                     PlaceholderText="Message Claude...  (Enter = versturen, Shift+Enter = nieuwe regel, Ctrl+V = plak tekst of afbeelding)"
+                     PlaceholderText="Message Claude...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
         </DockPanel>
 

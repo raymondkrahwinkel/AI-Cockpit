@@ -41,7 +41,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     public bool IsUserRow => Kind == TranscriptEntryKind.AssistantText && Text.StartsWith("> ", StringComparison.Ordinal);
 
     /// <summary>Chevron glyph for the tool-result collapse toggle; presentational only.</summary>
-    public string ToggleGlyph => IsExpanded ? "▾ Tool result" : "▸ Tool result (klik om te tonen)";
+    public string ToggleGlyph => IsExpanded ? "▾ Tool result" : "▸ Tool result (click to show)";
 
     [ObservableProperty]
     private string _text;

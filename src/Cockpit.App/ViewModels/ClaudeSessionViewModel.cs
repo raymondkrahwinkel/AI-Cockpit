@@ -92,17 +92,17 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
         ActiveProfileLabel = "raymond@work";
 
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "> los de bug op in ClaudeSessionView"));
+        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, "> fix the layout bug in ClaudeSessionView"));
 
         var thinking = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking,
-            "De gebruiker vraagt om de layout-bug te fixen. Ik bekijk eerst de XAML-structuur...")
+            "The user wants the layout bug fixed. Let me look at the XAML structure first...")
         {
             IsExpanded = false,
         };
         Transcript.Add(thinking);
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
-            "Ik heb de oorzaak gevonden: de DockPanel-volgorde zorgde ervoor dat de ScrollViewer werd platgedrukt. Ik verplaats de top- en bottom-docks vóór de laatste child."));
+            "Found the cause: the DockPanel order flattened the ScrollViewer. Moving the top and bottom docks before the last child."));
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
             "Tool: Edit({\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"})")

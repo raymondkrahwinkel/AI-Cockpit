@@ -138,9 +138,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // + grid without a real DI-backed session behind each one.
     public CockpitViewModel()
     {
-        var waiting = new ClaudeSessionViewModel { Title = "Claude 1", ActiveProfileLabel = "werk", SessionStatus = SessionStatus.NeedsAttention };
-        var busy = new ClaudeSessionViewModel { Title = "Claude 2", ActiveProfileLabel = "privé", SessionStatus = SessionStatus.Busy };
-        var tty = new ClaudeTtyViewModel { Title = "Claude 3", ActiveProfileLabel = "werk (TTY)", SessionStatus = SessionStatus.Busy };
+        var waiting = new ClaudeSessionViewModel { Title = "Claude 1", ActiveProfileLabel = "work", SessionStatus = SessionStatus.NeedsAttention };
+        var busy = new ClaudeSessionViewModel { Title = "Claude 2", ActiveProfileLabel = "private", SessionStatus = SessionStatus.Busy };
+        var tty = new ClaudeTtyViewModel { Title = "Claude 3", ActiveProfileLabel = "work (TTY)", SessionStatus = SessionStatus.Busy };
 
         Sessions.Add(waiting);
         Sessions.Add(busy);
