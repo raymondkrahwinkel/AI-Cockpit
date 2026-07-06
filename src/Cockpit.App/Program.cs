@@ -68,17 +68,20 @@ sealed class Program
         }
         finally
         {
-            // Order matters: dispose the cockpit (killing the child claude processes) before stopping
-            // the MCP host, so those children release their permission-server connections first —
-            // otherwise the server's graceful stop waits on the still-open SSE streams (bug #32).
-            DisposeCockpit();
-            StopHostedServices(hostedServices);
+            // A background watchdog guarantees the process dies promptly even if a teardown step
+            // wedges — the exit must never hang again (bug #32). It fires a hard exit after a short
+            // deadline; the child claude processes are killed in DisposeCockpit first, so nothing is
+            // orphaned.
+            StartExitWatchdog(TimeSpan.FromSeconds(4));
 
-            // Force a prompt exit. The graceful teardown above has killed the child processes and
-            // stopped the MCP host, but the singleton SoundFlow AudioEngine keeps a native audio thread
-            // running that otherwise blocks the runtime from exiting (a zombie that lingered for minutes
-            // on Linux — bug #32). Disposing the container to stop it cleanly can itself hang on the
-            // miniaudio thread join, so hard-exit instead: the OS reclaims everything immediately.
+            // Kill the child claude processes (DisposeCockpit is internally bounded), then hard-exit.
+            // We deliberately do NOT gracefully stop the MCP host: its Kestrel StopAsync was seen to
+            // block for minutes at "Application is shutting down..." draining a lingering SSE stream
+            // (ignoring its cancellation token), and a graceful drain buys nothing before
+            // Environment.Exit — the OS reclaims the loopback socket and its OS-assigned port on
+            // process death. Environment.Exit also sidesteps the singleton SoundFlow AudioEngine's
+            // native-thread dispose, which can itself hang on the miniaudio join.
+            DisposeCockpit();
             Environment.Exit(0);
         }
     }
@@ -103,22 +106,22 @@ sealed class Program
         }
     }
 
-    private static void StopHostedServices(IReadOnlyList<IHostedService> hostedServices)
+    // Belt-and-suspenders against a wedged shutdown: a background thread that hard-exits after a
+    // deadline no matter what the main-thread teardown is doing. This is the "hard exit after a
+    // graceful timeout" fallback the earlier #32 work anticipated — with it the process can never
+    // linger at "Application is shutting down..." again.
+    private static void StartExitWatchdog(TimeSpan deadline)
     {
-        // Bound the stop: the MCP server's Kestrel host does a graceful drain, so give it a hard
-        // deadline rather than CancellationToken.None — any straggling connection must not stall exit.
-        using var shutdownTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        foreach (var service in hostedServices)
+        var watchdog = new Thread(() =>
         {
-            try
-            {
-                service.StopAsync(shutdownTimeout.Token).GetAwaiter().GetResult();
-            }
-            catch (Exception)
-            {
-                // Best-effort shutdown: a failing (or timed-out) stop must not mask the app exit.
-            }
-        }
+            Thread.Sleep(deadline);
+            Environment.Exit(0);
+        })
+        {
+            IsBackground = true,
+            Name = "cockpit-exit-watchdog",
+        };
+        watchdog.Start();
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
