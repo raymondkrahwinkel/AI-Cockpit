@@ -45,6 +45,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
+    /// <summary>False when no session is open, driving the empty-state welcome screen vs. the session grid (#31).</summary>
+    public bool HasSessions => Sessions.Count > 0;
+
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
 
@@ -146,7 +149,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _attentionNotifier = attentionNotifier;
         _notificationSettingsStore = notificationSettingsStore;
         _sessionSwitchSettingsStore = sessionSwitchSettingsStore;
-        NewSession();
+        // No session is opened on startup (#31): the app starts on the empty state and a session only
+        // exists once the operator creates one from the New-session dialog.
+        Sessions.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSessions));
         _ = LoadNotificationSettingsAsync();
         _ = LoadSessionSwitchSettingsAsync();
     }

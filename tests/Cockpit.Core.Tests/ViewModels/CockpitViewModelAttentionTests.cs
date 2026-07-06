@@ -21,6 +21,7 @@ public class CockpitViewModelAttentionTests
     public void EnteringNeedsAttention_FiresTheNotifierOnce()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         var session = vm.Sessions[0];
 
         session.SessionStatus = SessionStatus.NeedsAttention;
@@ -34,6 +35,7 @@ public class CockpitViewModelAttentionTests
     public void StayingInNeedsAttention_DoesNotRefire_OnAFurtherStatusTouch()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         var session = vm.Sessions[0];
 
         session.SessionStatus = SessionStatus.NeedsAttention;
@@ -48,6 +50,7 @@ public class CockpitViewModelAttentionTests
     public async Task ClosedSession_NoLongerFires()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         var session = vm.Sessions[0];
 
         await vm.CloseSessionCommand.ExecuteAsync(session);

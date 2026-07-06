@@ -11,31 +11,33 @@ namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
 /// Exercises <see cref="CockpitViewModel"/>'s session-manager surface (new/select/close) against a
-/// fake session factory — no real <c>IClaudeSession</c>/CLI process involved.
+/// fake session factory — no real <c>IClaudeSession</c>/CLI process involved. Since #31 the app opens
+/// no session on startup, so tests that need a panel create one first via <c>NewSessionCommand</c>.
 /// </summary>
 public class CockpitViewModelTests
 {
     [Fact]
-    public void Constructor_StartsWithOneSessionSelected()
+    public void Constructor_OpensNoSessionOnStartup()
     {
         var vm = NewVm();
 
-        vm.Sessions.Should().ContainSingle();
-        vm.SelectedSession.Should().Be(vm.Sessions[0]);
-        vm.SelectedSession!.IsSelected.Should().BeTrue();
-        vm.SelectedSession.Title.Should().Be("Claude 1");
+        vm.Sessions.Should().BeEmpty();
+        vm.HasSessions.Should().BeFalse();
+        vm.SelectedSession.Should().BeNull();
     }
 
     [Fact]
-    public void NewSession_AddsAFurtherSessionAndSelectsIt()
+    public void NewSession_AddsASessionSelectsItAndFlipsHasSessions()
     {
         var vm = NewVm();
 
         vm.NewSessionCommand.Execute(null);
 
-        vm.Sessions.Should().HaveCount(2);
-        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+        vm.Sessions.Should().ContainSingle();
+        vm.HasSessions.Should().BeTrue();
+        vm.SelectedSession.Should().Be(vm.Sessions[0]);
         vm.SelectedSession!.IsSelected.Should().BeTrue();
+        vm.SelectedSession.Title.Should().Be("Claude 1");
     }
 
     [Fact]
@@ -43,6 +45,7 @@ public class CockpitViewModelTests
     {
         var vm = NewVm();
 
+        vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
 
         vm.Sessions[0].Title.Should().Be("Claude 1");
@@ -53,6 +56,7 @@ public class CockpitViewModelTests
     public void SelectSession_SwitchesSelectionAndIsSelectedFlags()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
         var first = vm.Sessions[0];
         var second = vm.Sessions[1];
@@ -68,6 +72,7 @@ public class CockpitViewModelTests
     public async Task CloseSession_RemovesItFromSessions()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         var session = vm.Sessions[0];
 
         await vm.CloseSessionCommand.ExecuteAsync(session);
@@ -80,6 +85,7 @@ public class CockpitViewModelTests
     {
         var vm = NewVm();
         vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
         var first = vm.Sessions[0];
         var second = vm.Sessions[1];
         vm.SelectSessionCommand.Execute(first);
@@ -90,9 +96,10 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public async Task CloseSession_WhenClosingTheLastSession_ClearsSelectionAndZoom()
+    public async Task CloseSession_WhenClosingTheLastSession_ClearsSelectionZoomAndHasSessions()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         var session = vm.Sessions[0];
         vm.ToggleZoomCommand.Execute(null);
 
@@ -100,6 +107,7 @@ public class CockpitViewModelTests
 
         vm.SelectedSession.Should().BeNull();
         vm.IsZoomed.Should().BeFalse();
+        vm.HasSessions.Should().BeFalse();
     }
 
     [Fact]
@@ -109,9 +117,9 @@ public class CockpitViewModelTests
 
         vm.NewTtySessionCommand.Execute(null);
 
-        vm.Sessions.Should().HaveCount(2);
-        vm.Sessions[1].Should().BeOfType<ClaudeTtyViewModel>();
-        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+        vm.Sessions.Should().ContainSingle();
+        vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>();
+        vm.SelectedSession.Should().Be(vm.Sessions[0]);
         vm.SelectedSession!.IsSelected.Should().BeTrue();
     }
 
@@ -120,6 +128,7 @@ public class CockpitViewModelTests
     {
         var vm = NewVm();
 
+        vm.NewSessionCommand.Execute(null);
         vm.NewTtySessionCommand.Execute(null);
 
         vm.Sessions[0].Title.Should().Be("Claude 1");
@@ -144,6 +153,7 @@ public class CockpitViewModelTests
         var vm = NewVm();
         vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
         vm.SelectSessionCommand.Execute(vm.Sessions[0]);
 
         vm.SelectNextSession();
@@ -155,6 +165,7 @@ public class CockpitViewModelTests
     public void SelectNextSession_FromTheLastSession_WrapsToTheFirst()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
         vm.SelectSessionCommand.Execute(vm.Sessions[2]);
@@ -170,6 +181,7 @@ public class CockpitViewModelTests
         var vm = NewVm();
         vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
         vm.SelectSessionCommand.Execute(vm.Sessions[2]);
 
         vm.SelectPreviousSession();
@@ -181,6 +193,7 @@ public class CockpitViewModelTests
     public void SelectPreviousSession_FromTheFirstSession_WrapsToTheLast()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
         vm.NewSessionCommand.Execute(null);
         vm.SelectSessionCommand.Execute(vm.Sessions[0]);
@@ -195,6 +208,7 @@ public class CockpitViewModelTests
     {
         var vm = NewVm();
         vm.NewSessionCommand.Execute(null);
+        vm.NewSessionCommand.Execute(null);
         vm.SelectSessionCommand.Execute(vm.Sessions[0]);
 
         vm.SelectNextSession();
@@ -207,6 +221,7 @@ public class CockpitViewModelTests
     public void SelectNextSession_WithASingleSession_StaysOnThatSession()
     {
         var vm = NewVm();
+        vm.NewSessionCommand.Execute(null);
         var only = vm.Sessions[0];
 
         vm.SelectNextSession();
@@ -217,10 +232,9 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public async Task SelectNextSession_WithNoSessions_DoesNothing()
+    public void SelectNextSession_WithNoSessions_DoesNothing()
     {
         var vm = NewVm();
-        await vm.CloseSessionCommand.ExecuteAsync(vm.Sessions[0]);
 
         vm.SelectNextSession();
         vm.SelectPreviousSession();

@@ -21,12 +21,12 @@
             <DockPanel Margin="8">
 
                 <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
-                    <Button Content="+ Nieuwe sessie" Command="{Binding NewSessionCommand}"
+                    <Button Content="+ New session" Command="{Binding NewSessionCommand}"
                             Classes="Accent" HorizontalAlignment="Stretch"/>
-                    <Button Content="+ Nieuwe sessie (TTY)" Command="{Binding NewTtySessionCommand}"
+                    <Button Content="+ New session (TTY)" Command="{Binding NewTtySessionCommand}"
                             Classes="Subtle" HorizontalAlignment="Stretch"
                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                            ToolTip.Tip="Experiment: de echte interactieve claude-TUI in een paneel"/>
+                            ToolTip.Tip="Experiment: the real interactive claude TUI in a panel"/>
                 </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
@@ -135,15 +135,37 @@
             </DockPanel>
         </Border>
 
-        <!-- Main area: flexible grid of session panels, or a zoomed single panel. -->
-        <DockPanel Grid.Column="1" Margin="12">
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                <ToggleButton Content="Zoom" IsChecked="{Binding IsZoomed}"
-                              IsEnabled="{Binding SelectedSession, Converter={x:Static ObjectConverters.IsNotNull}}"
-                              ToolTip.Tip="Zoom in op de geselecteerde sessie / terug naar het grid"/>
+        <!-- Main area: empty-state welcome until a session exists (#31), then the grid/zoom. -->
+        <Grid Grid.Column="1">
+
+            <!-- Empty state: no session opens on startup; one only exists once the operator creates it. -->
+            <StackPanel IsVisible="{Binding !HasSessions}" MaxWidth="320"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border Width="56" Height="56" CornerRadius="14"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        HorizontalAlignment="Center" Margin="0,0,0,16">
+                    <TextBlock Text="AI" FontSize="24" FontWeight="Bold"
+                               Foreground="{StaticResource CockpitAccentBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="No sessions yet" FontSize="16" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                <TextBlock Text="Start a Claude session to begin. You pick the profile and its defaults up front."
+                           TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
+                <Button Content="+ New session" Command="{Binding NewSessionCommand}"
+                        Classes="Accent" HorizontalAlignment="Center"/>
             </StackPanel>
 
-            <Grid>
+            <!-- Session grid + zoom, shown once at least one session exists. -->
+            <DockPanel Margin="12" IsVisible="{Binding HasSessions}">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                    <ToggleButton Content="Zoom" IsChecked="{Binding IsZoomed}"
+                                  IsEnabled="{Binding SelectedSession, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                  ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
+                </StackPanel>
+
+                <Grid>
                 <!-- Grid mode: every session gets an auto-sized panel. -->
                 <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !IsZoomed}">
                     <ItemsControl.ItemsPanel>
@@ -169,7 +191,8 @@
                 <!-- Zoom mode: only the selected session, full width/height. -->
                 <ContentControl Content="{Binding SelectedSession}"
                                 IsVisible="{Binding $parent[DockPanel].((vm:CockpitViewModel)DataContext).IsZoomed}"/>
-            </Grid>
-        </DockPanel>
+                </Grid>
+            </DockPanel>
+        </Grid>
     </Grid>
 </UserControl>
