@@ -128,13 +128,13 @@
                     <ItemsControl ItemsSource="{Binding Sessions}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:SessionPanelViewModel">
-                                <!-- Active item: accent left-border. Needs-attention: accent-tinted fill
-                                     (Theme "attention") so it reads louder than the status dot alone. -->
+                                <!-- Selection + attention are driven entirely by the style classes below
+                                     (see Theme.axaml Border.sessionItem*): the active session lifts to a
+                                     filled card with an accent left-edge, inactive ones stay flat against
+                                     the sidebar. Background/border are NOT set inline here — a local value
+                                     would beat the style setters and both rows would look identical. -->
                                 <Border Classes="sessionItem" Margin="0,0,0,4" Padding="8,6" CornerRadius="{StaticResource CockpitControlRadius}"
-                                        Background="{StaticResource CockpitPanelBgBrush}"
-                                        BorderThickness="2,0,0,0"
-                                        BorderBrush="{StaticResource CockpitAccentBrush}"
-                                        Classes.inactive="{Binding !IsSelected}"
+                                        Classes.active="{Binding IsSelected}"
                                         Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                         Cursor="Hand"
                                         PointerPressed="OnSessionItemPointerPressed">

@@ -242,10 +242,23 @@
         <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
 
-    <!-- Cockpit sidebar session item: accent left-border marks the active session; inactive items
-         get no border so the eye lands on the one selection, not a grid of colored edges. -->
-    <Style Selector="Border.inactive">
-        <Setter Property="BorderThickness" Value="0"/>
+    <!-- Cockpit sidebar session item. State is driven only by classes (never inline on the Border) so
+         style setters actually win: the base row is flat and transparent, blending into the sidebar; the
+         active row lifts to a filled card with a Claude-orange left edge so the selected session is
+         unmistakable. The 2px left gutter is reserved as transparent on every row so text doesn't shift
+         when selection moves. Order matters: .attention is declared after .active so its tinted fill wins
+         for a row that is both selected and waiting, while .active still supplies the orange edge. -->
+    <Style Selector="Border.sessionItem">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="2,0,0,0"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+    <Style Selector="Border.sessionItem:pointerover">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <Style Selector="Border.sessionItem.active">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
 
     <!-- Active session panel (main grid): the selected panel carries the Claude-orange edge so the
@@ -266,8 +279,9 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
     </Style>
 
-    <!-- Needs-attention sidebar item: a soft accent-tinted fill so it reads louder than a plain dot. -->
-    <Style Selector="Border.attention">
+    <!-- Needs-attention sidebar item: a soft accent-tinted fill so it reads louder than a plain dot.
+         Declared after .active so an active+waiting row keeps this tint (with .active's orange edge). -->
+    <Style Selector="Border.sessionItem.attention">
         <Setter Property="Background" Value="#2E2A26"/>
     </Style>
 
