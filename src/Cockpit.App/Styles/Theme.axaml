@@ -141,6 +141,18 @@
         <Setter Property="Padding" Value="8,4"/>
     </Style>
 
+    <!-- ComboBox dropdown items: quiet cockpit selection (panel-bg highlight) instead of the default
+         Fluent-blue, so an open mode/model/effort picker matches the dark theme. -->
+    <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+    </Style>
+    <Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <Style Selector="ComboBoxItem:selected:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+    </Style>
+
     <!-- Compact selectors: the per-session mode/model/effort pickers are context controls, not the
          focus — shrink them (smaller font, tighter padding, faint text) so the transcript dominates. -->
     <Style Selector="ComboBox.Compact">

@@ -62,9 +62,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Config directory of the selected profile, shown under the picker so it is clear where its login lives.</summary>
     public string? SelectedProfileConfigDir => SelectedProfile?.ConfigDir;
 
-    public string LoginStatusLabel => IsSelectedProfileLoggedIn
-        ? "logged in"
-        : "not logged in — run 'claude /login' in a terminal";
+    public string LoginStatusLabel => IsSelectedProfileLoggedIn ? "logged in" : "not logged in";
+
+    /// <summary>Guidance shown (in the body) only when the selected profile isn't logged in.</summary>
+    public bool ShowLoginHint => SelectedProfile is not null && !IsSelectedProfileLoggedIn;
 
     public string LoginStatusBrushKey => IsSelectedProfileLoggedIn
         ? "CockpitStatusDoneBrush"
@@ -121,6 +122,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         SelectedEffort = SessionOptionCatalog.ResolveEffort(defaults?.Effort);
 
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(ShowLoginHint));
         ConfirmCommand.NotifyCanExecuteChanged();
     }
 
@@ -129,6 +131,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(LoginStatusLabel));
         OnPropertyChanged(nameof(LoginStatusBrushKey));
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(ShowLoginHint));
         ConfirmCommand.NotifyCanExecuteChanged();
     }
 

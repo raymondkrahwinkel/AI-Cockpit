@@ -8,7 +8,7 @@
         x:Class="Cockpit.App.Views.NewSessionDialog"
         x:DataType="vm:NewSessionDialogViewModel"
         Title="{Binding HeaderText}"
-        Width="440" SizeToContent="Height" CanResize="False"
+        Width="480" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -52,6 +52,10 @@
                     <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
                                FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
+                               FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                               IsVisible="{Binding ShowLoginHint}"/>
                 </StackPanel>
             </Grid>
 
