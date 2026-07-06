@@ -101,6 +101,19 @@ public partial class ClaudeSessionView : UserControl
             return;
         }
 
+        // Esc interrupts the running turn (like the claude TUI), mirroring the Stop button. Only while
+        // a turn is in flight, so Esc is otherwise free to do its normal thing (clear selection, etc.).
+        if (e.Key == Key.Escape)
+        {
+            if (DataContext is ClaudeSessionViewModel { IsBusy: true } busyVm && busyVm.StopCommand.CanExecute(null))
+            {
+                busyVm.StopCommand.Execute(null);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
         if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
             return;
