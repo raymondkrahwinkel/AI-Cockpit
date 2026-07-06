@@ -204,6 +204,24 @@
         <Setter Property="Background" Value="#2E2A26"/>
     </Style>
 
+    <!-- ListBox (profile manager): flat, transparent; the selected row gets a quiet panel-bg fill
+         (matching the sidebar's active treatment) instead of the default Fluent-blue highlight. -->
+    <Style Selector="ListBox">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="ListBoxItem">
+        <Setter Property="Padding" Value="6,5"/>
+        <Setter Property="Margin" Value="0,1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+    </Style>
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+
     <!-- TabControl / TabItem: flat, quiet, accent underline for the selected tab -->
     <Style Selector="TabControl">
         <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>

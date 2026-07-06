@@ -21,6 +21,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
     public event Action<NewSessionResult?>? CloseRequested;
 
+    /// <summary>Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.</summary>
+    public event Action? ManageProfilesRequested;
+
     public SessionKind Kind { get; }
 
     /// <summary>Window title: SDK vs TTY variant.</summary>
@@ -142,4 +145,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
+
+    [RelayCommand]
+    private void ManageProfiles() => ManageProfilesRequested?.Invoke();
 }

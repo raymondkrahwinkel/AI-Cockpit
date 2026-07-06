@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
@@ -34,6 +35,24 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };
+
+        // Managing profiles from within the New-session dialog opens the Manage dialog over it, then
+        // reloads the picker so any added/edited/removed profile (and its defaults) shows immediately.
+        viewModel.ManageProfilesRequested += async () =>
+        {
+            await ShowManageProfilesAsync(dialog);
+            await viewModel.LoadAsync();
+        };
+
         return await dialog.ShowDialog<NewSessionResult?>(owner);
+    }
+
+    private async Task ShowManageProfilesAsync(Window owner)
+    {
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker);
+        await viewModel.LoadAsync();
+
+        var dialog = new ManageProfilesDialog { DataContext = viewModel };
+        await dialog.ShowDialog(owner);
     }
 }

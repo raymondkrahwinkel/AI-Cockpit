@@ -1,0 +1,133 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.ManageProfilesDialog"
+        x:DataType="vm:ManageProfilesDialogViewModel"
+        Title="Manage profiles"
+        Width="620" Height="420" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:ManageProfilesDialogViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Footer: Remove the selected profile on the left, Cancel/Save on the right. Save persists
+             the whole edited list. -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="0" Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
+                        Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                        Command="{Binding RemoveProfileCommand}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid ColumnDefinitions="180,*">
+
+            <!-- Profile list + Add. -->
+            <DockPanel Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}">
+                <Button DockPanel.Dock="Bottom" Content="+ Add profile" Classes="Subtle" Margin="8"
+                        HorizontalAlignment="Left" Foreground="{StaticResource CockpitAccentBrush}"
+                        Command="{Binding AddProfileCommand}"/>
+                <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                         Background="Transparent" Margin="4">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:EditableProfileViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                <Ellipse Width="8" Height="8"
+                                         Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- Detail: the selected profile's fields + session defaults. -->
+            <ScrollViewer Grid.Column="1"
+                          IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <StackPanel Margin="16" Spacing="11"
+                            DataContext="{Binding SelectedProfile}"
+                            x:DataType="vm:EditableProfileViewModel">
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Label" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Label}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Config directory (CLAUDE_CONFIG_DIR)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
+                                    Click="OnBrowseConfigDir"/>
+                            <TextBox Text="{Binding ConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"/>
+                        </DockPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Executable (empty = bundled default)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
+                                    Click="OnBrowseExecutable"/>
+                            <TextBox Text="{Binding ExecutablePath}" FontFamily="{StaticResource CockpitMonoFont}"/>
+                        </DockPanel>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Purpose" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Purpose}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="Mode" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).PermissionModes}"
+                                      SelectedItem="{Binding SelectedPermissionMode}"
+                                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Models}"
+                                      SelectedItem="{Binding SelectedModel}"
+                                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="Effort" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Efforts}"
+                                      SelectedItem="{Binding SelectedEffort}"
+                                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Login" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" Height="30">
+                                <Ellipse Width="8" Height="8"
+                                         Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                <TextBlock Text="{Binding LoginStatusLabel}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>
