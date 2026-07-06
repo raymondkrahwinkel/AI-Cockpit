@@ -94,7 +94,7 @@
         <TextBlock Text="Ready — type a message below to start." IsVisible="{Binding !HasTranscript}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13"
                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
-        <ScrollViewer IsVisible="{Binding HasTranscript}">
+        <ScrollViewer x:Name="TranscriptScroll" IsVisible="{Binding HasTranscript}">
             <ItemsControl ItemsSource="{Binding Transcript}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TranscriptEntryViewModel">

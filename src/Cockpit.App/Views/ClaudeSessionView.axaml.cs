@@ -13,6 +13,10 @@ namespace Cockpit.App.Views;
 
 public partial class ClaudeSessionView : UserControl
 {
+    // Follow the newest transcript row while parked at the bottom; pause when the user scrolls up to
+    // read history, resume once they scroll back down (#21). Avalonia has no built-in stick-to-bottom.
+    private bool _stickToBottom = true;
+
     public ClaudeSessionView()
     {
         InitializeComponent();
@@ -29,6 +33,38 @@ public partial class ClaudeSessionView : UserControl
         // Focus the input as soon as a session panel appears, so a freshly created session is ready to
         // type in without a click (L10). Deferred so focus lands after the panel is laid out.
         Dispatcher.UIThread.Post(() => InputBox.Focus());
+
+        TranscriptScroll.ScrollChanged += _OnTranscriptScrollChanged;
+        // Land on the newest row if the panel re-attaches with an existing transcript.
+        Dispatcher.UIThread.Post(() => { if (_stickToBottom) TranscriptScroll.ScrollToEnd(); });
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        TranscriptScroll.ScrollChanged -= _OnTranscriptScrollChanged;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void _OnTranscriptScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        // Content grew/shrank (a new row streamed in): keep following the bottom if we were parked
+        // there. Don't re-derive the stick state from a content-driven change — only a real user
+        // scroll (offset moves without the extent moving) flips whether we follow.
+        if (e.ExtentDelta.Y != 0)
+        {
+            if (_stickToBottom)
+            {
+                TranscriptScroll.ScrollToEnd();
+            }
+
+            return;
+        }
+
+        if (e.OffsetDelta.Y != 0)
+        {
+            _stickToBottom = TranscriptScrollAnchor.IsAtBottom(
+                TranscriptScroll.Offset.Y, TranscriptScroll.Extent.Height, TranscriptScroll.Viewport.Height);
+        }
     }
 
     private void _OnInputKeyDown(object? sender, KeyEventArgs e)
