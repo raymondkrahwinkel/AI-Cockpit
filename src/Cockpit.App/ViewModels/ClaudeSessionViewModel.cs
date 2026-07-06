@@ -104,19 +104,16 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText,
             "Found the cause: the DockPanel order flattened the ScrollViewer. Moving the top and bottom docks before the last child."));
 
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
+        var editTool = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
             "Tool: Edit({\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"})")
         {
             ToolUseId = "sample-tool-1",
             ToolName = "Edit",
             InputJson = "{\"file_path\":\"ClaudeSessionView.axaml\",\"old_string\":\"...\"}",
-        });
-
-        Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolResult,
-            "Tool result: The file D:\\Projects\\dotnet\\Cockpit\\src\\Cockpit.App\\Views\\ClaudeSessionView.axaml has been updated successfully.")
-        {
-            IsExpanded = false,
-        });
+            IsExpanded = true,
+        };
+        editTool.SetResult("The file src/Cockpit.App/Views/ClaudeSessionView.axaml has been updated successfully.", isError: false);
+        Transcript.Add(editTool);
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse,
             "Tool: Bash({\"command\":\"dotnet build\"})")
@@ -504,9 +501,23 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                 break;
 
             case ToolResult toolResult:
-                Transcript.Add(new TranscriptEntryViewModel(
-                    TranscriptEntryKind.ToolResult,
-                    toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                var toolUseEntry = Transcript.LastOrDefault(
+                    t => t.Kind == TranscriptEntryKind.ToolUse && t.ToolUseId == toolResult.ToolUseId);
+                if (toolUseEntry is not null)
+                {
+                    // Couple the result to its tool-call row (L14) so it renders as an expandable
+                    // section beneath that call, instead of a detached row that loses which call it
+                    // belongs to — the pain with parallel tool calls.
+                    toolUseEntry.SetResult(toolResult.Content, toolResult.IsError);
+                }
+                else
+                {
+                    // No matching tool-use in view (e.g. a result arriving first): fall back to a row.
+                    Transcript.Add(new TranscriptEntryViewModel(
+                        TranscriptEntryKind.ToolResult,
+                        toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
+                }
+
                 break;
 
             case PermissionRequested permission:

@@ -188,6 +188,43 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public void Apply_ToolResult_CouplesToItsToolUseRowByToolUseId()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Edit", InputJson = "{}" });
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_1", Content = "done", IsError = false });
+
+        var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
+        toolUse.HasResult.Should().BeTrue();
+        toolUse.ResultText.Should().Be("done");
+        vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.ToolResult);
+    }
+
+    [Fact]
+    public void Apply_ToolResultWithNoMatchingToolUse_FallsBackToAStandaloneRow()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_orphan", Content = "stray", IsError = false });
+
+        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.ToolResult);
+    }
+
+    [Fact]
+    public void Apply_ToolResultError_MarksTheCoupledResultAsAnError()
+    {
+        var vm = NewVm();
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_2", ToolName = "Bash", InputJson = "{}" });
+
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_2", Content = "boom", IsError = true });
+
+        var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);
+        toolUse.IsResultError.Should().BeTrue();
+        toolUse.ResultToggleGlyph.Should().Contain("error");
+    }
+
+    [Fact]
     public void Apply_TurnCompleted_SetsStatusToDone()
     {
         var vm = NewVm();

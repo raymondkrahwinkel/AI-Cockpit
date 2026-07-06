@@ -30,8 +30,10 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public bool IsToolResult => Kind == TranscriptEntryKind.ToolResult;
 
-    /// <summary>Plain rows rendered as a single wrapped text block (not thinking, not a collapsible tool result).</summary>
-    public bool IsPlainText => !IsThinking && !IsToolResult;
+    public bool IsToolUse => Kind == TranscriptEntryKind.ToolUse;
+
+    /// <summary>Plain rows rendered as a single wrapped text block (assistant/user text — not thinking, a tool-use, or a standalone tool result).</summary>
+    public bool IsPlainText => !IsThinking && !IsToolResult && !IsToolUse;
 
     /// <summary>
     /// Presentational only: the echoed user message is an <see cref="TranscriptEntryKind.AssistantText"/>
@@ -40,8 +42,22 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// </summary>
     public bool IsUserRow => Kind == TranscriptEntryKind.AssistantText && Text.StartsWith("> ", StringComparison.Ordinal);
 
-    /// <summary>Chevron glyph for the tool-result collapse toggle; presentational only.</summary>
+    /// <summary>Chevron glyph for a standalone (orphan) tool-result row; presentational only.</summary>
     public string ToggleGlyph => IsExpanded ? "▾ Tool result" : "▸ Tool result (click to show)";
+
+    /// <summary>Chevron for the result coupled to a tool-use row (L14) — reads "error" when the result failed.</summary>
+    public string ResultToggleGlyph => (IsExpanded ? "▾ " : "▸ ") + (IsResultError ? "error" : "result");
+
+    /// <summary>The tool result coupled to this tool-use row by tool_use_id (L14), or null until it arrives.</summary>
+    [ObservableProperty]
+    private string? _resultText;
+
+    /// <summary>True when the coupled tool result reported an error.</summary>
+    [ObservableProperty]
+    private bool _isResultError;
+
+    /// <summary>True once a result has been coupled to this tool-use row, driving its expandable result section.</summary>
+    public bool HasResult => ResultText is not null;
 
     [ObservableProperty]
     private string _text;
@@ -76,9 +92,24 @@ public partial class TranscriptEntryViewModel : ViewModelBase
         Text += delta;
     }
 
+    /// <summary>Couples a tool result to this tool-use row (L14), matched on tool_use_id in the session view model.</summary>
+    public void SetResult(string content, bool isError)
+    {
+        IsResultError = isError;
+        ResultText = content;
+    }
+
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 
-    /// <summary>Keeps the chevron glyph in sync — <see cref="ToggleGlyph"/> is computed, not observable, on its own.</summary>
-    partial void OnIsExpandedChanged(bool value) => OnPropertyChanged(nameof(ToggleGlyph));
+    /// <summary>Keeps the computed chevron glyphs in sync — they are computed, not observable, on their own.</summary>
+    partial void OnIsExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ToggleGlyph));
+        OnPropertyChanged(nameof(ResultToggleGlyph));
+    }
+
+    partial void OnResultTextChanged(string? value) => OnPropertyChanged(nameof(HasResult));
+
+    partial void OnIsResultErrorChanged(bool value) => OnPropertyChanged(nameof(ResultToggleGlyph));
 }

@@ -124,7 +124,26 @@
                                            IsVisible="{Binding IsPlainText}"
                                            Classes.userRow="{Binding IsUserRow}"/>
 
-                                <!-- Tool results: collapsed by default; expand on demand via chevron. -->
+                                <!-- Tool-use rows: the call line, plus its coupled result as an expandable
+                                     section beneath it (L14 — matched on tool_use_id), so a result stays
+                                     attached to the call it belongs to instead of drifting to a loose row. -->
+                                <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                               Classes="toolBody"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    <StackPanel IsVisible="{Binding HasResult}" Spacing="4">
+                                        <Button Content="{Binding ResultToggleGlyph}"
+                                                Command="{Binding ToggleExpandedCommand}"
+                                                Classes="Subtle toolRow" HorizontalAlignment="Left"
+                                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap"
+                                                   Classes="toolBody"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                   IsVisible="{Binding IsExpanded}"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Standalone (orphan) tool results: collapsed by default; expand via chevron. -->
                                 <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
                                     <Button Content="{Binding ToggleGlyph}"
                                             Command="{Binding ToggleExpandedCommand}"
