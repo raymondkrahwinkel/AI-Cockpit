@@ -637,21 +637,32 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     {
         _lifetimeCancellation?.Cancel();
 
+        // Dispose the session (kill the CLI process) first: that closes its stdout so the event loop
+        // unwinds on its own, and — critically on app shutdown — it kills the child claude even if the
+        // UI dispatcher is already gone and the loop's final dispatch can't complete, which is what
+        // kept the child (and its MCP permission-server connection) alive and hung the process (#32).
+        if (_session is not null)
+        {
+            await _session.DisposeAsync();
+        }
+
         if (_eventLoopTask is not null)
         {
             try
             {
-                await _eventLoopTask;
+                // The child is already dead here; a bounded wait keeps a stuck final UI dispatch from
+                // blocking shutdown forever.
+                await _eventLoopTask.WaitAsync(TimeSpan.FromSeconds(2));
             }
             catch (OperationCanceledException)
             {
-                // Expected.
+                // Expected: cancelling the lifetime token ends the event loop.
             }
-        }
-
-        if (_session is not null)
-        {
-            await _session.DisposeAsync();
+            catch (TimeoutException)
+            {
+                // The dispatcher is gone and the loop can't finish; the child is already killed, so
+                // dropping the wait is safe.
+            }
         }
 
         _lifetimeCancellation?.Dispose();

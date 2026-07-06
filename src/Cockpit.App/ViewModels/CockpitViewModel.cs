@@ -22,7 +22,9 @@ namespace Cockpit.App.ViewModels;
 /// <c>CockpitView.axaml</c>) can bind to them without reaching into a sibling view model — the
 /// cockpit is the single root VM behind the window; audio is a small, secondary tool hanging off it.
 /// </remarks>
-public partial class CockpitViewModel : ViewModelBase, ITransientService
+// Singleton: it is the single root view model behind the window, and the shutdown path resolves it
+// back to dispose the live sessions (bug #32) — that must be the same instance the window holds.
+public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsyncDisposable
 {
     private static readonly Core.Audio.AudioFormat AudioFormat = new();
 
@@ -396,5 +398,22 @@ public partial class CockpitViewModel : ViewModelBase, ITransientService
     private void ToggleZoom()
     {
         IsZoomed = !IsZoomed;
+    }
+
+    /// <summary>
+    /// Disposes every live session on app shutdown so each child claude process is killed and releases
+    /// its MCP permission-server connection — otherwise those open SSE streams keep the server (and the
+    /// whole process) alive after the window closes (bug #32).
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var session in Sessions.ToList())
+        {
+            session.PropertyChanged -= OnSessionPropertyChanged;
+            await session.DisposeAsync();
+        }
+
+        Sessions.Clear();
+        _lastStatus.Clear();
     }
 }

@@ -68,8 +68,24 @@ sealed class Program
         }
         finally
         {
+            // Order matters: dispose the cockpit (killing the child claude processes) before stopping
+            // the MCP host, so those children release their permission-server connections first —
+            // otherwise the server's graceful stop waits on the still-open SSE streams (bug #32).
+            DisposeCockpit();
             StopHostedServices(hostedServices);
         }
+    }
+
+    private static void DisposeCockpit()
+    {
+        if (Services.GetService<CockpitViewModel>() is not { } cockpit)
+        {
+            return;
+        }
+
+        // A bounded wait so a wedged session teardown can't hang the exit; the child processes are
+        // killed early in each session's DisposeAsync, so timing out here still leaves nothing behind.
+        cockpit.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(10));
     }
 
     private static void StartHostedServices(IReadOnlyList<IHostedService> hostedServices)
@@ -82,15 +98,18 @@ sealed class Program
 
     private static void StopHostedServices(IReadOnlyList<IHostedService> hostedServices)
     {
+        // Bound the stop: the MCP server's Kestrel host does a graceful drain, so give it a hard
+        // deadline rather than CancellationToken.None — any straggling connection must not stall exit.
+        using var shutdownTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         foreach (var service in hostedServices)
         {
             try
             {
-                service.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                service.StopAsync(shutdownTimeout.Token).GetAwaiter().GetResult();
             }
             catch (Exception)
             {
-                // Best-effort shutdown: a failing stop must not mask the app exit.
+                // Best-effort shutdown: a failing (or timed-out) stop must not mask the app exit.
             }
         }
     }
