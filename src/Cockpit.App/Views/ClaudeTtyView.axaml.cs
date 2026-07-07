@@ -26,6 +26,9 @@ public partial class ClaudeTtyView : UserControl
     private ClaudeTtyViewModel? _viewModel;
     private IClaudeTtyLauncher? _pendingLauncher;
     private ClaudeProfile? _pendingProfile;
+    private string? _pendingPermissionMode;
+    private string? _pendingModel;
+    private string? _pendingEffort;
     private bool _launchPending;
     private short _lastColumns;
     private short _lastRows;
@@ -71,14 +74,22 @@ public partial class ClaudeTtyView : UserControl
     }
 
     /// <summary>
-    /// A profile has been resolved. The pty can only be spawned once the terminal has a real size,
-    /// so remember the request and launch on the next <see cref="OnTerminalSizeChanged"/> (or now if
-    /// a size is already known).
+    /// A profile and its start defaults have been resolved. The pty can only be spawned once the
+    /// terminal has a real size, so remember the request and launch on the next
+    /// <see cref="OnTerminalSizeChanged"/> (or now if a size is already known).
     /// </summary>
-    private void OnLaunchRequested(IClaudeTtyLauncher launcher, ClaudeProfile? profile)
+    private void OnLaunchRequested(
+        IClaudeTtyLauncher launcher,
+        ClaudeProfile? profile,
+        string? permissionMode,
+        string? model,
+        string? effort)
     {
         _pendingLauncher = launcher;
         _pendingProfile = profile;
+        _pendingPermissionMode = permissionMode;
+        _pendingModel = model;
+        _pendingEffort = effort;
         _launchPending = true;
 
         if (_lastColumns > 0 && _lastRows > 0)
@@ -112,7 +123,13 @@ public partial class ClaudeTtyView : UserControl
 
         try
         {
-            _pty = _pendingLauncher.Launch(_pendingProfile, _lastColumns, _lastRows);
+            _pty = _pendingLauncher.Launch(
+                _pendingProfile,
+                _pendingPermissionMode,
+                _pendingModel,
+                _pendingEffort,
+                _lastColumns,
+                _lastRows);
         }
         catch (Exception ex)
         {

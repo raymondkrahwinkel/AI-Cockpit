@@ -8,9 +8,10 @@ namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
 /// The TTY panel no longer selects a profile itself (the New-session dialog does, since #31): it is
-/// handed the chosen profile via <see cref="ClaudeTtyViewModel.LaunchConfigured"/> and raises
+/// handed the chosen profile and start defaults (permission mode/model/effort) via
+/// <see cref="ClaudeTtyViewModel.LaunchConfigured"/> and raises
 /// <see cref="ClaudeTtyViewModel.LaunchRequested"/> once the view is subscribed.
-/// <see cref="ClaudeTtyViewModel.TryRaiseLaunch"/> bridges the ordering between "profile configured"
+/// <see cref="ClaudeTtyViewModel.TryRaiseLaunch"/> bridges the ordering between "launch configured"
 /// and "view subscribed"; these tests assert it fires exactly once, whichever happens first.
 /// </summary>
 public class ClaudeTtyViewModelTests
@@ -18,21 +19,30 @@ public class ClaudeTtyViewModelTests
     private static readonly ClaudeProfile Work = new("work", @"C:\Users\raymo\.claude-work");
 
     [Fact]
-    public void LaunchConfigured_WhenAlreadySubscribed_RaisesLaunchWithTheProfile()
+    public void LaunchConfigured_WhenAlreadySubscribed_RaisesLaunchWithTheProfileAndOptions()
     {
         ClaudeProfile? launchedProfile = null;
+        string? launchedMode = null;
+        string? launchedModel = null;
+        string? launchedEffort = null;
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, profile) =>
+        vm.LaunchRequested += (_, profile, mode, model, effort) =>
         {
             launchedProfile = profile;
+            launchedMode = mode;
+            launchedModel = model;
+            launchedEffort = effort;
             launchCount++;
         };
 
-        vm.LaunchConfigured(Work);
+        vm.LaunchConfigured(Work, "acceptEdits", "opus", "high");
 
         launchCount.Should().Be(1);
         launchedProfile.Should().Be(Work);
+        launchedMode.Should().Be("acceptEdits");
+        launchedModel.Should().Be("opus");
+        launchedEffort.Should().Be("high");
         vm.ActiveProfileLabel.Should().Be("work");
         vm.SessionStatus.Should().Be(SessionStatus.Busy);
     }
@@ -43,8 +53,8 @@ public class ClaudeTtyViewModelTests
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
 
-        vm.LaunchConfigured(Work);            // configured before any subscriber exists
-        vm.LaunchRequested += (_, _) => launchCount++;
+        vm.LaunchConfigured(Work, "default", "sonnet", "medium");   // configured before any subscriber exists
+        vm.LaunchRequested += (_, _, _, _, _) => launchCount++;
         launchCount.Should().Be(0);           // nothing raised yet — no subscriber at configure time
 
         vm.TryRaiseLaunch();                  // the view calls this once it has subscribed
@@ -57,9 +67,9 @@ public class ClaudeTtyViewModelTests
     {
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, _) => launchCount++;
+        vm.LaunchRequested += (_, _, _, _, _) => launchCount++;
 
-        vm.LaunchConfigured(Work);
+        vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.TryRaiseLaunch();
         vm.TryRaiseLaunch();
 
@@ -71,7 +81,7 @@ public class ClaudeTtyViewModelTests
     {
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, _) => launchCount++;
+        vm.LaunchRequested += (_, _, _, _, _) => launchCount++;
 
         vm.TryRaiseLaunch();
 

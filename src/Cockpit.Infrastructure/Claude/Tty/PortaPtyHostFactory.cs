@@ -10,9 +10,10 @@ internal sealed class PortaPtyHostFactory : IPtyHostFactory
 {
     public IConPtyProcess Start(
         string executablePath,
+        IReadOnlyList<string> arguments,
         string workingDirectory,
         IReadOnlyDictionary<string, string> environment,
         short columns,
         short rows) =>
-        PortaPtyProcess.Start(executablePath, workingDirectory, environment, columns, rows);
+        PortaPtyProcess.Start(executablePath, arguments, workingDirectory, environment, columns, rows);
 }

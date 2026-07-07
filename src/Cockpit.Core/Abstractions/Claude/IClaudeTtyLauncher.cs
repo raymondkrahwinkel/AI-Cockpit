@@ -8,13 +8,24 @@ namespace Cockpit.Core.Abstractions.Claude;
 /// profile/executable/trust plumbing as the SDK-mode spawn (<c>ClaudeCliProcess</c>): resolves the
 /// bundled executable, pre-marks the working directory trusted under the profile, and composes the
 /// environment (inherited parent env + <c>CLAUDE_CONFIG_DIR</c> + <c>TERM</c>). Unlike SDK mode it
-/// spawns <c>claude</c> plainly — no <c>-p</c>/stream-json flags — so the genuine TUI runs.
+/// never adds <c>-p</c>/stream-json flags, so the genuine TUI runs — but it does pass the
+/// permission-mode/model/effort chosen in the New-session dialog as launch-only start defaults
+/// (mirroring <c>ClaudeCliProcess.BuildArguments</c>); once running, the TUI itself owns any live
+/// switching (<c>/model</c>, <c>/effort</c>, Shift+Tab) since TTY mode has no control channel.
 /// </summary>
 public interface IClaudeTtyLauncher
 {
     /// <summary>
     /// Starts <c>claude</c> in a pseudo console sized <paramref name="columns"/>×<paramref name="rows"/>
-    /// under <paramref name="profile"/> (or the host's own config when null).
+    /// under <paramref name="profile"/> (or the host's own config when null), with
+    /// <paramref name="permissionMode"/>/<paramref name="model"/>/<paramref name="effort"/> as its
+    /// launch-only start defaults (any of which may be null/blank to omit that flag).
     /// </summary>
-    IConPtyProcess Launch(ClaudeProfile? profile, short columns, short rows);
+    IConPtyProcess Launch(
+        ClaudeProfile? profile,
+        string? permissionMode,
+        string? model,
+        string? effort,
+        short columns,
+        short rows);
 }

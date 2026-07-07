@@ -32,7 +32,13 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         _ptyHostFactory = ptyHostFactory;
     }
 
-    public IConPtyProcess Launch(ClaudeProfile? profile, short columns, short rows)
+    public IConPtyProcess Launch(
+        ClaudeProfile? profile,
+        string? permissionMode,
+        string? model,
+        string? effort,
+        short columns,
+        short rows)
     {
         var cli = _options.Claude;
         var workingDirectory = string.IsNullOrWhiteSpace(cli.WorkingDirectory)
@@ -51,8 +57,47 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             ?? cli.ExecutablePath;
 
         var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile);
+        var arguments = BuildArguments(permissionMode, model, effort);
 
-        return _ptyHostFactory.Start(executablePath, workingDirectory, environment, columns, rows);
+        return _ptyHostFactory.Start(executablePath, arguments, workingDirectory, environment, columns, rows);
+    }
+
+    /// <summary>
+    /// Builds the launch-only start-default flags for the TTY spawn. Extracted (and <c>internal</c>)
+    /// so the flag construction is unit-testable without a real pty. Deliberately narrower than
+    /// <c>ClaudeCliProcess.BuildArguments</c> — no <c>-p</c>/stream-json/permission-prompt-tool wiring,
+    /// since TTY mode runs the genuine interactive TUI (it prompts for permission itself).
+    /// </summary>
+    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort)
+    {
+        var arguments = new List<string>();
+
+        // Bypass is a launch-only synonym for --dangerously-skip-permissions; the CLI does not accept
+        // both flags together, so the two are mutually exclusive here (mirrors ClaudeCliProcess's
+        // bypass handling, which likewise skips --permission-mode in that case).
+        if (string.Equals(permissionMode, "bypassPermissions", StringComparison.Ordinal))
+        {
+            arguments.Add("--dangerously-skip-permissions");
+        }
+        else if (!string.IsNullOrWhiteSpace(permissionMode))
+        {
+            arguments.Add("--permission-mode");
+            arguments.Add(permissionMode);
+        }
+
+        if (!string.IsNullOrWhiteSpace(model))
+        {
+            arguments.Add("--model");
+            arguments.Add(model);
+        }
+
+        if (!string.IsNullOrWhiteSpace(effort))
+        {
+            arguments.Add("--effort");
+            arguments.Add(effort);
+        }
+
+        return arguments;
     }
 
     /// <summary>

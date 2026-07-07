@@ -7,9 +7,10 @@ namespace Cockpit.App.ViewModels;
 
 /// <summary>
 /// TTY-mode (#9) session panel: hosts the real interactive <c>claude</c> TUI inside a ConPTY, rendered
-/// by <c>ClaudeTtyView</c>'s terminal control. The profile is chosen up front in the New-session dialog
-/// (#31) and handed in via <see cref="LaunchConfigured"/>; the view owns the terminal size, so the VM
-/// raises <see cref="LaunchRequested"/> and the view launches the carried <see cref="IClaudeTtyLauncher"/>
+/// by <c>ClaudeTtyView</c>'s terminal control. The profile and start defaults (permission mode/model/
+/// effort) are chosen up front in the New-session dialog (#31) and handed in via
+/// <see cref="LaunchConfigured"/>; the view owns the terminal size, so the VM raises
+/// <see cref="LaunchRequested"/> and the view launches the carried <see cref="IClaudeTtyLauncher"/>
 /// with its current columns/rows once it has a size.
 /// </summary>
 /// <remarks>
@@ -21,11 +22,14 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 {
     private readonly IClaudeTtyLauncher? _launcher;
     private ClaudeProfile? _configuredProfile;
+    private string? _configuredPermissionMode;
+    private string? _configuredModel;
+    private string? _configuredEffort;
     private bool _isLaunchConfigured;
     private bool _launched;
 
-    /// <summary>Raised once both the profile is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
-    public event Action<IClaudeTtyLauncher, ClaudeProfile?>? LaunchRequested;
+    /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
+    public event Action<IClaudeTtyLauncher, ClaudeProfile?, string?, string?, string?>? LaunchRequested;
 
     [ObservableProperty]
     private string _status = "Not started.";
@@ -43,12 +47,17 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     }
 
     /// <summary>
-    /// Configures the panel with the profile chosen in the New-session dialog and launches the TUI as
-    /// soon as the view is ready (#31). Replaces the old in-panel Start button and inline profile picker.
+    /// Configures the panel with the profile and start defaults chosen in the New-session dialog, then
+    /// launches the TUI as soon as the view is ready (#31). Replaces the old in-panel Start button and
+    /// inline profile picker. <paramref name="permissionMode"/>/<paramref name="model"/>/
+    /// <paramref name="effort"/> are launch-only: the real TUI owns any live switching afterwards.
     /// </summary>
-    public void LaunchConfigured(ClaudeProfile? profile)
+    public void LaunchConfigured(ClaudeProfile? profile, string? permissionMode, string? model, string? effort)
     {
         _configuredProfile = profile;
+        _configuredPermissionMode = permissionMode;
+        _configuredModel = model;
+        _configuredEffort = effort;
         _isLaunchConfigured = true;
         ActiveProfileLabel = profile?.Label;
         Status = profile is null ? "Launching TUI..." : $"Launching TUI ({profile.Label})...";
@@ -72,7 +81,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         }
 
         _launched = true;
-        LaunchRequested.Invoke(_launcher, _configuredProfile);
+        LaunchRequested.Invoke(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort);
     }
 
     /// <summary>Called by the view when the hosted process exits, to reflect it in the sidebar status.</summary>

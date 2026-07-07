@@ -25,8 +25,10 @@ internal sealed class PortaPtyProcess : IConPtyProcess
 
     /// <summary>
     /// Spawns <paramref name="executablePath"/> inside a fresh pty of the given size, in
-    /// <paramref name="workingDirectory"/>, with exactly <paramref name="environment"/> as its
-    /// environment (Porta.Pty overlays this onto the inherited process environment; since
+    /// <paramref name="workingDirectory"/>, with <paramref name="arguments"/> as its argv (Porta.Pty's
+    /// Unix provider builds <c>execvp</c>'s argv as <c>[executablePath, ...arguments, null]</c> — see
+    /// <c>Porta.Pty.Unix.PtyProvider.GetExecvpArgs</c>) and exactly <paramref name="environment"/> as
+    /// its environment (Porta.Pty overlays this onto the inherited process environment; since
     /// <paramref name="environment"/> already carries that base plus our overrides, the result is
     /// the same dictionary reaching the child).
     /// </summary>
@@ -39,6 +41,7 @@ internal sealed class PortaPtyProcess : IConPtyProcess
     /// </remarks>
     public static PortaPtyProcess Start(
         string executablePath,
+        IReadOnlyList<string> arguments,
         string workingDirectory,
         IReadOnlyDictionary<string, string> environment,
         short columns,
@@ -48,6 +51,7 @@ internal sealed class PortaPtyProcess : IConPtyProcess
         {
             Name = "xterm-256color",
             App = executablePath,
+            CommandLine = arguments.ToArray(),
             Cwd = workingDirectory,
             Cols = columns,
             Rows = rows,

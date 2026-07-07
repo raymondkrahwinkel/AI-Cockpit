@@ -39,8 +39,9 @@
             </Grid>
         </Border>
 
-        <!-- Body: profile picker (with its config directory shown) then, for SDK sessions, the start
-             mode/model/effort — initialised from the profile's saved defaults, still overridable. -->
+        <!-- Body: profile picker (with its config directory shown) then the start mode/model/effort —
+             initialised from the profile's saved defaults, still overridable. Shown for both session
+             kinds: TTY passes these as launch-only CLI flags, the real TUI owns any live switching. -->
         <StackPanel Margin="16" Spacing="12">
 
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">

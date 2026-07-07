@@ -102,13 +102,13 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
-    public void SdkKind_ShowsSessionOptions_TtyKindHidesThem()
+    public void SdkAndTtyKind_BothShowSessionOptions_SinceTtyNowPassesThemAsLaunchOnlyStartDefaults()
     {
         var sdk = new NewSessionDialogViewModel(Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>(), SessionKind.Sdk);
         var tty = new NewSessionDialogViewModel(Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>(), SessionKind.Tty);
 
         sdk.ShowSessionOptions.Should().BeTrue();
-        tty.ShowSessionOptions.Should().BeFalse();
+        tty.ShowSessionOptions.Should().BeTrue();
     }
 
     [Fact]

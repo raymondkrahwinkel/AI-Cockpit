@@ -30,10 +30,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public string HeaderText => Kind == SessionKind.Sdk ? "New session" : "New session (TTY)";
 
     /// <summary>
-    /// SDK sessions launch with a mode/model/effort; a TTY session has none of those launch options
-    /// (the real TUI owns them), so the dialog hides that block rather than showing dead controls.
+    /// Both SDK and TTY sessions launch with a mode/model/effort — TTY passes them as launch-only CLI
+    /// flags (<c>--permission-mode</c>/<c>--model</c>/<c>--effort</c>) so the real TUI still starts with
+    /// the operator's chosen defaults, even though it owns any live switching itself afterwards.
     /// </summary>
-    public bool ShowSessionOptions => Kind == SessionKind.Sdk;
+    public bool ShowSessionOptions => true;
 
     public ObservableCollection<ClaudeProfile> Profiles { get; } = [];
 

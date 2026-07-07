@@ -455,7 +455,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>
     /// Opens the New-session dialog and, once confirmed, mints a TTY-mode session (the real interactive
-    /// <c>claude</c> TUI in a terminal panel — the #9 experiment) under the chosen profile.
+    /// <c>claude</c> TUI in a terminal panel — the #9 experiment) under the chosen profile, passing the
+    /// chosen mode/model/effort along as launch-only start defaults.
     /// </summary>
     [RelayCommand]
     private async Task NewTtySessionAsync()
@@ -473,7 +474,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var session = _ttySessionFactory();
         AddSession(session, result.SessionName);
-        session.LaunchConfigured(result.Profile);
+        session.LaunchConfigured(result.Profile, result.Mode.Value, result.Model.Value, result.Effort.Value);
     }
 
     /// <summary>Opens the Manage-profiles dialog from the sidebar, independent of creating a session (L2).</summary>

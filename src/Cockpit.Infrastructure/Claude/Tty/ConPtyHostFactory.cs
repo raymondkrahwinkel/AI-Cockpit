@@ -1,3 +1,4 @@
+using System.Text;
 using Cockpit.Core.Abstractions.Claude;
 
 namespace Cockpit.Infrastructure.Claude.Tty;
@@ -11,20 +12,37 @@ internal sealed class ConPtyHostFactory : IPtyHostFactory
 {
     public IConPtyProcess Start(
         string executablePath,
+        IReadOnlyList<string> arguments,
         string workingDirectory,
         IReadOnlyDictionary<string, string> environment,
         short columns,
         short rows) =>
-        ConPtyProcess.Start(QuoteExecutable(executablePath), workingDirectory, environment, columns, rows);
+        ConPtyProcess.Start(BuildCommandLine(executablePath, arguments), workingDirectory, environment, columns, rows);
 
     /// <summary>
-    /// Wraps the executable path in quotes when it contains spaces (the bundled path lives under
-    /// <c>%APPDATA%\Claude\claude-code\&lt;version&gt;\claude.exe</c>). <c>CreateProcessW</c> takes the
-    /// whole command line as one string and parses argv itself — Unix's <c>execvp</c> takes the path
-    /// as its own argv entry, so this quoting is a Windows-only concern.
+    /// Builds the single command-line string <c>CreateProcessW</c> expects: the executable followed by
+    /// each argument, quoted where needed. <c>CreateProcessW</c> parses argv out of one string — unlike
+    /// Unix's <c>execvp</c>, which takes the path and argv array separately (see
+    /// <see cref="PortaPtyProcess"/>'s <c>PtyOptions.CommandLine</c> usage) — so this is a Windows-only
+    /// concern.
     /// </summary>
-    internal static string QuoteExecutable(string executablePath) =>
-        executablePath.Contains(' ') && !executablePath.StartsWith('"')
-            ? $"\"{executablePath}\""
-            : executablePath;
+    internal static string BuildCommandLine(string executablePath, IReadOnlyList<string> arguments)
+    {
+        var commandLine = new StringBuilder(QuoteIfNeeded(executablePath));
+        foreach (var argument in arguments)
+        {
+            commandLine.Append(' ').Append(QuoteIfNeeded(argument));
+        }
+
+        return commandLine.ToString();
+    }
+
+    /// <summary>
+    /// Wraps a token in quotes when it contains spaces (the bundled path lives under
+    /// <c>%APPDATA%\Claude\claude-code\&lt;version&gt;\claude.exe</c>). The launch arguments TTY mode
+    /// builds (mode/model/effort values) never contain spaces, so this naive check — not a full argv
+    /// escaping algorithm — covers every token this factory ever quotes.
+    /// </summary>
+    internal static string QuoteIfNeeded(string value) =>
+        value.Contains(' ') && !value.StartsWith('"') ? $"\"{value}\"" : value;
 }
