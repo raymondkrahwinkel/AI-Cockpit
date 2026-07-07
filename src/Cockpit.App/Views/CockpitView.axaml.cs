@@ -2,10 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.SessionSwitching;
-using Exclr8.Terminal;
 
 namespace Cockpit.App.Views;
 
@@ -21,12 +19,13 @@ public partial class CockpitView : UserControl
         base.OnAttachedToVisualTree(e);
 
         // Handle the switch gesture on the top-level (window) so it fires regardless of which panel
-        // has focus. Tunnelling (handledEventsToo not needed) would pre-empt a focused TextBox's own
-        // Ctrl+Left/Right word-navigation, so we listen on the bubbling KeyDown and bail out when the
-        // focus sits in an editable element — that keeps word-nav intact while typing.
+        // has focus. We tunnel (preview) so the gesture is seen before a focused TTY terminal swallows
+        // the keystroke into the pty; a focus guard still bails for a TextBox so its Ctrl+Left/Right
+        // word-navigation stays intact. In TTY the switch wins and is marked handled, so it does not
+        // also reach claude — pick a different switch modifier (Options) to keep Ctrl+Arrow for the TUI.
         if (e.RootVisual is InputElement root)
         {
-            root.AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Bubble);
+            root.AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Tunnel);
         }
     }
 
@@ -63,9 +62,10 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        // Focus-conflict guard: never steal the gesture while the user is typing. Ctrl+Left/Right is
-        // word-navigation in a TextBox, and the terminal owns all keystrokes in TTY mode.
-        if (_IsFocusInEditableElement())
+        // Focus-conflict guard: never steal the gesture while the user is typing in a TextBox, where
+        // Ctrl+Left/Right is word-navigation. The TTY terminal is intentionally NOT guarded — the session
+        // switch should work there too (the tunnelling above marks it handled so claude never sees it).
+        if (_IsFocusInTextBox())
         {
             return;
         }
@@ -97,17 +97,10 @@ public partial class CockpitView : UserControl
         _ => KeyModifiers.Control,
     };
 
-    private bool _IsFocusInEditableElement()
-    {
-        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
-        return focused switch
-        {
-            TextBox => true,
-            TerminalControl => true,
-            Visual visual => visual.FindAncestorOfType<TerminalControl>() is not null,
-            _ => false,
-        };
-    }
+    // Only a TextBox guards the gesture (Ctrl+Left/Right = word-nav there). The TTY terminal is not
+    // guarded: the tunnelling handler catches the switch before the terminal and marks it handled.
+    private bool _IsFocusInTextBox() =>
+        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
 
     /// <summary>Sidebar item click → select that session. Plain event handler (not a command) since the
     /// clicked session is the DataContext of the <see cref="Border"/> raising the event, not the item passed
