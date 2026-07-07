@@ -24,6 +24,17 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
+    <!-- TTY-mode experiment (#9): Exclr8.Terminal (MIT; NuGet), a pure Avalonia terminal-emulator
+         control with no PTY plumbing baked in — Write(bytes) feeds pty output in, the Input/Output
+         events carry bytes the terminal wants written back (user keystrokes and protocol replies
+         alike), Resized reports cell-grid changes. Verified pty-agnostic (no seam that wants to own
+         the process), so the cockpit still hosts the pty itself (ConPtyProcess on Windows,
+         PortaPtyProcess on Linux/macOS, both with our profile-aware env injection of
+         CLAUDE_CONFIG_DIR + TERM) and renders into this control. Replaces the in-tree
+         Cockpit.Terminal fork of SvcSystems.UI.Terminal, whose renderer had a cell-width/glyph-advance
+         coupling bug (see src/Cockpit.Terminal/NOTICE.md); the fork's source stays on disk,
+         unreferenced, as a fallback. -->
+    <PackageReference Include="Exclr8.Terminal" Version="1.0.7" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
   </ItemGroup>
@@ -31,15 +42,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
-    <!-- TTY-mode experiment (#9): an in-tree fork of SvcSystems.UI.Terminal (MIT; a pure XTerm.NET
-         renderer control — Feed for pty output, UserInput/Send for keystrokes, SizeChanged for
-         resize). Chosen over Iciclecreek.Avalonia.Terminal because the latter's TerminalControl owns
-         the pty and offers no seam to inject environment variables (Porta.Pty spawns with an empty
-         env block), which our profile-aware spawn (CLAUDE_CONFIG_DIR + TERM) requires — so the
-         cockpit hosts the pty itself (ConPtyProcess on Windows, PortaPtyProcess on Linux/macOS) and
-         renders into this control. Forked in-tree (Fase 1) to fix a cell-width/glyph-advance coupling
-         bug in the upstream renderer; see Cockpit.Terminal/NOTICE.md for provenance and the fix. -->
-    <ProjectReference Include="..\Cockpit.Terminal\Cockpit.Terminal.csproj" />
   </ItemGroup>
 
   <ItemGroup>

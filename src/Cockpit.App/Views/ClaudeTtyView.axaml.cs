@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -7,20 +8,20 @@ using Avalonia.Threading;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Profiles;
-using Cockpit.Terminal;
+using Exclr8.Terminal;
 
 namespace Cockpit.App.Views;
 
 /// <summary>
-/// Hosts the real interactive <c>claude</c> TUI: a <see cref="TerminalControl"/> (XTerm.NET renderer)
-/// bridged to a pty (ConPTY on Windows, Porta.Pty on Linux/macOS via <c>IPtyHostFactory</c>). The
-/// code-behind owns the plumbing between the two — pty output is fed to the
-/// terminal model, terminal keystrokes are written to pty stdin, and terminal resizes are relayed to
-/// the pty — because that bridge is inherently view/toolkit-bound, not view-model logic.
+/// Hosts the real interactive <c>claude</c> TUI: an Exclr8 <see cref="TerminalControl"/> (a pure
+/// byte-in/byte-out terminal-emulator renderer, no PTY plumbing of its own) bridged to a pty (ConPTY
+/// on Windows, Porta.Pty on Linux/macOS via <c>IPtyHostFactory</c>). The code-behind owns the plumbing
+/// between the two — pty output is written into the control, the control's <c>Input</c>/<c>Output</c>
+/// byte events are written to pty stdin, and the control's <c>Resized</c> event is relayed to the pty
+/// — because that bridge is inherently view/toolkit-bound, not view-model logic.
 /// </summary>
 public partial class ClaudeTtyView : UserControl
 {
-    private TerminalControlModel? _model;
     private IConPtyProcess? _pty;
     private CancellationTokenSource? _outputCancellation;
     private ClaudeTtyViewModel? _viewModel;
@@ -30,8 +31,9 @@ public partial class ClaudeTtyView : UserControl
     private string? _pendingModel;
     private string? _pendingEffort;
     private bool _launchPending;
-    private short _lastColumns;
-    private short _lastRows;
+    private bool _wired;
+    private int _lastColumns;
+    private int _lastRows;
 
     public ClaudeTtyView()
     {
@@ -56,27 +58,29 @@ public partial class ClaudeTtyView : UserControl
             _viewModel.TryRaiseLaunch();
         }
 
-        EnsureModel();
+        WireTerminal();
     }
 
-    private void EnsureModel()
+    private void WireTerminal()
     {
-        if (_model is not null || Terminal.Model is not null)
+        if (_wired)
         {
-            _model ??= Terminal.Model;
             return;
         }
 
-        _model = new TerminalControlModel();
-        _model.SizeChanged += OnTerminalSizeChanged;
-        _model.UserInput += OnTerminalUserInput;
-        Terminal.Model = _model;
+        _wired = true;
+        // Both events carry bytes the terminal wants written back to the pty: Input is the user's
+        // keystrokes/paste, Output is protocol replies (DSR/DA/DECRQM/OSC-query) the terminal itself
+        // generates. Both go to the same place.
+        Terminal.Input += OnTerminalBytesToPty;
+        Terminal.Output += OnTerminalBytesToPty;
+        Terminal.Resized += OnTerminalResized;
     }
 
     /// <summary>
     /// A profile and its start defaults have been resolved. The pty can only be spawned once the
     /// terminal has a real size, so remember the request and launch on the next
-    /// <see cref="OnTerminalSizeChanged"/> (or now if a size is already known).
+    /// <see cref="OnTerminalResized"/> (or now if a size is already known).
     /// </summary>
     private void OnLaunchRequested(
         IClaudeTtyLauncher launcher,
@@ -98,10 +102,10 @@ public partial class ClaudeTtyView : UserControl
         }
     }
 
-    private void OnTerminalSizeChanged(object? sender, TerminalSizeChangedEventArgs e)
+    private void OnTerminalResized(object? sender, (int Cols, int Rows) e)
     {
-        _lastColumns = (short)Math.Max(1, e.Cols);
-        _lastRows = (short)Math.Max(1, e.Rows);
+        _lastColumns = Math.Max(1, e.Cols);
+        _lastRows = Math.Max(1, e.Rows);
 
         if (_launchPending)
         {
@@ -109,7 +113,7 @@ public partial class ClaudeTtyView : UserControl
             return;
         }
 
-        _pty?.Resize(_lastColumns, _lastRows);
+        _pty?.Resize((short)_lastColumns, (short)_lastRows);
     }
 
     private void StartPty()
@@ -123,17 +127,21 @@ public partial class ClaudeTtyView : UserControl
 
         try
         {
+            // Recommended before connecting a freshly-spawned pty: clears any dimension-detection
+            // races from the app's own startup so they don't leave stacked partial renders behind.
+            Terminal.PrepareForNewSession();
+
             _pty = _pendingLauncher.Launch(
                 _pendingProfile,
                 _pendingPermissionMode,
                 _pendingModel,
                 _pendingEffort,
-                _lastColumns,
-                _lastRows);
+                (short)_lastColumns,
+                (short)_lastRows);
         }
         catch (Exception ex)
         {
-            _model?.Feed($"\r\nFailed to launch TUI: {ex.Message}\r\n");
+            Terminal.Write(Encoding.UTF8.GetBytes($"\r\nFailed to launch TUI: {ex.Message}\r\n"));
             _viewModel?.OnLaunchFailed();
             return;
         }
@@ -142,7 +150,7 @@ public partial class ClaudeTtyView : UserControl
         _ = PumpOutputAsync(_pty, _outputCancellation.Token);
     }
 
-    private void OnTerminalUserInput(object? sender, TerminalUserInputEventArgs e)
+    private void OnTerminalBytesToPty(object? sender, ReadOnlyMemory<byte> e)
     {
         var pty = _pty;
         if (pty is null)
@@ -152,8 +160,7 @@ public partial class ClaudeTtyView : UserControl
 
         try
         {
-            var data = e.Data;
-            pty.InputStream.Write(data.Span);
+            pty.InputStream.Write(e.Span);
             pty.InputStream.Flush();
         }
         catch (Exception)
@@ -178,7 +185,7 @@ public partial class ClaudeTtyView : UserControl
 
                 var chunk = new byte[read];
                 Array.Copy(buffer, chunk, read);
-                await Dispatcher.UIThread.InvokeAsync(() => _model?.Feed(chunk, read));
+                await Dispatcher.UIThread.InvokeAsync(() => Terminal.Write(chunk));
             }
         }
         catch (OperationCanceledException)

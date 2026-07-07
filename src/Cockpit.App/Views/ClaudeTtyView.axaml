@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
-             xmlns:term="using:Cockpit.Terminal"
+             xmlns:term="using:Exclr8.Terminal"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
@@ -40,8 +40,10 @@
             </StackPanel>
         </Border>
 
-        <!-- The terminal surface: a pure XTerm.NET renderer. The code-behind hosts the ConPTY and
-             pumps output into its Model, forwards keystrokes, and relays resizes. -->
+        <!-- The terminal surface: Exclr8.Terminal, a pure Avalonia terminal-emulator renderer with no
+             PTY plumbing of its own. The code-behind hosts the ConPTY/Porta.Pty process, feeds pty
+             output in via Write(...), forwards the control's Input/Output byte events to the pty, and
+             relays Resized to the pty. -->
         <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="4"
                 Background="Black">
