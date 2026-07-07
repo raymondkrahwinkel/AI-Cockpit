@@ -4,10 +4,10 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using SvcSystems.UI.Terminal;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Profiles;
+using Cockpit.Terminal;
 
 namespace Cockpit.App.Views;
 

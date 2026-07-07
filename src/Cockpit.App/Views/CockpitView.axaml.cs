@@ -5,7 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.SessionSwitching;
-using SvcSystems.UI.Terminal;
+using Cockpit.Terminal;
 
 namespace Cockpit.App.Views;
 

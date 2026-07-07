@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Fork of IvanJosipovic/SvcSystems.UI.Terminal (MIT), commit 70b515056607c12a9cd1e365a85492e6623059cc
+       (the revision behind NuGet SvcSystems.UI.Terminal 1.0.1). Forked in-tree (#Fase-1) to fix the
+       cell-width/glyph-advance coupling behind three rendering bugs (last-column clipping, "raw" text
+       spacing, text apparently shifting under a selection) — see TerminalControl.cs CalculateTextSize
+       and TerminalSurface.Render. Attribution: NOTICE.md. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Styles\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <!-- Generates the AvaloniaProperty-backed implementation behind TerminalControlModel's
+         partial properties (Terminal, SearchService, Title, ...) — required by upstream's source,
+         kept unchanged. -->
+    <PackageReference Include="PropertyGenerator.Avalonia" Version="1.3.1" PrivateAssets="all" />
+    <PackageReference Include="XTerm.NET" Version="1.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Core.Tests" />
+  </ItemGroup>
+
+</Project>
