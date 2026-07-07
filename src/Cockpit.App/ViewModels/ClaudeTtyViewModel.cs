@@ -84,10 +84,22 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         LaunchRequested.Invoke(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort);
     }
 
-    /// <summary>Called by the view when the hosted process exits, to reflect it in the sidebar status.</summary>
+    /// <summary>
+    /// Called by the view when the hosted TUI process exits after running (the user closed claude in the
+    /// TUI, or it ended). A TTY panel is a live terminal with nothing left to interact with once the
+    /// process is gone, so ask the cockpit to close the panel — mirrors closing claude itself.
+    /// </summary>
     public void OnProcessExited()
     {
         Status = "TUI process exited.";
+        SessionStatus = SessionStatus.Done;
+        RaiseCloseRequested();
+    }
+
+    /// <summary>Called by the view when the TUI could not be launched: the panel stays (the error is shown in the terminal) instead of auto-closing.</summary>
+    public void OnLaunchFailed()
+    {
+        Status = "TUI failed to launch.";
         SessionStatus = SessionStatus.Done;
     }
 

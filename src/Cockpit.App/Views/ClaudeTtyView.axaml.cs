@@ -134,7 +134,7 @@ public partial class ClaudeTtyView : UserControl
         catch (Exception ex)
         {
             _model?.Feed($"\r\nFailed to launch TUI: {ex.Message}\r\n");
-            _viewModel?.OnProcessExited();
+            _viewModel?.OnLaunchFailed();
             return;
         }
 
