@@ -37,9 +37,8 @@
                             Classes="Accent" HorizontalAlignment="Stretch"/>
                     <Button Content="+ New session (TTY)" Command="{Binding NewTtySessionCommand}"
                             Classes="Subtle" HorizontalAlignment="Stretch"
-                            IsVisible="{Binding IsTtySupported}"
                             Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                            ToolTip.Tip="Experiment: the real interactive claude TUI in a panel (Windows only)"/>
+                            ToolTip.Tip="Experiment: the real interactive claude TUI in a panel"/>
                 </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the

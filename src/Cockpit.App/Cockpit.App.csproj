@@ -30,7 +30,8 @@
          Iciclecreek.Avalonia.Terminal because the latter's TerminalControl owns the pty and offers
          no seam to inject environment variables (Porta.Pty spawns with an empty env block), which
          our profile-aware spawn (CLAUDE_CONFIG_DIR + TERM) requires — so the cockpit hosts the
-         ConPTY itself (ConPtyProcess) and renders into this control. -->
+         pty itself (ConPtyProcess on Windows, PortaPtyProcess on Linux/macOS) and renders into
+         this control. -->
     <PackageReference Include="SvcSystems.UI.Terminal" Version="1.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
   </ItemGroup>

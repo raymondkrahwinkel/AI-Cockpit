@@ -14,7 +14,8 @@ namespace Cockpit.App.ViewModels;
 /// </summary>
 /// <remarks>
 /// Registered <c>ITransientService</c> so <c>CockpitViewModel</c>'s factory mints one per TTY session.
-/// Windows-first: the underlying ConPTY host is Windows-only in this PoC.
+/// The underlying pty host is cross-platform (ConPTY on Windows, Porta.Pty on Linux/macOS), selected
+/// by <c>IPtyHostFactory</c>.
 /// </remarks>
 public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientService
 {

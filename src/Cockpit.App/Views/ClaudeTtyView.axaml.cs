@@ -13,7 +13,8 @@ namespace Cockpit.App.Views;
 
 /// <summary>
 /// Hosts the real interactive <c>claude</c> TUI: a <see cref="TerminalControl"/> (XTerm.NET renderer)
-/// bridged to a ConPTY. The code-behind owns the plumbing between the two — pty output is fed to the
+/// bridged to a pty (ConPTY on Windows, Porta.Pty on Linux/macOS via <c>IPtyHostFactory</c>). The
+/// code-behind owns the plumbing between the two — pty output is fed to the
 /// terminal model, terminal keystrokes are written to pty stdin, and terminal resizes are relayed to
 /// the pty — because that bridge is inherently view/toolkit-bound, not view-model logic.
 /// </summary>

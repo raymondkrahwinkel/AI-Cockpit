@@ -66,13 +66,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public int GridColumns => Sessions.Count <= 1 ? 1 : 2;
 
-    /// <summary>
-    /// TTY mode hosts the real claude TUI via ConPTY, which is Windows-only in this build; the sidebar
-    /// hides "+ New session (TTY)" on other platforms rather than offer a session whose view can't load
-    /// (it resolved to a "Not Found" placeholder on Linux).
-    /// </summary>
-    public bool IsTtySupported { get; } = OperatingSystem.IsWindows();
-
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
 
