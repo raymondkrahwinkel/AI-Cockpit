@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
@@ -31,6 +32,13 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
     public event Action<IClaudeTtyLauncher, ClaudeProfile?, string?, string?, string?>? LaunchRequested;
 
+    /// <summary>
+    /// Raised once a push-to-talk hold finished transcribing (no cleanup applied — TTY is a raw
+    /// keystroke stream, so a cleaned-up transcript with different wording would be actively wrong).
+    /// The view writes the text as raw bytes to the pty's stdin, the same path as a typed keystroke.
+    /// </summary>
+    public event Action<string>? VoiceTranscriptReady;
+
     [ObservableProperty]
     private string _status = "Not started.";
 
@@ -41,10 +49,14 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         Status = "TTY mode (experiment).";
     }
 
-    public ClaudeTtyViewModel(IClaudeTtyLauncher launcher)
+    public ClaudeTtyViewModel(IClaudeTtyLauncher launcher, IVoicePushToTalkService? voicePushToTalk = null, IVoiceSettingsStore? voiceSettingsStore = null)
     {
         _launcher = launcher;
+        InitializeVoice(voicePushToTalk, voiceSettingsStore);
     }
+
+    /// <summary>Raw bytes, no cleanup — the terminal has no input box to proofread in, so the transcript goes straight to the pty like a typed keystroke.</summary>
+    protected override void OnVoiceTextReady(string text) => VoiceTranscriptReady?.Invoke(text);
 
     /// <summary>
     /// Configures the panel with the profile and start defaults chosen in the New-session dialog, then

@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Cockpit.Core.Abstractions.Voice;
 
 namespace Cockpit.App.ViewModels;
 
@@ -77,6 +78,95 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         SessionStatus.Done => "Done",
         _ => "Idle",
     };
+
+    private IVoicePushToTalkService? _voicePushToTalk;
+    private IVoiceSettingsStore? _voiceSettingsStore;
+
+    /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
+    [ObservableProperty]
+    private bool _voiceEnabled;
+
+    /// <summary>Avalonia <c>Key</c> enum name for the configured push-to-talk hotkey (e.g. "F9"); the view parses it to compare against <c>KeyEventArgs.Key</c>.</summary>
+    [ObservableProperty]
+    private string _pushToTalkKeyName = "F9";
+
+    /// <summary>Transient status text ("Listening...", "Transcribing...") the view can surface next to the input while a hold is in progress.</summary>
+    [ObservableProperty]
+    private string _voiceStatus = string.Empty;
+
+    /// <summary>
+    /// Wires the shared push-to-talk plumbing and loads the current voice settings. Called from the
+    /// concrete view model's constructor rather than folded into the base constructor, since the two
+    /// session kinds take a different set of optional services.
+    /// </summary>
+    protected void InitializeVoice(IVoicePushToTalkService? voicePushToTalk, IVoiceSettingsStore? voiceSettingsStore)
+    {
+        _voicePushToTalk = voicePushToTalk;
+        _voiceSettingsStore = voiceSettingsStore;
+
+        if (voiceSettingsStore is not null)
+        {
+            _ = _LoadVoiceSettingsAsync(voiceSettingsStore);
+        }
+    }
+
+    private async Task _LoadVoiceSettingsAsync(IVoiceSettingsStore voiceSettingsStore)
+    {
+        var settings = await voiceSettingsStore.LoadAsync();
+        VoiceEnabled = settings.IsEnabled;
+        PushToTalkKeyName = settings.PushToTalkKeyName;
+    }
+
+    /// <summary>
+    /// Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
+    /// caller should not mark <c>Handled</c> for — when voice is off, unwired, or a hold is already in
+    /// progress (the underlying service's own key-repeat guard).
+    /// </summary>
+    public bool BeginVoiceHold()
+    {
+        if (!VoiceEnabled || _voicePushToTalk is null)
+        {
+            return false;
+        }
+
+        var started = _voicePushToTalk.BeginHold();
+        if (started)
+        {
+            VoiceStatus = "Listening...";
+        }
+
+        return started;
+    }
+
+    /// <summary>
+    /// Ends the push-to-talk hold (KeyUp), transcribes it, and hands any resulting text to
+    /// <see cref="OnVoiceTextReady"/> for this session kind to inject. No-op when voice was never wired.
+    /// </summary>
+    public async Task EndVoiceHoldAsync(bool applyCleanup)
+    {
+        if (_voicePushToTalk is null)
+        {
+            return;
+        }
+
+        VoiceStatus = "Transcribing...";
+        try
+        {
+            var text = await _voicePushToTalk.EndHoldAsync(applyCleanup);
+            VoiceStatus = string.Empty;
+            if (!string.IsNullOrEmpty(text))
+            {
+                OnVoiceTextReady(text);
+            }
+        }
+        catch (Exception ex)
+        {
+            VoiceStatus = $"Voice error: {ex.Message}";
+        }
+    }
+
+    /// <summary>Injects a finished voice transcript into this session kind's own input surface (chat input box or raw pty bytes).</summary>
+    protected abstract void OnVoiceTextReady(string text);
 
     /// <summary>Theme brush resource key for the status dot — resolved in the view via a converter.</summary>
     public string SessionStatusBrushKey => SessionStatus switch

@@ -1,0 +1,102 @@
+using Microsoft.Extensions.Logging;
+using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Audio;
+using Cockpit.Core.Voice;
+
+namespace Cockpit.Infrastructure.Voice;
+
+/// <summary>
+/// <see cref="IVoicePushToTalkService"/>: buffers microphone audio for the duration of a hold, then on
+/// release gates it through VAD, transcribes, and optionally cleans up. Registered as a singleton — in
+/// this single-user desktop cockpit only one session can hold the push-to-talk hotkey at a time (the
+/// one with keyboard focus), so one shared hold/capture pipeline is all that is ever needed.
+/// </summary>
+internal sealed class VoicePushToTalkService(
+    IAudioCaptureService captureService,
+    IVoiceActivityDetector vad,
+    ISpeechToTextService speechToText,
+    ITranscriptCleanupService cleanup,
+    ILogger<VoicePushToTalkService> logger)
+    : IVoicePushToTalkService, ISingletonService
+{
+    private static readonly AudioFormat CaptureFormat = new();
+
+    private readonly PushToTalkHoldGuard _holdGuard = new();
+    private CancellationTokenSource? _captureCancellation;
+    private Task<List<byte>>? _captureTask;
+
+    public bool BeginHold()
+    {
+        if (!_holdGuard.TryBeginHold())
+        {
+            return false;
+        }
+
+        _captureCancellation = new CancellationTokenSource();
+        _captureTask = _CaptureAsync(_captureCancellation.Token);
+        return true;
+    }
+
+    public async Task<string> EndHoldAsync(bool applyCleanup, CancellationToken cancellationToken = default)
+    {
+        if (_captureTask is null || _captureCancellation is null)
+        {
+            throw new InvalidOperationException($"{nameof(EndHoldAsync)} called without a preceding {nameof(BeginHold)}.");
+        }
+
+        await _captureCancellation.CancelAsync().ConfigureAwait(false);
+        var pcmBytes = await _captureTask.ConfigureAwait(false);
+        _holdGuard.Release();
+        _captureTask = null;
+        _captureCancellation.Dispose();
+        _captureCancellation = null;
+
+        var samples = _ToFloatSamples(pcmBytes);
+        if (samples.Length == 0 || !await vad.HasSpeechAsync(samples, cancellationToken).ConfigureAwait(false))
+        {
+            logger.LogInformation("Push-to-talk hold produced no detected speech; discarding");
+            return string.Empty;
+        }
+
+        var raw = await speechToText.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        return applyCleanup ? await cleanup.CleanupAsync(raw, cancellationToken).ConfigureAwait(false) : raw;
+    }
+
+    private async Task<List<byte>> _CaptureAsync(CancellationToken cancellationToken)
+    {
+        var buffer = new List<byte>();
+        try
+        {
+            await foreach (var frame in captureService.CaptureAsync(CaptureFormat, cancellationToken).ConfigureAwait(false))
+            {
+                buffer.AddRange(frame.ToArray());
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected: EndHoldAsync cancels the capture stream when the hotkey is released.
+        }
+
+        return buffer;
+    }
+
+    private static float[] _ToFloatSamples(List<byte> pcmS16Bytes)
+    {
+        var sampleCount = pcmS16Bytes.Count / 2;
+        var samples = new float[sampleCount];
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var s16 = (short)(pcmS16Bytes[i * 2] | (pcmS16Bytes[(i * 2) + 1] << 8));
+            samples[i] = s16 / (float)short.MaxValue;
+        }
+
+        return samples;
+    }
+}

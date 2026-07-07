@@ -19,6 +19,24 @@
          PtyOptions.Environment. Windows keeps the existing hand-rolled ConPtyProcess. -->
     <PackageReference Include="Porta.Pty" Version="1.0.7" />
     <PackageReference Include="SoundFlow" Version="1.4.1" />
+    <!-- Voice input (STT+VAD): Whisper.net core plus a hardware-agnostic bundle of native runtimes.
+         WhisperBackendPlanner (Cockpit.Core) decides the try-order per VoiceBackendPreference + OS;
+         Whisper.net's own NativeLibraryLoader walks that order at model-load time and picks the first
+         one that actually loads on the host — CUDA on NVIDIA (Windows+Linux), Vulkan on Windows only
+         (no published Linux Vulkan runtime as of 2026-07-07, see WhisperBackendPlanner remarks), plain
+         CPU (AVX, with a NoAvx tail) everywhere else, including AMD-on-Linux.
+         Runtime.Cuda and Runtime.Cuda12 are separate packages (not one bundling both, despite
+         RuntimeLibraryOrder listing both as fallback candidates) — confirmed empirically 2026-07-07 on
+         this RTX-4070/Fedora machine: it has CUDA 12.8 installed, "Cuda" alone (CUDA 13 native libs)
+         detected the runtime-version mismatch and silently fell back to Cpu; adding Cuda12 explicitly
+         is required for CUDA acceleration on a CUDA-12.x host. Both are needed for real hardware-agnostic
+         NVIDIA coverage. -->
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda12" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>

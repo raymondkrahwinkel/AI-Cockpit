@@ -6,12 +6,14 @@ using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Voice;
 using FluentAssertions;
 using NSubstitute;
 
@@ -448,6 +450,8 @@ public class CockpitViewModelTests
         sessionBehaviorSettingsStore.LoadAsync().Returns(new SessionBehaviorSettings());
         var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
         layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
@@ -459,7 +463,8 @@ public class CockpitViewModelTests
             sessionSwitchSettingsStore,
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
-            layoutSettingsStore);
+            layoutSettingsStore,
+            voiceSettingsStore);
     }
 
     private static ISessionDialogService DefaultDialogService()

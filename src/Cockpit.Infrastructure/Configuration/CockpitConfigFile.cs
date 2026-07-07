@@ -5,7 +5,8 @@ namespace Cockpit.Infrastructure.Configuration;
 /// section and reads-modifies-writes the whole file so it never clobbers a sibling section: the
 /// profile store owns <see cref="Profiles"/>, the notification store owns <see cref="Notifications"/>,
 /// the permission-rule store owns <see cref="PermissionRules"/>, the session-switch store owns
-/// <see cref="SessionSwitching"/>, the transcript-display store owns <see cref="TranscriptDisplay"/>.
+/// <see cref="SessionSwitching"/>, the transcript-display store owns <see cref="TranscriptDisplay"/>,
+/// the layout store owns <see cref="Layout"/>, the voice store owns <see cref="Voice"/>.
 /// Kept as a plain DTO separate from the domain records so the on-disk shape can evolve independently.
 /// </summary>
 internal sealed class CockpitConfigFile
@@ -24,4 +25,6 @@ internal sealed class CockpitConfigFile
     public SessionBehaviorSettingsEntry? SessionBehavior { get; set; }
 
     public LayoutSettingsEntry? Layout { get; set; }
+
+    public VoiceSettingsEntry? Voice { get; set; }
 }

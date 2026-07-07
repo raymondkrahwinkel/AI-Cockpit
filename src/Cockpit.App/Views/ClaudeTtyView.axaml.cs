@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
@@ -40,6 +41,11 @@ public partial class ClaudeTtyView : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
+
+        // Push-to-talk (F9 by default): tunnel so we intercept it before the Terminal control's own
+        // KeyDown handling would otherwise encode it as a VT keystroke and send it into the pty.
+        AddHandler(InputElement.KeyDownEvent, _OnPushToTalkKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(InputElement.KeyUpEvent, _OnPushToTalkKeyUp, RoutingStrategies.Tunnel);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -47,18 +53,64 @@ public partial class ClaudeTtyView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.LaunchRequested -= OnLaunchRequested;
+            _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
         }
 
         _viewModel = DataContext as ClaudeTtyViewModel;
         if (_viewModel is not null)
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
+            _viewModel.VoiceTranscriptReady += _OnVoiceTranscriptReady;
             // The profile may already have been configured (dialog confirmed) before this view existed;
             // pull any pending launch now that we are subscribed. The VM's guard makes this fire once.
             _viewModel.TryRaiseLaunch();
         }
 
         WireTerminal();
+    }
+
+    /// <summary>KeyDown for the push-to-talk hotkey — see the equivalent handler on <c>ClaudeSessionView</c> for the guard reasoning.</summary>
+    private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_viewModel is { } vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName) && vm.BeginVoiceHold())
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold and transcribes without cleanup — see <see cref="ClaudeTtyViewModel.OnVoiceTextReady"/>.</summary>
+    private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (_viewModel is { } vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName))
+        {
+            e.Handled = true;
+            _ = vm.EndVoiceHoldAsync(applyCleanup: false);
+        }
+    }
+
+    private static bool _MatchesPushToTalkKey(Key key, string configuredKeyName) =>
+        Enum.TryParse<Key>(configuredKeyName, ignoreCase: true, out var configuredKey) && key == configuredKey;
+
+    /// <summary>Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (<see cref="OnTerminalBytesToPty"/>).</summary>
+    private void _OnVoiceTranscriptReady(string text)
+    {
+        var pty = _pty;
+        if (pty is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(text);
+            pty.InputStream.Write(bytes);
+            pty.InputStream.Flush();
+        }
+        catch (Exception)
+        {
+            // The pty may have exited between the transcript arriving and the write; the output pump
+            // already observes the exit and updates status, same as a dropped keystroke write.
+        }
     }
 
     private void WireTerminal()

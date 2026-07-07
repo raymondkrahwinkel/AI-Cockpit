@@ -24,6 +24,12 @@ public partial class ClaudeSessionView : UserControl
         // Enter sends the message; Shift+Enter inserts a newline. Tunnel so we pre-empt the
         // TextBox's own Enter handling (which would otherwise insert a newline).
         InputBox.AddHandler(InputElement.KeyDownEvent, _OnInputKeyDown, RoutingStrategies.Tunnel);
+
+        // Push-to-talk (F9 by default): tunnel on the whole panel, not just the input box, so it fires
+        // regardless of which control inside the panel has focus — the operator should not have to
+        // click into the input first to dictate.
+        AddHandler(InputElement.KeyDownEvent, _OnPushToTalkKeyDown, RoutingStrategies.Tunnel);
+        AddHandler(InputElement.KeyUpEvent, _OnPushToTalkKeyUp, RoutingStrategies.Tunnel);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -196,4 +202,31 @@ public partial class ClaudeSessionView : UserControl
         InputBox.SelectionStart = InputBox.CaretIndex;
         InputBox.SelectionEnd = InputBox.CaretIndex;
     }
+
+    /// <summary>
+    /// KeyDown for the push-to-talk hotkey. <see cref="ClaudeSessionViewModel.BeginVoiceHold"/> itself
+    /// guards against OS key-repeat re-triggering a capture restart while the key stays held, so this
+    /// only marks the event handled when a hold actually started — an ignored press (voice off, or
+    /// already holding) leaves the key free for anything else bound to it.
+    /// </summary>
+    private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is ClaudeSessionViewModel vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName) && vm.BeginVoiceHold())
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold, transcribes with cleanup, and appends the result to the input box.</summary>
+    private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is ClaudeSessionViewModel vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName))
+        {
+            e.Handled = true;
+            _ = vm.EndVoiceHoldAsync(applyCleanup: true);
+        }
+    }
+
+    private static bool _MatchesPushToTalkKey(Key key, string configuredKeyName) =>
+        Enum.TryParse<Key>(configuredKeyName, ignoreCase: true, out var configuredKey) && key == configuredKey;
 }

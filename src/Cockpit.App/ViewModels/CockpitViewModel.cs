@@ -10,11 +10,13 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.TranscriptDisplay;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
@@ -46,6 +48,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
+    private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -139,6 +142,45 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
 
+    /// <summary>Master switch for voice input (push-to-talk dictation). Off by default — enabling it is what triggers the first Whisper model download.</summary>
+    [ObservableProperty]
+    private bool _voiceEnabled;
+
+    /// <summary>Ggml model name, e.g. "large-v3-turbo", "base", "tiny" — smaller models download faster and transcribe faster on CPU-only hardware.</summary>
+    [ObservableProperty]
+    private string _voiceModelName = "large-v3-turbo";
+
+    /// <summary>Selectable Whisper backend preferences offered by the Options flyout combo box.</summary>
+    public IReadOnlyList<VoiceBackendPreferenceOption> VoiceBackendPreferences { get; } =
+    [
+        new("Auto (best available)", VoiceBackendPreference.Auto),
+        new("CUDA (NVIDIA)", VoiceBackendPreference.Cuda),
+        new("Vulkan (Windows only)", VoiceBackendPreference.Vulkan),
+        new("CPU", VoiceBackendPreference.Cpu),
+    ];
+
+    [ObservableProperty]
+    private VoiceBackendPreferenceOption _selectedVoiceBackendPreference = new("Auto (best available)", VoiceBackendPreference.Auto);
+
+    /// <summary>Whether a transcript is passed through the local Ollama cleanup step before injection.</summary>
+    [ObservableProperty]
+    private bool _voiceCleanupEnabled = true;
+
+    /// <summary>Ollama model tag used for the cleanup step (see <see cref="VoiceCleanupEnabled"/>).</summary>
+    [ObservableProperty]
+    private string _voiceCleanupModel = "qwen2.5:3b-instruct";
+
+    /// <summary>Base URL of the local Ollama daemon used for cleanup.</summary>
+    [ObservableProperty]
+    private string _voiceOllamaBaseUrl = "http://localhost:11434";
+
+    /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
+    [ObservableProperty]
+    private string _voicePushToTalkKeyName = "F9";
+
+    [ObservableProperty]
+    private string _voiceSettingsStatus = string.Empty;
+
     /// <summary>Pushes the timestamp toggle to every open session as it changes, so the switch takes effect live.</summary>
     partial void OnShowTimestampsChanged(bool value)
     {
@@ -216,7 +258,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionSwitchSettingsStore sessionSwitchSettingsStore,
         ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore,
         ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
-        ILayoutSettingsStore layoutSettingsStore)
+        ILayoutSettingsStore layoutSettingsStore,
+        IVoiceSettingsStore voiceSettingsStore)
     {
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
@@ -229,6 +272,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _transcriptDisplaySettingsStore = transcriptDisplaySettingsStore;
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
         _layoutSettingsStore = layoutSettingsStore;
+        _voiceSettingsStore = voiceSettingsStore;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
         Sessions.CollectionChanged += (_, _) =>
@@ -241,6 +285,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadTranscriptDisplaySettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
         _ = LoadLayoutSettingsAsync();
+        _ = LoadVoiceSettingsAsync();
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -381,6 +426,51 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         });
         LayoutSettingsStatus = "Saved.";
+    }
+
+    private async Task LoadVoiceSettingsAsync()
+    {
+        if (_voiceSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _voiceSettingsStore.LoadAsync();
+        VoiceEnabled = settings.IsEnabled;
+        VoiceModelName = settings.ModelName;
+        SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == settings.BackendPreference)
+                                         ?? VoiceBackendPreferences[0];
+        VoiceCleanupEnabled = settings.CleanupEnabled;
+        VoiceCleanupModel = settings.CleanupModel;
+        VoiceOllamaBaseUrl = settings.OllamaBaseUrl;
+        VoicePushToTalkKeyName = settings.PushToTalkKeyName;
+    }
+
+    /// <summary>
+    /// Persists the voice settings edited in the Options flyout to <c>cockpit.json</c>. Open sessions
+    /// re-read the setting the next time they start a push-to-talk hold — no live-push needed, since
+    /// <see cref="SessionPanelViewModel.BeginVoiceHold"/> only gates on the enabled flag it loaded once
+    /// at session creation, the same "settings apply to new sessions" behaviour as the profile picker.
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveVoiceSettingsAsync()
+    {
+        if (_voiceSettingsStore is null)
+        {
+            return;
+        }
+
+        await _voiceSettingsStore.SaveAsync(new VoiceSettings
+        {
+            IsEnabled = VoiceEnabled,
+            ModelName = string.IsNullOrWhiteSpace(VoiceModelName) ? "large-v3-turbo" : VoiceModelName.Trim(),
+            BackendPreference = SelectedVoiceBackendPreference.Value,
+            CleanupEnabled = VoiceCleanupEnabled,
+            CleanupModel = string.IsNullOrWhiteSpace(VoiceCleanupModel) ? "qwen2.5:3b-instruct" : VoiceCleanupModel.Trim(),
+            OllamaBaseUrl = string.IsNullOrWhiteSpace(VoiceOllamaBaseUrl) ? "http://localhost:11434" : VoiceOllamaBaseUrl.Trim(),
+            PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
+        });
+        VoiceSettingsStatus = "Saved.";
     }
 
     [RelayCommand]

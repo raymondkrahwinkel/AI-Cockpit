@@ -126,6 +126,55 @@
                                             Classes="Accent" HorizontalAlignment="Left"/>
                                     <TextBlock Text="{Binding LayoutSettingsStatus}"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                                    <TextBlock Text="Voice input" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Enable push-to-talk dictation"
+                                              IsChecked="{Binding VoiceEnabled}"/>
+                                    <TextBlock Text="Off by default: the Whisper model only downloads once you turn this on."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Push-to-talk key"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBox Text="{Binding VoicePushToTalkKeyName}" Width="90"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Model"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBox Text="{Binding VoiceModelName}" Width="150"
+                                                 ToolTip.Tip="Ggml model name, e.g. large-v3-turbo, small, base, tiny"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Backend"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <ComboBox ItemsSource="{Binding VoiceBackendPreferences}"
+                                                  SelectedItem="{Binding SelectedVoiceBackendPreference}"
+                                                  DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                    </StackPanel>
+                                    <CheckBox Content="Clean up transcript with local Ollama"
+                                              IsChecked="{Binding VoiceCleanupEnabled}"/>
+                                    <TextBlock Text="Falls back to the raw transcript automatically when Ollama is unavailable or its output looks unreliable."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
+                                        <TextBlock Text="Ollama model"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBox Text="{Binding VoiceCleanupModel}" Width="150"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
+                                        <TextBlock Text="Ollama URL"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBox Text="{Binding VoiceOllamaBaseUrl}" Width="150"/>
+                                    </StackPanel>
+                                    <Button Content="Save" Command="{Binding SaveVoiceSettingsCommand}"
+                                            Classes="Accent" HorizontalAlignment="Left"/>
+                                    <TextBlock Text="{Binding VoiceSettingsStatus}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>

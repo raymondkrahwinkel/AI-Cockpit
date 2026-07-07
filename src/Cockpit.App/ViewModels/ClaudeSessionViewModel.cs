@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
@@ -176,10 +177,11 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         "SWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgS" +
         "moQmoUloEpqEJqFJaBKahCahSWgSmoQmYXlhqOHSNEsP9wAAAABJRU5ErkJggg==";
 
-    public ClaudeSessionViewModel(IClaudeSession session)
+    public ClaudeSessionViewModel(IClaudeSession session, IVoicePushToTalkService? voicePushToTalk = null, IVoiceSettingsStore? voiceSettingsStore = null)
     {
         _session = session;
         _TrackPendingAttachments();
+        InitializeVoice(voicePushToTalk, voiceSettingsStore);
     }
 
     private void _TrackPendingAttachments()
@@ -373,6 +375,14 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     {
         PendingAttachments.Add(new ImageAttachmentViewModel(pngBytes, a => PendingAttachments.Remove(a)));
     }
+
+    /// <summary>
+    /// Appends a finished voice transcript to the input box rather than sending it straight away, so
+    /// the operator can proofread the STT/cleanup result before pressing Enter — the SDK session
+    /// already has a text input surface, so this reuses it instead of adding a separate send path.
+    /// </summary>
+    protected override void OnVoiceTextReady(string text) =>
+        InputText = string.IsNullOrEmpty(InputText) ? text : $"{InputText} {text}";
 
     [RelayCommand]
     private async Task SendAsync()
