@@ -3,11 +3,12 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Claude;
 
 /// <summary>
-/// Launches the real interactive <c>claude</c> TUI inside a ConPTY for TTY mode (#9). Reuses the
-/// same profile/executable/trust plumbing as the SDK-mode spawn (<c>ClaudeCliProcess</c>): resolves
-/// the bundled executable, pre-marks the working directory trusted under the profile, and composes
-/// the environment (inherited parent env + <c>CLAUDE_CONFIG_DIR</c> + <c>TERM</c>). Unlike SDK mode
-/// it spawns <c>claude</c> plainly — no <c>-p</c>/stream-json flags — so the genuine TUI runs.
+/// Launches the real interactive <c>claude</c> TUI inside a pseudo console/pty for TTY mode (#9)
+/// (ConPTY on Windows, Porta.Pty on Linux/macOS — see <c>IPtyHostFactory</c>). Reuses the same
+/// profile/executable/trust plumbing as the SDK-mode spawn (<c>ClaudeCliProcess</c>): resolves the
+/// bundled executable, pre-marks the working directory trusted under the profile, and composes the
+/// environment (inherited parent env + <c>CLAUDE_CONFIG_DIR</c> + <c>TERM</c>). Unlike SDK mode it
+/// spawns <c>claude</c> plainly — no <c>-p</c>/stream-json flags — so the genuine TUI runs.
 /// </summary>
 public interface IClaudeTtyLauncher
 {

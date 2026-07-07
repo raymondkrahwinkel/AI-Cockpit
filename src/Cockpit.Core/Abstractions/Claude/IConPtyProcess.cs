@@ -1,10 +1,11 @@
 namespace Cockpit.Core.Abstractions.Claude;
 
 /// <summary>
-/// A child process hosted inside a Windows pseudo console (ConPTY) so it believes it is attached
-/// to a real interactive terminal (<c>isTTY=true</c>). Used by TTY mode (#9) to run the real
-/// <c>claude</c> TUI: the cockpit reads rendered terminal output from <see cref="OutputStream"/>,
-/// writes keystrokes to <see cref="InputStream"/>, and forwards panel resizes via <see cref="Resize"/>.
+/// A child process hosted inside a pseudo console/pty (ConPTY on Windows, Porta.Pty on Linux/macOS)
+/// so it believes it is attached to a real interactive terminal (<c>isTTY=true</c>). Used by TTY mode
+/// (#9) to run the real <c>claude</c> TUI: the cockpit reads rendered terminal output from
+/// <see cref="OutputStream"/>, writes keystrokes to <see cref="InputStream"/>, and forwards panel
+/// resizes via <see cref="Resize"/>.
 /// </summary>
 public interface IConPtyProcess : IDisposable
 {

@@ -14,6 +14,10 @@
          assembly (no Windows target framework needed). -->
     <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.9" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+    <!-- Linux/macOS pty host for TTY mode (#9): forkpty()+execvp() run entirely in a native shim
+         (avoids the .NET 7+ W^X/fork pitfall of forking from managed code), env injection via
+         PtyOptions.Environment. Windows keeps the existing hand-rolled ConPtyProcess. -->
+    <PackageReference Include="Porta.Pty" Version="1.0.7" />
     <PackageReference Include="SoundFlow" Version="1.4.1" />
   </ItemGroup>
 

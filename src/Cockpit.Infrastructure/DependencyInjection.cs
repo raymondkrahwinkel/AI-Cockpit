@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Infrastructure.Claude;
 using Cockpit.Infrastructure.Claude.Permissions;
+using Cockpit.Infrastructure.Claude.Tty;
 using Cockpit.Infrastructure.Notifications;
 
 namespace Cockpit.Infrastructure;
@@ -25,8 +26,26 @@ public static class DependencyInjection
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<PermissionMcpServer>());
 
         AddNotifications(services);
+        AddPtyHost(services);
 
         return services;
+    }
+
+    // TTY mode's pty host (#9) is OS-specific for the same reason presence/toast are: it is
+    // registered by platform here rather than via the Scrutor marker scan, which would otherwise
+    // bind whichever of ConPtyHostFactory/PortaPtyHostFactory the assembly scan happened to see last
+    // to the single IPtyHostFactory registration. ClaudeTtyLauncher itself stays cross-platform and
+    // just depends on whichever factory lands here.
+    private static void AddPtyHost(IServiceCollection services)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<IPtyHostFactory, ConPtyHostFactory>();
+        }
+        else
+        {
+            services.AddSingleton<IPtyHostFactory, PortaPtyHostFactory>();
+        }
     }
 
     // Presence detection and the toast channel are OS-specific, so they are registered by platform

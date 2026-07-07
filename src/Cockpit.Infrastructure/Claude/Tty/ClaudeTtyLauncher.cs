@@ -10,22 +10,26 @@ namespace Cockpit.Infrastructure.Claude.Tty;
 
 /// <summary>
 /// Default <see cref="IClaudeTtyLauncher"/>: spawns the interactive <c>claude</c> TUI inside a
-/// ConPTY, reusing the SDK-mode profile/executable/trust plumbing.
+/// pseudo console/pty, reusing the SDK-mode profile/executable/trust plumbing. Platform-agnostic —
+/// the actual pty host (ConPTY on Windows, Porta.Pty on Linux/macOS) is <see cref="IPtyHostFactory"/>.
 /// </summary>
 internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
 {
     private readonly CockpitOptions _options;
     private readonly IClaudeExecutableLocator _executableLocator;
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
+    private readonly IPtyHostFactory _ptyHostFactory;
 
     public ClaudeTtyLauncher(
         IOptions<CockpitOptions> options,
         IClaudeExecutableLocator executableLocator,
-        WorkspaceTrustWriter workspaceTrustWriter)
+        WorkspaceTrustWriter workspaceTrustWriter,
+        IPtyHostFactory ptyHostFactory)
     {
         _options = options.Value;
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
+        _ptyHostFactory = ptyHostFactory;
     }
 
     public IConPtyProcess Launch(ClaudeProfile? profile, short columns, short rows)
@@ -48,12 +52,14 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
 
         var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile);
 
-        return ConPtyProcess.Start(QuoteExecutable(executablePath), workingDirectory, environment, columns, rows);
+        return _ptyHostFactory.Start(executablePath, workingDirectory, environment, columns, rows);
     }
 
     /// <summary>
     /// Snapshots the cockpit process's own environment as the base the pty child inherits from —
-    /// a ConPTY child gets no environment unless we hand it one (HOME/USERPROFILE, PATH, APPDATA, ...).
+    /// a ConPTY child gets no environment unless we hand it one (HOME/USERPROFILE, PATH, APPDATA, ...);
+    /// Porta.Pty inherits automatically but we still want the base explicit here so both platforms
+    /// go through the identical <see cref="TtyEnvironment.Build"/> composition.
     /// </summary>
     private static IReadOnlyDictionary<string, string> CurrentProcessEnvironment()
     {
@@ -68,14 +74,4 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
 
         return environment;
     }
-
-    /// <summary>
-    /// Wraps the executable path in quotes when it contains spaces (the bundled path lives under
-    /// <c>%APPDATA%\Claude\claude-code\&lt;version&gt;\claude.exe</c>). Passed as the whole command
-    /// line to <c>CreateProcessW</c>, which parses argv itself.
-    /// </summary>
-    internal static string QuoteExecutable(string executablePath) =>
-        executablePath.Contains(' ') && !executablePath.StartsWith('"')
-            ? $"\"{executablePath}\""
-            : executablePath;
 }

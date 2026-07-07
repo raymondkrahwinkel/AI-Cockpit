@@ -16,8 +16,9 @@ namespace Cockpit.Infrastructure.Claude.Tty;
 /// reason the cockpit hosts the pty itself rather than using a turnkey terminal control: it is the
 /// only way to inject <c>CLAUDE_CONFIG_DIR</c> and <c>TERM</c> alongside the inherited parent env.
 ///
-/// Windows-only by construction (P/Invokes kernel32 ConPTY, available Windows 10 1809+). Linux/macOS
-/// TTY parity is a later increment (forkpty), out of scope for this Windows-first PoC.
+/// Windows-only by construction (P/Invokes kernel32 ConPTY, available Windows 10 1809+). The
+/// Linux/macOS counterpart is <see cref="PortaPtyProcess"/> (Porta.Pty); <see cref="ConPtyHostFactory"/>
+/// and <see cref="PortaPtyHostFactory"/> are selected per platform behind <c>IPtyHostFactory</c>.
 /// </remarks>
 internal sealed class ConPtyProcess : IConPtyProcess
 {
