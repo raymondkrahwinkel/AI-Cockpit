@@ -39,10 +39,23 @@
             </Grid>
         </Border>
 
-        <!-- Body: profile picker (with its config directory shown) then the start mode/model/effort —
-             initialised from the profile's saved defaults, still overridable. Shown for both session
-             kinds: TTY passes these as launch-only CLI flags, the real TUI owns any live switching. -->
+        <!-- Body: session kind first (SDK vs TTY — #32, replaces the old two-sidebar-button choice),
+             then the profile picker (with its config directory shown), then the start mode/model/effort —
+             initialised from the profile's saved defaults, still overridable. Mode/model/effort are shown
+             for both kinds: TTY passes these as launch-only CLI flags, the real TUI owns any live
+             switching. SelectedKind/IsSdk/IsTty is the seam for showing/hiding kind-specific fields later. -->
         <StackPanel Margin="16" Spacing="12">
+
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <Button Content="SDK" Classes.Accent="{Binding IsSdk}" Command="{Binding SelectSdkCommand}"
+                            ToolTip.Tip="Headless stream-json rendered as the chat UI, with live mode/model/effort switching"/>
+                    <Button Content="TTY" Classes.Accent="{Binding IsTty}" Command="{Binding SelectTtyCommand}"
+                            ToolTip.Tip="The real interactive claude TUI in a terminal panel"/>
+                </StackPanel>
+            </Grid>
 
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
                 <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
@@ -87,6 +100,19 @@
                 <ComboBox Grid.Column="1" ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
                           DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
             </Grid>
+
+            <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI
+                 owns live switching itself, unlike the SDK per-session dropdowns. -->
+            <TextBlock Text="Start defaults only — once running, switch live inside the TUI itself (/model, /effort, Shift+Tab). The per-session dropdowns are SDK-only."
+                       FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding IsTty}"/>
+
+            <!-- SDK hint: short reassurance that these stay live-switchable, mirroring the TTY note above. -->
+            <TextBlock Text="These stay live-switchable during the session via the per-session dropdowns."
+                       FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding IsSdk}"/>
 
         </StackPanel>
     </DockPanel>

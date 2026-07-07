@@ -90,7 +90,7 @@ public class NewSessionDialogViewModelTests
     public void Cancel_RaisesCloseWithNull()
     {
         var vm = NewVm(out _);
-        NewSessionResult? result = new(new ClaudeProfile("x", "y"), SessionOptionCatalog.DefaultPermissionMode,
+        NewSessionResult? result = new(SessionKind.Sdk, new ClaudeProfile("x", "y"), SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort, null);
         var closed = false;
         vm.CloseRequested += r => { result = r; closed = true; };
@@ -102,13 +102,59 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
+    public void DefaultKind_IsSdk_SoTheDialogOpensWithASensibleDefault()
+    {
+        var vm = NewVm(out _);
+
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        vm.IsSdk.Should().BeTrue();
+        vm.IsTty.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SelectTty_SwitchesIsSdkAndIsTty()
+    {
+        var vm = NewVm(out _);
+
+        vm.SelectTtyCommand.Execute(null);
+
+        vm.SelectedKind.Should().Be(SessionKind.Tty);
+        vm.IsSdk.Should().BeFalse();
+        vm.IsTty.Should().BeTrue();
+
+        vm.SelectSdkCommand.Execute(null);
+
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        vm.IsSdk.Should().BeTrue();
+        vm.IsTty.Should().BeFalse();
+    }
+
+    [Fact]
     public void SdkAndTtyKind_BothShowSessionOptions_SinceTtyNowPassesThemAsLaunchOnlyStartDefaults()
     {
-        var sdk = new NewSessionDialogViewModel(Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>(), SessionKind.Sdk);
-        var tty = new NewSessionDialogViewModel(Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>(), SessionKind.Tty);
+        var vm = NewVm(out _);
 
-        sdk.ShowSessionOptions.Should().BeTrue();
-        tty.ShowSessionOptions.Should().BeTrue();
+        vm.ShowSessionOptions.Should().BeTrue();
+        vm.SelectTtyCommand.Execute(null);
+        vm.ShowSessionOptions.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Confirm_CarriesTheSelectedKind()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVm(out var loginChecker, profile);
+        loginChecker.IsLoggedIn(profile).Returns(true);
+        await vm.LoadAsync();
+        vm.SelectTtyCommand.Execute(null);
+
+        NewSessionResult? result = null;
+        vm.CloseRequested += r => result = r;
+
+        vm.ConfirmCommand.Execute(null);
+
+        result.Should().NotBeNull();
+        result!.Kind.Should().Be(SessionKind.Tty);
     }
 
     [Fact]
@@ -129,6 +175,6 @@ public class NewSessionDialogViewModelTests
             loginChecker.IsLoggedIn(profile).Returns(true);
         }
 
-        return new NewSessionDialogViewModel(store, loginChecker, SessionKind.Sdk);
+        return new NewSessionDialogViewModel(store, loginChecker);
     }
 }

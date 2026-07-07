@@ -7,12 +7,18 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// Backs the New-session dialog (#31/#17/#15): pick a profile, and — for an SDK session — its start
-/// mode/model/effort. Choosing a profile loads its saved defaults (<see cref="ProfileDefaults"/>),
+/// Backs the New-session dialog (#31/#17/#15/#32): pick the session kind (SDK vs TTY), a profile, and
+/// its start mode/model/effort. Choosing a profile loads its saved defaults (<see cref="ProfileDefaults"/>),
 /// which the operator can still override before starting. Mode here offers all four modes including
 /// bypass, since bypass is launch-only and this dialog is the one place it can be chosen. The view
 /// closes via <see cref="CloseRequested"/>, carrying the choices on confirm or null on cancel.
 /// </summary>
+/// <remarks>
+/// <see cref="SelectedKind"/> plus the <see cref="IsSdk"/>/<see cref="IsTty"/> computed pair is the
+/// mechanism for showing/hiding kind-specific fields: today only the hint text differs (see
+/// <c>NewSessionDialog.axaml</c>), but a later kind-specific field just adds another
+/// <c>IsVisible="{Binding IsSdk}"</c>/<c>IsTty</c> binding without touching the rest of the dialog.
+/// </remarks>
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IClaudeProfileLoginChecker? _loginChecker;
@@ -24,10 +30,16 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.</summary>
     public event Action? ManageProfilesRequested;
 
-    public SessionKind Kind { get; }
+    /// <summary>Which kind of session to create; chosen in the dialog itself (#32), defaulting to SDK.</summary>
+    [ObservableProperty]
+    private SessionKind _selectedKind = SessionKind.Sdk;
 
-    /// <summary>Window title: SDK vs TTY variant.</summary>
-    public string HeaderText => Kind == SessionKind.Sdk ? "New session" : "New session (TTY)";
+    public bool IsSdk => SelectedKind == SessionKind.Sdk;
+
+    public bool IsTty => SelectedKind == SessionKind.Tty;
+
+    /// <summary>Window title, tracking the chosen kind.</summary>
+    public string HeaderText => IsSdk ? "New session" : "New session (TTY)";
 
     /// <summary>
     /// Both SDK and TTY sessions launch with a mode/model/effort — TTY passes them as launch-only CLI
@@ -82,18 +94,16 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
     {
-        Kind = SessionKind.Sdk;
         var personal = new ClaudeProfile("personal", "~/.claude-personal", Purpose: "private");
         Profiles.Add(personal);
         SelectedProfile = personal;
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, SessionKind kind)
+    public NewSessionDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
-        Kind = kind;
     }
 
     /// <summary>Loads the profiles and selects the first, so the dialog opens ready to confirm.</summary>
@@ -140,6 +150,19 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         ConfirmCommand.NotifyCanExecuteChanged();
     }
 
+    partial void OnSelectedKindChanged(SessionKind value)
+    {
+        OnPropertyChanged(nameof(IsSdk));
+        OnPropertyChanged(nameof(IsTty));
+        OnPropertyChanged(nameof(HeaderText));
+    }
+
+    [RelayCommand]
+    private void SelectSdk() => SelectedKind = SessionKind.Sdk;
+
+    [RelayCommand]
+    private void SelectTty() => SelectedKind = SessionKind.Tty;
+
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void Confirm()
     {
@@ -149,7 +172,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
 
         var name = string.IsNullOrWhiteSpace(SessionName) ? null : SessionName.Trim();
-        CloseRequested?.Invoke(new NewSessionResult(SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name));
+        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name));
     }
 
     [RelayCommand]

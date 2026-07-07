@@ -81,7 +81,8 @@ public class CockpitViewModelAttentionTests
         var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
         layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
         var dialogService = Substitute.For<ISessionDialogService>();
-        dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns(new NewSessionResult(
+        dialogService.ShowNewSessionDialogAsync().Returns(new NewSessionResult(
+            SessionKind.Sdk,
             new ClaudeProfile("default", @"C:\fake\.claude"),
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,

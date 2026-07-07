@@ -108,6 +108,9 @@
                     <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                    <TextBlock Text="Used to launch every new session. Live-switching these mid-session (the per-session dropdowns) is SDK-only — a TTY session only ever uses them as start defaults."
+                               FontSize="11" TextWrapping="Wrap"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
 
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
                         <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">

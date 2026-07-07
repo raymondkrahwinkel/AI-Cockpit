@@ -39,7 +39,7 @@ public class CockpitViewModelTests
     public async Task NewSession_WhenTheDialogIsCancelled_AddsNoSession()
     {
         var dialogService = Substitute.For<ISessionDialogService>();
-        dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns((NewSessionResult?)null);
+        dialogService.ShowNewSessionDialogAsync().Returns((NewSessionResult?)null);
         var vm = NewVm(dialogService);
 
         await vm.NewSessionCommand.ExecuteAsync(null);
@@ -127,7 +127,8 @@ public class CockpitViewModelTests
     public async Task NewSession_WithADialogName_UsesItAsTheSessionTitle()
     {
         var dialogService = Substitute.For<ISessionDialogService>();
-        dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns(new NewSessionResult(
+        dialogService.ShowNewSessionDialogAsync().Returns(new NewSessionResult(
+            SessionKind.Sdk,
             new ClaudeProfile("default", @"C:\fake\.claude"),
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
@@ -269,11 +270,13 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public async Task NewTtySession_AddsATtyPanelAndSelectsIt()
+    public async Task NewSession_WhenTheDialogPicksTty_AddsATtyPanelAndSelectsIt()
     {
-        var vm = NewVm();
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
+        var vm = NewVm(dialogService);
 
-        await vm.NewTtySessionCommand.ExecuteAsync(null);
+        await vm.NewSessionCommand.ExecuteAsync(null);
 
         vm.Sessions.Should().ContainSingle();
         vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>();
@@ -282,12 +285,16 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public async Task NewTtySession_ContinuesTheSharedTitleCounter()
+    public async Task NewSession_MixingSdkAndTtyPicks_ContinuesTheSharedTitleCounter()
     {
-        var vm = NewVm();
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(
+            NewSessionResultFor(SessionKind.Sdk),
+            NewSessionResultFor(SessionKind.Tty));
+        var vm = NewVm(dialogService);
 
         await vm.NewSessionCommand.ExecuteAsync(null);
-        await vm.NewTtySessionCommand.ExecuteAsync(null);
+        await vm.NewSessionCommand.ExecuteAsync(null);
 
         vm.Sessions[0].Title.Should().Be("Claude 1");
         vm.Sessions[1].Title.Should().Be("Claude 2");
@@ -458,11 +465,14 @@ public class CockpitViewModelTests
     private static ISessionDialogService DefaultDialogService()
     {
         var dialogService = Substitute.For<ISessionDialogService>();
-        dialogService.ShowNewSessionDialogAsync(Arg.Any<SessionKind>()).Returns(new NewSessionResult(
-            new ClaudeProfile("default", @"C:\fake\.claude"),
-            SessionOptionCatalog.DefaultPermissionMode,
-            SessionOptionCatalog.DefaultModel,
-            SessionOptionCatalog.DefaultEffort, null));
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Sdk));
         return dialogService;
     }
+
+    private static NewSessionResult NewSessionResultFor(SessionKind kind) => new(
+        kind,
+        new ClaudeProfile("default", @"C:\fake\.claude"),
+        SessionOptionCatalog.DefaultPermissionMode,
+        SessionOptionCatalog.DefaultModel,
+        SessionOptionCatalog.DefaultEffort, null);
 }

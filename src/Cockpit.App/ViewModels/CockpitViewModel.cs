@@ -431,50 +431,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
-    /// Opens the New-session dialog and, once confirmed, mints an SDK-mode session (headless stream-json
-    /// rendered as the chat UI) and starts it immediately with the chosen profile and options (#31).
+    /// Opens the New-session dialog — SDK vs TTY is now chosen inside it (#32) — and, once confirmed,
+    /// mints the matching session: SDK (headless stream-json rendered as the chat UI) or TTY (the real
+    /// interactive <c>claude</c> TUI in a terminal panel, the #9 experiment), started immediately with
+    /// the chosen profile and start options.
     /// </summary>
     [RelayCommand]
     private async Task NewSessionAsync()
     {
-        if (_sessionFactory is null || _dialogService is null)
+        if (_sessionFactory is null || _ttySessionFactory is null || _dialogService is null)
         {
             return;
         }
 
-        var result = await _dialogService.ShowNewSessionDialogAsync(SessionKind.Sdk);
+        var result = await _dialogService.ShowNewSessionDialogAsync();
         if (result is null)
         {
             return;
         }
 
-        var session = _sessionFactory();
-        AddSession(session, result.SessionName);
-        await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort);
-    }
-
-    /// <summary>
-    /// Opens the New-session dialog and, once confirmed, mints a TTY-mode session (the real interactive
-    /// <c>claude</c> TUI in a terminal panel — the #9 experiment) under the chosen profile, passing the
-    /// chosen mode/model/effort along as launch-only start defaults.
-    /// </summary>
-    [RelayCommand]
-    private async Task NewTtySessionAsync()
-    {
-        if (_ttySessionFactory is null || _dialogService is null)
+        if (result.Kind == SessionKind.Sdk)
         {
-            return;
+            var session = _sessionFactory();
+            AddSession(session, result.SessionName);
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort);
         }
-
-        var result = await _dialogService.ShowNewSessionDialogAsync(SessionKind.Tty);
-        if (result is null)
+        else
         {
-            return;
+            var session = _ttySessionFactory();
+            AddSession(session, result.SessionName);
+            session.LaunchConfigured(result.Profile, result.Mode.Value, result.Model.Value, result.Effort.Value);
         }
-
-        var session = _ttySessionFactory();
-        AddSession(session, result.SessionName);
-        session.LaunchConfigured(result.Profile, result.Mode.Value, result.Model.Value, result.Effort.Value);
     }
 
     /// <summary>Opens the Manage-profiles dialog from the sidebar, independent of creating a session (L2).</summary>

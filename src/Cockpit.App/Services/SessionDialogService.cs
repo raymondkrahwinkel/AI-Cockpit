@@ -24,14 +24,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _loginChecker = loginChecker;
     }
 
-    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(SessionKind kind)
+    public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
             return null;
         }
 
-        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, kind);
+        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };

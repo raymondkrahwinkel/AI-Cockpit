@@ -33,12 +33,9 @@
             <DockPanel Margin="8">
 
                 <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+                    <!-- SDK vs TTY is chosen inside the New-session dialog (#32) — one button covers both. -->
                     <Button Content="+ New session" Command="{Binding NewSessionCommand}"
                             Classes="Accent" HorizontalAlignment="Stretch"/>
-                    <Button Content="+ New session (TTY)" Command="{Binding NewTtySessionCommand}"
-                            Classes="Subtle" HorizontalAlignment="Stretch"
-                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                            ToolTip.Tip="Experiment: the real interactive claude TUI in a panel"/>
                 </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
