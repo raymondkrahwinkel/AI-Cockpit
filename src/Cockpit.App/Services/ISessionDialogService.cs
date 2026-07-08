@@ -16,4 +16,11 @@ public interface ISessionDialogService
 
     /// <summary>Shows the Manage-profiles dialog on its own (e.g. from the sidebar), over the main window.</summary>
     Task ShowManageProfilesDialogAsync();
+
+    /// <summary>
+    /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
+    /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
+    /// existing option properties/commands.
+    /// </summary>
+    Task ShowOptionsDialogAsync(CockpitViewModel viewModel);
 }

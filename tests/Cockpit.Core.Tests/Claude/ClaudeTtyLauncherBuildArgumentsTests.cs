@@ -10,51 +10,54 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class ClaudeTtyLauncherBuildArgumentsTests
 {
-    [Fact]
-    public void BuildArguments_WithNothingSelected_IsEmpty()
-    {
-        var arguments = ClaudeTtyLauncher.BuildArguments(permissionMode: null, model: null, effort: null);
+    private static readonly Guid SessionId = Guid.Parse("11111111-2222-3333-4444-555555555555");
 
-        arguments.Should().BeEmpty();
+    [Fact]
+    public void BuildArguments_WithNothingSelected_OnlyForcesTheSessionId()
+    {
+        var arguments = ClaudeTtyLauncher.BuildArguments(SessionId, permissionMode: null, model: null, effort: null);
+
+        arguments.Should().Equal("--session-id", SessionId.ToString());
     }
 
     [Fact]
     public void BuildArguments_WithARegularMode_AddsPermissionModeFlag()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(permissionMode: "acceptEdits", model: null, effort: null);
+        var arguments = ClaudeTtyLauncher.BuildArguments(SessionId, permissionMode: "acceptEdits", model: null, effort: null);
 
-        arguments.Should().Equal("--permission-mode", "acceptEdits");
+        arguments.Should().Equal("--session-id", SessionId.ToString(), "--permission-mode", "acceptEdits");
     }
 
     [Fact]
     public void BuildArguments_WithBypassPermissions_AddsDangerouslySkipPermissionsWithoutPermissionModeFlag()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(permissionMode: "bypassPermissions", model: null, effort: null);
+        var arguments = ClaudeTtyLauncher.BuildArguments(SessionId, permissionMode: "bypassPermissions", model: null, effort: null);
 
-        arguments.Should().Equal("--dangerously-skip-permissions");
+        arguments.Should().Equal("--session-id", SessionId.ToString(), "--dangerously-skip-permissions");
     }
 
     [Fact]
     public void BuildArguments_WithAModel_AddsModelFlag()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(permissionMode: null, model: "opus", effort: null);
+        var arguments = ClaudeTtyLauncher.BuildArguments(SessionId, permissionMode: null, model: "opus", effort: null);
 
-        arguments.Should().Equal("--model", "opus");
+        arguments.Should().Equal("--session-id", SessionId.ToString(), "--model", "opus");
     }
 
     [Fact]
     public void BuildArguments_WithAnEffort_AddsEffortFlag()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(permissionMode: null, model: null, effort: "high");
+        var arguments = ClaudeTtyLauncher.BuildArguments(SessionId, permissionMode: null, model: null, effort: "high");
 
-        arguments.Should().Equal("--effort", "high");
+        arguments.Should().Equal("--session-id", SessionId.ToString(), "--effort", "high");
     }
 
     [Fact]
     public void BuildArguments_WithEverythingSelected_CombinesAllFlagsInOrder()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(permissionMode: "default", model: "sonnet", effort: "max");
+        var arguments = ClaudeTtyLauncher.BuildArguments(SessionId, permissionMode: "default", model: "sonnet", effort: "max");
 
-        arguments.Should().Equal("--permission-mode", "default", "--model", "sonnet", "--effort", "max");
+        arguments.Should().Equal(
+            "--session-id", SessionId.ToString(), "--permission-mode", "default", "--model", "sonnet", "--effort", "max");
     }
 }

@@ -40,8 +40,11 @@
                               ToolTip.Tip="Model for this session (--model at launch, live-switchable)"/>
                     <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
-                              VerticalAlignment="Center" Margin="0,0,0,4"
+                              VerticalAlignment="Center" Margin="0,0,6,4"
                               ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
+                    <ToggleButton Content="Read aloud" IsChecked="{Binding ReadResponsesAloud}"
+                                  VerticalAlignment="Center" Margin="0,0,0,4"
+                                  ToolTip.Tip="Read each completed reply aloud, sentence by sentence (voice model downloads on first use)"/>
                 </WrapPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <TextBlock Text="{Binding Status}" VerticalAlignment="Center" FontSize="11"
@@ -174,6 +177,15 @@
                                 <views:MarkdownView Markdown="{Binding Text}"
                                                     HorizontalAlignment="Stretch"
                                                     IsVisible="{Binding IsAssistantMarkdown}"/>
+
+                                <!-- On-demand read-aloud (#35): works even when the session's Read-aloud
+                                     toggle is off — an explicit per-row request to hear this one reply. -->
+                                <Button Content="🔊 Read aloud" Classes="Subtle Compact" HorizontalAlignment="Left"
+                                        FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                        IsVisible="{Binding IsAssistantMarkdown}"
+                                        Command="{Binding $parent[ItemsControl].((vm:ClaudeSessionViewModel)DataContext).ReadAloudCommand}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip.Tip="Read this reply aloud"/>
 
                                 <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
                                      to the full input plus the coupled result (L14, matched on tool_use_id).

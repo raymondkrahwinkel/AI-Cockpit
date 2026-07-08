@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
@@ -27,6 +28,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     private Task? _eventLoopTask;
     private TranscriptEntryViewModel? _currentAssistantEntry;
     private TranscriptEntryViewModel? _currentThinkingEntry;
+
+    /// <summary>Assistant-text rows added since the last <see cref="TurnCompleted"/> — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.</summary>
+    private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
 
     /// <summary>Set when an "exit" message is dispatched with auto-close on, so the next completed turn closes the session (T10).</summary>
     private bool _closeAfterTurn;
@@ -177,11 +181,15 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         "SWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgS" +
         "moQmoUloEpqEJqFJaBKahCahSWgSmoQmYXlhqOHSNEsP9wAAAABJRU5ErkJggg==";
 
-    public ClaudeSessionViewModel(IClaudeSession session, IVoicePushToTalkService? voicePushToTalk = null, IVoiceSettingsStore? voiceSettingsStore = null)
+    public ClaudeSessionViewModel(
+        IClaudeSession session,
+        IVoicePushToTalkService? voicePushToTalk = null,
+        IVoiceSettingsStore? voiceSettingsStore = null,
+        IVoicePlaybackQueue? voicePlaybackQueue = null)
     {
         _session = session;
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
     }
 
     private void _TrackPendingAttachments()
@@ -384,6 +392,15 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     protected override void OnVoiceTextReady(string text) =>
         InputText = string.IsNullOrEmpty(InputText) ? text : $"{InputText} {text}";
 
+    /// <summary>Auto-submit: sends the input box the transcript was just appended to — the same path Enter/Send takes, so a busy session queues it (T8) rather than erroring.</summary>
+    protected override void OnVoiceSubmitRequested()
+    {
+        if (SendCommand.CanExecute(null))
+        {
+            SendCommand.Execute(null);
+        }
+    }
+
     [RelayCommand]
     private async Task SendAsync()
     {
@@ -559,6 +576,30 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         await _session.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
 
+    /// <summary>Extracts read-aloud sentences from the just-finished turn's assistant prose and enqueues them (#35). No-op when the turn produced no assistant text.</summary>
+    private void _EnqueueTurnProseForReadAloud()
+    {
+        if (_currentTurnAssistantEntries.Count == 0)
+        {
+            return;
+        }
+
+        var markdown = string.Join("\n\n", _currentTurnAssistantEntries.Select(entry => entry.Text));
+        EnqueueReadAloud(TtsProseExtractor.Extract(markdown), TtsVoiceId);
+    }
+
+    /// <summary>On-demand read-aloud for a single transcript row (#35) — works regardless of <see cref="ReadResponsesAloud"/>, since the speaker button next to an assistant reply is an explicit request to hear it.</summary>
+    [RelayCommand]
+    private void ReadAloud(TranscriptEntryViewModel entry)
+    {
+        if (entry.Kind != TranscriptEntryKind.AssistantText)
+        {
+            return;
+        }
+
+        EnqueueReadAloud(TtsProseExtractor.Extract(entry.Text), TtsVoiceId);
+    }
+
     private async Task ConsumeEventsAsync(CancellationToken cancellationToken)
     {
         if (_session is null)
@@ -605,6 +646,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                 {
                     _currentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
                     Transcript.Add(_currentAssistantEntry);
+                    _currentTurnAssistantEntries.Add(_currentAssistantEntry);
                 }
 
                 _currentAssistantEntry.AppendText(delta.Text);
@@ -619,7 +661,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                 }
                 else
                 {
-                    Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, completed.Text));
+                    var completedEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, completed.Text);
+                    Transcript.Add(completedEntry);
+                    _currentTurnAssistantEntries.Add(completedEntry);
                 }
 
                 break;
@@ -681,6 +725,12 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                         TranscriptEntryKind.TurnCompleted, $"Turn failed ({turn.Subtype})"));
                 }
 
+                if (ReadResponsesAloud)
+                {
+                    _EnqueueTurnProseForReadAloud();
+                }
+
+                _currentTurnAssistantEntries.Clear();
                 _currentAssistantEntry = null;
                 _hasCompletedATurn = true;
                 IsBusy = false;

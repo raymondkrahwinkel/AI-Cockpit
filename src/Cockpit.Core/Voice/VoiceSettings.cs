@@ -24,4 +24,34 @@ public sealed record VoiceSettings
 
     /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
     public string PushToTalkKeyName { get; init; } = "F9";
+
+    /// <summary>
+    /// When true, the push-to-talk hotkey also fires while the cockpit window has no focus (#34), via
+    /// an OS-level registration (XDG GlobalShortcuts portal on Linux, a low-level keyboard hook on
+    /// Windows) instead of the per-view KeyDown/KeyUp handlers. Off by default: opt-in like voice
+    /// itself, so the portal/hook is never touched for an operator who never turns it on.
+    /// </summary>
+    public bool GlobalPushToTalk { get; init; }
+
+    /// <summary>
+    /// When true, a finished voice transcript is submitted immediately after injection instead of only
+    /// being placed for review: the SDK session sends its input box, the TTY session writes a trailing
+    /// carriage return into the pty. Off by default so the proofread-before-send behaviour stays the
+    /// norm; opt-in for a hands-free dictate-and-go flow.
+    /// </summary>
+    public bool AutoSubmitAfterVoice { get; init; }
+
+    /// <summary>
+    /// Piper voice id for read-aloud (#35), e.g. "en_US-lessac-medium" or "nl_NL-ronnie-medium" — also
+    /// the sherpa-onnx model archive name (<c>vits-piper-{id}.tar.bz2</c>), downloaded and cached on
+    /// first use the same way the Whisper model is.
+    /// </summary>
+    public string TtsVoiceId { get; init; } = "en_US-lessac-medium";
+
+    /// <summary>
+    /// Whisper transcription language as an ISO-639-1 code ("nl", "en", …) or "auto" to let Whisper
+    /// detect it. Defaults to "auto"; a fixed language is more reliable than detection when the operator
+    /// always dictates in one language (auto-detect can mis-guess on short or accented utterances).
+    /// </summary>
+    public string SttLanguage { get; init; } = "auto";
 }

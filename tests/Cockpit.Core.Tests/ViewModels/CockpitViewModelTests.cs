@@ -424,6 +424,53 @@ public class CockpitViewModelTests
         vm.CurrentSessionSwitchSettings.Modifier.Should().Be(SessionSwitchModifier.CtrlAlt);
     }
 
+    [Fact]
+    public async Task SaveAllSettingsCommand_PersistsEverySectionAndReportsEachAsSaved()
+    {
+        var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
+        notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
+        var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
+        sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
+        var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
+        transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
+        var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
+        sessionBehaviorSettingsStore.LoadAsync().Returns(new SessionBehaviorSettings());
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
+
+        var vm = new CockpitViewModel(
+            () => new ClaudeSessionViewModel(),
+            () => new ClaudeTtyViewModel(),
+            DefaultDialogService(),
+            Substitute.For<IAudioCaptureService>(),
+            Substitute.For<IAudioPlaybackService>(),
+            Substitute.For<IAttentionNotifier>(),
+            notificationSettingsStore,
+            sessionSwitchSettingsStore,
+            transcriptDisplaySettingsStore,
+            sessionBehaviorSettingsStore,
+            layoutSettingsStore,
+            voiceSettingsStore);
+
+        await vm.SaveAllSettingsCommand.ExecuteAsync(null);
+
+        await notificationSettingsStore.Received(1).SaveAsync(Arg.Any<NotificationSettings>(), Arg.Any<CancellationToken>());
+        await sessionSwitchSettingsStore.Received(1).SaveAsync(Arg.Any<SessionSwitchSettings>(), Arg.Any<CancellationToken>());
+        await transcriptDisplaySettingsStore.Received(1).SaveAsync(Arg.Any<TranscriptDisplaySettings>(), Arg.Any<CancellationToken>());
+        await sessionBehaviorSettingsStore.Received(1).SaveAsync(Arg.Any<SessionBehaviorSettings>(), Arg.Any<CancellationToken>());
+        await layoutSettingsStore.Received(1).SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>());
+        await voiceSettingsStore.Received(1).SaveAsync(Arg.Any<VoiceSettings>(), Arg.Any<CancellationToken>());
+
+        vm.NotificationSettingsStatus.Should().Be("Saved.");
+        vm.SessionSwitchSettingsStatus.Should().Be("Saved.");
+        vm.TranscriptDisplaySettingsStatus.Should().Be("Saved.");
+        vm.SessionBehaviorSettingsStatus.Should().Be("Saved.");
+        vm.LayoutSettingsStatus.Should().Be("Saved.");
+        vm.VoiceSettingsStatus.Should().Be("Saved.");
+    }
+
     private static async Task<CockpitViewModel> NewVmWithSessionsAsync(int count)
     {
         var vm = NewVm();

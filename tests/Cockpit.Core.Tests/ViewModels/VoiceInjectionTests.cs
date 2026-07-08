@@ -62,6 +62,29 @@ public class VoiceInjectionTests
     }
 
     [Fact]
+    public async Task TtySession_WhenAutoSubmitOn_WritesACarriageReturnAfterTheTranscript()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.BeginHold().Returns(true);
+        voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the settings dialog");
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
+
+        var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>(), voicePushToTalk, voiceSettingsStore);
+        await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
+
+        var writes = new List<string>();
+        vm.VoiceTranscriptReady += text => writes.Add(text);
+
+        vm.BeginVoiceHold().Should().BeTrue();
+        await vm.EndVoiceHoldAsync(applyCleanup: false);
+
+        // The transcript first, then a lone carriage return — the byte a physical Enter sends into the pty.
+        writes.Should().Equal("open the settings dialog", "\r");
+    }
+
+    [Fact]
     public async Task BeginVoiceHold_WhenVoiceDisabled_NeverCallsTheService()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();

@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        x:Class="Cockpit.App.Views.VoiceOverlayWindow"
+        x:DataType="vm:VoiceOverlayViewModel"
+        WindowDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual"
+        Title="Cockpit voice overlay">
+    <!-- Transcription of pill-mockup.html/.png: dark translucent pill, hairline border, Claude-coral
+         accent — see the plan (#34) for the mockup source. Listening/Transcribing are mutually
+         exclusive rows overlaid in one cell so the window (SizeToContent) always sizes to whichever
+         one is showing. -->
+    <Border Background="#F01E2128" BorderBrush="#1AFFFFFF" BorderThickness="1"
+            CornerRadius="24" Padding="18,12,22,12">
+        <Grid>
+            <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsListening}">
+                <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
+                        Background="{StaticResource CockpitAccentBrush}"
+                        BoxShadow="0 0 0 4 #2ED97757"/>
+                <StackPanel Orientation="Horizontal" Spacing="3" Height="20" VerticalAlignment="Center">
+                    <Rectangle Width="3" Height="8" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                    <Rectangle Width="3" Height="15" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                    <Rectangle Width="3" Height="20" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                    <Rectangle Width="3" Height="12" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                    <Rectangle Width="3" Height="18" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                    <Rectangle Width="3" Height="9" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                    <Rectangle Width="3" Height="14" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                </StackPanel>
+                <TextBlock Text="Listening" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsTranscribing}">
+                <Ellipse Width="16" Height="16" VerticalAlignment="Center" StrokeThickness="2"
+                         Stroke="{StaticResource CockpitTextSecondaryBrush}" Opacity="0.5"/>
+                <TextBlock Text="Transcribing…" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -36,6 +36,11 @@
                     <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <!-- Read-aloud (#35b): tails the live JSONL session transcript for assistant text
+                         instead of parsing the TUI's ANSI stream — same toggle/label as the SDK panel. -->
+                    <ToggleButton Content="Read aloud" IsChecked="{Binding ReadResponsesAloud}"
+                                  VerticalAlignment="Center"
+                                  ToolTip.Tip="Read each assistant reply aloud by tailing the session transcript (voice model downloads on first use)"/>
                 </StackPanel>
             </StackPanel>
         </Border>

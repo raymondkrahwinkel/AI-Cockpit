@@ -7,6 +7,7 @@ using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -207,11 +208,15 @@ public partial class ClaudeSessionView : UserControl
     /// KeyDown for the push-to-talk hotkey. <see cref="ClaudeSessionViewModel.BeginVoiceHold"/> itself
     /// guards against OS key-repeat re-triggering a capture restart while the key stays held, so this
     /// only marks the event handled when a hold actually started — an ignored press (voice off, or
-    /// already holding) leaves the key free for anything else bound to it.
+    /// already holding) leaves the key free for anything else bound to it. No-ops when global
+    /// push-to-talk is active (see <see cref="PushToTalkKeyGate"/>) so the global coordinator's hold
+    /// does not fire twice.
     /// </summary>
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is ClaudeSessionViewModel vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName) && vm.BeginVoiceHold())
+        if (DataContext is ClaudeSessionViewModel vm
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
+            && vm.BeginVoiceHold())
         {
             e.Handled = true;
         }
@@ -220,13 +225,11 @@ public partial class ClaudeSessionView : UserControl
     /// <summary>KeyUp for the push-to-talk hotkey: ends the hold, transcribes with cleanup, and appends the result to the input box.</summary>
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
-        if (DataContext is ClaudeSessionViewModel vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName))
+        if (DataContext is ClaudeSessionViewModel vm
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled))
         {
             e.Handled = true;
             _ = vm.EndVoiceHoldAsync(applyCleanup: true);
         }
     }
-
-    private static bool _MatchesPushToTalkKey(Key key, string configuredKeyName) =>
-        Enum.TryParse<Key>(configuredKeyName, ignoreCase: true, out var configuredKey) && key == configuredKey;
 }

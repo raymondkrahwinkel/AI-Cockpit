@@ -1,0 +1,196 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.OptionsDialog"
+        x:DataType="vm:CockpitViewModel"
+        Title="Options"
+        Width="540" Height="680"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:CockpitViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Footer: Close on the left, one shared Save on the right — replaces the six per-section
+             Save buttons the flyout used to have (T13 dialog migration). -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="Auto,*">
+                <Button Grid.Column="0" Content="Close" Click="OnClose"/>
+                <Button Grid.Column="1" Content="Save" Classes="Accent" HorizontalAlignment="Right"
+                        Command="{Binding SaveAllSettingsCommand}"/>
+            </Grid>
+        </Border>
+
+        <TabControl>
+
+            <TabItem Header="Notifications">
+                <ScrollViewer>
+                    <StackPanel Spacing="8" Margin="16">
+                        <CheckBox Content="Enable presence-aware notifications"
+                                  IsChecked="{Binding NotificationsEnabled}"/>
+                        <TextBlock Text="Discord webhook URL (used when away)"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                        <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Away after (idle minutes)"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
+                                           Increment="1" FormatString="0" Width="90"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding NotificationSettingsStatus}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Sessions">
+                <ScrollViewer>
+                    <StackPanel Spacing="8" Margin="16">
+                        <TextBlock Text="Session switching" FontWeight="SemiBold"/>
+                        <CheckBox Content="Switch sessions with modifier + arrows"
+                                  IsChecked="{Binding SessionSwitchEnabled}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Modifier"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding SessionSwitchModifiers}"
+                                      SelectedItem="{Binding SelectedSessionSwitchModifier}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
+                        </StackPanel>
+                        <TextBlock Text="Left/Up = previous, Right/Down = next. Word navigation in text fields stays intact."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding SessionSwitchSettingsStatus}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Text="Session behaviour" FontWeight="SemiBold"/>
+                        <CheckBox Content="Close a session when you type &quot;exit&quot;"
+                                  IsChecked="{Binding AutoCloseOnExit}"/>
+                        <TextBlock Text="The message is still sent; the session closes once that turn finishes."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding SessionBehaviorSettingsStatus}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Text="Layout" FontWeight="SemiBold"/>
+                        <CheckBox Content="Show one session at a time (no grid)"
+                                  IsChecked="{Binding SingleSessionLayout}"/>
+                        <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <CheckBox Content="Minimize to tray when closing the window"
+                                  IsChecked="{Binding MinimizeToTrayOnClose}"/>
+                        <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding LayoutSettingsStatus}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Text="Transcript" FontWeight="SemiBold"/>
+                        <CheckBox Content="Show a timestamp on each message"
+                                  IsChecked="{Binding ShowTimestamps}"/>
+                        <TextBlock Text="{Binding TranscriptDisplaySettingsStatus}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="Voice">
+                <ScrollViewer>
+                    <StackPanel Spacing="8" Margin="16">
+                        <TextBlock Text="Voice input" FontWeight="SemiBold"/>
+                        <CheckBox Content="Enable push-to-talk dictation"
+                                  IsChecked="{Binding VoiceEnabled}"/>
+                        <TextBlock Text="Off by default: the Whisper model only downloads once you turn this on."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Push-to-talk key"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding VoicePushToTalkKeyName}" Width="90"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Dictation language"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding SttLanguages}"
+                                      SelectedItem="{Binding SelectedSttLanguage}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
+                        </StackPanel>
+                        <TextBlock Text="Set a fixed language for more reliable transcription than auto-detect."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <CheckBox Content="Global push-to-talk (works without focus)"
+                                  IsChecked="{Binding VoiceGlobalPushToTalk}"/>
+                        <TextBlock Text="Requires restarting the cockpit to take effect."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <TextBlock Text="On Linux, the physical key is assigned via System Settings → Shortcuts — this field is only a hint."
+                                   IsVisible="{Binding IsLinuxPlatform}"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <CheckBox Content="Send automatically after dictation (press Enter)"
+                                  IsChecked="{Binding VoiceAutoSubmit}"/>
+                        <TextBlock Text="On: the transcript is submitted straight away. Off: it is placed in the input for you to review first."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Model"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding VoiceModelName}" Width="150"
+                                     ToolTip.Tip="Ggml model name, e.g. large-v3-turbo, small, base, tiny"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Backend"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding VoiceBackendPreferences}"
+                                      SelectedItem="{Binding SelectedVoiceBackendPreference}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                        </StackPanel>
+                        <CheckBox Content="Clean up transcript with local Ollama"
+                                  IsChecked="{Binding VoiceCleanupEnabled}"/>
+                        <TextBlock Text="Falls back to the raw transcript automatically when Ollama is unavailable or its output looks unreliable."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
+                            <TextBlock Text="Ollama model"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding VoiceCleanupModel}" Width="150"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
+                            <TextBlock Text="Ollama URL"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding VoiceOllamaBaseUrl}" Width="150"/>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
+
+                        <TextBlock Text="Voice output — read aloud" FontWeight="SemiBold"/>
+                        <TextBlock Text="Per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Voice"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding TtsVoices}"
+                                      SelectedItem="{Binding SelectedTtsVoice}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding VoiceSettingsStatus}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
+    </DockPanel>
+</Window>

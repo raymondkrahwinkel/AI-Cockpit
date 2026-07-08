@@ -1,9 +1,11 @@
 using System.Runtime.CompilerServices;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Voice;
 using FluentAssertions;
 using NSubstitute;
 
@@ -611,6 +613,36 @@ public class ClaudeSessionViewModelTests
     }
 
     /// <summary>A started session (its event loop is live), so send-path tests exercise sending after start rather than the not-started guard (#16).</summary>
+    [Fact]
+    public async Task SdkSession_WhenAutoSubmitOn_SendsTheTranscriptRightAfterInjection()
+    {
+        var session = Substitute.For<IClaudeSession>();
+        session.Events.Returns(EmptyEvents());
+        var voice = Substitute.For<IVoicePushToTalkService>();
+        voice.BeginHold().Returns(true);
+        voice.EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>()).Returns("open the file");
+        var voiceSettings = Substitute.For<IVoiceSettingsStore>();
+        voiceSettings.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+            new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
+
+        var vm = new ClaudeSessionViewModel(session, voice, voiceSettings);
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+        for (var i = 0; i < 50 && !vm.AutoSubmitAfterVoice; i++)
+        {
+            await Task.Delay(10);
+        }
+
+        vm.BeginVoiceHold().Should().BeTrue();
+        await vm.EndVoiceHoldAsync(applyCleanup: true);
+
+        // Auto-submit sent the appended transcript rather than leaving it in the input box for review.
+        await session.Received(1).SendUserMessageAsync("open the file", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        vm.InputText.Should().BeEmpty();
+
+        await vm.DisposeAsync();
+    }
+
     private static async Task<(ClaudeSessionViewModel Vm, IClaudeSession Session)> StartedVm()
     {
         var session = Substitute.For<IClaudeSession>();

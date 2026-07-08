@@ -19,6 +19,14 @@ internal sealed class VoiceSettingsEntry
 
     public string PushToTalkKeyName { get; set; } = "F9";
 
+    public bool GlobalPushToTalk { get; set; }
+
+    public bool AutoSubmitAfterVoice { get; set; }
+
+    public string TtsVoiceId { get; set; } = "en_US-lessac-medium";
+
+    public string SttLanguage { get; set; } = "auto";
+
     public static VoiceSettingsEntry FromDomain(VoiceSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -28,6 +36,10 @@ internal sealed class VoiceSettingsEntry
         CleanupModel = settings.CleanupModel,
         OllamaBaseUrl = settings.OllamaBaseUrl,
         PushToTalkKeyName = settings.PushToTalkKeyName,
+        GlobalPushToTalk = settings.GlobalPushToTalk,
+        AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
+        TtsVoiceId = settings.TtsVoiceId,
+        SttLanguage = settings.SttLanguage,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -39,5 +51,9 @@ internal sealed class VoiceSettingsEntry
         CleanupModel = CleanupModel,
         OllamaBaseUrl = OllamaBaseUrl,
         PushToTalkKeyName = PushToTalkKeyName,
+        GlobalPushToTalk = GlobalPushToTalk,
+        AutoSubmitAfterVoice = AutoSubmitAfterVoice,
+        TtsVoiceId = TtsVoiceId,
+        SttLanguage = SttLanguage,
     };
 }

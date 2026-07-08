@@ -5,10 +5,12 @@ using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Claude;
 using Cockpit.Infrastructure.Claude.Permissions;
 using Cockpit.Infrastructure.Claude.Tty;
 using Cockpit.Infrastructure.Notifications;
+using Cockpit.Infrastructure.Voice.GlobalHotkey;
 
 namespace Cockpit.Infrastructure;
 
@@ -27,8 +29,31 @@ public static class DependencyInjection
 
         AddNotifications(services);
         AddPtyHost(services);
+        AddGlobalHotkey(services);
 
         return services;
+    }
+
+    // Global push-to-talk (#34) is OS-specific for the same reason the pty host is: registered by
+    // platform here rather than via the Scrutor marker scan, which would otherwise bind whichever
+    // implementation the assembly scan happened to see last to the single IGlobalHotkeyService
+    // registration. Linux gets the XDG GlobalShortcuts portal (the only sandboxed-safe route on
+    // Wayland); Windows gets a SharpHook low-level keyboard hook; anything else falls back to a no-op
+    // so the app still starts.
+    private static void AddGlobalHotkey(IServiceCollection services)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<IGlobalHotkeyService, SharpHookGlobalHotkeyService>();
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            services.AddSingleton<IGlobalHotkeyService, PortalGlobalHotkeyService>();
+        }
+        else
+        {
+            services.AddSingleton<IGlobalHotkeyService, NoOpGlobalHotkeyService>();
+        }
     }
 
     // TTY mode's pty host (#9) is OS-specific for the same reason presence/toast are: it is

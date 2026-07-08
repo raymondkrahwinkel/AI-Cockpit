@@ -8,6 +8,7 @@ using System.Linq;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 
@@ -40,6 +41,10 @@ public partial class App : Application
             };
             desktop.MainWindow = _mainWindow;
             _SetUpTrayIcon();
+
+            // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
+            // portal/keyboard-hook is only ever touched for an operator who opted in.
+            _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
         }
 
         base.OnFrameworkInitializationCompleted();

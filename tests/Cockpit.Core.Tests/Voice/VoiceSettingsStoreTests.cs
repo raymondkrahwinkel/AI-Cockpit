@@ -31,6 +31,10 @@ public class VoiceSettingsStoreTests : IDisposable
         settings.BackendPreference.Should().Be(VoiceBackendPreference.Auto);
         settings.CleanupEnabled.Should().BeTrue();
         settings.PushToTalkKeyName.Should().Be("F9");
+        settings.GlobalPushToTalk.Should().BeFalse();
+        settings.AutoSubmitAfterVoice.Should().BeFalse();
+        settings.TtsVoiceId.Should().Be("en_US-lessac-medium");
+        settings.SttLanguage.Should().Be("auto");
     }
 
     [Fact]
@@ -47,6 +51,10 @@ public class VoiceSettingsStoreTests : IDisposable
             CleanupModel = "llama3.2:3b",
             OllamaBaseUrl = "http://localhost:12345",
             PushToTalkKeyName = "F10",
+            GlobalPushToTalk = true,
+            AutoSubmitAfterVoice = true,
+            TtsVoiceId = "nl_NL-ronnie-medium",
+            SttLanguage = "nl",
         });
         var loaded = await store.LoadAsync();
 
@@ -57,6 +65,10 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.CleanupModel.Should().Be("llama3.2:3b");
         loaded.OllamaBaseUrl.Should().Be("http://localhost:12345");
         loaded.PushToTalkKeyName.Should().Be("F10");
+        loaded.GlobalPushToTalk.Should().BeTrue();
+        loaded.AutoSubmitAfterVoice.Should().BeTrue();
+        loaded.TtsVoiceId.Should().Be("nl_NL-ronnie-medium");
+        loaded.SttLanguage.Should().Be("nl");
     }
 
     [Fact]

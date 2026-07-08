@@ -14,11 +14,21 @@
          assembly (no Windows target framework needed). -->
     <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.9" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+    <!-- Read-aloud TTS (#35): sherpa-onnx (Apache-2.0) running Piper VITS voices in-proc — no Python,
+         no subprocess. OfflineTts.Generate returns normalized float32 mono PCM plus the voice's own
+         sample rate; playback plays at that rate (SoundFlowAudioPlaybackService opens the device on
+         whatever AudioFormat.SampleRate is handed in), so no resampling step is needed. -->
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.4" />
+    <!-- Extracts the .tar.bz2 Piper-voice archives sherpa-onnx's model releases ship as (model.onnx +
+         tokens.txt + espeak-ng-data/) — .NET's built-in System.Formats.Tar has no bzip2 decompressor. -->
+    <PackageReference Include="SharpCompress" Version="0.49.1" />
     <!-- Linux/macOS pty host for TTY mode (#9): forkpty()+execvp() run entirely in a native shim
          (avoids the .NET 7+ W^X/fork pitfall of forking from managed code), env injection via
          PtyOptions.Environment. Windows keeps the existing hand-rolled ConPtyProcess. -->
     <PackageReference Include="Porta.Pty" Version="1.0.7" />
+    <PackageReference Include="SharpHook" Version="7.1.1" />
     <PackageReference Include="SoundFlow" Version="1.4.1" />
+    <PackageReference Include="Tmds.DBus" Version="0.92.0" />
     <!-- Voice input (STT+VAD): Whisper.net core plus a hardware-agnostic bundle of native runtimes.
          WhisperBackendPlanner (Cockpit.Core) decides the try-order per VoiceBackendPreference + OS;
          Whisper.net's own NativeLibraryLoader walks that order at model-load time and picks the first

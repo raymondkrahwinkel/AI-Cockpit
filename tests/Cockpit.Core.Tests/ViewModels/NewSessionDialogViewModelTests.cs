@@ -102,13 +102,13 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
-    public void DefaultKind_IsSdk_SoTheDialogOpensWithASensibleDefault()
+    public void DefaultKind_IsTty_TheOperatorsPreferredDefault()
     {
         var vm = NewVm(out _);
 
-        vm.SelectedKind.Should().Be(SessionKind.Sdk);
-        vm.IsSdk.Should().BeTrue();
-        vm.IsTty.Should().BeFalse();
+        vm.SelectedKind.Should().Be(SessionKind.Tty);
+        vm.IsTty.Should().BeTrue();
+        vm.IsSdk.Should().BeFalse();
     }
 
     [Fact]

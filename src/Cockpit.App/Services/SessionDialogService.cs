@@ -72,4 +72,15 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var dialog = new ManageProfilesDialog { DataContext = viewModel };
         await dialog.ShowDialog(owner);
     }
+
+    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        var dialog = new OptionsDialog { DataContext = viewModel };
+        await dialog.ShowDialog(owner);
+    }
 }

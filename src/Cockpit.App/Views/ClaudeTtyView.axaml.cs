@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Profiles;
@@ -28,6 +29,7 @@ public partial class ClaudeTtyView : UserControl
     private ClaudeTtyViewModel? _viewModel;
     private IClaudeTtyLauncher? _pendingLauncher;
     private ClaudeProfile? _pendingProfile;
+    private Guid _pendingSessionId;
     private string? _pendingPermissionMode;
     private string? _pendingModel;
     private string? _pendingEffort;
@@ -69,10 +71,16 @@ public partial class ClaudeTtyView : UserControl
         WireTerminal();
     }
 
-    /// <summary>KeyDown for the push-to-talk hotkey — see the equivalent handler on <c>ClaudeSessionView</c> for the guard reasoning.</summary>
+    /// <summary>
+    /// KeyDown for the push-to-talk hotkey — see the equivalent handler on <c>ClaudeSessionView</c> for
+    /// the guard reasoning. No-ops when global push-to-talk is active (see
+    /// <see cref="PushToTalkKeyGate"/>) so the global coordinator's hold does not fire twice.
+    /// </summary>
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
-        if (_viewModel is { } vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName) && vm.BeginVoiceHold())
+        if (_viewModel is { } vm
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
+            && vm.BeginVoiceHold())
         {
             e.Handled = true;
         }
@@ -81,15 +89,13 @@ public partial class ClaudeTtyView : UserControl
     /// <summary>KeyUp for the push-to-talk hotkey: ends the hold and transcribes without cleanup — see <see cref="ClaudeTtyViewModel.OnVoiceTextReady"/>.</summary>
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
-        if (_viewModel is { } vm && _MatchesPushToTalkKey(e.Key, vm.PushToTalkKeyName))
+        if (_viewModel is { } vm
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled))
         {
             e.Handled = true;
             _ = vm.EndVoiceHoldAsync(applyCleanup: false);
         }
     }
-
-    private static bool _MatchesPushToTalkKey(Key key, string configuredKeyName) =>
-        Enum.TryParse<Key>(configuredKeyName, ignoreCase: true, out var configuredKey) && key == configuredKey;
 
     /// <summary>Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (<see cref="OnTerminalBytesToPty"/>).</summary>
     private void _OnVoiceTranscriptReady(string text)
@@ -137,12 +143,14 @@ public partial class ClaudeTtyView : UserControl
     private void OnLaunchRequested(
         IClaudeTtyLauncher launcher,
         ClaudeProfile? profile,
+        Guid sessionId,
         string? permissionMode,
         string? model,
         string? effort)
     {
         _pendingLauncher = launcher;
         _pendingProfile = profile;
+        _pendingSessionId = sessionId;
         _pendingPermissionMode = permissionMode;
         _pendingModel = model;
         _pendingEffort = effort;
@@ -185,6 +193,7 @@ public partial class ClaudeTtyView : UserControl
 
             _pty = _pendingLauncher.Launch(
                 _pendingProfile,
+                _pendingSessionId,
                 _pendingPermissionMode,
                 _pendingModel,
                 _pendingEffort,
@@ -200,6 +209,7 @@ public partial class ClaudeTtyView : UserControl
 
         _outputCancellation = new CancellationTokenSource();
         _ = PumpOutputAsync(_pty, _outputCancellation.Token);
+        _viewModel?.OnLaunchSucceeded();
     }
 
     private void OnTerminalBytesToPty(object? sender, ReadOnlyMemory<byte> e)

@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
@@ -22,6 +23,7 @@ namespace Cockpit.App.ViewModels;
 public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly IClaudeTtyLauncher? _launcher;
+    private readonly ISessionTranscriptReader? _transcriptReader;
     private ClaudeProfile? _configuredProfile;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
@@ -29,8 +31,17 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private bool _isLaunchConfigured;
     private bool _launched;
 
+    /// <summary>
+    /// Forced onto the launched CLI via <c>--session-id</c> (#35b), so the read-aloud transcript tailer
+    /// knows the exact JSONL file to watch without depending on the CLI's own cwd-hash naming rule.
+    /// Minted once, in <see cref="LaunchConfigured"/>.
+    /// </summary>
+    private Guid _sessionId;
+
+    private CancellationTokenSource? _transcriptTailCancellation;
+
     /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
-    public event Action<IClaudeTtyLauncher, ClaudeProfile?, string?, string?, string?>? LaunchRequested;
+    public event Action<IClaudeTtyLauncher, ClaudeProfile?, Guid, string?, string?, string?>? LaunchRequested;
 
     /// <summary>
     /// Raised once a push-to-talk hold finished transcribing (no cleanup applied — TTY is a raw
@@ -49,14 +60,23 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         Status = "TTY mode (experiment).";
     }
 
-    public ClaudeTtyViewModel(IClaudeTtyLauncher launcher, IVoicePushToTalkService? voicePushToTalk = null, IVoiceSettingsStore? voiceSettingsStore = null)
+    public ClaudeTtyViewModel(
+        IClaudeTtyLauncher launcher,
+        IVoicePushToTalkService? voicePushToTalk = null,
+        IVoiceSettingsStore? voiceSettingsStore = null,
+        IVoicePlaybackQueue? voicePlaybackQueue = null,
+        ISessionTranscriptReader? transcriptReader = null)
     {
         _launcher = launcher;
-        InitializeVoice(voicePushToTalk, voiceSettingsStore);
+        _transcriptReader = transcriptReader;
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
     }
 
     /// <summary>Raw bytes, no cleanup — the terminal has no input box to proofread in, so the transcript goes straight to the pty like a typed keystroke.</summary>
     protected override void OnVoiceTextReady(string text) => VoiceTranscriptReady?.Invoke(text);
+
+    /// <summary>Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends after typing — submits the just-injected transcript to the interactive claude TUI.</summary>
+    protected override void OnVoiceSubmitRequested() => VoiceTranscriptReady?.Invoke("\r");
 
     /// <summary>
     /// Configures the panel with the profile and start defaults chosen in the New-session dialog, then
@@ -67,6 +87,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     public void LaunchConfigured(ClaudeProfile? profile, string? permissionMode, string? model, string? effort)
     {
         _configuredProfile = profile;
+        _sessionId = Guid.NewGuid();
         _configuredPermissionMode = permissionMode;
         _configuredModel = model;
         _configuredEffort = effort;
@@ -93,7 +114,53 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         }
 
         _launched = true;
-        LaunchRequested.Invoke(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort);
+        LaunchRequested.Invoke(_launcher, _configuredProfile, _sessionId, _configuredPermissionMode, _configuredModel, _configuredEffort);
+    }
+
+    /// <summary>
+    /// Starts/stops tailing the live session transcript for read-aloud (#35b) as the toggle flips.
+    /// Requires a configured profile (its <c>ConfigDir</c> locates the transcript) and a wired reader;
+    /// both are always present on the real launch path — only the design-time/parameterless VM lacks
+    /// them, where the toggle simply has nothing to tail.
+    /// </summary>
+    protected override void OnReadAloudToggleChanged(bool isEnabled)
+    {
+        if (!isEnabled)
+        {
+            _transcriptTailCancellation?.Cancel();
+            _transcriptTailCancellation?.Dispose();
+            _transcriptTailCancellation = null;
+            return;
+        }
+
+        if (_transcriptReader is null || _configuredProfile is null || _transcriptTailCancellation is not null)
+        {
+            return;
+        }
+
+        _transcriptTailCancellation = new CancellationTokenSource();
+        _ = _TailTranscriptForReadAloudAsync(_configuredProfile.ConfigDir, _sessionId, _transcriptTailCancellation.Token);
+    }
+
+    /// <summary>Consumes the transcript tailer and enqueues each assistant turn's prose for TTS — mirrors <c>ClaudeSessionViewModel._EnqueueTurnProseForReadAloud</c>, just fed by the tailer instead of the SDK event stream.</summary>
+    private async Task _TailTranscriptForReadAloudAsync(string configDir, Guid sessionId, CancellationToken cancellationToken)
+    {
+        if (_transcriptReader is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(configDir, sessionId, cancellationToken))
+            {
+                EnqueueReadAloud(TtsProseExtractor.Extract(assistantText), TtsVoiceId);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the toggle is switched off or the panel closes.
+        }
     }
 
     /// <summary>
@@ -108,6 +175,12 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         RaiseCloseRequested();
     }
 
+    /// <summary>Called by the view once the pty has actually spawned, so the header stops reading "Launching TUI..." while the real TUI is already interactive below it.</summary>
+    public void OnLaunchSucceeded()
+    {
+        Status = "Running";
+    }
+
     /// <summary>Called by the view when the TUI could not be launched: the panel stays (the error is shown in the terminal) instead of auto-closing.</summary>
     public void OnLaunchFailed()
     {
@@ -118,7 +191,12 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     public override ValueTask DisposeAsync()
     {
         // The terminal control owns the pty lifetime (it created it via the launcher); it disposes
-        // the ConPtyProcess on unload/close. Nothing session-scoped to tear down here.
+        // the ConPtyProcess on unload/close. The transcript tailer is this VM's own background loop,
+        // so it does need stopping here — otherwise it would keep polling a file for a session that no
+        // longer has a panel to read aloud into.
+        _transcriptTailCancellation?.Cancel();
+        _transcriptTailCancellation?.Dispose();
+        _transcriptTailCancellation = null;
         return ValueTask.CompletedTask;
     }
 }

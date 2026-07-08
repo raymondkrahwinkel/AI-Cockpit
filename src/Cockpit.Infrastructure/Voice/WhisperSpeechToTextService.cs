@@ -20,6 +20,7 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private WhisperFactory? _factory;
     private WhisperProcessor? _processor;
+    private string? _processorLanguage;
 
     public WhisperRuntimeBackend? ActiveBackend { get; private set; }
 
@@ -38,7 +39,12 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
 
     private async Task<WhisperProcessor> _EnsureProcessorAsync(CancellationToken cancellationToken)
     {
-        if (_processor is not null)
+        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var language = string.IsNullOrWhiteSpace(settings.SttLanguage) ? "auto" : settings.SttLanguage;
+
+        // The model/factory load is one-time; only the processor is rebuilt when the operator changes the
+        // dictation language in Options, so switching language takes effect without an app restart.
+        if (_processor is not null && _processorLanguage == language)
         {
             return _processor;
         }
@@ -46,24 +52,34 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
         await _initLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_processor is not null)
+            if (_processor is not null && _processorLanguage == language)
             {
                 return _processor;
             }
 
-            var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-            var modelType = WhisperModelCatalog.Resolve(settings.ModelName);
-            var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken).ConfigureAwait(false);
+            if (_factory is null)
+            {
+                var modelType = WhisperModelCatalog.Resolve(settings.ModelName);
+                var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken).ConfigureAwait(false);
 
-            var order = WhisperBackendPlanner.BuildOrder(settings.BackendPreference, OperatingSystem.IsWindows());
-            RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
+                var order = WhisperBackendPlanner.BuildOrder(settings.BackendPreference, OperatingSystem.IsWindows());
+                RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
 
-            _factory = WhisperFactory.FromPath(modelPath);
-            ActiveBackend = RuntimeOptions.LoadedLibrary is { } loaded ? WhisperRuntimeBackendMapping.FromNative(loaded) : null;
-            logger.LogInformation(
-                "Whisper STT initialized: model={Model}, backend={Backend}", modelType, ActiveBackend?.ToString() ?? "unknown");
+                _factory = WhisperFactory.FromPath(modelPath);
+                ActiveBackend = RuntimeOptions.LoadedLibrary is { } loaded ? WhisperRuntimeBackendMapping.FromNative(loaded) : null;
+                logger.LogInformation(
+                    "Whisper STT initialized: model={Model}, backend={Backend}", modelType, ActiveBackend?.ToString() ?? "unknown");
+            }
 
-            _processor = _factory.CreateBuilder().WithLanguage("auto").Build();
+            var previous = _processor;
+            _processor = _factory.CreateBuilder().WithLanguage(language).Build();
+            _processorLanguage = language;
+            logger.LogInformation("Whisper STT language set to {Language}", language);
+            if (previous is not null)
+            {
+                await previous.DisposeAsync().ConfigureAwait(false);
+            }
+
             return _processor;
         }
         finally

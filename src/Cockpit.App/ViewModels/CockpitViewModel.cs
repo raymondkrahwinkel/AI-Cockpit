@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Services;
@@ -94,9 +95,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.</summary>
     public bool ShowSinglePane => SingleSessionLayout || IsZoomed;
 
-    partial void OnIsZoomedChanged(bool value) => OnPropertyChanged(nameof(ShowSinglePane));
+    partial void OnIsZoomedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSinglePane));
+        RefreshPaneVisibility();
+    }
 
-    partial void OnSingleSessionLayoutChanged(bool value) => OnPropertyChanged(nameof(ShowSinglePane));
+    partial void OnSingleSessionLayoutChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSinglePane));
+        RefreshPaneVisibility();
+    }
 
     [ObservableProperty]
     private string _audioStatus = "Ready.";
@@ -162,6 +171,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private VoiceBackendPreferenceOption _selectedVoiceBackendPreference = new("Auto (best available)", VoiceBackendPreference.Auto);
 
+    /// <summary>Selectable dictation languages for speech-to-text — "Auto-detect" plus common fixed languages. A fixed language beats detection when you always dictate in one tongue (Options flyout combo).</summary>
+    public IReadOnlyList<SttLanguageOption> SttLanguages { get; } =
+    [
+        new("Auto-detect", "auto"),
+        new("Dutch", "nl"),
+        new("English", "en"),
+        new("German", "de"),
+        new("French", "fr"),
+        new("Spanish", "es"),
+    ];
+
+    [ObservableProperty]
+    private SttLanguageOption _selectedSttLanguage = new("Auto-detect", "auto");
+
     /// <summary>Whether a transcript is passed through the local Ollama cleanup step before injection.</summary>
     [ObservableProperty]
     private bool _voiceCleanupEnabled = true;
@@ -178,8 +201,32 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _voicePushToTalkKeyName = "F9";
 
+    /// <summary>
+    /// When true, the push-to-talk hotkey also fires while the cockpit window has no focus (#34), via
+    /// <c>VoicePushToTalkCoordinator</c>. Off by default — opt-in like voice itself.
+    /// </summary>
+    [ObservableProperty]
+    private bool _voiceGlobalPushToTalk;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice"/>. When true a finished transcript is submitted straight after injection instead of waiting for a manual send. Off by default.</summary>
+    [ObservableProperty]
+    private bool _voiceAutoSubmit;
+
+    /// <summary>Selectable read-aloud voices (#35) offered by the Options flyout combo box.</summary>
+    public IReadOnlyList<PiperVoiceOption> TtsVoices => PiperVoiceCatalog.Voices;
+
+    /// <summary>Piper voice used for read-aloud (#35). The model downloads lazily on first use, the same as the Whisper model.</summary>
+    [ObservableProperty]
+    private PiperVoiceOption _selectedTtsVoice = PiperVoiceCatalog.Default;
+
     [ObservableProperty]
     private string _voiceSettingsStatus = string.Empty;
+
+    /// <summary>
+    /// True on Linux, where the physical key for global push-to-talk is bound by the desktop's own
+    /// Shortcuts settings rather than configurable in-app (#34) — drives the Options-flyout hint text.
+    /// </summary>
+    public bool IsLinuxPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
 
     /// <summary>Pushes the timestamp toggle to every open session as it changes, so the switch takes effect live.</summary>
     partial void OnShowTimestampsChanged(bool value)
@@ -228,6 +275,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         if (newValue is not null)
         {
             newValue.IsSelected = true;
+        }
+
+        RefreshPaneVisibility();
+    }
+
+    /// <summary>
+    /// Sets each session's <see cref="SessionPanelViewModel.IsPaneVisible"/> for the current layout: all
+    /// visible in the multi-session grid, only the selected one in single-pane mode (#24 / Zoom). Driven
+    /// from C# on every selection/layout change rather than a per-item XAML binding, so the one live grid
+    /// reliably shows exactly one panel in single-pane mode instead of stacking them.
+    /// </summary>
+    private void RefreshPaneVisibility()
+    {
+        var single = ShowSinglePane;
+        foreach (var session in Sessions)
+        {
+            session.IsPaneVisible = !single || session.IsSelected;
         }
     }
 
@@ -279,6 +343,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             OnPropertyChanged(nameof(HasSessions));
             OnPropertyChanged(nameof(GridColumns));
+            RefreshPaneVisibility();
         };
         _ = LoadNotificationSettingsAsync();
         _ = LoadSessionSwitchSettingsAsync();
@@ -444,6 +509,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceCleanupModel = settings.CleanupModel;
         VoiceOllamaBaseUrl = settings.OllamaBaseUrl;
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
+        VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
+        VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
+        SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
+        SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
     }
 
     /// <summary>
@@ -469,6 +538,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CleanupModel = string.IsNullOrWhiteSpace(VoiceCleanupModel) ? "qwen2.5:3b-instruct" : VoiceCleanupModel.Trim(),
             OllamaBaseUrl = string.IsNullOrWhiteSpace(VoiceOllamaBaseUrl) ? "http://localhost:11434" : VoiceOllamaBaseUrl.Trim(),
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
+            GlobalPushToTalk = VoiceGlobalPushToTalk,
+            AutoSubmitAfterVoice = VoiceAutoSubmit,
+            TtsVoiceId = SelectedTtsVoice.VoiceId,
+            SttLanguage = SelectedSttLanguage.Code,
         });
         VoiceSettingsStatus = "Saved.";
     }
@@ -564,6 +637,33 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _dialogService.ShowManageProfilesDialogAsync();
+    }
+
+    /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
+    [RelayCommand]
+    private async Task OptionsAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowOptionsDialogAsync(this);
+    }
+
+    /// <summary>
+    /// Persists every options section in one go — the Options dialog's single footer Save (#13)
+    /// replaces the six per-section Save buttons the flyout used to have.
+    /// </summary>
+    [RelayCommand]
+    private async Task SaveAllSettingsAsync()
+    {
+        await SaveNotificationSettingsCommand.ExecuteAsync(null);
+        await SaveSessionSwitchSettingsCommand.ExecuteAsync(null);
+        await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
+        await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
+        await SaveLayoutSettingsCommand.ExecuteAsync(null);
+        await SaveVoiceSettingsCommand.ExecuteAsync(null);
     }
 
     private void AddSession(SessionPanelViewModel session, string? name = null)

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:controls="using:Cockpit.App.Controls"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -47,138 +48,9 @@
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Add, edit or remove Claude profiles"/>
                     <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Foreground="{StaticResource CockpitTextFaintBrush}">
-                        <Button.Flyout>
-                            <Flyout Placement="RightEdgeAlignedBottom">
-                                <StackPanel Spacing="8" Width="260">
-                                    <TextBlock Text="Notifications" FontWeight="SemiBold"/>
-                                    <CheckBox Content="Enable presence-aware notifications"
-                                              IsChecked="{Binding NotificationsEnabled}"/>
-                                    <TextBlock Text="Discord webhook URL (used when away)"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-                                    <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="Away after (idle minutes)"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
-                                                       Increment="1" FormatString="0" Width="90"/>
-                                    </StackPanel>
-                                    <Button Content="Save" Command="{Binding SaveNotificationSettingsCommand}"
-                                            Classes="Accent" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding NotificationSettingsStatus}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                                    <TextBlock Text="Session switching" FontWeight="SemiBold"/>
-                                    <CheckBox Content="Switch sessions with modifier + arrows"
-                                              IsChecked="{Binding SessionSwitchEnabled}"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="Modifier"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <ComboBox ItemsSource="{Binding SessionSwitchModifiers}"
-                                                  SelectedItem="{Binding SelectedSessionSwitchModifier}"
-                                                  DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
-                                    </StackPanel>
-                                    <TextBlock Text="Left/Up = previous, Right/Down = next. Word navigation in text fields stays intact."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                    <Button Content="Save" Command="{Binding SaveSessionSwitchSettingsCommand}"
-                                            Classes="Accent" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding SessionSwitchSettingsStatus}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                                    <TextBlock Text="Transcript" FontWeight="SemiBold"/>
-                                    <CheckBox Content="Show a timestamp on each message"
-                                              IsChecked="{Binding ShowTimestamps}"/>
-                                    <Button Content="Save" Command="{Binding SaveTranscriptDisplaySettingsCommand}"
-                                            Classes="Accent" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding TranscriptDisplaySettingsStatus}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                                    <TextBlock Text="Session" FontWeight="SemiBold"/>
-                                    <CheckBox Content="Close a session when you type &quot;exit&quot;"
-                                              IsChecked="{Binding AutoCloseOnExit}"/>
-                                    <TextBlock Text="The message is still sent; the session closes once that turn finishes."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                    <Button Content="Save" Command="{Binding SaveSessionBehaviorSettingsCommand}"
-                                            Classes="Accent" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding SessionBehaviorSettingsStatus}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                                    <TextBlock Text="Layout" FontWeight="SemiBold"/>
-                                    <CheckBox Content="Show one session at a time (no grid)"
-                                              IsChecked="{Binding SingleSessionLayout}"/>
-                                    <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                    <CheckBox Content="Minimize to tray when closing the window"
-                                              IsChecked="{Binding MinimizeToTrayOnClose}"/>
-                                    <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                    <Button Content="Save" Command="{Binding SaveLayoutSettingsCommand}"
-                                            Classes="Accent" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding LayoutSettingsStatus}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-
-                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                                    <TextBlock Text="Voice input" FontWeight="SemiBold"/>
-                                    <CheckBox Content="Enable push-to-talk dictation"
-                                              IsChecked="{Binding VoiceEnabled}"/>
-                                    <TextBlock Text="Off by default: the Whisper model only downloads once you turn this on."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="Push-to-talk key"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding VoicePushToTalkKeyName}" Width="90"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="Model"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding VoiceModelName}" Width="150"
-                                                 ToolTip.Tip="Ggml model name, e.g. large-v3-turbo, small, base, tiny"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="Backend"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <ComboBox ItemsSource="{Binding VoiceBackendPreferences}"
-                                                  SelectedItem="{Binding SelectedVoiceBackendPreference}"
-                                                  DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                                    </StackPanel>
-                                    <CheckBox Content="Clean up transcript with local Ollama"
-                                              IsChecked="{Binding VoiceCleanupEnabled}"/>
-                                    <TextBlock Text="Falls back to the raw transcript automatically when Ollama is unavailable or its output looks unreliable."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
-                                        <TextBlock Text="Ollama model"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding VoiceCleanupModel}" Width="150"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
-                                        <TextBlock Text="Ollama URL"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                   VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding VoiceOllamaBaseUrl}" Width="150"/>
-                                    </StackPanel>
-                                    <Button Content="Save" Command="{Binding SaveVoiceSettingsCommand}"
-                                            Classes="Accent" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding VoiceSettingsStatus}"
-                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
+                            Command="{Binding OptionsCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Configure notifications, sessions, and voice"/>
                     <Button Content="Tools" HorizontalAlignment="Stretch" Classes="Subtle"
                             Foreground="{StaticResource CockpitTextFaintBrush}">
                         <Button.Flyout>
@@ -293,12 +165,23 @@
                                   ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
                 </StackPanel>
 
-                <Grid>
-                <!-- Grid mode: every session gets an auto-sized panel. -->
-                <ItemsControl ItemsSource="{Binding Sessions}" IsVisible="{Binding !ShowSinglePane}">
+                <!-- One live session grid serves both layouts: grid mode shows every panel; single-pane
+                     mode (#24 / Zoom) collapses all but the selected one to a single column so it fills
+                     the width. Keeping one set of views means a session's view (and its TTY pty) is built
+                     once and merely hidden when deselected — not rebuilt by a separate single-pane control
+                     on every switch, which stranded a relaunched TTY on "Launching TUI...". -->
+                <ItemsControl ItemsSource="{Binding Sessions}">
+                    <!-- The panel measures its direct children (the generated item containers), so pane
+                         visibility must gate the CONTAINER, not a Border inside the template — otherwise a
+                         collapsed panel still claims a tile. -->
+                    <ItemsControl.Styles>
+                        <Style Selector="ContentPresenter">
+                            <Setter Property="IsVisible" Value="{ReflectionBinding IsPaneVisible}"/>
+                        </Style>
+                    </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <UniformGrid Columns="{Binding GridColumns}"/>
+                            <controls:SessionTilePanel/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
@@ -316,12 +199,6 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-                <!-- Single-pane: only the selected session, full width/height (a transient Zoom or the
-                     persistent single-session layout #24). -->
-                <ContentControl Content="{Binding SelectedSession}"
-                                IsVisible="{Binding $parent[DockPanel].((vm:CockpitViewModel)DataContext).ShowSinglePane}"/>
-                </Grid>
             </DockPanel>
         </Grid>
     </Grid>

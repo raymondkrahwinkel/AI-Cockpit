@@ -19,6 +19,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _isSelected;
 
+    /// <summary>
+    /// Whether this panel's view is shown in the session grid: always in multi-session (grid) mode, and
+    /// only when selected in single-pane mode (#24 / Zoom). Set by <see cref="CockpitViewModel"/> whenever
+    /// the selection or layout changes, so the one live grid can host every session's view (built once,
+    /// keeping its TTY pty) and merely hide the deselected ones instead of a second control rebuilding
+    /// them on each switch.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isPaneVisible = true;
+
     /// <summary>Coarse status for the sidebar/grid overview — see <see cref="ViewModels.SessionStatus"/>.</summary>
     [ObservableProperty]
     private SessionStatus _sessionStatus = SessionStatus.Idle;
@@ -81,6 +91,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
+    private IVoicePlaybackQueue? _voicePlaybackQueue;
 
     /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
     [ObservableProperty]
@@ -90,19 +101,61 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _pushToTalkKeyName = "F9";
 
+    /// <summary>
+    /// Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.GlobalPushToTalk"/>. When true, the
+    /// <c>VoicePushToTalkCoordinator</c> already routes the OS-wide hotkey to whichever session is
+    /// selected, so this session's own local KeyDown/KeyUp handler must no-op — see
+    /// <c>PushToTalkKeyGate</c> — to avoid firing the same hold twice.
+    /// </summary>
+    [ObservableProperty]
+    private bool _globalPushToTalkEnabled;
+
     /// <summary>Transient status text ("Listening...", "Transcribing...") the view can surface next to the input while a hold is in progress.</summary>
     [ObservableProperty]
     private string _voiceStatus = string.Empty;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice"/>: when true a finished transcript is submitted right after injection (see <see cref="OnVoiceSubmitRequested"/>) instead of waiting for a manual send.</summary>
+    [ObservableProperty]
+    private bool _autoSubmitAfterVoice;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TtsVoiceId"/> — the Piper voice used for read-aloud (#35). Loaded on the shared base even though only the SDK session kind triggers synthesis, the same "load every voice field once" approach as the other voice settings here.</summary>
+    [ObservableProperty]
+    private string _ttsVoiceId = "en_US-lessac-medium";
+
+    /// <summary>
+    /// Per-session read-aloud toggle (#35/#35b): when true, completed assistant replies are extracted
+    /// and enqueued for TTS playback. Shared on the base since both session kinds offer the toggle, even
+    /// though the source differs — the SDK session reads its already-open event stream at turn
+    /// completion, the TTY session tails the live JSONL transcript (see
+    /// <see cref="OnReadAloudToggleChanged"/>). Ephemeral runtime state, off by default.
+    /// </summary>
+    [ObservableProperty]
+    private bool _readResponsesAloud;
+
+    partial void OnReadResponsesAloudChanged(bool value) => OnReadAloudToggleChanged(value);
+
+    /// <summary>
+    /// Hook for a session kind whose read-aloud source needs starting/stopping when the toggle flips.
+    /// No-op by default (the SDK session needs no separate start/stop — it just checks the flag at each
+    /// turn completion); the TTY session overrides this to begin/end tailing the transcript.
+    /// </summary>
+    protected virtual void OnReadAloudToggleChanged(bool isEnabled)
+    {
+    }
 
     /// <summary>
     /// Wires the shared push-to-talk plumbing and loads the current voice settings. Called from the
     /// concrete view model's constructor rather than folded into the base constructor, since the two
     /// session kinds take a different set of optional services.
     /// </summary>
-    protected void InitializeVoice(IVoicePushToTalkService? voicePushToTalk, IVoiceSettingsStore? voiceSettingsStore)
+    protected void InitializeVoice(
+        IVoicePushToTalkService? voicePushToTalk,
+        IVoiceSettingsStore? voiceSettingsStore,
+        IVoicePlaybackQueue? voicePlaybackQueue = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
+        _voicePlaybackQueue = voicePlaybackQueue;
 
         if (voiceSettingsStore is not null)
         {
@@ -115,6 +168,24 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         var settings = await voiceSettingsStore.LoadAsync();
         VoiceEnabled = settings.IsEnabled;
         PushToTalkKeyName = settings.PushToTalkKeyName;
+        GlobalPushToTalkEnabled = settings.GlobalPushToTalk;
+        AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
+        TtsVoiceId = settings.TtsVoiceId;
+    }
+
+    /// <summary>
+    /// Enqueues sentences for read-aloud playback (turn-completion trigger or the on-demand per-row
+    /// button, both SDK-only) — a no-op when the playback queue was never wired (design-time/tests) or
+    /// there is nothing to say.
+    /// </summary>
+    protected void EnqueueReadAloud(IReadOnlyList<string> sentences, string voiceId)
+    {
+        if (sentences.Count == 0)
+        {
+            return;
+        }
+
+        _voicePlaybackQueue?.Enqueue(sentences, voiceId);
     }
 
     /// <summary>
@@ -128,6 +199,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         {
             return false;
         }
+
+        // A push-to-talk hold means "listen to me now" — interrupt whatever read-aloud playback is
+        // running (on this session or any other; the queue is one shared singleton, #35) so it never
+        // talks over the dictation.
+        _voicePlaybackQueue?.StopAll();
 
         var started = _voicePushToTalk.BeginHold();
         if (started)
@@ -157,6 +233,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             if (!string.IsNullOrEmpty(text))
             {
                 OnVoiceTextReady(text);
+                if (AutoSubmitAfterVoice)
+                {
+                    OnVoiceSubmitRequested();
+                }
             }
         }
         catch (Exception ex)
@@ -167,6 +247,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     /// <summary>Injects a finished voice transcript into this session kind's own input surface (chat input box or raw pty bytes).</summary>
     protected abstract void OnVoiceTextReady(string text);
+
+    /// <summary>
+    /// Submits the just-injected transcript when <see cref="AutoSubmitAfterVoice"/> is on — the SDK
+    /// session sends its input box, the TTY session writes a trailing carriage return. Default no-op so
+    /// a session kind without a submit gesture simply leaves the text in place.
+    /// </summary>
+    protected virtual void OnVoiceSubmitRequested()
+    {
+    }
 
     /// <summary>Theme brush resource key for the status dot — resolved in the view via a converter.</summary>
     public string SessionStatusBrushKey => SessionStatus switch

@@ -30,9 +30,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.</summary>
     public event Action? ManageProfilesRequested;
 
-    /// <summary>Which kind of session to create; chosen in the dialog itself (#32), defaulting to SDK.</summary>
+    /// <summary>Which kind of session to create; chosen in the dialog itself (#32), defaulting to TTY (Raymond's preferred default).</summary>
     [ObservableProperty]
-    private SessionKind _selectedKind = SessionKind.Sdk;
+    private SessionKind _selectedKind = SessionKind.Tty;
 
     public bool IsSdk => SelectedKind == SessionKind.Sdk;
 
