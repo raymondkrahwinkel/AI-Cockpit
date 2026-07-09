@@ -245,6 +245,19 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
     }
 
+    /// <summary>
+    /// Injects text into this session's input surface (chat input box for SDK, raw pty bytes for TTY) —
+    /// the public seam plugins use via <c>ICockpitActions.InjectIntoActiveSessionAsync</c>, reusing the
+    /// same per-kind path as a finished voice transcript.
+    /// </summary>
+    public void InjectText(string text)
+    {
+        if (!string.IsNullOrEmpty(text))
+        {
+            OnVoiceTextReady(text);
+        }
+    }
+
     /// <summary>Injects a finished voice transcript into this session kind's own input surface (chat input box or raw pty bytes).</summary>
     protected abstract void OnVoiceTextReady(string text);
 
