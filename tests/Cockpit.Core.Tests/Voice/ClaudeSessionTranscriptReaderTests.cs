@@ -91,6 +91,36 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
         received.Should().ContainSingle().Which.Should().Be("Appeared after the launch.");
     }
 
+    [Fact]
+    public async Task ReadLinesAsync_YieldsEveryAppendedRawLine_NotJustAssistantText()
+    {
+        var sessionId = Guid.NewGuid();
+        var transcriptPath = _CreateEmptyTranscriptFile(sessionId);
+        var reader = new ClaudeSessionTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var received = new List<string>();
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var line in reader.ReadLinesAsync(_configDir, sessionId, cts.Token))
+            {
+                received.Add(line);
+                if (received.Count == 2)
+                {
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        await File.AppendAllTextAsync(transcriptPath, """{"type":"user","message":{"content":[]}}""" + "\n");
+        await File.AppendAllTextAsync(transcriptPath, _AssistantLine("hi") + "\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        received.Should().HaveCount(2);
+        received[0].Should().Contain("\"type\":\"user\"");
+        received[1].Should().Contain("\"type\":\"assistant\"");
+    }
+
     /// <summary>
     /// Drives one <see cref="ClaudeSessionTranscriptReader.ReadAssistantTextAsync"/> consumption in the
     /// background (the natural <c>await foreach</c> shape production code uses — <c>GetAsyncEnumerator</c>

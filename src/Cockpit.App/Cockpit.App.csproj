@@ -30,10 +30,9 @@
          alike), Resized reports cell-grid changes. Verified pty-agnostic (no seam that wants to own
          the process), so the cockpit still hosts the pty itself (ConPtyProcess on Windows,
          PortaPtyProcess on Linux/macOS, both with our profile-aware env injection of
-         CLAUDE_CONFIG_DIR + TERM) and renders into this control. Replaces the in-tree
-         Cockpit.Terminal fork of SvcSystems.UI.Terminal, whose renderer had a cell-width/glyph-advance
-         coupling bug (see src/Cockpit.Terminal/NOTICE.md); the fork's source stays on disk,
-         unreferenced, as a fallback. -->
+         CLAUDE_CONFIG_DIR + TERM) and renders into this control. Replaced the earlier in-tree
+         Cockpit.Terminal fork of SvcSystems.UI.Terminal (whose renderer had a cell-width/glyph-advance
+         coupling bug); that fork has since been removed now the Exclr8 renderer is the settled path. -->
     <PackageReference Include="Exclr8.Terminal" Version="1.0.7" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />

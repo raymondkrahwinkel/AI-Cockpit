@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
@@ -39,6 +40,16 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private Guid _sessionId;
 
     private CancellationTokenSource? _transcriptTailCancellation;
+
+    // JSONL-driven session status: a TTY panel hosts the real TUI, so there is no event stream to read
+    // status from — instead the same live transcript is tailed for activity (any appended line = a turn
+    // in flight) and a periodic poll flips the dot to Done once it falls quiet. Separate from the
+    // read-aloud tailer above so status works regardless of the read-aloud toggle.
+    private static readonly TimeSpan StatusIdleThreshold = TimeSpan.FromSeconds(5);
+    private readonly TtyActivityStatusTracker _statusTracker = new(StatusIdleThreshold);
+    private CancellationTokenSource? _statusTailCancellation;
+    private DispatcherTimer? _statusPollTimer;
+    private bool _statusTrackingStopped;
 
     /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
     public event Action<IClaudeTtyLauncher, ClaudeProfile?, Guid, string?, string?, string?>? LaunchRequested;
@@ -170,22 +181,100 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// </summary>
     public void OnProcessExited()
     {
+        _StopStatusTracking();
         Status = "TUI process exited.";
         SessionStatus = SessionStatus.Done;
         RaiseCloseRequested();
     }
 
-    /// <summary>Called by the view once the pty has actually spawned, so the header stops reading "Launching TUI..." while the real TUI is already interactive below it.</summary>
+    /// <summary>
+    /// Called by the view once the pty has actually spawned, so the header stops reading "Launching
+    /// TUI..." while the real TUI is already interactive below it. Also starts JSONL-driven status
+    /// tracking: the session is now idle-waiting-for-you until the transcript shows a turn in flight.
+    /// </summary>
     public void OnLaunchSucceeded()
     {
         Status = "Running";
+        SessionStatus = SessionStatus.Idle;
+        _StartStatusTracking();
     }
 
     /// <summary>Called by the view when the TUI could not be launched: the panel stays (the error is shown in the terminal) instead of auto-closing.</summary>
     public void OnLaunchFailed()
     {
+        _StopStatusTracking();
         Status = "TUI failed to launch.";
         SessionStatus = SessionStatus.Done;
+    }
+
+    private void _StartStatusTracking()
+    {
+        // Needs the transcript reader and a profile (its ConfigDir locates the JSONL) — both are present
+        // on the real launch path; the design-time/parameterless VM has neither, so status simply stays
+        // Idle there.
+        if (_transcriptReader is null || _configuredProfile is null || _statusTailCancellation is not null)
+        {
+            return;
+        }
+
+        _statusTailCancellation = new CancellationTokenSource();
+        _ = _TailTranscriptForStatusAsync(_configuredProfile.ConfigDir, _sessionId, _statusTailCancellation.Token);
+
+        _statusPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _statusPollTimer.Tick += _OnStatusPollTick;
+        _statusPollTimer.Start();
+    }
+
+    /// <summary>Marks every appended transcript line as activity; the tailer runs on a background task, so the status update is marshaled onto the UI thread.</summary>
+    private async Task _TailTranscriptForStatusAsync(string configDir, Guid sessionId, CancellationToken cancellationToken)
+    {
+        if (_transcriptReader is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await foreach (var _ in _transcriptReader.ReadLinesAsync(configDir, sessionId, cancellationToken))
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (!_statusTrackingStopped)
+                    {
+                        SessionStatus = _statusTracker.OnActivity(DateTimeOffset.UtcNow);
+                    }
+                });
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the panel closes or the process exits.
+        }
+    }
+
+    private void _OnStatusPollTick(object? sender, EventArgs e)
+    {
+        if (_statusTrackingStopped)
+        {
+            return;
+        }
+
+        SessionStatus = _statusTracker.Poll(DateTimeOffset.UtcNow);
+    }
+
+    private void _StopStatusTracking()
+    {
+        _statusTrackingStopped = true;
+        _statusTailCancellation?.Cancel();
+        _statusTailCancellation?.Dispose();
+        _statusTailCancellation = null;
+
+        if (_statusPollTimer is not null)
+        {
+            _statusPollTimer.Stop();
+            _statusPollTimer.Tick -= _OnStatusPollTick;
+            _statusPollTimer = null;
+        }
     }
 
     public override ValueTask DisposeAsync()
@@ -197,6 +286,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         _transcriptTailCancellation?.Cancel();
         _transcriptTailCancellation?.Dispose();
         _transcriptTailCancellation = null;
+        _StopStatusTracking();
         return ValueTask.CompletedTask;
     }
 }

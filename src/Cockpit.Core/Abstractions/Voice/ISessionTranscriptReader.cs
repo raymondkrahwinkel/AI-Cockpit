@@ -18,4 +18,11 @@ public interface ISessionTranscriptReader
     /// <paramref name="cancellationToken"/> is cancelled.
     /// </summary>
     IAsyncEnumerable<string> ReadAssistantTextAsync(string configDir, Guid sessionId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The same tail as <see cref="ReadAssistantTextAsync"/> but yields every appended raw JSONL line, not
+    /// only assistant text — used to drive a TTY session's coarse status from transcript activity (any new
+    /// line means a turn is in flight). Starts from the file's current end and runs until cancelled.
+    /// </summary>
+    IAsyncEnumerable<string> ReadLinesAsync(string configDir, Guid sessionId, CancellationToken cancellationToken);
 }

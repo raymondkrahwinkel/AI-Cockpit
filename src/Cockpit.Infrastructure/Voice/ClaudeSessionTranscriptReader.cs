@@ -22,6 +22,20 @@ internal sealed class ClaudeSessionTranscriptReader : ISessionTranscriptReader, 
         Guid sessionId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        await foreach (var line in ReadLinesAsync(configDir, sessionId, cancellationToken).ConfigureAwait(false))
+        {
+            if (ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var assistantText))
+            {
+                yield return assistantText;
+            }
+        }
+    }
+
+    public async IAsyncEnumerable<string> ReadLinesAsync(
+        string configDir,
+        Guid sessionId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         var transcriptPath = await _WaitForTranscriptFileAsync(configDir, sessionId, cancellationToken).ConfigureAwait(false);
         if (transcriptPath is null)
         {
@@ -31,7 +45,7 @@ internal sealed class ClaudeSessionTranscriptReader : ISessionTranscriptReader, 
         await using var stream = new FileStream(
             transcriptPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         // Tail from the current end: whatever the session already wrote before this call is history,
-        // not something to read aloud — only lines appended from here on are new turns.
+        // not new activity — only lines appended from here on are new turns.
         stream.Seek(0, SeekOrigin.End);
 
         var decoder = Encoding.UTF8.GetDecoder();
@@ -62,10 +76,7 @@ internal sealed class ClaudeSessionTranscriptReader : ISessionTranscriptReader, 
 
                 var line = pendingLine.ToString();
                 pendingLine.Clear();
-                if (ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var assistantText))
-                {
-                    yield return assistantText;
-                }
+                yield return line;
             }
 
             pendingLine.Append(charBuffer, chunkStart, charCount - chunkStart);
