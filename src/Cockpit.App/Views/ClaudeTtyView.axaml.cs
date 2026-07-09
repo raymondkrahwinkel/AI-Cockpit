@@ -29,7 +29,6 @@ public partial class ClaudeTtyView : UserControl
     private ClaudeTtyViewModel? _viewModel;
     private IClaudeTtyLauncher? _pendingLauncher;
     private ClaudeProfile? _pendingProfile;
-    private Guid _pendingSessionId;
     private string? _pendingPermissionMode;
     private string? _pendingModel;
     private string? _pendingEffort;
@@ -143,14 +142,12 @@ public partial class ClaudeTtyView : UserControl
     private void OnLaunchRequested(
         IClaudeTtyLauncher launcher,
         ClaudeProfile? profile,
-        Guid sessionId,
         string? permissionMode,
         string? model,
         string? effort)
     {
         _pendingLauncher = launcher;
         _pendingProfile = profile;
-        _pendingSessionId = sessionId;
         _pendingPermissionMode = permissionMode;
         _pendingModel = model;
         _pendingEffort = effort;
@@ -193,7 +190,6 @@ public partial class ClaudeTtyView : UserControl
 
             _pty = _pendingLauncher.Launch(
                 _pendingProfile,
-                _pendingSessionId,
                 _pendingPermissionMode,
                 _pendingModel,
                 _pendingEffort,

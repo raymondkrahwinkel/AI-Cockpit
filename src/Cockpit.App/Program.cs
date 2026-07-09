@@ -20,8 +20,14 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        var logPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "logs", "cockpit.log");
         var services = new ServiceCollection();
-        services.AddLogging(builder => builder.AddConsole());
+        services.AddLogging(builder =>
+        {
+            builder.AddConsole();
+            builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath));
+        });
         services.AddCore().AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,

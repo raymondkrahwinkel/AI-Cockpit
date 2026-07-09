@@ -11,24 +11,21 @@ namespace Cockpit.Core.Abstractions.Claude;
 /// never adds <c>-p</c>/stream-json flags, so the genuine TUI runs — but it does pass the
 /// permission-mode/model/effort chosen in the New-session dialog as launch-only start defaults
 /// (mirroring <c>ClaudeCliProcess.BuildArguments</c>); once running, the TUI itself owns any live
-/// switching (<c>/model</c>, <c>/effort</c>, Shift+Tab) since TTY mode has no control channel. Also
-/// forces the CLI's own session id via <c>--session-id</c>, so the cockpit knows the exact live
-/// transcript path (<c>&lt;config-dir&gt;/projects/*/&lt;session-id&gt;.jsonl</c>) for read-aloud
-/// tailing (#35b).
+/// switching (<c>/model</c>, <c>/effort</c>, Shift+Tab) since TTY mode has no control channel. The CLI's
+/// session id is left to the CLI (not forced via <c>--session-id</c>, which does not persist a transcript
+/// for a new interactive session); the cockpit locates the live transcript as the new file that appears
+/// after launch (<c>ISessionTranscriptReader</c>) for read-aloud (#35b) and status (#39).
 /// </summary>
 public interface IClaudeTtyLauncher
 {
     /// <summary>
     /// Starts <c>claude</c> in a pseudo console sized <paramref name="columns"/>×<paramref name="rows"/>
-    /// under <paramref name="profile"/> (or the host's own config when null), forcing its session id to
-    /// <paramref name="sessionId"/> (<c>--session-id</c>) so the transcript file backing read-aloud
-    /// tailing is known up front, with <paramref name="permissionMode"/>/<paramref name="model"/>/
-    /// <paramref name="effort"/> as its launch-only start defaults (any of which may be null/blank to
-    /// omit that flag).
+    /// under <paramref name="profile"/> (or the host's own config when null), with
+    /// <paramref name="permissionMode"/>/<paramref name="model"/>/<paramref name="effort"/> as its
+    /// launch-only start defaults (any of which may be null/blank to omit that flag).
     /// </summary>
     IConPtyProcess Launch(
         ClaudeProfile? profile,
-        Guid sessionId,
         string? permissionMode,
         string? model,
         string? effort,

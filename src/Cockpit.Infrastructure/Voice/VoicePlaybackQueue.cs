@@ -46,6 +46,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             return;
         }
 
+        _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) for playback", sentences.Count);
         _channel.Writer.TryWrite((sentences, voiceId));
     }
 
@@ -76,6 +77,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
                 try
                 {
+                    _logger.LogDebug("Read-aloud playing sentence: \"{Sentence}\"", sentence);
                     var audio = await _textToSpeech.SynthesizeAsync(sentence, voiceId, cancellationToken).ConfigureAwait(false);
                     var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
                     await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)

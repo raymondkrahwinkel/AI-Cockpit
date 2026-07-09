@@ -34,7 +34,6 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
 
     public IConPtyProcess Launch(
         ClaudeProfile? profile,
-        Guid sessionId,
         string? permissionMode,
         string? model,
         string? effort,
@@ -58,7 +57,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             ?? cli.ExecutablePath;
 
         var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile);
-        var arguments = BuildArguments(sessionId, permissionMode, model, effort);
+        var arguments = BuildArguments(permissionMode, model, effort);
 
         return _ptyHostFactory.Start(executablePath, arguments, workingDirectory, environment, columns, rows);
     }
@@ -67,13 +66,14 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     /// Builds the launch-only start-default flags for the TTY spawn. Extracted (and <c>internal</c>)
     /// so the flag construction is unit-testable without a real pty. Deliberately narrower than
     /// <c>ClaudeCliProcess.BuildArguments</c> — no <c>-p</c>/stream-json/permission-prompt-tool wiring,
-    /// since TTY mode runs the genuine interactive TUI (it prompts for permission itself).
-    /// <c>--session-id</c> is always forced (rather than left to the CLI's own random id) so the
-    /// cockpit's transcript tailer (#35b) knows exactly which JSONL file to watch.
+    /// since TTY mode runs the genuine interactive TUI (it prompts for permission itself). The session id
+    /// is deliberately <em>not</em> forced (<c>--session-id</c> is undocumented for a new interactive
+    /// session and does not persist a transcript under that id) — the cockpit instead locates the live
+    /// transcript as the new file that appears after launch (see <c>ISessionTranscriptReader</c>).
     /// </summary>
-    internal static List<string> BuildArguments(Guid sessionId, string? permissionMode, string? model, string? effort)
+    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort)
     {
-        var arguments = new List<string> { "--session-id", sessionId.ToString() };
+        var arguments = new List<string>();
 
         // Bypass is a launch-only synonym for --dangerously-skip-permissions; the CLI does not accept
         // both flags together, so the two are mutually exclusive here (mirrors ClaudeCliProcess's

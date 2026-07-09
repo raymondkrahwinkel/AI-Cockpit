@@ -26,6 +26,30 @@ public class TtsProseExtractorTests
     }
 
     [Fact]
+    public void Extract_StripsEmojiAndPictographs_KeepingTheSurroundingProse()
+    {
+        var sentences = TtsProseExtractor.Extract("Goedenavond Raymond 🌙 alles is groen ✅ en gepusht.");
+
+        sentences.Should().ContainSingle().Which.Should().Be("Goedenavond Raymond alles is groen en gepusht.");
+    }
+
+    [Fact]
+    public void Extract_StripsAJoinedEmojiSequence_LeavingNoLeftoverJoinersOrSkinTones()
+    {
+        var sentences = TtsProseExtractor.Extract("Klaar 👍🏽 en verzonden.");
+
+        sentences.Should().ContainSingle().Which.Should().Be("Klaar en verzonden.");
+    }
+
+    [Fact]
+    public void Extract_KeepsCurrencyAndMathSymbols_WhichCarrySpokenMeaning()
+    {
+        var sentences = TtsProseExtractor.Extract("Het kost €5 en 2 + 2 = 4.");
+
+        sentences.Should().ContainSingle().Which.Should().Be("Het kost €5 en 2 + 2 = 4.");
+    }
+
+    [Fact]
     public void Extract_SkipsFencedCodeBlocks()
     {
         var markdown = "Here is the fix.\n\n```csharp\nDockPanel.SetDock(topBar, Dock.Top);\n```\n\nDone.";

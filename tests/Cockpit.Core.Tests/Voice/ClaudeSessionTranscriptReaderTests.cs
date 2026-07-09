@@ -1,27 +1,32 @@
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Voice;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Core.Tests.Voice;
 
 /// <summary>
-/// <see cref="ClaudeSessionTranscriptReader"/> (#35b): finds the session's live JSONL transcript under
-/// <c>configDir/projects/*/&lt;session-id&gt;.jsonl</c> (waiting for it to appear if the launch hasn't
-/// written it yet), tails it from its current end so history is never replayed, and buffers a partial
-/// line across polls so a write caught mid-line never surfaces as a corrupt/truncated read.
+/// <see cref="ClaudeSessionTranscriptReader"/> (#35b/#39): locates the session's live JSONL transcript as
+/// the new <c>configDir/projects/*/​*.jsonl</c> file that appears after launch (not matched by a forced
+/// session id — that is undocumented for interactive sessions), waiting for it to appear if the launch
+/// hasn't written it yet, tails it from its current end so history is never replayed, and buffers a
+/// partial line across polls so a write caught mid-line never surfaces as a corrupt/truncated read.
 /// </summary>
 public class ClaudeSessionTranscriptReaderTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-transcript-reader-tests-").FullName;
 
+    // No transcript from a prior session exists, so the one the test writes is always the "new" one.
+    private static readonly IReadOnlySet<string> NoBaseline = new HashSet<string>();
+
     [Fact]
     public async Task ReadAssistantTextAsync_IgnoresLinesWrittenBeforeTailingStarted()
     {
-        var sessionId = Guid.NewGuid();
-        var transcriptPath = _CreateEmptyTranscriptFile(sessionId);
+        var transcriptPath = _CreateEmptyTranscriptFile();
         await File.WriteAllTextAsync(transcriptPath, _AssistantLine("Old text, from before the tail started.") + "\n");
 
         var firstLine = await _ConsumeOneLineAsync(
-            sessionId, appendAfterStarting: [_AssistantLine("New text, written after the tail started.") + "\n"]);
+            transcriptPath, appendAfterStarting: [_AssistantLine("New text, written after the tail started.") + "\n"]);
 
         firstLine.Should().Be("New text, written after the tail started.");
     }
@@ -29,10 +34,9 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
     [Fact]
     public async Task ReadAssistantTextAsync_SkipsNonAssistantLinesAndToolUseOnlyTurns()
     {
-        var sessionId = Guid.NewGuid();
-        _CreateEmptyTranscriptFile(sessionId);
+        var transcriptPath = _CreateEmptyTranscriptFile();
 
-        var firstLine = await _ConsumeOneLineAsync(sessionId, appendAfterStarting:
+        var firstLine = await _ConsumeOneLineAsync(transcriptPath, appendAfterStarting:
         [
             """{"type":"user","message":{"content":[{"type":"text","text":"ignored"}]}}""" + "\n" +
             """{"type":"system","subtype":"init"}""" + "\n" +
@@ -46,13 +50,12 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
     [Fact]
     public async Task ReadAssistantTextAsync_BuffersAPartialLine_UntilItsNewlineArrivesInALaterWrite()
     {
-        var sessionId = Guid.NewGuid();
-        _CreateEmptyTranscriptFile(sessionId);
+        var transcriptPath = _CreateEmptyTranscriptFile();
         var fullLine = _AssistantLine("Split across two separate writes.");
         var splitPoint = fullLine.Length / 2;
 
         var firstLine = await _ConsumeOneLineAsync(
-            sessionId,
+            transcriptPath,
             appendAfterStarting: [fullLine[..splitPoint]],
             thenDelay: TimeSpan.FromMilliseconds(400),
             appendAfterDelay: [fullLine[splitPoint..] + "\n"]);
@@ -63,14 +66,13 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
     [Fact]
     public async Task ReadAssistantTextAsync_WhenTheTranscriptDoesNotExistYet_WaitsForItThenTailsIt()
     {
-        var sessionId = Guid.NewGuid();
         var projectDir = Path.Combine(_configDir, "projects", "some-cwd-hash");
-        var reader = new ClaudeSessionTranscriptReader();
+        var reader = new ClaudeSessionTranscriptReader(NullLogger<ClaudeSessionTranscriptReader>.Instance);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var received = new List<string>();
         var consumeTask = Task.Run(async () =>
         {
-            await foreach (var text in reader.ReadAssistantTextAsync(_configDir, sessionId, cts.Token))
+            await foreach (var text in reader.ReadAssistantTextAsync(_configDir, NoBaseline, cts.Token))
             {
                 received.Add(text);
                 break;
@@ -80,7 +82,7 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
         // Nothing under projects/ yet — the reader must keep polling instead of giving up.
         await Task.Delay(400);
         Directory.CreateDirectory(projectDir);
-        var transcriptPath = Path.Combine(projectDir, $"{sessionId}.jsonl");
+        var transcriptPath = Path.Combine(projectDir, $"{Guid.NewGuid()}.jsonl");
         await File.WriteAllTextAsync(transcriptPath, string.Empty);
 
         // Let the reader notice the (empty) file and seek to its end before anything is written to it.
@@ -94,14 +96,13 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
     [Fact]
     public async Task ReadLinesAsync_YieldsEveryAppendedRawLine_NotJustAssistantText()
     {
-        var sessionId = Guid.NewGuid();
-        var transcriptPath = _CreateEmptyTranscriptFile(sessionId);
-        var reader = new ClaudeSessionTranscriptReader();
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var reader = new ClaudeSessionTranscriptReader(NullLogger<ClaudeSessionTranscriptReader>.Instance);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var received = new List<string>();
         var consumeTask = Task.Run(async () =>
         {
-            await foreach (var line in reader.ReadLinesAsync(_configDir, sessionId, cts.Token))
+            await foreach (var line in reader.ReadLinesAsync(_configDir, NoBaseline, cts.Token))
             {
                 received.Add(line);
                 if (received.Count == 2)
@@ -123,33 +124,28 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
 
     /// <summary>
     /// Drives one <see cref="ClaudeSessionTranscriptReader.ReadAssistantTextAsync"/> consumption in the
-    /// background (the natural <c>await foreach</c> shape production code uses — <c>GetAsyncEnumerator</c>
-    /// plus a second, separately supplied cancellation token is not how <c>[EnumeratorCancellation]</c> is
-    /// meant to be driven, and doing so left the reader's own token forever un-cancelled in an earlier
-    /// version of this test), appends the given lines to the transcript once it is underway, and returns
-    /// the first assistant text the reader yields.
+    /// background (the natural <c>await foreach</c> shape production code uses), appends the given lines to
+    /// the transcript once it is underway, and returns the first assistant text the reader yields.
     /// </summary>
     private async Task<string> _ConsumeOneLineAsync(
-        Guid sessionId,
+        string transcriptPath,
         IReadOnlyList<string> appendAfterStarting,
-        Func<Task>? beforeAppending = null,
         TimeSpan? thenDelay = null,
         IReadOnlyList<string>? appendAfterDelay = null)
     {
-        var transcriptPath = Path.Combine(_configDir, "projects", "some-cwd-hash", $"{sessionId}.jsonl");
-        var reader = new ClaudeSessionTranscriptReader();
+        var reader = new ClaudeSessionTranscriptReader(NullLogger<ClaudeSessionTranscriptReader>.Instance);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var received = new List<string>();
         var consumeTask = Task.Run(async () =>
         {
-            await foreach (var text in reader.ReadAssistantTextAsync(_configDir, sessionId, cts.Token))
+            await foreach (var text in reader.ReadAssistantTextAsync(_configDir, NoBaseline, cts.Token))
             {
                 received.Add(text);
                 break;
             }
         });
 
-        await (beforeAppending?.Invoke() ?? Task.Delay(500));
+        await Task.Delay(500);
         foreach (var line in appendAfterStarting)
         {
             await File.AppendAllTextAsync(transcriptPath, line);
@@ -168,11 +164,11 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
         return received.Should().ContainSingle().Subject;
     }
 
-    private string _CreateEmptyTranscriptFile(Guid sessionId)
+    private string _CreateEmptyTranscriptFile()
     {
         var projectDir = Path.Combine(_configDir, "projects", "some-cwd-hash");
         Directory.CreateDirectory(projectDir);
-        var transcriptPath = Path.Combine(projectDir, $"{sessionId}.jsonl");
+        var transcriptPath = Path.Combine(projectDir, $"{Guid.NewGuid()}.jsonl");
         File.WriteAllText(transcriptPath, string.Empty);
         return transcriptPath;
     }

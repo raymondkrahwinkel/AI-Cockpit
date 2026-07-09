@@ -463,12 +463,12 @@ public class CockpitViewModelTests
         await layoutSettingsStore.Received(1).SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>());
         await voiceSettingsStore.Received(1).SaveAsync(Arg.Any<VoiceSettings>(), Arg.Any<CancellationToken>());
 
-        vm.NotificationSettingsStatus.Should().Be("Saved.");
-        vm.SessionSwitchSettingsStatus.Should().Be("Saved.");
-        vm.TranscriptDisplaySettingsStatus.Should().Be("Saved.");
-        vm.SessionBehaviorSettingsStatus.Should().Be("Saved.");
-        vm.LayoutSettingsStatus.Should().Be("Saved.");
-        vm.VoiceSettingsStatus.Should().Be("Saved.");
+        vm.NotificationSettingsStatus.Should().Be("✓ Saved");
+        vm.SessionSwitchSettingsStatus.Should().Be("✓ Saved");
+        vm.TranscriptDisplaySettingsStatus.Should().Be("✓ Saved");
+        vm.SessionBehaviorSettingsStatus.Should().Be("✓ Saved");
+        vm.LayoutSettingsStatus.Should().Be("✓ Saved");
+        vm.VoiceSettingsStatus.Should().Be("✓ Saved");
     }
 
     private static async Task<CockpitViewModel> NewVmWithSessionsAsync(int count)

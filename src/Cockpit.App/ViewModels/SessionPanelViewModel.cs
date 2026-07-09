@@ -287,5 +287,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         OnPropertyChanged(nameof(RequiresCloseConfirmation));
     }
 
-    public abstract ValueTask DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        // Closing a session that is reading responses aloud must silence it too — otherwise its queued
+        // and in-flight utterances keep playing after the panel is gone. The playback queue is one shared
+        // singleton (#35), so this is the same blanket stop push-to-talk uses; gating it on this session's
+        // own toggle keeps closing a silent session from cutting another that is mid-sentence.
+        if (ReadResponsesAloud)
+        {
+            _voicePlaybackQueue?.StopAll();
+        }
+
+        await DisposeCoreAsync();
+    }
+
+    /// <summary>Kind-specific teardown (kill the CLI process, stop the transcript tailer), run after read-aloud is silenced.</summary>
+    protected abstract ValueTask DisposeCoreAsync();
 }

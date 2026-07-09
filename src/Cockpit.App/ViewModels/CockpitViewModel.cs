@@ -403,7 +403,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         };
 
         await _notificationSettingsStore.SaveAsync(settings);
-        NotificationSettingsStatus = "Saved.";
+        NotificationSettingsStatus = "✓ Saved";
     }
 
     private async Task LoadSessionSwitchSettingsAsync()
@@ -429,7 +429,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _sessionSwitchSettingsStore.SaveAsync(CurrentSessionSwitchSettings);
-        SessionSwitchSettingsStatus = "Saved.";
+        SessionSwitchSettingsStatus = "✓ Saved";
     }
 
     private async Task LoadTranscriptDisplaySettingsAsync()
@@ -453,7 +453,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _transcriptDisplaySettingsStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = ShowTimestamps });
-        TranscriptDisplaySettingsStatus = "Saved.";
+        TranscriptDisplaySettingsStatus = "✓ Saved";
     }
 
     private async Task LoadSessionBehaviorSettingsAsync()
@@ -477,7 +477,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = AutoCloseOnExit });
-        SessionBehaviorSettingsStatus = "Saved.";
+        SessionBehaviorSettingsStatus = "✓ Saved";
     }
 
     private async Task LoadLayoutSettingsAsync()
@@ -506,7 +506,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SingleSessionLayout = SingleSessionLayout,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         });
-        LayoutSettingsStatus = "Saved.";
+        LayoutSettingsStatus = "✓ Saved";
     }
 
     private async Task LoadVoiceSettingsAsync()
@@ -597,7 +597,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             InputDeviceName = SelectedInputDevice.DeviceName ?? "",
             OutputDeviceName = SelectedOutputDevice.DeviceName ?? "",
         });
-        VoiceSettingsStatus = "Saved.";
+        VoiceSettingsStatus = "✓ Saved";
     }
 
     [RelayCommand]

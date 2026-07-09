@@ -37,6 +37,17 @@ public static class TtyEnvironment
         var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in baseEnvironment)
         {
+            // Drop the markers of the Claude Code session the cockpit itself was launched from. When the
+            // cockpit is started from inside a Claude Code session (a claude terminal, an agent), the
+            // inherited CLAUDE_CODE_SESSION_ID would make the spawned CLI adopt that session id — writing
+            // its turns into the parent's transcript instead of its own, so the read-aloud/status tailers
+            // (which look for the session's own new transcript) never find one. A normal launch has none
+            // of these set, so this is a no-op there.
+            if (IsNestedClaudeCodeMarker(key))
+            {
+                continue;
+            }
+
             environment[key] = value;
         }
 
@@ -49,4 +60,16 @@ public static class TtyEnvironment
 
         return environment;
     }
+
+    /// <summary>
+    /// True for the environment variables a running Claude Code session exports to mark itself
+    /// (<c>CLAUDECODE</c>, <c>CLAUDE_CODE_*</c>, <c>CLAUDE_AGENT_*</c>) — notably
+    /// <c>CLAUDE_CODE_SESSION_ID</c>. Stripped before spawning so a cockpit launched from within such a
+    /// session does not hand its own session identity down to the child CLI. <c>CLAUDE_CONFIG_DIR</c> is
+    /// deliberately not matched (it does not start with <c>CLAUDE_CODE</c>) and is re-applied per profile.
+    /// </summary>
+    public static bool IsNestedClaudeCodeMarker(string key) =>
+        key.StartsWith("CLAUDECODE", StringComparison.OrdinalIgnoreCase)
+        || key.StartsWith("CLAUDE_CODE_", StringComparison.OrdinalIgnoreCase)
+        || key.StartsWith("CLAUDE_AGENT_", StringComparison.OrdinalIgnoreCase);
 }

@@ -808,7 +808,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         _currentThinkingEntry = null;
     }
 
-    public override async ValueTask DisposeAsync()
+    protected override async ValueTask DisposeCoreAsync()
     {
         _lifetimeCancellation?.Cancel();
 

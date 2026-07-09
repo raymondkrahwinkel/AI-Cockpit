@@ -64,6 +64,41 @@ public class TtyEnvironmentTests
     }
 
     [Fact]
+    public void Build_StripsTheNestedClaudeCodeSessionMarkers_SoTheChildDoesNotAdoptTheLaunchersSession()
+    {
+        var baseWithMarkers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CLAUDE_CODE_SESSION_ID"] = "11111111-1111-1111-1111-111111111111",
+            ["CLAUDECODE"] = "1",
+            ["CLAUDE_CODE_ENTRYPOINT"] = "claude-desktop",
+            ["CLAUDE_AGENT_SDK_VERSION"] = "0.3.0",
+            ["PATH"] = @"C:\Windows",
+        };
+
+        var environment = TtyEnvironment.Build(baseWithMarkers, profile: null);
+
+        environment.ContainsKey("CLAUDE_CODE_SESSION_ID").Should().BeFalse();
+        environment.ContainsKey("CLAUDECODE").Should().BeFalse();
+        environment.ContainsKey("CLAUDE_CODE_ENTRYPOINT").Should().BeFalse();
+        environment.ContainsKey("CLAUDE_AGENT_SDK_VERSION").Should().BeFalse();
+        environment["PATH"].Should().Be(@"C:\Windows");
+    }
+
+    [Fact]
+    public void Build_KeepsClaudeConfigDir_WhichIsNotANestedSessionMarker()
+    {
+        var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
+        var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",
+        };
+
+        var environment = TtyEnvironment.Build(baseWithConfigDir, profile);
+
+        environment["CLAUDE_CONFIG_DIR"].Should().Be(@"C:\Users\raymo\.claude-work");
+    }
+
+    [Fact]
     public void Build_IsCaseInsensitive_SoTermOverwritesADifferentlyCasedInheritedValue()
     {
         var baseWithLowerTerm = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

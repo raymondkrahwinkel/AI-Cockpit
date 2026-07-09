@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Claude;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Voice;
 
@@ -26,6 +27,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private readonly IClaudeTtyLauncher? _launcher;
     private readonly ISessionTranscriptReader? _transcriptReader;
     private ClaudeProfile? _configuredProfile;
+    private string? _effectiveConfigDir;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
     private string? _configuredEffort;
@@ -33,11 +35,12 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private bool _launched;
 
     /// <summary>
-    /// Forced onto the launched CLI via <c>--session-id</c> (#35b), so the read-aloud transcript tailer
-    /// knows the exact JSONL file to watch without depending on the CLI's own cwd-hash naming rule.
-    /// Minted once, in <see cref="LaunchConfigured"/>.
+    /// The transcript files that already existed when this session launched, snapshotted once in
+    /// <see cref="LaunchConfigured"/> so the read-aloud/status tailers can single out the new <c>.jsonl</c>
+    /// <c>claude</c> writes for this session — its id is not forced (undocumented for interactive sessions),
+    /// so the transcript is found as the file that appears after launch, not matched by name.
     /// </summary>
-    private Guid _sessionId;
+    private IReadOnlySet<string>? _transcriptBaseline;
 
     private CancellationTokenSource? _transcriptTailCancellation;
 
@@ -52,7 +55,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private bool _statusTrackingStopped;
 
     /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
-    public event Action<IClaudeTtyLauncher, ClaudeProfile?, Guid, string?, string?, string?>? LaunchRequested;
+    public event Action<IClaudeTtyLauncher, ClaudeProfile?, string?, string?, string?>? LaunchRequested;
 
     /// <summary>
     /// Raised once a push-to-talk hold finished transcribing (no cleanup applied — TTY is a raw
@@ -98,7 +101,16 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     public void LaunchConfigured(ClaudeProfile? profile, string? permissionMode, string? model, string? effort)
     {
         _configuredProfile = profile;
-        _sessionId = Guid.NewGuid();
+        // Read-aloud and status both tail this session's transcript JSONL; a profile-less session still
+        // writes one — under the CLI's default config dir — so resolve the effective directory here
+        // rather than giving up when there is no profile.
+        _effectiveConfigDir = ClaudeConfigDirectory.Resolve(
+            profile,
+            Environment.GetEnvironmentVariable(ClaudeConfigDirectory.EnvironmentVariable),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        // Snapshot the transcripts that exist now, before claude spawns and writes its own — the tailers
+        // then single out the new file as this session's transcript (its id is not forced).
+        _transcriptBaseline = _transcriptReader?.SnapshotTranscripts(_effectiveConfigDir);
         _configuredPermissionMode = permissionMode;
         _configuredModel = model;
         _configuredEffort = effort;
@@ -125,14 +137,14 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         }
 
         _launched = true;
-        LaunchRequested.Invoke(_launcher, _configuredProfile, _sessionId, _configuredPermissionMode, _configuredModel, _configuredEffort);
+        LaunchRequested.Invoke(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort);
     }
 
     /// <summary>
     /// Starts/stops tailing the live session transcript for read-aloud (#35b) as the toggle flips.
-    /// Requires a configured profile (its <c>ConfigDir</c> locates the transcript) and a wired reader;
-    /// both are always present on the real launch path — only the design-time/parameterless VM lacks
-    /// them, where the toggle simply has nothing to tail.
+    /// Requires the effective config dir (which locates the transcript, resolved at launch even for a
+    /// profile-less session) and a wired reader; both are present on the real launch path — only the
+    /// design-time/parameterless VM lacks them, where the toggle simply has nothing to tail.
     /// </summary>
     protected override void OnReadAloudToggleChanged(bool isEnabled)
     {
@@ -144,17 +156,17 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
             return;
         }
 
-        if (_transcriptReader is null || _configuredProfile is null || _transcriptTailCancellation is not null)
+        if (_transcriptReader is null || _effectiveConfigDir is null || _transcriptBaseline is null || _transcriptTailCancellation is not null)
         {
             return;
         }
 
         _transcriptTailCancellation = new CancellationTokenSource();
-        _ = _TailTranscriptForReadAloudAsync(_configuredProfile.ConfigDir, _sessionId, _transcriptTailCancellation.Token);
+        _ = _TailTranscriptForReadAloudAsync(_effectiveConfigDir, _transcriptBaseline, _transcriptTailCancellation.Token);
     }
 
     /// <summary>Consumes the transcript tailer and enqueues each assistant turn's prose for TTS — mirrors <c>ClaudeSessionViewModel._EnqueueTurnProseForReadAloud</c>, just fed by the tailer instead of the SDK event stream.</summary>
-    private async Task _TailTranscriptForReadAloudAsync(string configDir, Guid sessionId, CancellationToken cancellationToken)
+    private async Task _TailTranscriptForReadAloudAsync(string configDir, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
     {
         if (_transcriptReader is null)
         {
@@ -163,7 +175,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 
         try
         {
-            await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(configDir, sessionId, cancellationToken))
+            await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(configDir, transcriptBaseline, cancellationToken))
             {
                 EnqueueReadAloud(TtsProseExtractor.Extract(assistantText), TtsVoiceId);
             }
@@ -209,16 +221,16 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 
     private void _StartStatusTracking()
     {
-        // Needs the transcript reader and a profile (its ConfigDir locates the JSONL) — both are present
-        // on the real launch path; the design-time/parameterless VM has neither, so status simply stays
-        // Idle there.
-        if (_transcriptReader is null || _configuredProfile is null || _statusTailCancellation is not null)
+        // Needs the transcript reader and the effective config dir (which locates the JSONL, resolved at
+        // launch even without a profile) — both are present on the real launch path; the design-time/
+        // parameterless VM has neither, so status simply stays Idle there.
+        if (_transcriptReader is null || _effectiveConfigDir is null || _transcriptBaseline is null || _statusTailCancellation is not null)
         {
             return;
         }
 
         _statusTailCancellation = new CancellationTokenSource();
-        _ = _TailTranscriptForStatusAsync(_configuredProfile.ConfigDir, _sessionId, _statusTailCancellation.Token);
+        _ = _TailTranscriptForStatusAsync(_effectiveConfigDir, _transcriptBaseline, _statusTailCancellation.Token);
 
         _statusPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _statusPollTimer.Tick += _OnStatusPollTick;
@@ -226,7 +238,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     }
 
     /// <summary>Marks every appended transcript line as activity; the tailer runs on a background task, so the status update is marshaled onto the UI thread.</summary>
-    private async Task _TailTranscriptForStatusAsync(string configDir, Guid sessionId, CancellationToken cancellationToken)
+    private async Task _TailTranscriptForStatusAsync(string configDir, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
     {
         if (_transcriptReader is null)
         {
@@ -235,7 +247,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 
         try
         {
-            await foreach (var _ in _transcriptReader.ReadLinesAsync(configDir, sessionId, cancellationToken))
+            await foreach (var _ in _transcriptReader.ReadLinesAsync(configDir, transcriptBaseline, cancellationToken))
             {
                 Dispatcher.UIThread.Post(() =>
                 {
@@ -285,7 +297,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         }
     }
 
-    public override ValueTask DisposeAsync()
+    protected override ValueTask DisposeCoreAsync()
     {
         // The terminal control owns the pty lifetime (it created it via the launcher); it disposes
         // the ConPtyProcess on unload/close. The transcript tailer is this VM's own background loop,

@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
@@ -7,25 +8,33 @@ using Cockpit.Core.Voice;
 namespace Cockpit.Infrastructure.Voice;
 
 /// <summary>
-/// <see cref="ISessionTranscriptReader"/>: polls for the session's transcript file to appear, then tails
-/// it from its current end via manual byte-level buffering rather than <see cref="StreamReader.ReadLine"/>
-/// — a plain line-reader can't tell a real end-of-file apart from "more is coming", so it would emit a
-/// partial line the writer hasn't finished yet. A stateful <see cref="Decoder"/> carries any UTF-8
-/// multi-byte sequence split across a poll boundary, so a wide character never gets corrupted either.
+/// Locates a TTY session's live JSONL transcript as the new <c>projects/*/​*.jsonl</c> file that appears
+/// after launch (the session id is not forced — undocumented for interactive sessions — so the transcript
+/// is singled out against a snapshot taken before spawn, not matched by name), then tails it from its
+/// current end via manual byte-level buffering rather than <see cref="StreamReader.ReadLine"/> — a plain
+/// line-reader can't tell a real end-of-file apart from "more is coming", so it would emit a partial line
+/// the writer hasn't finished yet. A stateful <see cref="Decoder"/> carries any UTF-8 multi-byte sequence
+/// split across a poll boundary, so a wide character never gets corrupted either.
 /// </summary>
-internal sealed class ClaudeSessionTranscriptReader : ISessionTranscriptReader, ISingletonService
+internal sealed class ClaudeSessionTranscriptReader(ILogger<ClaudeSessionTranscriptReader> logger)
+    : ISessionTranscriptReader, ISingletonService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
 
+    public IReadOnlySet<string> SnapshotTranscripts(string configDir) =>
+        _EnumerateTranscripts(configDir).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
     public async IAsyncEnumerable<string> ReadAssistantTextAsync(
         string configDir,
-        Guid sessionId,
+        IReadOnlySet<string> knownTranscriptsAtLaunch,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var line in ReadLinesAsync(configDir, sessionId, cancellationToken).ConfigureAwait(false))
+        logger.LogInformation("Read-aloud tailer started under {ConfigDir} ({KnownCount} transcripts known at launch)", configDir, knownTranscriptsAtLaunch.Count);
+        await foreach (var line in ReadLinesAsync(configDir, knownTranscriptsAtLaunch, cancellationToken).ConfigureAwait(false))
         {
             if (ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var assistantText))
             {
+                logger.LogInformation("Read-aloud extracted {Length} chars of assistant text", assistantText.Length);
                 yield return assistantText;
             }
         }
@@ -33,10 +42,10 @@ internal sealed class ClaudeSessionTranscriptReader : ISessionTranscriptReader, 
 
     public async IAsyncEnumerable<string> ReadLinesAsync(
         string configDir,
-        Guid sessionId,
+        IReadOnlySet<string> knownTranscriptsAtLaunch,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var transcriptPath = await _WaitForTranscriptFileAsync(configDir, sessionId, cancellationToken).ConfigureAwait(false);
+        var transcriptPath = await _WaitForNewTranscriptAsync(configDir, knownTranscriptsAtLaunch, cancellationToken).ConfigureAwait(false);
         if (transcriptPath is null)
         {
             yield break;
@@ -84,33 +93,42 @@ internal sealed class ClaudeSessionTranscriptReader : ISessionTranscriptReader, 
     }
 
     /// <summary>
-    /// The transcript can appear a moment after the pty launch (the CLI creates it once its own
-    /// session-id-tagged process is up), so this polls rather than failing on a first miss. The exact
-    /// cwd-hash subfolder under <c>projects/</c> is not reproduced here — globbing for the session-id
-    /// file name across every subfolder avoids depending on that hashing rule at all.
+    /// Polls for a transcript file that was not present at launch — the one <c>claude</c> creates for this
+    /// session under its own auto-assigned id. The newest such file wins if more than one appears (a rare
+    /// race in the single-user cockpit). Polls rather than failing on a first miss: the CLI writes the file
+    /// a moment after the pty is up.
     /// </summary>
-    private static async Task<string?> _WaitForTranscriptFileAsync(
-        string configDir, Guid sessionId, CancellationToken cancellationToken)
+    private async Task<string?> _WaitForNewTranscriptAsync(
+        string configDir, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken)
     {
-        var projectsDir = Path.Combine(configDir, "projects");
-        var fileName = $"{sessionId}.jsonl";
-
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (Directory.Exists(projectsDir))
+            var match = _EnumerateTranscripts(configDir)
+                .Where(path => !knownTranscriptsAtLaunch.Contains(path))
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+            if (match is not null)
             {
-                var match = Directory.EnumerateDirectories(projectsDir)
-                    .Select(dir => Path.Combine(dir, fileName))
-                    .FirstOrDefault(File.Exists);
-                if (match is not null)
-                {
-                    return match;
-                }
+                logger.LogInformation("Read-aloud found new transcript at {Path}", match);
+                return match;
             }
 
             await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
         }
 
         return null;
+    }
+
+    /// <summary>Every <c>&lt;config-dir&gt;/projects/&lt;cwd-hash&gt;/&lt;id&gt;.jsonl</c> transcript currently on disk (session-id subfolders holding tool-results/subagents are skipped — only the flat transcript files count).</summary>
+    private static IEnumerable<string> _EnumerateTranscripts(string configDir)
+    {
+        var projectsDir = Path.Combine(configDir, "projects");
+        if (!Directory.Exists(projectsDir))
+        {
+            return [];
+        }
+
+        return Directory.EnumerateDirectories(projectsDir)
+            .SelectMany(projectDir => Directory.EnumerateFiles(projectDir, "*.jsonl"));
     }
 }

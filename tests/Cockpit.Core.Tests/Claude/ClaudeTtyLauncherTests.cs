@@ -38,7 +38,7 @@ public class ClaudeTtyLauncherTests : IDisposable
         var profile = new ClaudeProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
 
         var pty = launcher.Launch(
-            profile, Guid.NewGuid(), permissionMode: "default", model: "sonnet", effort: "medium", columns: 120, rows: 40);
+            profile, permissionMode: "default", model: "sonnet", effort: "medium", columns: 120, rows: 40);
 
         pty.Should().BeSameAs(expectedPty);
         ptyHostFactory.Received(1).Start(
@@ -67,7 +67,7 @@ public class ClaudeTtyLauncherTests : IDisposable
             ptyHostFactory);
         var profile = new ClaudeProfile("Personal", _configDir);
 
-        launcher.Launch(profile, Guid.NewGuid(), permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
+        launcher.Launch(profile, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
 
         var claudeJson = File.ReadAllText(Path.Combine(_configDir, ".claude.json"));
         claudeJson.Should().Contain(Path.GetFullPath(Directory.GetCurrentDirectory()).Replace("\\", "\\\\"));
@@ -89,7 +89,7 @@ public class ClaudeTtyLauncherTests : IDisposable
             new WorkspaceTrustWriter(),
             ptyHostFactory);
 
-        launcher.Launch(profile: null, Guid.NewGuid(), permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
+        launcher.Launch(profile: null, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
 
         ptyHostFactory.Received(1).Start(
             "/opt/claude/claude",
@@ -115,15 +115,14 @@ public class ClaudeTtyLauncherTests : IDisposable
             new WorkspaceTrustWriter(),
             ptyHostFactory);
         var profile = new ClaudeProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
-        var sessionId = Guid.NewGuid();
 
-        launcher.Launch(profile, sessionId, permissionMode: "acceptEdits", model: "opus", effort: "xhigh", columns: 100, rows: 30);
+        launcher.Launch(profile, permissionMode: "acceptEdits", model: "opus", effort: "xhigh", columns: 100, rows: 30);
 
         ptyHostFactory.Received(1).Start(
             "/usr/bin/claude",
             Arg.Is<IReadOnlyList<string>>(args => args.SequenceEqual(new[]
             {
-                "--session-id", sessionId.ToString(), "--permission-mode", "acceptEdits", "--model", "opus", "--effort", "xhigh",
+                "--permission-mode", "acceptEdits", "--model", "opus", "--effort", "xhigh",
             })),
             Arg.Any<string>(),
             Arg.Any<IReadOnlyDictionary<string, string>>(),
@@ -132,7 +131,7 @@ public class ClaudeTtyLauncherTests : IDisposable
     }
 
     [Fact]
-    public void Launch_AlwaysForcesTheGivenSessionIdSoTheTranscriptTailerKnowsWhichFileToWatch()
+    public void Launch_NeverForcesASessionId_SoTheCliPersistsATranscriptTheTailerCanFind()
     {
         var executableLocator = Substitute.For<IClaudeExecutableLocator>();
         var ptyHostFactory = Substitute.For<IPtyHostFactory>();
@@ -145,13 +144,12 @@ public class ClaudeTtyLauncherTests : IDisposable
             executableLocator,
             new WorkspaceTrustWriter(),
             ptyHostFactory);
-        var sessionId = Guid.NewGuid();
 
-        launcher.Launch(profile: null, sessionId, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
+        launcher.Launch(profile: null, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
 
         ptyHostFactory.Received(1).Start(
             Arg.Any<string>(),
-            Arg.Is<IReadOnlyList<string>>(args => args[0] == "--session-id" && args[1] == sessionId.ToString()),
+            Arg.Is<IReadOnlyList<string>>(args => !args.Contains("--session-id")),
             Arg.Any<string>(),
             Arg.Any<IReadOnlyDictionary<string, string>>(),
             80,
