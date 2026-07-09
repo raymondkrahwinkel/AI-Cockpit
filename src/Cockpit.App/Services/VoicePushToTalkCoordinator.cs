@@ -27,18 +27,21 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly CockpitViewModel _cockpit;
     private readonly IVoiceSettingsStore _voiceSettingsStore;
     private readonly IVoiceOverlayPresenter _overlayPresenter;
+    private readonly IVoicePushToTalkService _pushToTalk;
 
     public VoicePushToTalkCoordinator(
         IGlobalHotkeyService hotkeyService,
         CockpitViewModel cockpit,
         IVoiceSettingsStore voiceSettingsStore,
         VoiceOverlayViewModel overlay,
-        IVoiceOverlayPresenter overlayPresenter)
+        IVoiceOverlayPresenter overlayPresenter,
+        IVoicePushToTalkService pushToTalk)
     {
         _hotkeyService = hotkeyService;
         _cockpit = cockpit;
         _voiceSettingsStore = voiceSettingsStore;
         _overlayPresenter = overlayPresenter;
+        _pushToTalk = pushToTalk;
         Overlay = overlay;
     }
 
@@ -62,17 +65,21 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
 
     private void _OnHoldEnded(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => _ = HandleHoldEndedAsync());
 
+    private void _OnAudioLevelSampled(object? sender, double level) => Dispatcher.UIThread.Post(() => Overlay.PushLevel(level));
+
     /// <summary>Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.</summary>
     internal void HandleHoldStarted()
     {
         Overlay.State = VoiceOverlayState.Listening;
         _overlayPresenter.Show();
+        _pushToTalk.AudioLevelSampled += _OnAudioLevelSampled;
         _cockpit.SelectedSession?.BeginVoiceHold();
     }
 
     /// <summary>Test seam: the UI-thread logic for a hold ending — see the threading remarks on this class.</summary>
     internal async Task HandleHoldEndedAsync()
     {
+        _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
         Overlay.State = VoiceOverlayState.Transcribing;
 
         var session = _cockpit.SelectedSession;

@@ -27,6 +27,8 @@ internal sealed class VoicePushToTalkService(
     private CancellationTokenSource? _captureCancellation;
     private Task<List<byte>>? _captureTask;
 
+    public event EventHandler<double>? AudioLevelSampled;
+
     public bool BeginHold()
     {
         if (!_holdGuard.TryBeginHold())
@@ -76,6 +78,7 @@ internal sealed class VoicePushToTalkService(
         {
             await foreach (var frame in captureService.CaptureAsync(CaptureFormat, cancellationToken).ConfigureAwait(false))
             {
+                AudioLevelSampled?.Invoke(this, AudioLevelMeter.NormalizedRms(frame.Span));
                 buffer.AddRange(frame.ToArray());
             }
         }

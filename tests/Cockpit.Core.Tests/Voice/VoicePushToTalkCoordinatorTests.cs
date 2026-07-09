@@ -114,7 +114,8 @@ public class VoicePushToTalkCoordinatorTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = false });
         var coordinator = new VoicePushToTalkCoordinator(
-            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter(),
+            Substitute.For<IVoicePushToTalkService>());
 
         await coordinator.StartAsync();
 
@@ -130,7 +131,8 @@ public class VoicePushToTalkCoordinatorTests
         var overlay = new VoiceOverlayViewModel();
         var overlayPresenter = new FakeVoiceOverlayPresenter();
         var coordinator = new VoicePushToTalkCoordinator(
-            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, overlay, overlayPresenter);
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, overlay, overlayPresenter,
+            Substitute.For<IVoicePushToTalkService>());
 
         await coordinator.StartAsync();
         hotkeyService.RaiseHoldStarted();
@@ -160,7 +162,8 @@ public class VoicePushToTalkCoordinatorTests
         overlay = new VoiceOverlayViewModel();
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
-        return new VoicePushToTalkCoordinator(new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, overlay, overlayPresenter);
+        return new VoicePushToTalkCoordinator(
+            new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, overlay, overlayPresenter, Substitute.For<IVoicePushToTalkService>());
     }
 
     private static CockpitViewModel NewCockpitViewModel()

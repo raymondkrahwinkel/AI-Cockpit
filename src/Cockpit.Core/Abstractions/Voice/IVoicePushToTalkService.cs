@@ -8,6 +8,13 @@ namespace Cockpit.Core.Abstractions.Voice;
 public interface IVoicePushToTalkService
 {
     /// <summary>
+    /// Raised once per captured microphone frame during a hold, carrying a 0..1 loudness level, so the
+    /// voice overlay can show a live waveform of what the mic is picking up (#34b). Fires on the capture
+    /// thread — subscribers marshal onto the UI thread themselves.
+    /// </summary>
+    event EventHandler<double>? AudioLevelSampled;
+
+    /// <summary>
     /// Starts buffering microphone audio for a new hold. Returns false (no-op) if a hold is already in
     /// progress — guards against OS key-repeat re-triggering a capture restart mid-hold.
     /// </summary>

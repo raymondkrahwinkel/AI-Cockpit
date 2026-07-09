@@ -59,6 +59,21 @@ public class VoicePushToTalkServiceTests
     }
 
     [Fact]
+    public async Task AudioLevelSampled_FiresOncePerCapturedFrame_WhileHolding()
+    {
+        var service = _CreateService(frames: [[0, 0], [0xFF, 0x7F], [0, 0]]);
+        var levels = new List<double>();
+        service.AudioLevelSampled += (_, level) => levels.Add(level);
+
+        service.BeginHold();
+        await service.EndHoldAsync(applyCleanup: false);
+
+        levels.Should().HaveCount(3);
+        levels.Should().OnlyContain(level => level >= 0 && level <= 1);
+        levels[1].Should().BeGreaterThan(levels[0]);
+    }
+
+    [Fact]
     public void BeginHold_CalledTwiceWithoutRelease_SecondCallReturnsFalse()
     {
         var service = _CreateService(frames: [[1, 0]]);

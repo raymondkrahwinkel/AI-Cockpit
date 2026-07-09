@@ -23,15 +23,22 @@
                 <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
                         Background="{StaticResource CockpitAccentBrush}"
                         BoxShadow="0 0 0 4 #2ED97757"/>
-                <StackPanel Orientation="Horizontal" Spacing="3" Height="20" VerticalAlignment="Center">
-                    <Rectangle Width="3" Height="8" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
-                    <Rectangle Width="3" Height="15" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
-                    <Rectangle Width="3" Height="20" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
-                    <Rectangle Width="3" Height="12" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
-                    <Rectangle Width="3" Height="18" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
-                    <Rectangle Width="3" Height="9" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
-                    <Rectangle Width="3" Height="14" RadiusX="2" RadiusY="2" VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
-                </StackPanel>
+                <!-- Live microphone waveform (#34b): each bar's height tracks a captured level, newest on
+                     the right, so the pill shows sound actually coming in rather than a static graphic.
+                     Fixed 20px cell so the pill height never jumps as the bars move. -->
+                <ItemsControl ItemsSource="{Binding Bars}" Height="20" VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="2"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:VoiceOverlayBarViewModel">
+                            <Rectangle Width="3" Height="{Binding Height}" RadiusX="2" RadiusY="2"
+                                       VerticalAlignment="Bottom" Fill="{StaticResource CockpitAccentBrush}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
                 <TextBlock Text="Listening" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
                            Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
             </StackPanel>

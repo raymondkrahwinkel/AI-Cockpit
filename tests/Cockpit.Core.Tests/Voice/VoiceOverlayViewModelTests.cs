@@ -44,4 +44,47 @@ public class VoiceOverlayViewModelTests
         vm.IsListening.Should().BeFalse();
         vm.IsTranscribing.Should().BeFalse();
     }
+
+    [Fact]
+    public void NewOverlay_HasAFullSetOfFlatWaveformBars()
+    {
+        var vm = new VoiceOverlayViewModel();
+
+        vm.Bars.Should().NotBeEmpty();
+        vm.Bars.Should().OnlyContain(bar => bar.Height == 2);
+    }
+
+    [Fact]
+    public void PushLevel_RaisesTheNewestBar_AndLeavesOlderBarsAtRest()
+    {
+        var vm = new VoiceOverlayViewModel();
+
+        vm.PushLevel(1.0);
+
+        vm.Bars[^1].Height.Should().Be(20);
+        vm.Bars[0].Height.Should().Be(2);
+    }
+
+    [Fact]
+    public void PushLevel_ScrollsLevelsAcrossTheBars()
+    {
+        var vm = new VoiceOverlayViewModel();
+
+        vm.PushLevel(1.0);
+        vm.PushLevel(0.0);
+
+        vm.Bars[^1].Height.Should().Be(2);
+        vm.Bars[^2].Height.Should().Be(20);
+    }
+
+    [Fact]
+    public void LeavingListening_FlattensTheWaveform()
+    {
+        var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Listening };
+        vm.PushLevel(1.0);
+
+        vm.State = VoiceOverlayState.Transcribing;
+
+        vm.Bars.Should().OnlyContain(bar => bar.Height == 2);
+    }
 }
