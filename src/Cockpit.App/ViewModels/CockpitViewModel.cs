@@ -543,8 +543,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _voiceSettingsStore.LoadAsync();
-        _PopulateDevices(InputDevices, _audioDeviceProvider.GetInputDevices());
-        _PopulateDevices(OutputDevices, _audioDeviceProvider.GetOutputDevices());
+        // Enumerating spins up the native audio backend, which can block briefly on first use — run it off
+        // the UI thread; the await resumes on the UI thread (captured context) to touch the collections.
+        var provider = _audioDeviceProvider;
+        var inputDevices = await Task.Run(provider.GetInputDevices);
+        var outputDevices = await Task.Run(provider.GetOutputDevices);
+        _PopulateDevices(InputDevices, inputDevices);
+        _PopulateDevices(OutputDevices, outputDevices);
         SelectedInputDevice = InputDevices.FirstOrDefault(device => device.DeviceName == _NullIfEmpty(settings.InputDeviceName)) ?? InputDevices[0];
         SelectedOutputDevice = OutputDevices.FirstOrDefault(device => device.DeviceName == _NullIfEmpty(settings.OutputDeviceName)) ?? OutputDevices[0];
     }

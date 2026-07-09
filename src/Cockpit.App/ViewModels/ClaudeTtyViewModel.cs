@@ -250,6 +250,14 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         {
             // Expected when the panel closes or the process exits.
         }
+        catch (Exception)
+        {
+            // A transient IO fault while tailing (the JSONL file momentarily locked, a read error) must
+            // not leave the poll timer quietly decaying the dot to a false Done while the TUI is still
+            // busy — stop tracking so the status freezes at its last real value instead. Runs on the
+            // tailer's thread, so the timer/token teardown is marshaled onto the UI thread.
+            Dispatcher.UIThread.Post(_StopStatusTracking);
+        }
     }
 
     private void _OnStatusPollTick(object? sender, EventArgs e)

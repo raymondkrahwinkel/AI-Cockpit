@@ -6,12 +6,12 @@ using SoundFlow.Providers;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Audio;
 
 namespace Cockpit.Infrastructure.Audio;
 
 internal sealed class SoundFlowAudioPlaybackService(
     AudioEngine engine,
+    AudioDeviceEnumerator deviceEnumerator,
     IVoiceSettingsStore voiceSettingsStore,
     ILogger<SoundFlowAudioPlaybackService> logger)
     : ISingletonService, IAudioPlaybackService
@@ -34,7 +34,7 @@ internal sealed class SoundFlowAudioPlaybackService(
         };
 
         var settings = await voiceSettingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var selectedDevice = _ResolveOutputDevice(settings.OutputDeviceName);
+        var selectedDevice = deviceEnumerator.ResolveOutputDevice(settings.OutputDeviceName);
 
         using var playbackDevice = engine.InitializePlaybackDevice(selectedDevice, nativeFormat);
         logger.LogInformation("Playback device opened: {DeviceName}", playbackDevice.Info?.Name ?? "(default)");
@@ -59,20 +59,5 @@ internal sealed class SoundFlowAudioPlaybackService(
 
         playbackDevice.MasterMixer.RemoveComponent(player);
         playbackDevice.Stop();
-    }
-
-    // Empty name → default device (null); a configured name no longer present falls back to the default.
-    private SoundFlow.Structs.DeviceInfo? _ResolveOutputDevice(string preferredName)
-    {
-        engine.UpdateAudioDevicesInfo();
-        var devices = engine.PlaybackDevices;
-        var names = new string[devices.Length];
-        for (var i = 0; i < devices.Length; i++)
-        {
-            names[i] = devices[i].Name;
-        }
-
-        var index = AudioDeviceResolver.FindIndex(preferredName, names);
-        return index >= 0 ? devices[index] : null;
     }
 }

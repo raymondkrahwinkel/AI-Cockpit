@@ -57,7 +57,7 @@ public class VoiceOverlayViewModelTests
     [Fact]
     public void PushLevel_RaisesTheNewestBar_AndLeavesOlderBarsAtRest()
     {
-        var vm = new VoiceOverlayViewModel();
+        var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Listening };
 
         vm.PushLevel(1.0);
 
@@ -68,13 +68,23 @@ public class VoiceOverlayViewModelTests
     [Fact]
     public void PushLevel_ScrollsLevelsAcrossTheBars()
     {
-        var vm = new VoiceOverlayViewModel();
+        var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Listening };
 
         vm.PushLevel(1.0);
         vm.PushLevel(0.0);
 
         vm.Bars[^1].Height.Should().Be(2);
         vm.Bars[^2].Height.Should().Be(20);
+    }
+
+    [Fact]
+    public void PushLevel_WhenNotListening_IsIgnored()
+    {
+        var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Transcribing };
+
+        vm.PushLevel(1.0);
+
+        vm.Bars.Should().OnlyContain(bar => bar.Height == 2);
     }
 
     [Fact]

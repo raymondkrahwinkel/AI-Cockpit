@@ -7,12 +7,12 @@ using SoundFlow.Enums;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Audio;
 
 namespace Cockpit.Infrastructure.Audio;
 
 internal sealed class SoundFlowAudioCaptureService(
     AudioEngine engine,
+    AudioDeviceEnumerator deviceEnumerator,
     IVoiceSettingsStore voiceSettingsStore,
     ILogger<SoundFlowAudioCaptureService> logger)
     : ISingletonService, IAudioCaptureService
@@ -35,7 +35,7 @@ internal sealed class SoundFlowAudioCaptureService(
         });
 
         var settings = await voiceSettingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var selectedDevice = _ResolveInputDevice(settings.InputDeviceName);
+        var selectedDevice = deviceEnumerator.ResolveInputDevice(settings.InputDeviceName);
 
         using var captureDevice = engine.InitializeCaptureDevice(selectedDevice, nativeFormat);
         logger.LogInformation("Capture device opened: {DeviceName}", captureDevice.Info?.Name ?? "(default)");
@@ -75,21 +75,5 @@ internal sealed class SoundFlowAudioCaptureService(
 
             channel.Writer.TryWrite(pcm);
         }
-    }
-
-    // Empty name → default device (null). A configured name that is no longer present also falls back
-    // to the default, so an unplugged microphone never leaves capture dead.
-    private SoundFlow.Structs.DeviceInfo? _ResolveInputDevice(string preferredName)
-    {
-        engine.UpdateAudioDevicesInfo();
-        var devices = engine.CaptureDevices;
-        var names = new string[devices.Length];
-        for (var i = 0; i < devices.Length; i++)
-        {
-            names[i] = devices[i].Name;
-        }
-
-        var index = AudioDeviceResolver.FindIndex(preferredName, names);
-        return index >= 0 ? devices[index] : null;
     }
 }

@@ -42,6 +42,14 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
     /// <summary>Feeds one captured microphone level (0..1) into the scrolling waveform. Call on the UI thread.</summary>
     public void PushLevel(double level)
     {
+        // Ignore a level that lands after the hold already ended: the capture event fires on another
+        // thread, so a frame marshaled in just after the pill left Listening (and _ResetBars ran) would
+        // otherwise dirty the waveform, breaking the next hold's "start from silence".
+        if (State != VoiceOverlayState.Listening)
+        {
+            return;
+        }
+
         _waveform.Push(level);
         var levels = _waveform.Levels;
         for (var i = 0; i < Bars.Count; i++)
