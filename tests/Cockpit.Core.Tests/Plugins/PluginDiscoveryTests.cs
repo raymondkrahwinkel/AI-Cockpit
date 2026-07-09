@@ -1,0 +1,111 @@
+using Cockpit.Core.Plugins;
+using Cockpit.Infrastructure.Plugins;
+using FluentAssertions;
+
+namespace Cockpit.Core.Tests.Plugins;
+
+/// <summary>Filesystem discovery of plugin folders (#14): parse manifest, hash entry assembly, decide — skipping non-plugin folders.</summary>
+public class PluginDiscoveryTests : IDisposable
+{
+    private const int HostMajor = 1;
+    private readonly string _root;
+
+    public PluginDiscoveryTests()
+    {
+        _root = Path.Combine(Path.GetTempPath(), "cockpit-plugin-discovery-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_root);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_NoRoot_ReturnsEmpty()
+    {
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(Path.Combine(_root, "does-not-exist"), Empty, HostMajor);
+
+        found.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_ValidFolder_NeverSeen_DecidesNeedsConsent()
+    {
+        WritePlugin("github-issues", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
+
+        found.Should().ContainSingle();
+        found[0].FolderId.Should().Be("github-issues");
+        found[0].Manifest.Name.Should().Be("github-issues-name");
+        found[0].Decision.Should().Be(PluginLoadDecision.NeedsConsent);
+        found[0].Sha256.Should().MatchRegex("^[0-9a-f]{64}$");
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_EnabledWithMatchingHash_DecidesLoad()
+    {
+        var folder = WritePlugin("weather", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
+        var hash = PluginHash.Compute(await File.ReadAllBytesAsync(Path.Combine(folder, "Plugin.dll")));
+        var saved = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: hash) };
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(_root, saved, HostMajor);
+
+        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.Load);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_AbstractionsMajorMismatch_DecidesMismatch()
+    {
+        WritePlugin("future", entryAssembly: "Plugin.dll", abstractionsVersion: 2);
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
+
+        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.AbstractionsMajorMismatch);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_SkipsFoldersWithoutManifest_BadManifest_OrMissingEntryAssembly()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "no-manifest"));
+
+        var bad = Path.Combine(_root, "bad-manifest");
+        Directory.CreateDirectory(bad);
+        await File.WriteAllTextAsync(Path.Combine(bad, "plugin.json"), "{ not json");
+
+        var noEntry = Path.Combine(_root, "no-entry");
+        Directory.CreateDirectory(noEntry);
+        await File.WriteAllTextAsync(Path.Combine(noEntry, "plugin.json"),
+            """{"id":"no-entry","name":"n","version":"1.0.0","entryAssembly":"Missing.dll","abstractionsVersion":1}""");
+
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
+
+        found.Should().BeEmpty();
+    }
+
+    private string WritePlugin(string folderId, string entryAssembly, int abstractionsVersion)
+    {
+        var folder = Path.Combine(_root, folderId);
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "plugin.json"),
+            $$"""
+            {"id":"{{folderId}}","name":"{{folderId}}-name","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}}}
+            """);
+        File.WriteAllText(Path.Combine(folder, entryAssembly), $"fake-assembly-bytes-for-{folderId}");
+        return folder;
+    }
+
+    private static readonly IReadOnlyDictionary<string, PluginRegistration> Empty =
+        new Dictionary<string, PluginRegistration>();
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+}

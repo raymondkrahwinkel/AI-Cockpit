@@ -27,4 +27,7 @@ internal sealed class CockpitConfigFile
     public LayoutSettingsEntry? Layout { get; set; }
 
     public VoiceSettingsEntry? Voice { get; set; }
+
+    /// <summary>Plugin enable + consent state (#14) keyed by plugin folder id; owned by the plugin-registration store.</summary>
+    public Dictionary<string, PluginRegistrationEntry> Plugins { get; set; } = [];
 }
