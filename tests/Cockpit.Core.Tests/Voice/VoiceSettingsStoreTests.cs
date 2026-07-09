@@ -35,6 +35,8 @@ public class VoiceSettingsStoreTests : IDisposable
         settings.AutoSubmitAfterVoice.Should().BeFalse();
         settings.TtsVoiceId.Should().Be("en_US-lessac-medium");
         settings.SttLanguage.Should().Be("auto");
+        settings.InputDeviceName.Should().BeEmpty();
+        settings.OutputDeviceName.Should().BeEmpty();
     }
 
     [Fact]
@@ -55,6 +57,8 @@ public class VoiceSettingsStoreTests : IDisposable
             AutoSubmitAfterVoice = true,
             TtsVoiceId = "nl_NL-ronnie-medium",
             SttLanguage = "nl",
+            InputDeviceName = "Yeti Stereo Microphone",
+            OutputDeviceName = "Built-in Speakers",
         });
         var loaded = await store.LoadAsync();
 
@@ -69,6 +73,8 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.AutoSubmitAfterVoice.Should().BeTrue();
         loaded.TtsVoiceId.Should().Be("nl_NL-ronnie-medium");
         loaded.SttLanguage.Should().Be("nl");
+        loaded.InputDeviceName.Should().Be("Yeti Stereo Microphone");
+        loaded.OutputDeviceName.Should().Be("Built-in Speakers");
     }
 
     [Fact]

@@ -27,6 +27,10 @@ internal sealed class VoiceSettingsEntry
 
     public string SttLanguage { get; set; } = "auto";
 
+    public string InputDeviceName { get; set; } = "";
+
+    public string OutputDeviceName { get; set; } = "";
+
     public static VoiceSettingsEntry FromDomain(VoiceSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -40,6 +44,8 @@ internal sealed class VoiceSettingsEntry
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
         TtsVoiceId = settings.TtsVoiceId,
         SttLanguage = settings.SttLanguage,
+        InputDeviceName = settings.InputDeviceName,
+        OutputDeviceName = settings.OutputDeviceName,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -55,5 +61,7 @@ internal sealed class VoiceSettingsEntry
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
         TtsVoiceId = TtsVoiceId,
         SttLanguage = SttLanguage,
+        InputDeviceName = InputDeviceName,
+        OutputDeviceName = OutputDeviceName,
     };
 }

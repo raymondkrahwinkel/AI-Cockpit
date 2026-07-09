@@ -2,16 +2,20 @@ namespace Cockpit.Core.Audio;
 
 /// <summary>
 /// Pure loudness measurement for the voice overlay's live meter: turns a raw signed-16-bit
-/// little-endian PCM frame into a 0..1 level (RMS with a gain so ordinary speech fills the bars rather
-/// than hugging the floor). The read-only mirror of <see cref="PcmSampleConverter"/> — bytes in, one
-/// level out, no allocation.
+/// little-endian PCM frame into a 0..1 level. Uses a decibel (dBFS) scale rather than raw RMS because
+/// speech sits far below full scale — a linear RMS meter leaves the bars hugging the floor, while
+/// mapping a soft-speech-to-near-clip dB window onto 0..1 makes ordinary talking fill most of the meter.
+/// The read-only mirror of <see cref="PcmSampleConverter"/> — bytes in, one level out, no allocation.
 /// </summary>
 public static class AudioLevelMeter
 {
-    /// <summary>Gain applied to the raw RMS so typical speech (RMS ~0.05-0.15) reaches most of the meter's range.</summary>
-    public const double DefaultGain = 6.0;
+    /// <summary>RMS at/below this dBFS reads as silence (0). Roughly the level of a quiet room.</summary>
+    public const double FloorDb = -55.0;
 
-    public static double NormalizedRms(ReadOnlySpan<byte> pcmS16, double gain = DefaultGain)
+    /// <summary>RMS at/above this dBFS reads as full (1). Just below clipping, so normal speech peaks near the top.</summary>
+    public const double CeilingDb = -12.0;
+
+    public static double NormalizedRms(ReadOnlySpan<byte> pcmS16, double floorDb = FloorDb, double ceilingDb = CeilingDb)
     {
         var sampleCount = pcmS16.Length / 2;
         if (sampleCount == 0)
@@ -28,6 +32,12 @@ public static class AudioLevelMeter
         }
 
         var rms = Math.Sqrt(sumSquares / sampleCount);
-        return Math.Clamp(rms * gain, 0, 1);
+        if (rms <= 0)
+        {
+            return 0;
+        }
+
+        var dbfs = 20.0 * Math.Log10(rms);
+        return Math.Clamp((dbfs - floorDb) / (ceilingDb - floorDb), 0, 1);
     }
 }

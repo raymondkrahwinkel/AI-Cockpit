@@ -114,6 +114,16 @@
                         <TextBlock Text="Off by default: the Whisper model only downloads once you turn this on."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Microphone"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding InputDevices}"
+                                      SelectedItem="{Binding SelectedInputDevice}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                        </StackPanel>
+                        <TextBlock Text="Which microphone the dictation captures from. 'System default' follows your OS setting."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Push-to-talk key"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
@@ -185,6 +195,16 @@
                                       SelectedItem="{Binding SelectedTtsVoice}"
                                       DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Output device"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding OutputDevices}"
+                                      SelectedItem="{Binding SelectedOutputDevice}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                        </StackPanel>
+                        <TextBlock Text="Which speaker/headset read-aloud plays to. 'System default' follows your OS setting."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding VoiceSettingsStatus}"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                     </StackPanel>

@@ -54,4 +54,14 @@ public sealed record VoiceSettings
     /// always dictates in one language (auto-detect can mis-guess on short or accented utterances).
     /// </summary>
     public string SttLanguage { get; init; } = "auto";
+
+    /// <summary>
+    /// Name of the capture (microphone) device the voice pipeline records from. Empty = the system
+    /// default device. Matched by name at capture start; a name that is no longer present falls back to
+    /// the default. Stored by name because the native device handle is a per-run pointer.
+    /// </summary>
+    public string InputDeviceName { get; init; } = "";
+
+    /// <summary>Name of the playback device read-aloud (#35) plays to. Empty = the system default device; same name-matching and fallback as <see cref="InputDeviceName"/>.</summary>
+    public string OutputDeviceName { get; init; } = "";
 }

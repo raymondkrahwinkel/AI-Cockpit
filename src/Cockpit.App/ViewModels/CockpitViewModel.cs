@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Audio;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
@@ -50,6 +51,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
+    private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -184,6 +186,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private SttLanguageOption _selectedSttLanguage = new("Auto-detect", "auto");
+
+    /// <summary>Input (microphone) devices offered by the Options combo box; the first entry is the system default. Refreshed from the audio backend when the voice settings load.</summary>
+    public ObservableCollection<AudioDeviceOption> InputDevices { get; } = new() { new("System default", null) };
+
+    [ObservableProperty]
+    private AudioDeviceOption _selectedInputDevice = new("System default", null);
+
+    /// <summary>Output (playback) devices for read-aloud (#35); the first entry is the system default.</summary>
+    public ObservableCollection<AudioDeviceOption> OutputDevices { get; } = new() { new("System default", null) };
+
+    [ObservableProperty]
+    private AudioDeviceOption _selectedOutputDevice = new("System default", null);
 
     /// <summary>Whether a transcript is passed through the local Ollama cleanup step before injection.</summary>
     [ObservableProperty]
@@ -323,8 +337,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore,
         ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
         ILayoutSettingsStore layoutSettingsStore,
-        IVoiceSettingsStore voiceSettingsStore)
+        IVoiceSettingsStore voiceSettingsStore,
+        IAudioDeviceProvider? audioDeviceProvider = null)
     {
+        _audioDeviceProvider = audioDeviceProvider;
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
         _dialogService = dialogService;
@@ -515,6 +531,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
     }
 
+    // Re-queries the audio backend so a freshly plugged-in device appears, keeping a "System default"
+    // entry at the top, and reselects the saved device. Called when the Options dialog opens rather than
+    // at startup: enumerating devices spins up the audio backend, which we only want to touch once the
+    // operator actually goes to change it — not on every launch. No-op without a provider (previewer).
+    private async Task _RefreshAudioDevicesAsync()
+    {
+        if (_audioDeviceProvider is null || _voiceSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _voiceSettingsStore.LoadAsync();
+        _PopulateDevices(InputDevices, _audioDeviceProvider.GetInputDevices());
+        _PopulateDevices(OutputDevices, _audioDeviceProvider.GetOutputDevices());
+        SelectedInputDevice = InputDevices.FirstOrDefault(device => device.DeviceName == _NullIfEmpty(settings.InputDeviceName)) ?? InputDevices[0];
+        SelectedOutputDevice = OutputDevices.FirstOrDefault(device => device.DeviceName == _NullIfEmpty(settings.OutputDeviceName)) ?? OutputDevices[0];
+    }
+
+    private static void _PopulateDevices(ObservableCollection<AudioDeviceOption> target, IReadOnlyList<AudioDeviceInfo> devices)
+    {
+        target.Clear();
+        target.Add(new AudioDeviceOption("System default", null));
+        foreach (var device in devices)
+        {
+            var label = device.IsSystemDefault ? $"{device.Name} (default)" : device.Name;
+            target.Add(new AudioDeviceOption(label, device.Name));
+        }
+    }
+
+    private static string? _NullIfEmpty(string value) => string.IsNullOrEmpty(value) ? null : value;
+
     /// <summary>
     /// Persists the voice settings edited in the Options flyout to <c>cockpit.json</c>. Open sessions
     /// re-read the setting the next time they start a push-to-talk hold — no live-push needed, since
@@ -542,6 +589,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             AutoSubmitAfterVoice = VoiceAutoSubmit,
             TtsVoiceId = SelectedTtsVoice.VoiceId,
             SttLanguage = SelectedSttLanguage.Code,
+            InputDeviceName = SelectedInputDevice.DeviceName ?? "",
+            OutputDeviceName = SelectedOutputDevice.DeviceName ?? "",
         });
         VoiceSettingsStatus = "Saved.";
     }
@@ -648,6 +697,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        await _RefreshAudioDevicesAsync();
         await _dialogService.ShowOptionsDialogAsync(this);
     }
 
