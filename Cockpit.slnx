@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Cockpit.App/Cockpit.App.csproj" />
     <Project Path="src/Cockpit.Core/Cockpit.Core.csproj" />
+    <Project Path="src/Cockpit.Plugins.Abstractions/Cockpit.Plugins.Abstractions.csproj" />
     <Project Path="src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
