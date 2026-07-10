@@ -15,6 +15,42 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _title = "Claude";
 
+    /// <summary>True while the sidebar row is showing its inline rename text box (context-menu → Rename).</summary>
+    [ObservableProperty]
+    private bool _isRenaming;
+
+    /// <summary>The in-progress title while renaming; committed to <see cref="Title"/> or discarded.</summary>
+    [ObservableProperty]
+    private string _editTitle = string.Empty;
+
+    /// <summary>
+    /// The choices this session was created with (profile/kind/mode/model/effort), captured by
+    /// <see cref="CockpitViewModel"/> so the context-menu Duplicate can start another just like it.
+    /// </summary>
+    public NewSessionResult? LaunchResult { get; set; }
+
+    /// <summary>Starts an inline rename, seeding the editable title from the current one.</summary>
+    public void BeginRename()
+    {
+        EditTitle = Title;
+        IsRenaming = true;
+    }
+
+    /// <summary>Commits the inline rename (keeping the current title if the edit is blank).</summary>
+    public void CommitRename()
+    {
+        var trimmed = EditTitle?.Trim();
+        if (!string.IsNullOrEmpty(trimmed))
+        {
+            Title = trimmed;
+        }
+
+        IsRenaming = false;
+    }
+
+    /// <summary>Cancels the inline rename, discarding the edit.</summary>
+    public void CancelRename() => IsRenaming = false;
+
     /// <summary>True while this is <see cref="CockpitViewModel.SelectedSession"/> — drives the sidebar's active-item highlight. Set by <see cref="CockpitViewModel"/>.</summary>
     [ObservableProperty]
     private bool _isSelected;

@@ -725,17 +725,67 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        await _LaunchSessionFromResultAsync(result);
+    }
+
+    // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording
+    // the result on the panel so the context-menu Duplicate can replay it.
+    private async Task _LaunchSessionFromResultAsync(NewSessionResult result)
+    {
+        if (_sessionFactory is null || _ttySessionFactory is null)
+        {
+            return;
+        }
+
         if (result.Kind == SessionKind.Sdk)
         {
             var session = _sessionFactory();
+            session.LaunchResult = result;
             AddSession(session, result.SessionName);
             await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort);
         }
         else
         {
             var session = _ttySessionFactory();
+            session.LaunchResult = result;
             AddSession(session, result.SessionName);
             session.LaunchConfigured(result.Profile, result.Mode.Value, result.Model.Value, result.Effort.Value);
+        }
+    }
+
+    /// <summary>Context-menu Rename: begin the sidebar row's inline rename.</summary>
+    [RelayCommand]
+    private void RenameSession(SessionPanelViewModel session) => session.BeginRename();
+
+    /// <summary>Context-menu Move up: shift the session one place earlier in the sidebar order.</summary>
+    [RelayCommand]
+    private void MoveSessionUp(SessionPanelViewModel session)
+    {
+        var index = Sessions.IndexOf(session);
+        if (index > 0)
+        {
+            Sessions.Move(index, index - 1);
+        }
+    }
+
+    /// <summary>Context-menu Move down: shift the session one place later in the sidebar order.</summary>
+    [RelayCommand]
+    private void MoveSessionDown(SessionPanelViewModel session)
+    {
+        var index = Sessions.IndexOf(session);
+        if (index >= 0 && index < Sessions.Count - 1)
+        {
+            Sessions.Move(index, index + 1);
+        }
+    }
+
+    /// <summary>Context-menu Duplicate: start a new session with the same profile/model/mode as this one (≈ Fork).</summary>
+    [RelayCommand]
+    private async Task DuplicateSessionAsync(SessionPanelViewModel session)
+    {
+        if (session.LaunchResult is { } result)
+        {
+            await _LaunchSessionFromResultAsync(result with { SessionName = $"{session.Title} (copy)" });
         }
     }
 

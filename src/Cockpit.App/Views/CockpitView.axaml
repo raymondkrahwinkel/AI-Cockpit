@@ -88,13 +88,29 @@
                                         Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                         Cursor="Hand"
                                         PointerPressed="OnSessionItemPointerPressed">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Rename" Click="OnRenameSession"/>
+                                            <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
+                                            <Separator/>
+                                            <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
+                                            <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
+                                            <Separator/>
+                                            <MenuItem Header="Close" Click="OnCloseSessionMenu"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
                                     <StackPanel Spacing="4">
                                         <Grid ColumnDefinitions="*,Auto">
                                             <StackPanel Grid.Column="0" Spacing="2">
                                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                                     <Ellipse Width="8" Height="8"
                                                              Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                               IsVisible="{Binding !IsRenaming}"/>
+                                                    <TextBox Text="{Binding EditTitle}" IsVisible="{Binding IsRenaming}"
+                                                             Classes="Compact" MinWidth="110" FontWeight="SemiBold"
+                                                             KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
+                                                             AttachedToVisualTree="OnRenameBoxAttached"/>
                                                     <TextBlock Text="⚠" Foreground="{StaticResource CockpitStatusWaitingBrush}"
                                                                IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                                                ToolTip.Tip="Needs attention"/>

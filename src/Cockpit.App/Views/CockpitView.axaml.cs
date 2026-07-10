@@ -1,9 +1,11 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.SessionSwitching;
@@ -187,6 +189,88 @@ public partial class CockpitView : UserControl
         if (sender is Border { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
         {
             cockpit.SelectSessionCommand.Execute(session);
+        }
+    }
+
+    // Session context-menu (#right-click): each item's DataContext is the session the menu was opened on;
+    // the command lives on the cockpit view model, so route through it with the session as the parameter.
+    private void OnRenameSession(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.RenameSessionCommand.Execute(s));
+
+    private void OnDuplicateSession(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.DuplicateSessionCommand.Execute(s));
+
+    private void OnMoveSessionUp(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.MoveSessionUpCommand.Execute(s));
+
+    private void OnMoveSessionDown(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.MoveSessionDownCommand.Execute(s));
+
+    private void OnCloseSessionMenu(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.RequestCloseSessionCommand.Execute(s));
+
+    private void _InvokeSessionCommand(object? sender, Action<CockpitViewModel, SessionPanelViewModel> invoke)
+    {
+        if (sender is Control { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
+        {
+            invoke(cockpit, session);
+        }
+    }
+
+    // Inline rename: Enter commits, Escape cancels; losing focus commits an in-progress rename.
+    private void OnRenameBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: SessionPanelViewModel session })
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            session.CommitRename();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            session.CancelRename();
+            e.Handled = true;
+        }
+    }
+
+    private void OnRenameBoxLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: SessionPanelViewModel session } && session.IsRenaming)
+        {
+            session.CommitRename();
+        }
+    }
+
+    // The rename box attaches once when its row is built; focus + select it whenever the row enters rename
+    // mode (IsVisible toggling alone does not re-fire attach), and unsubscribe when the row goes away.
+    private void OnRenameBoxAttached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: SessionPanelViewModel session } box)
+        {
+            return;
+        }
+
+        void OnSessionPropertyChanged(object? s, PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName == nameof(SessionPanelViewModel.IsRenaming) && session.IsRenaming)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    box.Focus();
+                    box.SelectAll();
+                });
+            }
+        }
+
+        session.PropertyChanged += OnSessionPropertyChanged;
+        box.DetachedFromVisualTree += (_, _) => session.PropertyChanged -= OnSessionPropertyChanged;
+
+        if (session.IsRenaming)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                box.Focus();
+                box.SelectAll();
+            });
         }
     }
 }
