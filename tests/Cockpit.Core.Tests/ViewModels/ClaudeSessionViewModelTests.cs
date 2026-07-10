@@ -27,7 +27,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, new ModelOption("Haiku", "haiku"), SessionOptionCatalog.DefaultEffort);
@@ -42,7 +42,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, new EffortOption("High", "high", 24_000));
@@ -57,7 +57,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -75,7 +75,7 @@ public class ClaudeSessionViewModelTests
         session.Events.Returns(EmptyEvents());
         session.StartAsync(Arg.Any<ClaudeProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("bad executable")));
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -91,7 +91,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("plan"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -340,7 +340,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session) { InputText = "hello" };
+        var vm = new ClaudeSessionViewModel(FactoryFor(session)) { InputText = "hello" };
 
         await vm.SendCommand.ExecuteAsync(null);
 
@@ -539,7 +539,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         session.ClearReceivedCalls();
@@ -556,7 +556,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
 
         vm.SelectedEffort = new EffortOption("High", "high", 24_000);
 
@@ -566,9 +566,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task AllowAlwaysExactTool_ResolvesTheSessionWithAnExactAlwaysRule()
     {
-        var session = Substitute.For<ISessionDriver>();
-        session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var (vm, session) = await StartedVm();
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
         {
             ToolUseId = "toolu_1",
@@ -588,9 +586,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task AllowAlwaysWildcardTool_ResolvesTheSessionWithAWildcardAlwaysRule()
     {
-        var session = Substitute.For<ISessionDriver>();
-        session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var (vm, session) = await StartedVm();
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
         {
             ToolUseId = "toolu_2",
@@ -609,7 +605,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        return new ClaudeSessionViewModel(session);
+        return new ClaudeSessionViewModel(FactoryFor(session));
     }
 
     /// <summary>A started session (its event loop is live), so send-path tests exercise sending after start rather than the not-started guard (#16).</summary>
@@ -625,7 +621,7 @@ public class ClaudeSessionViewModelTests
         voiceSettings.LoadAsync(Arg.Any<CancellationToken>()).Returns(
             new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
 
-        var vm = new ClaudeSessionViewModel(session, voice, voiceSettings);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session), voice, voiceSettings);
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         for (var i = 0; i < 50 && !vm.AutoSubmitAfterVoice; i++)
@@ -647,7 +643,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new ClaudeSessionViewModel(session);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         return (vm, session);
@@ -657,5 +653,13 @@ public class ClaudeSessionViewModelTests
     {
         await Task.CompletedTask;
         yield break;
+    }
+
+    /// <summary>Wraps a fake driver in a factory so the view model resolves exactly that driver when it starts (the driver is now created from the factory once the profile is known).</summary>
+    private static ISessionDriverFactory FactoryFor(ISessionDriver driver)
+    {
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<ClaudeProfile?>()).Returns(driver);
+        return factory;
     }
 }

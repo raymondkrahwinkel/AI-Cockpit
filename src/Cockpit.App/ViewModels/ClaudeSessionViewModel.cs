@@ -23,7 +23,11 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientService
 {
-    private readonly ISessionDriver? _session;
+    private readonly ISessionDriverFactory? _driverFactory;
+
+    // Created from the factory once the profile (and therefore the provider) is known, in
+    // StartWithProfileAsync — not injected up front, since the driver type depends on the chosen profile.
+    private ISessionDriver? _session;
     private CancellationTokenSource? _lifetimeCancellation;
     private Task? _eventLoopTask;
     private TranscriptEntryViewModel? _currentAssistantEntry;
@@ -182,13 +186,13 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         "moQmoUloEpqEJqFJaBKahCahSWgSmoQmYXlhqOHSNEsP9wAAAABJRU5ErkJggg==";
 
     public ClaudeSessionViewModel(
-        ISessionDriver session,
+        ISessionDriverFactory driverFactory,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptCleanupService? cleanupService = null)
     {
-        _session = session;
+        _driverFactory = driverFactory;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
     }
@@ -244,10 +248,13 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
     private async Task StartWithProfileAsync(ClaudeProfile? profile)
     {
-        if (_session is null)
+        if (_driverFactory is null)
         {
             return;
         }
+
+        // Now the profile is known, pick the driver for its provider (Claude-CLI vs a local HTTP provider).
+        _session = _driverFactory.Create(profile);
 
         Status = "Starting...";
         _lifetimeCancellation = new CancellationTokenSource();
@@ -405,7 +412,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     [RelayCommand]
     private async Task SendAsync()
     {
-        if (_session is null || (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0))
+        if (string.IsNullOrWhiteSpace(InputText) && PendingAttachments.Count == 0)
         {
             return;
         }
@@ -413,9 +420,10 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         // Sending before the session has started reaches the CLI process before its I/O is wired and
         // surfaces a raw "Start must be called before I/O" error (#16). Post-#31 a session starts as
         // soon as it is created, so this only bites a failed-to-start panel — guard it with a plain
-        // message and keep the typed text rather than clearing it into a raw error. Queued dispatch
-        // never lands here: a queue only exists once a turn was in flight, i.e. after a successful start.
-        if (_eventLoopTask is null)
+        // message and keep the typed text rather than clearing it into a raw error. The driver itself is
+        // only created once the session starts (#26), so a null session means "not started" too. Queued
+        // dispatch never lands here: a queue only exists once a turn was in flight, i.e. after a start.
+        if (_session is null || _eventLoopTask is null)
         {
             Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Error, "The session has not started yet — nothing was sent."));

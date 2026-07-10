@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
@@ -19,7 +20,7 @@ namespace Cockpit.Infrastructure.Claude;
 /// </summary>
 // A classic constructor rather than a primary one: the driver owns real per-session state (the event
 // channel and history) that reads more clearly initialized in a body than captured as parameters.
-internal sealed class OpenAiCompatSessionDriver : ISessionDriver
+internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientService
 {
     private readonly IChatClientFactory _chatClientFactory;
     private readonly ILogger<OpenAiCompatSessionDriver> _logger;

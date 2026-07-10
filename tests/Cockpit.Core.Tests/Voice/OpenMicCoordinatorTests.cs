@@ -98,7 +98,7 @@ public class OpenMicCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new ClaudeSessionViewModel(Substitute.For<ISessionDriver>(), voiceSettingsStore: voiceSettingsStore);
+        return new ClaudeSessionViewModel(Substitute.For<ISessionDriverFactory>(), voiceSettingsStore: voiceSettingsStore);
     }
 
     private static SessionPanelViewModel _CreateTtySession()

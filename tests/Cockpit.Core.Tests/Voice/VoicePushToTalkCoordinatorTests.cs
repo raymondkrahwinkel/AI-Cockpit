@@ -144,7 +144,7 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new ClaudeSessionViewModel(Substitute.For<ISessionDriver>(), voicePushToTalk, voiceSettingsStore);
+        return new ClaudeSessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore);
     }
 
     private static SessionPanelViewModel _CreateTtySession(IVoicePushToTalkService voicePushToTalk)
