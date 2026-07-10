@@ -9,6 +9,8 @@ internal sealed class McpServerEntry
 
     public McpTransport Transport { get; set; }
 
+    public McpServerScope Scope { get; set; } = McpServerScope.All;
+
     public string? Command { get; set; }
 
     public List<string> Args { get; set; } = [];
@@ -29,6 +31,7 @@ internal sealed class McpServerEntry
     {
         Name = server.Name,
         Transport = server.Transport,
+        Scope = server.Scope,
         Command = server.Command,
         Args = [.. server.Args],
         Url = server.Url,
@@ -43,6 +46,7 @@ internal sealed class McpServerEntry
     {
         Name = Name,
         Transport = Transport,
+        Scope = Scope,
         Command = Command,
         Args = Args,
         Url = Url,

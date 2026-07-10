@@ -16,6 +16,10 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     [ObservableProperty]
     private McpTransport _transport;
 
+    /// <summary>Which session worlds this server is exposed to (all / local models only / Claude only).</summary>
+    [ObservableProperty]
+    private McpServerScopeOption _selectedScope;
+
     [ObservableProperty]
     private string _command;
 
@@ -44,6 +48,8 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     public IReadOnlyList<McpTransport> Transports { get; } = Enum.GetValues<McpTransport>();
 
     public IReadOnlyList<McpServerAuth> AuthModes { get; } = Enum.GetValues<McpServerAuth>();
+
+    public IReadOnlyList<McpServerScopeOption> Scopes { get; } = McpServerScopeOption.All;
 
     public bool IsStdio => Transport == McpTransport.Stdio;
 
@@ -84,6 +90,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
         _oAuthAuthority = server.OAuthAuthority ?? string.Empty;
         _oAuthClientId = server.OAuthClientId ?? string.Empty;
         _enabled = server.Enabled;
+        _selectedScope = McpServerScopeOption.For(server.Scope);
     }
 
     /// <summary>Rebuilds an immutable config from the current edits, keeping only the fields the chosen transport/auth use.</summary>
@@ -91,6 +98,7 @@ public partial class EditableMcpServerViewModel : ViewModelBase
     {
         Name = Name.Trim(),
         Transport = Transport,
+        Scope = SelectedScope.Scope,
         Command = IsStdio && !string.IsNullOrWhiteSpace(Command) ? Command.Trim() : null,
         Args = IsStdio
             ? Args.Split('\n').Select(arg => arg.Trim()).Where(arg => arg.Length > 0).ToList()

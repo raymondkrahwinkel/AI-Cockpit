@@ -39,6 +39,18 @@ public class McpServersViewModelTests
     }
 
     [Fact]
+    public void AddPreset_Filesystem_CarriesTheLocalOnlyScope_ThroughToConfig()
+    {
+        var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>());
+        var filesystem = vm.Presets.First(preset => preset.Label == "Filesystem");
+
+        vm.AddPresetCommand.Execute(filesystem);
+
+        vm.SelectedServer!.SelectedScope.Scope.Should().Be(McpServerScope.LocalOnly);
+        vm.SelectedServer.ToConfig().Scope.Should().Be(McpServerScope.LocalOnly);
+    }
+
+    [Fact]
     public void AddPreset_Twice_GivesTheSecondAUniqueName()
     {
         var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>());

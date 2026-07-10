@@ -33,7 +33,7 @@ public class McpServerStoreTests : IDisposable
         var store = new McpServerStore(_configFilePath);
         var servers = new List<McpServerConfig>
         {
-            new() { Name = "filesystem", Transport = McpTransport.Stdio, Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem", "/data"] },
+            new() { Name = "filesystem", Transport = McpTransport.Stdio, Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem", "/data"], Scope = McpServerScope.LocalOnly },
             new() { Name = "github", Transport = McpTransport.Http, Url = "https://api.example.com/mcp", Auth = McpServerAuth.ApiKey, ApiKey = "secret" },
             new() { Name = "corp", Transport = McpTransport.Http, Url = "https://corp.example.com/mcp", Auth = McpServerAuth.OAuth, OAuthAuthority = "https://login.example.com", OAuthClientId = "cockpit", Enabled = false },
         };

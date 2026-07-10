@@ -44,7 +44,11 @@ public static class McpConfigFile
 
         foreach (var server in registryServers)
         {
-            if (!server.Enabled || string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase))
+            // Skip disabled servers, the reserved permission-server key, and anything scoped to local models
+            // only (#26 scoping) — Claude Code has its own file/shell/web tools, so those would be noise.
+            if (!server.Enabled
+                || server.Scope == McpServerScope.LocalOnly
+                || string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

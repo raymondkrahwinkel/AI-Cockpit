@@ -13,6 +13,9 @@ public sealed record McpServerConfig
 
     public McpTransport Transport { get; init; } = McpTransport.Stdio;
 
+    /// <summary>Which session worlds this server fans out to. Defaults to <see cref="McpServerScope.All"/> so an unscoped server behaves as before.</summary>
+    public McpServerScope Scope { get; init; } = McpServerScope.All;
+
     /// <summary>Executable for a stdio server (e.g. <c>npx</c>, <c>uvx</c>, a path).</summary>
     public string? Command { get; init; }
 

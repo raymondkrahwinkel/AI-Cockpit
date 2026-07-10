@@ -25,6 +25,14 @@ public class McpServerPresetsTests
     }
 
     [Fact]
+    public void Filesystem_DefaultsToLocalOnly_SinceClaudeAlreadyHasFileTools()
+    {
+        var filesystem = McpServerPresets.All.Single(preset => preset.Label == "Filesystem");
+
+        filesystem.Template.Scope.Should().Be(McpServerScope.LocalOnly);
+    }
+
+    [Fact]
     public void All_PresetsAreLaunchable_EachHasATransportTarget()
     {
         McpServerPresets.All.Should().NotBeEmpty();

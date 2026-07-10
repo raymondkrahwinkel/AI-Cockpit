@@ -24,7 +24,8 @@ internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer
         var tools = new List<AIFunction>();
         var connectedNames = new List<string>();
 
-        foreach (var server in servers.Where(server => server.Enabled))
+        // Local models host every enabled server except those scoped to Claude only (#26 scoping).
+        foreach (var server in servers.Where(server => server.Enabled && server.Scope != McpServerScope.ClaudeOnly))
         {
             try
             {

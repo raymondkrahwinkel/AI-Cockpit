@@ -20,6 +20,8 @@ public static class McpServerPresets
     /// </summary>
     public static IReadOnlyList<McpServerPreset> All { get; } =
     [
+        // Filesystem/Fetch/Git duplicate tools Claude Code already has (Read/Write, WebFetch, Bash git), so
+        // they default to LocalOnly — the local models that lack them. Memory has no Claude equivalent → All.
         new(
             "Filesystem",
             "Read and write files under one folder (needs Node/npx). Defaults to your user folder — narrow the last argument to the project you want the model to reach.",
@@ -27,6 +29,7 @@ public static class McpServerPresets
             {
                 Name = "filesystem",
                 Transport = McpTransport.Stdio,
+                Scope = McpServerScope.LocalOnly,
                 Command = "npx",
                 Args = ["-y", "@modelcontextprotocol/server-filesystem", DefaultFilesystemRoot()],
             }),
@@ -37,6 +40,7 @@ public static class McpServerPresets
             {
                 Name = "fetch",
                 Transport = McpTransport.Stdio,
+                Scope = McpServerScope.LocalOnly,
                 Command = "uvx",
                 Args = ["mcp-server-fetch"],
             }),
@@ -47,6 +51,7 @@ public static class McpServerPresets
             {
                 Name = "git",
                 Transport = McpTransport.Stdio,
+                Scope = McpServerScope.LocalOnly,
                 Command = "uvx",
                 Args = ["mcp-server-git", "--repository", DefaultFilesystemRoot()],
             }),

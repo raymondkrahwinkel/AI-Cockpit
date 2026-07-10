@@ -66,6 +66,25 @@ public class McpConfigFileTests
     }
 
     [Fact]
+    public void Serialize_WithRegistry_ExcludesLocalOnlyServers_ButKeepsAllAndClaudeOnly()
+    {
+        var registry = new McpServerConfig[]
+        {
+            new() { Name = "filesystem", Transport = McpTransport.Stdio, Command = "npx", Scope = McpServerScope.LocalOnly },
+            new() { Name = "shared", Transport = McpTransport.Stdio, Command = "npx", Scope = McpServerScope.All },
+            new() { Name = "claude-only", Transport = McpTransport.Http, Url = "https://x/mcp", Scope = McpServerScope.ClaudeOnly },
+        };
+
+        var json = McpConfigFile.Serialize("http://127.0.0.1:5199/mcp", registry);
+
+        using var doc = JsonDocument.Parse(json);
+        var servers = doc.RootElement.GetProperty("mcpServers");
+
+        // Claude Code already has file tools, so a LocalOnly server must not fan out to it — All/ClaudeOnly do.
+        servers.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo("cockpit", "shared", "claude-only");
+    }
+
+    [Fact]
     public void Serialize_WithRegistry_SkipsDisabledCollidingAndTargetlessServers()
     {
         var registry = new McpServerConfig[]

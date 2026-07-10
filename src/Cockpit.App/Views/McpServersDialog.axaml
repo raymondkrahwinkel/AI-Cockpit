@@ -62,6 +62,9 @@
                         <DataTemplate x:DataType="vm:EditableMcpServerViewModel">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding SelectedScope.ShortLabel}" FontSize="10" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                           IsVisible="{Binding SelectedScope.IsScoped}"/>
                                 <TextBlock Text="(off)" FontSize="10" VerticalAlignment="Center"
                                            Foreground="{StaticResource CockpitTextFaintBrush}"
                                            IsVisible="{Binding !Enabled}"/>
@@ -90,6 +93,14 @@
                         </StackPanel>
                         <CheckBox Grid.Column="1" Content="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Bottom"/>
                     </Grid>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Available to" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}"
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="Local models need servers like filesystem; Claude Code already has its own file/shell/web tools."
+                                   FontSize="10" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
 
                     <!-- stdio -->
                     <StackPanel Spacing="4" IsVisible="{Binding IsStdio}">
