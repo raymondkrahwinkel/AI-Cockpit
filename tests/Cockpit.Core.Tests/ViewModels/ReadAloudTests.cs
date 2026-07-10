@@ -94,6 +94,41 @@ public class ReadAloudTests
     }
 
     [Fact]
+    public async Task TurnCompleted_NaturalizeOn_RoutesMarkedLanguagesToTheirVoices()
+    {
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings
+        {
+            NaturalizeReadAloud = true,
+            TtsVoiceId = "en_US-lessac-medium",
+            TtsVoiceIdDutch = "nl_NL-ronnie-medium",
+        });
+        var cleanupService = Substitute.For<ITranscriptCleanupService>();
+        cleanupService.NaturalizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("[[en]]Here is the answer. [[nl]]Dit is het antwoord.");
+        var vm = new ClaudeSessionViewModel(
+            Substitute.For<IClaudeSession>(),
+            voiceSettingsStore: voiceSettingsStore,
+            voicePlaybackQueue: voicePlaybackQueue,
+            cleanupService: cleanupService)
+        {
+            ReadResponsesAloud = true,
+        };
+        await _WaitUntilAsync(() => vm.NaturalizeReadAloud);
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is the answer." });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        await _WaitUntilAsync(() => voicePlaybackQueue.ReceivedCalls().Any());
+
+        voicePlaybackQueue.Received(1).Enqueue(Arg.Is<IReadOnlyList<SpeechSegment>>(segments =>
+            segments.Count == 2 &&
+            segments[0].VoiceId == "en_US-lessac-medium" &&
+            segments[1].VoiceId == "nl_NL-ronnie-medium"));
+    }
+
+    [Fact]
     public async Task BeginVoiceHold_InterruptsWhateverIsQueuedOrPlaying()
     {
         var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();

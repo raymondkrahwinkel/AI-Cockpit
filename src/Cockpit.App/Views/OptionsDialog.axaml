@@ -200,13 +200,23 @@
                         <TextBlock Text="Uses the same local Ollama model as transcript cleanup to phrase paths, code and lists naturally before speaking. Adds a short local LLM call per turn."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Voice"
+                            <TextBlock Text="English voice"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <ComboBox ItemsSource="{Binding TtsVoices}"
                                       SelectedItem="{Binding SelectedTtsVoice}"
                                       DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Dutch voice"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding TtsVoices}"
+                                      SelectedItem="{Binding SelectedDutchTtsVoice}"
+                                      DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                        </StackPanel>
+                        <TextBlock Text="With natural-speech rewriting on, mixed Dutch/English replies are split by language and each part is spoken by its own voice (no single voice covers both)."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Output device"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"

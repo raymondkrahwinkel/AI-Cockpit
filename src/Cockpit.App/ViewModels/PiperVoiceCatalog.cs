@@ -23,4 +23,7 @@ public static class PiperVoiceCatalog
     ];
 
     public static PiperVoiceOption Default { get; } = Voices[0];
+
+    /// <summary>Default voice for the Dutch segments of a mixed-language read-aloud reply (#35).</summary>
+    public static PiperVoiceOption DutchDefault { get; } = Voices.First(voice => voice.VoiceId == "nl_NL-ronnie-medium");
 }

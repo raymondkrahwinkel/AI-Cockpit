@@ -164,6 +164,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _ttsVoiceId = "en_US-lessac-medium";
 
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TtsVoiceIdDutch"/> — the Piper voice the Dutch segments of a mixed-language read-aloud reply route to when naturalization tags the languages (#35).</summary>
+    [ObservableProperty]
+    private string _dutchTtsVoiceId = "nl_NL-ronnie-medium";
+
     /// <summary>
     /// Per-session read-aloud toggle (#35/#35b): when true, completed assistant replies are extracted
     /// and enqueued for TTS playback. Shared on the base since both session kinds offer the toggle, even
@@ -225,6 +229,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         GlobalPushToTalkEnabled = settings.GlobalPushToTalk;
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
         TtsVoiceId = settings.TtsVoiceId;
+        DutchTtsVoiceId = settings.TtsVoiceIdDutch;
         NaturalizeReadAloud = settings.NaturalizeReadAloud;
     }
 
@@ -247,7 +252,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// Extracts the prose from assistant text and enqueues it for read-aloud (#35), first rewriting it into
     /// natural spoken sentences via the local LLM when <see cref="NaturalizeReadAloud"/> is on (falling back
     /// to the plain extracted prose if the LLM is unavailable). The extractor already strips code/tables and
-    /// swaps paths/URLs for spoken words; the LLM pass smooths the rest.
+    /// swaps paths/URLs for spoken words; the LLM pass smooths the rest and tags language runs
+    /// (<c>[[nl]]</c>/<c>[[en]]</c>) so mixed Dutch/English replies route each segment to the matching voice.
     /// </summary>
     protected async Task EnqueueReadAloudAsync(string text, string voiceId)
     {
@@ -260,10 +266,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         if (NaturalizeReadAloud && _cleanupService is not null)
         {
             var natural = await _cleanupService.NaturalizeForSpeechAsync(string.Join(" ", sentences));
-            var naturalSentences = TtsProseExtractor.Extract(natural);
-            if (naturalSentences.Count > 0)
+            var segments = SpeechLanguageRouter.Route(natural, voiceId, DutchTtsVoiceId);
+            if (segments.Count > 0)
             {
-                sentences = naturalSentences;
+                _voicePlaybackQueue?.Enqueue(segments);
+                return;
             }
         }
 

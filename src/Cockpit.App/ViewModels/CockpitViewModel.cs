@@ -314,6 +314,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private PiperVoiceOption _selectedTtsVoice = PiperVoiceCatalog.Default;
 
+    /// <summary>Piper voice the Dutch segments of a mixed-language read-aloud reply route to when naturalization tags the languages (#35). Drawn from the same <see cref="TtsVoices"/> list.</summary>
+    [ObservableProperty]
+    private PiperVoiceOption _selectedDutchTtsVoice = PiperVoiceCatalog.DutchDefault;
+
     [ObservableProperty]
     private string _voiceSettingsStatus = string.Empty;
 
@@ -630,6 +634,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
         VoiceNaturalizeReadAloud = settings.NaturalizeReadAloud;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
+        SelectedDutchTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceIdDutch) ?? PiperVoiceCatalog.DutchDefault;
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
     }
 
@@ -696,6 +701,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             AutoSubmitAfterVoice = VoiceAutoSubmit,
             NaturalizeReadAloud = VoiceNaturalizeReadAloud,
             TtsVoiceId = SelectedTtsVoice.VoiceId,
+            TtsVoiceIdDutch = SelectedDutchTtsVoice.VoiceId,
             SttLanguage = SelectedSttLanguage.Code,
             InputDeviceName = SelectedInputDevice.DeviceName ?? "",
             OutputDeviceName = SelectedOutputDevice.DeviceName ?? "",
@@ -708,6 +714,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.NaturalizeReadAloud = VoiceNaturalizeReadAloud;
             session.TtsVoiceId = SelectedTtsVoice.VoiceId;
+            session.DutchTtsVoiceId = SelectedDutchTtsVoice.VoiceId;
         }
 
         VoiceSettingsStatus = "✓ Saved";
