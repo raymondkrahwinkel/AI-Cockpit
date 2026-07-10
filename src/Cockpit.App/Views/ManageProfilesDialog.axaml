@@ -129,6 +129,14 @@
                         <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
                     </StackPanel>
 
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                        <TextBlock Text="Base system prompt (optional)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding SystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap"
+                                 MinHeight="64" MaxHeight="140"
+                                 PlaceholderText="Sent as the first system message of every conversation"/>
+                    </StackPanel>
+
                     <StackPanel Spacing="4">
                         <TextBlock Text="Purpose" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding Purpose}"/>

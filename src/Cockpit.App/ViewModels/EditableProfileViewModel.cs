@@ -53,6 +53,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _apiKey;
 
+    /// <summary>Optional base system prompt sent as the first message of every conversation for a local provider.</summary>
+    [ObservableProperty]
+    private string _systemPrompt;
+
     /// <summary>Login status of this profile's config directory, evaluated once when the dialog loads.</summary>
     [ObservableProperty]
     private bool _isLoggedIn;
@@ -125,11 +129,11 @@ public partial class EditableProfileViewModel : ViewModelBase
         _canChooseProvider = canChooseProvider;
         _isLoggedIn = isLoggedIn;
 
-        (_baseUrl, _model, _apiKey) = profile.ProviderConfig switch
+        (_baseUrl, _model, _apiKey, _systemPrompt) = profile.ProviderConfig switch
         {
-            OllamaConfig ollama => (ollama.BaseUrl, ollama.Model, string.Empty),
-            LmStudioConfig lmStudio => (lmStudio.BaseUrl, lmStudio.Model, lmStudio.ApiKey ?? string.Empty),
-            _ => (string.Empty, string.Empty, string.Empty),
+            OllamaConfig ollama => (ollama.BaseUrl, ollama.Model, string.Empty, ollama.SystemPrompt ?? string.Empty),
+            LmStudioConfig lmStudio => (lmStudio.BaseUrl, lmStudio.Model, lmStudio.ApiKey ?? string.Empty, lmStudio.SystemPrompt ?? string.Empty),
+            _ => (string.Empty, string.Empty, string.Empty, string.Empty),
         };
     }
 
@@ -142,10 +146,14 @@ public partial class EditableProfileViewModel : ViewModelBase
         new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value),
         _ToProviderConfig());
 
-    private ProviderConfig? _ToProviderConfig() => SelectedProvider.Value switch
+    private ProviderConfig? _ToProviderConfig()
     {
-        SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim()),
-        SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim()),
-        _ => null,
-    };
+        var systemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt.Trim();
+        return SelectedProvider.Value switch
+        {
+            SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt),
+            SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt),
+            _ => null,
+        };
+    }
 }

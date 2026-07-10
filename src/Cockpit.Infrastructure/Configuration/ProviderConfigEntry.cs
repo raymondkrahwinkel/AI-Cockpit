@@ -17,18 +17,20 @@ internal sealed class ProviderConfigEntry
 
     public string? ApiKey { get; set; }
 
+    public string? SystemPrompt { get; set; }
+
     /// <summary>Maps a domain config to its on-disk form. Returns <see langword="null"/> for the Claude-CLI provider, which carries no config record (the profile's own fields hold its settings).</summary>
     public static ProviderConfigEntry? FromDomain(ProviderConfig? config) => config switch
     {
-        OllamaConfig ollama => new() { Provider = SessionProvider.Ollama, BaseUrl = ollama.BaseUrl, Model = ollama.Model },
-        LmStudioConfig lmStudio => new() { Provider = SessionProvider.LmStudio, BaseUrl = lmStudio.BaseUrl, Model = lmStudio.Model, ApiKey = lmStudio.ApiKey },
+        OllamaConfig ollama => new() { Provider = SessionProvider.Ollama, BaseUrl = ollama.BaseUrl, Model = ollama.Model, SystemPrompt = ollama.SystemPrompt },
+        LmStudioConfig lmStudio => new() { Provider = SessionProvider.LmStudio, BaseUrl = lmStudio.BaseUrl, Model = lmStudio.Model, ApiKey = lmStudio.ApiKey, SystemPrompt = lmStudio.SystemPrompt },
         _ => null,
     };
 
     public ProviderConfig? ToDomain() => Provider switch
     {
-        SessionProvider.Ollama => new OllamaConfig(BaseUrl ?? string.Empty, Model ?? string.Empty),
-        SessionProvider.LmStudio => new LmStudioConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, ApiKey),
+        SessionProvider.Ollama => new OllamaConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, SystemPrompt),
+        SessionProvider.LmStudio => new LmStudioConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, ApiKey, SystemPrompt),
         _ => null,
     };
 }

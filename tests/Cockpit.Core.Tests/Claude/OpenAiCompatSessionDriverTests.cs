@@ -64,6 +64,27 @@ public class OpenAiCompatSessionDriverTests
         events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task StartAsync_WithASystemPrompt_SendsItAsTheFirstMessage()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        List<ChatMessage>? captured = null;
+        chatClient.GetStreamingResponseAsync(
+                Arg.Do<IEnumerable<ChatMessage>>(messages => captured = messages.ToList()), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_Stream("ok"));
+        var driver = _CreateDriver(chatClient);
+        var profile = new ClaudeProfile("local", string.Empty,
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1", "You are a pirate."));
+
+        await driver.StartAsync(profile);
+        await driver.SendUserMessageAsync("hi");
+        await _CollectUntilTurnCompletedAsync(driver);
+
+        captured.Should().NotBeNull();
+        captured![0].Role.Should().Be(ChatRole.System);
+        captured[0].Text.Should().Be("You are a pirate.");
+    }
+
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient)
     {
         var factory = Substitute.For<IChatClientFactory>();

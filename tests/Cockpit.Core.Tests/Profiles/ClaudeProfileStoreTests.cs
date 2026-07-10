@@ -78,8 +78,8 @@ public class ClaudeProfileStoreTests : IDisposable
         var profiles = new List<ClaudeProfile>
         {
             new("claude", @"C:\Users\raymo\.claude"),
-            new("local-ollama", ConfigDir: "", ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1")),
-            new("local-lmstudio", ConfigDir: "", ProviderConfig: new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", "secret-key")),
+            new("local-ollama", ConfigDir: "", ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1", "You are helpful.")),
+            new("local-lmstudio", ConfigDir: "", ProviderConfig: new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", "secret-key", "Be concise.")),
         };
 
         await store.SaveAsync(profiles);

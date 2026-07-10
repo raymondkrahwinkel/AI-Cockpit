@@ -65,6 +65,14 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         _sessionId = Guid.NewGuid().ToString();
 
+        // Seed the conversation with the profile's base system prompt so every turn carries it (HTTP is
+        // stateless — the client owns the history, so a system message once at the front is enough).
+        var systemPrompt = _SystemPromptFrom(config);
+        if (!string.IsNullOrWhiteSpace(systemPrompt))
+        {
+            _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
+        }
+
         _events.Writer.TryWrite(new SessionInitialized { SessionId = _sessionId, Cwd = string.Empty, Tools = [] });
         return Task.CompletedTask;
     }
@@ -155,6 +163,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     {
         OllamaConfig ollama => ollama.Model,
         LmStudioConfig lmStudio => lmStudio.Model,
+        _ => null,
+    };
+
+    private static string? _SystemPromptFrom(ProviderConfig config) => config switch
+    {
+        OllamaConfig ollama => ollama.SystemPrompt,
+        LmStudioConfig lmStudio => lmStudio.SystemPrompt,
         _ => null,
     };
 }
