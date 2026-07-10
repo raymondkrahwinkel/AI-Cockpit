@@ -64,4 +64,11 @@ public sealed record VoiceSettings
 
     /// <summary>Name of the playback device read-aloud (#35) plays to. Empty = the system default device; same name-matching and fallback as <see cref="InputDeviceName"/>.</summary>
     public string OutputDeviceName { get; init; } = "";
+
+    /// <summary>
+    /// When true, read-aloud (#35) first rewrites the assistant text into natural spoken sentences via the
+    /// local Ollama model (reusing <see cref="CleanupModel"/>/<see cref="OllamaBaseUrl"/>) before synthesis,
+    /// so paths, code and markdown read as natural speech. Off by default (adds a local LLM call per turn).
+    /// </summary>
+    public bool NaturalizeReadAloud { get; init; }
 }

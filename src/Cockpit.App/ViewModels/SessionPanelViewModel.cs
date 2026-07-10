@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 
@@ -128,6 +129,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
+    private ITranscriptCleanupService? _cleanupService;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.NaturalizeReadAloud"/>: rewrite assistant text into natural spoken form via the local LLM before read-aloud synthesis (#35).</summary>
+    [ObservableProperty]
+    private bool _naturalizeReadAloud;
 
     /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
     [ObservableProperty]
@@ -197,11 +203,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     protected void InitializeVoice(
         IVoicePushToTalkService? voicePushToTalk,
         IVoiceSettingsStore? voiceSettingsStore,
-        IVoicePlaybackQueue? voicePlaybackQueue = null)
+        IVoicePlaybackQueue? voicePlaybackQueue = null,
+        ITranscriptCleanupService? cleanupService = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
+        _cleanupService = cleanupService;
 
         if (voiceSettingsStore is not null)
         {
@@ -217,6 +225,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         GlobalPushToTalkEnabled = settings.GlobalPushToTalk;
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
         TtsVoiceId = settings.TtsVoiceId;
+        NaturalizeReadAloud = settings.NaturalizeReadAloud;
     }
 
     /// <summary>
@@ -232,6 +241,33 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         _voicePlaybackQueue?.Enqueue(sentences, voiceId);
+    }
+
+    /// <summary>
+    /// Extracts the prose from assistant text and enqueues it for read-aloud (#35), first rewriting it into
+    /// natural spoken sentences via the local LLM when <see cref="NaturalizeReadAloud"/> is on (falling back
+    /// to the plain extracted prose if the LLM is unavailable). The extractor already strips code/tables and
+    /// swaps paths/URLs for spoken words; the LLM pass smooths the rest.
+    /// </summary>
+    protected async Task EnqueueReadAloudAsync(string text, string voiceId)
+    {
+        var sentences = TtsProseExtractor.Extract(text);
+        if (sentences.Count == 0)
+        {
+            return;
+        }
+
+        if (NaturalizeReadAloud && _cleanupService is not null)
+        {
+            var natural = await _cleanupService.NaturalizeForSpeechAsync(string.Join(" ", sentences));
+            var naturalSentences = TtsProseExtractor.Extract(natural);
+            if (naturalSentences.Count > 0)
+            {
+                sentences = naturalSentences;
+            }
+        }
+
+        EnqueueReadAloud(sentences, voiceId);
     }
 
     /// <summary>

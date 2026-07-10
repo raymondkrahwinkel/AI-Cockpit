@@ -185,11 +185,12 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         IClaudeSession session,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
-        IVoicePlaybackQueue? voicePlaybackQueue = null)
+        IVoicePlaybackQueue? voicePlaybackQueue = null,
+        ITranscriptCleanupService? cleanupService = null)
     {
         _session = session;
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
     }
 
     private void _TrackPendingAttachments()
@@ -585,7 +586,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         }
 
         var markdown = string.Join("\n\n", _currentTurnAssistantEntries.Select(entry => entry.Text));
-        EnqueueReadAloud(TtsProseExtractor.Extract(markdown), TtsVoiceId);
+        _ = EnqueueReadAloudAsync(markdown, TtsVoiceId);
     }
 
     /// <summary>On-demand read-aloud for a single transcript row (#35) — works regardless of <see cref="ReadResponsesAloud"/>, since the speaker button next to an assistant reply is an explicit request to hear it.</summary>
@@ -597,7 +598,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             return;
         }
 
-        EnqueueReadAloud(TtsProseExtractor.Extract(entry.Text), TtsVoiceId);
+        _ = EnqueueReadAloudAsync(entry.Text, TtsVoiceId);
     }
 
     private async Task ConsumeEventsAsync(CancellationToken cancellationToken)

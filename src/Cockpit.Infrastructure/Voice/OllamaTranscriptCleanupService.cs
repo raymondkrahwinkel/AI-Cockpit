@@ -23,6 +23,12 @@ internal sealed class OllamaTranscriptCleanupService(HttpClient httpClient, IVoi
         "questions. Keep the original language and meaning exactly — do not translate, summarize, or " +
         "add content. Reply with only the cleaned text, nothing else.";
 
+    private const string SpeechPrompt =
+        "You rewrite text so a text-to-speech voice can read it aloud naturally. Turn it into smooth, " +
+        "spoken sentences: drop code, file paths, URLs and markdown symbols, and phrase long technical " +
+        "bits the way a person would say them out loud. Keep the meaning and the original language. Reply " +
+        "with only the spoken text, nothing else.";
+
     private static readonly TranscriptCleanupOptions Options = new();
 
     public async Task<string> CleanupAsync(string rawText, CancellationToken cancellationToken = default)
@@ -68,6 +74,43 @@ internal sealed class OllamaTranscriptCleanupService(HttpClient httpClient, IVoi
             // rauwe transcript").
             logger.LogWarning(ex, "Ollama cleanup unavailable; using raw transcript");
             return rawText;
+        }
+    }
+
+    public async Task<string> NaturalizeForSpeechAsync(string text, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            var request = new OllamaGenerateRequest
+            {
+                Model = settings.CleanupModel,
+                System = SpeechPrompt,
+                Prompt = $"Text: {text}\nSpoken:",
+                Stream = false,
+                // A little warmth for natural phrasing, but seeded so the same reply reads the same way.
+                Options = new OllamaGenerateOptions { Temperature = 0.3, Seed = 42 },
+            };
+
+            using var response = await httpClient
+                .PostAsJsonAsync($"{settings.OllamaBaseUrl}/api/generate", request, cancellationToken)
+                .ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var body = await response.Content.ReadFromJsonAsync<OllamaGenerateResponse>(cancellationToken).ConfigureAwait(false);
+            var spoken = body?.Response?.Trim() ?? string.Empty;
+            return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            logger.LogWarning(ex, "Ollama read-aloud naturalization unavailable; using the original text");
+            return text;
         }
     }
 }

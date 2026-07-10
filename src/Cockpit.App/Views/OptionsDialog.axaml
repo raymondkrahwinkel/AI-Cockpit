@@ -181,6 +181,10 @@
                         <TextBlock Text="Voice output — read aloud" FontWeight="SemiBold"/>
                         <TextBlock Text="Per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <CheckBox Content="Rewrite replies into natural speech with the local LLM"
+                                  IsChecked="{Binding VoiceNaturalizeReadAloud}"/>
+                        <TextBlock Text="Uses the same local Ollama model as transcript cleanup to phrase paths, code and lists naturally before speaking. Adds a short local LLM call per turn."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Voice"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"

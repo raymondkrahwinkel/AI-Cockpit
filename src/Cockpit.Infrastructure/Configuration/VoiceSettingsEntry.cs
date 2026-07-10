@@ -31,6 +31,8 @@ internal sealed class VoiceSettingsEntry
 
     public string OutputDeviceName { get; set; } = "";
 
+    public bool NaturalizeReadAloud { get; set; }
+
     public static VoiceSettingsEntry FromDomain(VoiceSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -46,6 +48,7 @@ internal sealed class VoiceSettingsEntry
         SttLanguage = settings.SttLanguage,
         InputDeviceName = settings.InputDeviceName,
         OutputDeviceName = settings.OutputDeviceName,
+        NaturalizeReadAloud = settings.NaturalizeReadAloud,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -63,5 +66,6 @@ internal sealed class VoiceSettingsEntry
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,
+        NaturalizeReadAloud = NaturalizeReadAloud,
     };
 }

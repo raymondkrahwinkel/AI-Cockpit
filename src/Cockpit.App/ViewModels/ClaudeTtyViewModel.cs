@@ -79,11 +79,12 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ISessionTranscriptReader? transcriptReader = null)
+        ISessionTranscriptReader? transcriptReader = null,
+        ITranscriptCleanupService? cleanupService = null)
     {
         _launcher = launcher;
         _transcriptReader = transcriptReader;
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
     }
 
     /// <summary>Raw bytes, no cleanup — the terminal has no input box to proofread in, so the transcript goes straight to the pty like a typed keystroke.</summary>
@@ -177,7 +178,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         {
             await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(configDir, transcriptBaseline, cancellationToken))
             {
-                EnqueueReadAloud(TtsProseExtractor.Extract(assistantText), TtsVoiceId);
+                _ = EnqueueReadAloudAsync(assistantText, TtsVoiceId);
             }
         }
         catch (OperationCanceledException)

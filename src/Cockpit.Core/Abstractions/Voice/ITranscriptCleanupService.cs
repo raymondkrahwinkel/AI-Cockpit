@@ -9,4 +9,11 @@ namespace Cockpit.Core.Abstractions.Voice;
 public interface ITranscriptCleanupService
 {
     Task<string> CleanupAsync(string rawText, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rewrites assistant text into natural spoken sentences for read-aloud (#35) — dropping code, paths,
+    /// URLs and markdown and smoothing technical phrasing — via the same local Ollama model. Falls back to
+    /// the original text whenever the model is unavailable or returns nothing; never throws to the caller.
+    /// </summary>
+    Task<string> NaturalizeForSpeechAsync(string text, CancellationToken cancellationToken = default);
 }
