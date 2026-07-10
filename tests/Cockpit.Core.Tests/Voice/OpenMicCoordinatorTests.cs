@@ -78,6 +78,36 @@ public class OpenMicCoordinatorTests
         await listener.DidNotReceiveWithAnyArgs().StartAsync(default);
     }
 
+    [Fact]
+    public async Task ToggleOpenMic_StartsThenStopsTheListenerAtRuntime()
+    {
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out var listener, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = false });
+        await coordinator.StartAsync();
+
+        await coordinator.ToggleOpenMicCommand.ExecuteAsync(null);
+        coordinator.IsListening.Should().BeTrue();
+
+        await coordinator.ToggleOpenMicCommand.ExecuteAsync(null);
+        coordinator.IsListening.Should().BeFalse();
+
+        await listener.Received(1).StartAsync(Arg.Any<CancellationToken>());
+        await listener.Received(1).StopAsync();
+    }
+
+    [Fact]
+    public async Task ToggleOpenMic_IsDisabledWhenVoiceIsOff()
+    {
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+            new VoiceSettings { IsEnabled = false });
+        await coordinator.StartAsync();
+
+        coordinator.IsAvailable.Should().BeFalse();
+        coordinator.ToggleOpenMicCommand.CanExecute(null).Should().BeFalse();
+    }
+
     private static OpenMicCoordinator _CreateCoordinator(
         SessionPanelViewModel? session,
         ITranscriptCleanupService cleanup,

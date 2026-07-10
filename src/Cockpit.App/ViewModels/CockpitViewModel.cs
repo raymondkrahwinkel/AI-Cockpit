@@ -303,13 +303,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _voiceAutoSubmit;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicEnabled"/>: listen continuously with VAD endpointing instead of holding the push-to-talk key. Off by default; applies on restart.</summary>
-    [ObservableProperty]
-    private bool _voiceOpenMicEnabled;
-
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicSilenceTimeoutMs"/>: trailing silence (ms) that ends an open-mic utterance. Tunable.</summary>
     [ObservableProperty]
     private int _voiceOpenMicSilenceTimeoutMs = 800;
+
+    /// <summary>The open-mic coordinator, wired at startup, exposing the runtime on/off toggle bound to the sidebar mic button (open-mic is turned on/off live, not via a settings checkbox).</summary>
+    [ObservableProperty]
+    private OpenMicCoordinator? _openMic;
 
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.NaturalizeReadAloud"/>: rewrite read-aloud text into natural speech via the local LLM before synthesis (#35). Off by default.</summary>
     [ObservableProperty]
@@ -640,7 +640,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
         VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
-        VoiceOpenMicEnabled = settings.OpenMicEnabled;
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
         VoiceNaturalizeReadAloud = settings.NaturalizeReadAloud;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
@@ -698,6 +697,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // Open-mic on/off is owned by the runtime toggle button, not this dialog — preserve its current
+        // persisted value so saving the Options never flips the mic off behind the operator's back.
+        var current = await _voiceSettingsStore.LoadAsync();
+
         await _voiceSettingsStore.SaveAsync(new VoiceSettings
         {
             IsEnabled = VoiceEnabled,
@@ -709,7 +712,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,
             AutoSubmitAfterVoice = VoiceAutoSubmit,
-            OpenMicEnabled = VoiceOpenMicEnabled,
+            OpenMicEnabled = current.OpenMicEnabled,
             OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
             NaturalizeReadAloud = VoiceNaturalizeReadAloud,
             TtsVoiceId = SelectedTtsVoice.VoiceId,
@@ -815,14 +818,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             var session = _sessionFactory();
             session.LaunchResult = result;
-            AddSession(session, result.SessionName);
+            AddSession(session, result.SessionName, result.Profile.Label);
             await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort);
         }
         else
         {
             var session = _ttySessionFactory();
             session.LaunchResult = result;
-            AddSession(session, result.SessionName);
+            AddSession(session, result.SessionName, result.Profile.Label);
             session.LaunchConfigured(result.Profile, result.Mode.Value, result.Model.Value, result.Effort.Value);
         }
     }
@@ -905,11 +908,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         AllSettingsStatus = "✓ Saved";
     }
 
-    private void AddSession(SessionPanelViewModel session, string? name = null)
+    private void AddSession(SessionPanelViewModel session, string? name, string profileLabel)
     {
         _sessionCounter++;
-        // A friendly name from the dialog wins; otherwise fall back to the running "Claude N" counter.
-        session.Title = string.IsNullOrWhiteSpace(name) ? $"Claude {_sessionCounter}" : name.Trim();
+        // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
+        // shows which profile each session runs under rather than a bare "Claude N".
+        session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
         // Start the session on the current transcript-display preference; OnShowTimestampsChanged keeps
         // it live afterwards (T7).
         session.ShowTimestamps = ShowTimestamps;

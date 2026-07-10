@@ -61,7 +61,7 @@ public class CockpitViewModelTests
         vm.HasSessions.Should().BeTrue();
         vm.SelectedSession.Should().Be(vm.Sessions[0]);
         vm.SelectedSession!.IsSelected.Should().BeTrue();
-        vm.SelectedSession.Title.Should().Be("Claude 1");
+        vm.SelectedSession.Title.Should().Be("default - 1");
     }
 
     [Fact]
@@ -151,8 +151,8 @@ public class CockpitViewModelTests
         await vm.NewSessionCommand.ExecuteAsync(null);
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions[0].Title.Should().Be("Claude 1");
-        vm.Sessions[1].Title.Should().Be("Claude 2");
+        vm.Sessions[0].Title.Should().Be("default - 1");
+        vm.Sessions[1].Title.Should().Be("default - 2");
     }
 
     [Fact]
@@ -298,8 +298,8 @@ public class CockpitViewModelTests
         await vm.NewSessionCommand.ExecuteAsync(null);
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        vm.Sessions[0].Title.Should().Be("Claude 1");
-        vm.Sessions[1].Title.Should().Be("Claude 2");
+        vm.Sessions[0].Title.Should().Be("default - 1");
+        vm.Sessions[1].Title.Should().Be("default - 2");
     }
 
     [Fact]

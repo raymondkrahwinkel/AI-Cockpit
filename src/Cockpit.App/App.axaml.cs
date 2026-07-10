@@ -38,9 +38,10 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;
+            var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
             _mainWindow = new MainWindow
             {
-                DataContext = Program.Services.GetRequiredService<CockpitViewModel>(),
+                DataContext = cockpitViewModel,
             };
             desktop.MainWindow = _mainWindow;
             _SetUpTrayIcon();
@@ -49,9 +50,11 @@ public partial class App : Application
             // portal/keyboard-hook is only ever touched for an operator who opted in.
             _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
 
-            // Open-mic dictation: likewise a no-op unless voice and open-mic are both enabled, so the mic
-            // is never opened for an operator who never opted in.
-            _ = Program.Services.GetRequiredService<OpenMicCoordinator>().StartAsync();
+            // Open-mic dictation: expose the coordinator so the sidebar toggle can turn it on/off at
+            // runtime, and resume listening at startup if it was left on. No-op when voice is off.
+            var openMicCoordinator = Program.Services.GetRequiredService<OpenMicCoordinator>();
+            cockpitViewModel.OpenMic = openMicCoordinator;
+            _ = openMicCoordinator.StartAsync();
 
             // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
             // plugin the host built for it so it can register its Options tab / side-menu section.

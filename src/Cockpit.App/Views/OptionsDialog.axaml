@@ -158,12 +158,10 @@
                                   IsChecked="{Binding VoiceAutoSubmit}"/>
                         <TextBlock Text="On: the transcript is submitted straight away. Off: it is placed in the input for you to review first."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Open mic (listen continuously, no key held)"
-                                  IsChecked="{Binding VoiceOpenMicEnabled}"/>
-                        <TextBlock Text="Listens all the time and detects when you start and stop speaking, instead of holding the push-to-talk key. Applies on restart. Pauses itself while read-aloud is speaking."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceOpenMicEnabled}">
-                            <TextBlock Text="End utterance after (silence ms)"
+                        <!-- Open mic is turned on/off at runtime from the sidebar mic button, not here; this
+                             is only its tuning. -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
+                            <TextBlock Text="Open-mic: end utterance after (silence ms)"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"

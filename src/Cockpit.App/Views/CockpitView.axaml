@@ -43,6 +43,14 @@
                      primary session overview per the cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                    <!-- Runtime open-mic toggle: listens continuously and types into the selected session.
+                         Disabled until Voice is enabled in Options (open-mic needs the mic pipeline). -->
+                    <ToggleButton Content="🎙 Open mic" HorizontalAlignment="Stretch"
+                                  IsChecked="{Binding OpenMic.IsListening, Mode=OneWay}"
+                                  Command="{Binding OpenMic.ToggleOpenMicCommand}"
+                                  IsEnabled="{Binding OpenMic.IsAvailable}"
+                                  ToolTip.ShowOnDisabled="True"
+                                  ToolTip.Tip="Toggle open-mic dictation on/off — listens continuously and types into the selected session (enable Voice in Options first)"/>
                     <Button Content="Profiles" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding ManageProfilesCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
