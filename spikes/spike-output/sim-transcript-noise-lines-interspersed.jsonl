@@ -1,0 +1,5 @@
+{"type":"user","parentUuid":"fake-parent-smapwuxja7f","isSidechain":false,"message":{"model":"claude-sonnet-5-simulated","id":"msg_fake_1nggxp1b01c","type":"message","role":"user","content":"test","stop_reason":null},"uuid":"fake-tuo5s3hgcnp"}
+{"type":"assistant","parentUuid":"fake-parent-lrn9fsxe3","isSidechain":false,"message":{"model":"claude-sonnet-5-simulated","id":"msg_fake_5i9gxk6xffa","type":"message","role":"assistant","content":[{"type":"text","text":"Antwoord ondanks ruis."}],"stop_reason":"end_turn"},"uuid":"fake-megwtv4d4ik"}
+{"type":"last-prompt","lastPrompt":"test","leafUuid":"x","sessionId":"sim"}
+{"type":"system","content":"some system note"}
+{"parentUuid":"x","isSidechain":false,"attachment":{"type":"hook_non_blocking_error","hookName":"Stop"}}

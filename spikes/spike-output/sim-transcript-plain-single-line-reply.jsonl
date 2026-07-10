@@ -1,0 +1,2 @@
+{"type":"user","parentUuid":"fake-parent-q7ztynvu98","isSidechain":false,"message":{"model":"claude-sonnet-5-simulated","id":"msg_fake_v2630c5ouba","type":"message","role":"user","content":"hallo","stop_reason":null},"uuid":"fake-bkjgqcuxso7"}
+{"type":"assistant","parentUuid":"fake-parent-rr8l2stcpj","isSidechain":false,"message":{"model":"claude-sonnet-5-simulated","id":"msg_fake_ml8e6wx28aj","type":"message","role":"assistant","content":[{"type":"text","text":"Hallo! Hoe kan ik helpen?"}],"stop_reason":"end_turn"},"uuid":"fake-n9nttqtu3a"}

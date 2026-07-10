@@ -11,4 +11,6 @@ internal sealed class StubPermissionServerState : IPermissionServerState
     public string? McpConfigPath { get; init; }
 
     public string? PermissionPromptToolName { get; init; }
+
+    public string? PermissionMcpUrl { get; init; }
 }

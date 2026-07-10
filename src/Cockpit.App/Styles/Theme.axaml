@@ -119,6 +119,12 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
+    <!-- Disabled Subtle button (e.g. Remove with nothing selected): stay chromeless — without this the
+         default theme paints a grey disabled box, which reads as a broken/mis-styled button. -->
+    <Style Selector="Button.Subtle:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
 
     <!-- Compact button: denser secondary action (Stop) that must not compete with the accent. Shares
          the compact selectors' height/surface so the session top bar (Stop + mode/model/effort) reads

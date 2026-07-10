@@ -12,4 +12,7 @@ public interface IPermissionServerState
 
     /// <summary>The <c>--permission-prompt-tool</c> argument (e.g. <c>mcp__cockpit__permission_prompt</c>), or null before ready.</summary>
     string? PermissionPromptToolName { get; }
+
+    /// <summary>The permission server's loopback MCP endpoint (e.g. <c>http://127.0.0.1:&lt;port&gt;/mcp</c>), or null before ready. Used to rebuild the merged <c>--mcp-config</c> with the shared registry at each spawn.</summary>
+    string? PermissionMcpUrl { get; }
 }

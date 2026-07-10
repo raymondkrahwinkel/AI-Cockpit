@@ -20,6 +20,9 @@ public partial class McpServersViewModel : ViewModelBase
 
     public ObservableCollection<EditableMcpServerViewModel> Servers { get; } = [];
 
+    /// <summary>One-click templates for well-known MCP servers (filesystem, fetch, …) — the fast path to giving a local model file access.</summary>
+    public IReadOnlyList<McpServerPreset> Presets => McpServerPresets.All;
+
     [ObservableProperty]
     private EditableMcpServerViewModel? _selectedServer;
 
@@ -62,6 +65,38 @@ public partial class McpServersViewModel : ViewModelBase
         var added = new EditableMcpServerViewModel(new McpServerConfig { Name = "new server", Command = "npx" });
         Servers.Add(added);
         SelectedServer = added;
+    }
+
+    [RelayCommand]
+    private void AddPreset(McpServerPreset? preset)
+    {
+        if (preset is null)
+        {
+            return;
+        }
+
+        // Give it a unique name if that preset was already added, so two filesystem servers don't collide.
+        var config = preset.Template with { Name = _UniqueName(preset.Template.Name) };
+        var added = new EditableMcpServerViewModel(config);
+        Servers.Add(added);
+        SelectedServer = added;
+    }
+
+    private string _UniqueName(string baseName)
+    {
+        if (Servers.All(server => !string.Equals(server.Name, baseName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return baseName;
+        }
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = $"{baseName}-{suffix}";
+            if (Servers.All(server => !string.Equals(server.Name, candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                return candidate;
+            }
+        }
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedServer))]

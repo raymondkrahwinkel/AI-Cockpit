@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 
@@ -37,6 +39,7 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
     private readonly IClaudeExecutableLocator _executableLocator;
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
     private readonly IPermissionServerState _permissionServerState;
+    private readonly IMcpServerStore _mcpServerStore;
     private Process? _process;
     private bool _started;
 
@@ -44,12 +47,14 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         IOptions<CockpitOptions> options,
         IClaudeExecutableLocator executableLocator,
         WorkspaceTrustWriter workspaceTrustWriter,
-        IPermissionServerState permissionServerState)
+        IPermissionServerState permissionServerState,
+        IMcpServerStore mcpServerStore)
     {
         _options = options.Value;
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
         _permissionServerState = permissionServerState;
+        _mcpServerStore = mcpServerStore;
     }
 
     public bool HasExited => _started && (_process?.HasExited ?? true);
@@ -71,6 +76,11 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         var executablePath = profile?.ExecutablePath
             ?? _executableLocator.FindBundledExecutable()
             ?? cli.ExecutablePath;
+
+        // Fan the shared MCP registry out to this spawn: rewrite the --mcp-config the CLI is about to read so
+        // it carries the same servers the local-LLM tool-loop hosts, alongside the permission server. Done
+        // per spawn so registry edits take effect for the next session without an app restart.
+        FanOutRegistryToMcpConfig(permissionMode);
 
         var arguments = BuildArguments(cli, permissionMode, model, _permissionServerState);
 
@@ -203,6 +213,37 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
         arguments.AddRange(cli.ExtraArguments);
         return arguments;
+    }
+
+    // Rewrites the --mcp-config file (the one BuildArguments points --mcp-config at) with the permission
+    // server plus the current shared registry, so a Claude session sees the same MCP servers as a local-LLM
+    // session (#26 fan-out). Skipped in bypass mode (no --mcp-config is passed there) and when the permission
+    // server isn't ready yet. Best-effort: any failure leaves the baseline permission-only config in place
+    // rather than blocking the spawn.
+    private void FanOutRegistryToMcpConfig(string? permissionMode)
+    {
+        var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? _options.Claude.PermissionMode : permissionMode;
+        if (string.Equals(effectiveMode, "bypassPermissions", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_permissionServerState is not { McpConfigPath: { } configPath, PermissionMcpUrl: { } mcpUrl })
+        {
+            return;
+        }
+
+        try
+        {
+            // Sync-over-async is deliberate: Start is a synchronous spawn path (it already writes the trust
+            // file inline), and the store is a small local cockpit.json read that never touches the UI thread.
+            var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            File.WriteAllText(configPath, McpConfigFile.Serialize(mcpUrl, registry));
+        }
+        catch (Exception)
+        {
+            // Leave the baseline config the permission server wrote; the session still gets permission gating.
+        }
     }
 
     private Process RequireStartedProcess() =>

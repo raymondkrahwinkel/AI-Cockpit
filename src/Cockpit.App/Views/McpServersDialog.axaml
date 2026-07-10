@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:mcp="using:Cockpit.Core.Mcp"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -35,9 +36,26 @@
         <Grid ColumnDefinitions="180,*">
 
             <DockPanel Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}">
-                <Button DockPanel.Dock="Bottom" Content="+ Add server" Classes="Subtle" Margin="8"
-                        HorizontalAlignment="Left" Foreground="{StaticResource CockpitAccentBrush}"
-                        Command="{Binding AddServerCommand}"/>
+                <StackPanel DockPanel.Dock="Bottom" Margin="8,6,8,8" Spacing="2">
+                    <Button Content="+ Add server" Classes="Subtle" HorizontalAlignment="Left"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Command="{Binding AddServerCommand}"/>
+                    <TextBlock Text="QUICK ADD" FontSize="10" Margin="2,4,0,0"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <!-- Preset MCP servers: the fast path to giving a local model file access etc. Each is
+                         still gated by the approval prompt; the filesystem preset defaults to one folder. -->
+                    <ItemsControl ItemsSource="{Binding Presets}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="mcp:McpServerPreset">
+                                <Button Classes="Subtle" Content="{Binding Label}" HorizontalAlignment="Left"
+                                        Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                        ToolTip.Tip="{Binding Description}"
+                                        Command="{Binding $parent[Window].((vm:McpServersViewModel)DataContext).AddPresetCommand}"
+                                        CommandParameter="{Binding}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
                 <ListBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
                          Background="Transparent" Margin="4">
                     <ListBox.ItemTemplate>

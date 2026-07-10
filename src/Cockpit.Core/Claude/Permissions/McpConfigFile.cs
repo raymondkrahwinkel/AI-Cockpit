@@ -1,38 +1,92 @@
 using System.Text.Json.Nodes;
+using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Claude.Permissions;
 
 /// <summary>
-/// Builds the <c>--mcp-config</c> body that points every session at the cockpit's shared
-/// in-process HTTP MCP server, e.g.
-/// <c>{"mcpServers":{"cockpit":{"type":"http","url":"http://127.0.0.1:&lt;port&gt;/mcp"}}}</c>.
-/// Pure string/JSON generation so it is unit-testable; writing it to disk is the host's job.
+/// Builds the <c>--mcp-config</c> body every Claude-CLI session points at. It always contains the
+/// cockpit's shared in-process HTTP permission server, e.g.
+/// <c>{"mcpServers":{"cockpit":{"type":"http","url":"http://127.0.0.1:&lt;port&gt;/mcp"}}}</c>, and — for the
+/// fan-out (#26) — merges in the user's shared MCP registry so the CLI sees the same servers the local-LLM
+/// tool-loop hosts. Combined with <c>--strict-mcp-config</c> this is the CLI's <em>complete</em> server set,
+/// so the cockpit registry is the single source of truth. Pure string/JSON generation so it is
+/// unit-testable; writing it to disk is the host's job.
 /// </summary>
 public static class McpConfigFile
 {
     /// <summary>The server key; the tool is addressed as <c>mcp__cockpit__permission_prompt</c>.</summary>
     public const string ServerName = "cockpit";
 
-    /// <summary>Serializes the config JSON for a server reachable at <paramref name="mcpUrl"/>.</summary>
-    public static string Serialize(string mcpUrl)
+    /// <summary>Serializes the config JSON for the permission server alone (no registry fan-out).</summary>
+    public static string Serialize(string mcpUrl) => Serialize(mcpUrl, []);
+
+    /// <summary>
+    /// Serializes the permission server plus every enabled registry server, mapped to the CLI's
+    /// <c>mcpServers</c> shape. A registry server that collides with the reserved <see cref="ServerName"/>
+    /// key, or that carries no usable transport target, is skipped so it can never clobber the permission
+    /// entry or emit a malformed spawn config.
+    /// </summary>
+    public static string Serialize(string mcpUrl, IEnumerable<McpServerConfig> registryServers)
     {
         if (string.IsNullOrWhiteSpace(mcpUrl))
         {
             throw new ArgumentException("MCP url must be provided.", nameof(mcpUrl));
         }
 
-        var config = new JsonObject
+        var servers = new JsonObject
         {
-            ["mcpServers"] = new JsonObject
+            [ServerName] = new JsonObject
             {
-                [ServerName] = new JsonObject
-                {
-                    ["type"] = "http",
-                    ["url"] = mcpUrl,
-                },
+                ["type"] = "http",
+                ["url"] = mcpUrl,
             },
         };
 
-        return config.ToJsonString();
+        foreach (var server in registryServers)
+        {
+            if (!server.Enabled || string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (_ToConfigEntry(server) is { } entry)
+            {
+                servers[server.Name] = entry;
+            }
+        }
+
+        return new JsonObject { ["mcpServers"] = servers }.ToJsonString();
+    }
+
+    // Maps one registry server to the CLI's mcpServers entry. Stdio → command/args; HTTP → type/url with an
+    // Authorization header for a static API key. OAuth-protected HTTP servers carry only their url — the
+    // static config can't hold a token, so the CLI must negotiate auth itself (headless spawns can't, so
+    // those stay best-effort until the OAuth increment). Servers missing their transport target are dropped.
+    private static JsonObject? _ToConfigEntry(McpServerConfig server) => server.Transport switch
+    {
+        McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new JsonObject
+        {
+            ["type"] = "stdio",
+            ["command"] = server.Command,
+            ["args"] = new JsonArray([.. server.Args.Select(arg => (JsonNode)arg!)]),
+        },
+        McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => _HttpEntry(server),
+        _ => null,
+    };
+
+    private static JsonObject _HttpEntry(McpServerConfig server)
+    {
+        var entry = new JsonObject
+        {
+            ["type"] = "http",
+            ["url"] = server.Url,
+        };
+
+        if (server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey))
+        {
+            entry["headers"] = new JsonObject { ["Authorization"] = $"Bearer {server.ApiKey}" };
+        }
+
+        return entry;
     }
 }

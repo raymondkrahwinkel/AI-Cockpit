@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node \"C:\\Users\\raymo\\RiderProjects\\Zyra-Voice\\spikes\\spike-output\\extract-last-assistant-text.js\"",
+        "timeout": 15
+      }
+    ]
+  }
+}

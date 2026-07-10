@@ -33,6 +33,7 @@ internal sealed class PermissionMcpServer : IHostedService, IPermissionServerSta
     private readonly ILogger<PermissionMcpServer> _logger;
     private WebApplication? _app;
     private string? _mcpConfigPath;
+    private string? _mcpUrl;
 
     public PermissionMcpServer(
         IPermissionCoordinator coordinator,
@@ -48,6 +49,8 @@ internal sealed class PermissionMcpServer : IHostedService, IPermissionServerSta
     public string? McpConfigPath => _mcpConfigPath;
 
     public string? PermissionPromptToolName { get; private set; }
+
+    public string? PermissionMcpUrl => _mcpUrl;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -69,14 +72,16 @@ internal sealed class PermissionMcpServer : IHostedService, IPermissionServerSta
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);
 
         var boundUrl = ResolveBoundUrl(_app);
-        var mcpUrl = $"{boundUrl.TrimEnd('/')}/mcp";
+        _mcpUrl = $"{boundUrl.TrimEnd('/')}/mcp";
         PermissionPromptToolName = $"mcp__{McpConfigFile.ServerName}__permission_prompt";
 
-        _mcpConfigPath = WriteConfigFile(McpConfigFile.Serialize(mcpUrl));
+        // Seed the baseline (permission-only) config so McpConfigPath is valid before the first spawn; the
+        // process rewrites it with the current registry fan-out at each spawn (ClaudeCliProcess).
+        _mcpConfigPath = WriteConfigFile(McpConfigFile.Serialize(_mcpUrl));
 
         _logger.LogInformation(
             "MCP permission server listening at {McpUrl}; config written to {ConfigPath}",
-            mcpUrl,
+            _mcpUrl,
             _mcpConfigPath);
     }
 

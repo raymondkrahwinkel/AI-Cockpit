@@ -25,6 +25,32 @@ public class McpServersViewModelTests
     }
 
     [Fact]
+    public void AddPreset_AddsThePrefilledTemplateAndSelectsIt()
+    {
+        var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>());
+        var filesystem = vm.Presets.First(preset => preset.Label == "Filesystem");
+
+        vm.AddPresetCommand.Execute(filesystem);
+
+        var added = vm.SelectedServer!;
+        added.Name.Should().Be("filesystem");
+        added.Command.Should().Be("npx");
+        added.Args.Should().Contain("@modelcontextprotocol/server-filesystem");
+    }
+
+    [Fact]
+    public void AddPreset_Twice_GivesTheSecondAUniqueName()
+    {
+        var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>());
+        var filesystem = vm.Presets.First(preset => preset.Label == "Filesystem");
+
+        vm.AddPresetCommand.Execute(filesystem);
+        vm.AddPresetCommand.Execute(filesystem);
+
+        vm.Servers.Select(server => server.Name).Should().Equal("filesystem", "filesystem-2");
+    }
+
+    [Fact]
     public async Task LoadAsync_PopulatesRowsFromTheStore()
     {
         var store = Substitute.For<IMcpServerStore>();
