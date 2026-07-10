@@ -137,6 +137,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public int GridColumns => Sessions.Count <= 1 ? 1 : 2;
 
+    /// <summary>The Zoom toggle only makes sense in the grid layout with more than one session — a single session already fills the pane, and single-session layout has no grid to zoom out of.</summary>
+    public bool ShowZoomButton => !SingleSessionLayout && Sessions.Count > 1;
+
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
 
@@ -171,6 +174,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     partial void OnSingleSessionLayoutChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowSinglePane));
+        OnPropertyChanged(nameof(ShowZoomButton));
         RefreshPaneVisibility();
     }
 
@@ -445,6 +449,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             OnPropertyChanged(nameof(HasSessions));
             OnPropertyChanged(nameof(GridColumns));
+            OnPropertyChanged(nameof(ShowZoomButton));
             RefreshPaneVisibility();
         };
         _ = LoadNotificationSettingsAsync();

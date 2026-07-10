@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Core.Abstractions;
@@ -10,9 +9,8 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// Shows a plugin's content in a modal window over the cockpit's main window (#14) with cockpit-styled
-/// custom chrome — a hairline title bar (draggable, with a close button) instead of the OS title bar — so a
-/// plugin dialog looks native to the app while staying resizable. The plugin owns the content control. The
+/// Shows a plugin's content in a modal window over the cockpit's main window (#14). The window carries the
+/// cockpit background so a plugin dialog looks native; the plugin owns the content control inside it. The
 /// settings variant adds a host-provided Save/Close footer so every plugin's settings dialog behaves the
 /// same — Save calls the view's <see cref="IPluginSettingsView.Save"/> and closes the dialog on success.
 /// </summary>
@@ -25,7 +23,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
             return;
         }
 
-        window.Content = _ChromeRoot(window, title, createContent(), footer: null);
+        window.Content = createContent();
         await window.ShowDialog(owner);
     }
 
@@ -65,74 +63,14 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Child = buttons,
         };
+        DockPanel.SetDock(footer, Dock.Bottom);
 
-        window.Content = _ChromeRoot(window, title, new ScrollViewer { Content = view }, footer);
-        await window.ShowDialog(owner);
-    }
-
-    // Wraps the plugin body in the cockpit's custom chrome: a draggable title bar on top, the body filling,
-    // and an optional footer docked at the bottom (settings Save/Close).
-    private static Control _ChromeRoot(Window window, string title, Control body, Border? footer)
-    {
         var root = new DockPanel();
-        var titleBar = _TitleBar(window, title);
-        DockPanel.SetDock(titleBar, Dock.Top);
-        root.Children.Add(titleBar);
+        root.Children.Add(footer);
+        root.Children.Add(new ScrollViewer { Content = view });
+        window.Content = root;
 
-        if (footer is not null)
-        {
-            DockPanel.SetDock(footer, Dock.Bottom);
-            root.Children.Add(footer);
-        }
-
-        root.Children.Add(body);
-        return root;
-    }
-
-    private static Control _TitleBar(Window window, string title)
-    {
-        var titleText = new TextBlock
-        {
-            Text = title,
-            FontWeight = FontWeight.SemiBold,
-            FontSize = 13,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(14, 0, 0, 0),
-        };
-
-        var closeButton = new Button
-        {
-            Content = "✕",
-            Classes = { "Subtle" },
-            FontSize = 13,
-            Padding = new Thickness(12, 0),
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
-        closeButton.Click += (_, _) => window.Close();
-
-        var bar = new DockPanel { Height = 38 };
-        DockPanel.SetDock(closeButton, Dock.Right);
-        bar.Children.Add(closeButton);
-        bar.Children.Add(titleText);
-
-        var wrapper = new Border
-        {
-            Background = _Brush("CockpitSecondaryBgBrush"),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = bar,
-        };
-
-        // Drag the window by the title bar, but not when the press lands on the close button.
-        wrapper.PointerPressed += (_, e) =>
-        {
-            if (e.Source is not Button)
-            {
-                window.BeginMoveDrag(e);
-            }
-        };
-
-        return wrapper;
+        await window.ShowDialog(owner);
     }
 
     private static bool _TryCreateWindow(string title, double width, double height, out Window window, out Window owner)
@@ -152,10 +90,6 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
             Height = height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Background = _Brush("CockpitPanelBgBrush"),
-            // Cockpit-styled chrome: extend the client area under the title bar and draw our own, keeping
-            // the OS resize borders.
-            ExtendClientAreaToDecorationsHint = true,
-            ExtendClientAreaTitleBarHeightHint = -1,
         };
         return true;
     }
