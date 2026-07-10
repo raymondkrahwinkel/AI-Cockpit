@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
 using FluentAssertions;
@@ -195,6 +196,23 @@ public class ManageProfilesDialogViewModelTests
 
         await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<ClaudeProfile>>(), Arg.Any<CancellationToken>());
         vm.StatusMessage.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task RefreshModels_PopulatesTheSelectedLocalProfilesAvailableModels()
+    {
+        var catalog = Substitute.For<IModelCatalog>();
+        catalog.ListModelsAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { "llama3.1", "qwen2.5-7b-instruct" });
+        var vm = new ManageProfilesDialogViewModel(Substitute.For<IClaudeProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>(), catalog);
+        vm.AddProfileCommand.Execute(null);
+        var row = vm.SelectedProfile!;
+        row.SelectedProvider = SessionProviderCatalog.Resolve(SessionProvider.Ollama);
+
+        await vm.RefreshModelsCommand.ExecuteAsync(null);
+
+        row.AvailableModels.Should().Equal("llama3.1", "qwen2.5-7b-instruct");
+        vm.ModelFetchStatus.Should().Contain("2");
     }
 
     [Fact]

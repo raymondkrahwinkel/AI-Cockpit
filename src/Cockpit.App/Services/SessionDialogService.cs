@@ -5,6 +5,7 @@ using Avalonia.Platform.Storage;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Profiles;
 
 namespace Cockpit.App.Services;
@@ -18,11 +19,13 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 {
     private readonly IClaudeProfileStore _profileStore;
     private readonly IClaudeProfileLoginChecker _loginChecker;
+    private readonly IModelCatalog _modelCatalog;
 
-    public SessionDialogService(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)
+    public SessionDialogService(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IModelCatalog modelCatalog)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
+        _modelCatalog = modelCatalog;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -67,7 +70,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     private async Task ShowManageProfilesAsync(Window owner)
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker);
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog);
         await viewModel.LoadAsync();
 
         var dialog = new ManageProfilesDialog { DataContext = viewModel };

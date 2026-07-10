@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
 
@@ -16,6 +17,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
     private readonly IClaudeProfileStore? _profileStore;
     private readonly IClaudeProfileLoginChecker? _loginChecker;
+    private readonly IModelCatalog? _modelCatalog;
 
     /// <summary>Raised when the dialog should close (after a save, or on cancel).</summary>
     public event Action? CloseRequested;
@@ -44,10 +46,35 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         SelectedProfile = sample;
     }
 
-    public ManageProfilesDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)
+    public ManageProfilesDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IModelCatalog? modelCatalog = null)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
+        _modelCatalog = modelCatalog;
+    }
+
+    /// <summary>Status of the last model refresh (count or a "server not running" hint), shown next to the model picker.</summary>
+    [ObservableProperty]
+    private string _modelFetchStatus = string.Empty;
+
+    /// <summary>Fetches the selected local profile's installed models from its server so the operator can pick one instead of typing an id (#26).</summary>
+    [RelayCommand]
+    private async Task RefreshModelsAsync()
+    {
+        if (_modelCatalog is null || SelectedProfile is not { IsLocalProvider: true } profile)
+        {
+            return;
+        }
+
+        ModelFetchStatus = "Loading…";
+        var models = await _modelCatalog.ListModelsAsync(profile.BaseUrl, string.IsNullOrWhiteSpace(profile.ApiKey) ? null : profile.ApiKey);
+        profile.AvailableModels.Clear();
+        foreach (var model in models)
+        {
+            profile.AvailableModels.Add(model);
+        }
+
+        ModelFetchStatus = models.Count > 0 ? $"{models.Count} model(s)" : "No models found — is the server running?";
     }
 
     /// <summary>Loads the stored profiles into editable rows and selects the first.</summary>

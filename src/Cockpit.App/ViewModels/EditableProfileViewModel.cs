@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Profiles;
 
@@ -62,6 +63,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     private bool _isLoggedIn;
 
     public IReadOnlyList<SessionProviderOption> Providers => SessionProviderCatalog.Providers;
+
+    /// <summary>Models the local server reported on the last refresh, offered as suggestions in the model picker.</summary>
+    public ObservableCollection<string> AvailableModels { get; } = [];
 
     public bool IsClaudeProvider => SelectedProvider.Value == SessionProvider.ClaudeCli;
 
