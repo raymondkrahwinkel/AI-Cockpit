@@ -63,9 +63,18 @@ internal static class CockpitWindowChrome
 
         if (includeMaximize)
         {
-            var maximize = _CaptionButton("▢");
-            maximize.Click += (_, _) => window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            var maximize = _CaptionButton(_MaximizeGlyph(window.WindowState));
+            maximize.Click += (_, _) => _ToggleMaximize(window);
             captionButtons.Children.Add(maximize);
+
+            // Keep the glyph in sync with the state (maximize ▢ vs restore ❐), whichever way it changed.
+            window.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == Window.WindowStateProperty)
+                {
+                    maximize.Content = _MaximizeGlyph(window.WindowState);
+                }
+            };
         }
 
         var close = _CaptionButton("✕");
@@ -85,17 +94,31 @@ internal static class CockpitWindowChrome
             Child = bar,
         };
 
-        // Drag the window by the title bar, but not when the press lands on a caption button.
+        // Drag the window by the title bar; a double-click maximizes/restores it (where that is allowed),
+        // and a press on a caption button is left to the button.
         wrapper.PointerPressed += (_, e) =>
         {
-            if (e.Source is not Button)
+            if (e.Source is Button)
             {
-                window.BeginMoveDrag(e);
+                return;
             }
+
+            if (includeMaximize && e.ClickCount == 2)
+            {
+                _ToggleMaximize(window);
+                return;
+            }
+
+            window.BeginMoveDrag(e);
         };
 
         return wrapper;
     }
+
+    private static void _ToggleMaximize(Window window) =>
+        window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private static string _MaximizeGlyph(WindowState state) => state == WindowState.Maximized ? "❐" : "▢";
 
     // A uniform caption button: same width, font size and centred glyph so the buttons line up regardless
     // of each glyph's own metrics.
