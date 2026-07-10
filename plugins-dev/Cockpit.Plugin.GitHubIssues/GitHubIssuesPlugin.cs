@@ -30,7 +30,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         host.AddSettings(() => new GitHubIssuesSettingsControl(settings));
         host.AddSideMenuButton(
             "GitHub Issues",
-            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host.Actions), 860, 620));
+            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host.Actions), 1040, 700));
     }
 
     public void Dispose()

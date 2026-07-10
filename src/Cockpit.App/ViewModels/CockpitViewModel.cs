@@ -57,6 +57,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
+    private readonly PluginDiagnostics? _pluginDiagnostics;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -78,6 +79,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.</summary>
     public PluginManagerViewModel Plugins { get; }
+
+    /// <summary>A dismissible banner shown when one or more plugins failed to load (#14) — the app keeps running; details are in Options → Plugins.</summary>
+    [ObservableProperty]
+    private string _pluginFailureBanner = string.Empty;
+
+    /// <summary>True while the plugin-failure banner should be shown.</summary>
+    [ObservableProperty]
+    private bool _hasPluginFailures;
+
+    /// <summary>Reads the recorded plugin failures and raises the startup banner; called after plugin phase-2 completes.</summary>
+    public void RefreshPluginFailures()
+    {
+        var failures = _pluginDiagnostics?.Failures ?? [];
+        HasPluginFailures = failures.Count > 0;
+        PluginFailureBanner = failures.Count switch
+        {
+            0 => string.Empty,
+            1 => $"A plugin failed to load: {failures[0].DisplayName}. See Options → Plugins for details.",
+            _ => $"{failures.Count} plugins failed to load. See Options → Plugins for details.",
+        };
+    }
+
+    [RelayCommand]
+    private void DismissPluginFailures() => HasPluginFailures = false;
 
     void IPluginContributionSink.AddPluginSideSection(string title, Func<Control> createView) =>
         _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(title, createView)));
@@ -389,15 +414,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginStoreConfigStore? pluginStoreConfigStore = null,
         IPluginStoreClient? pluginStoreClient = null,
         IPluginDialogHost? pluginDialogHost = null,
+        PluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null)
     {
         _audioDeviceProvider = audioDeviceProvider;
-        // The full plugin manager needs its store/installer/bootstrap, store dependencies and the dialog
-        // host; when they are absent (unit tests that don't exercise plugins) the design-time manager is
-        // used, so the tab is inert.
+        _pluginDiagnostics = pluginDiagnostics;
+        // The full plugin manager needs its store/installer/bootstrap, store dependencies, the dialog host
+        // and the diagnostics; when they are absent (unit tests that don't exercise plugins) the design-time
+        // manager is used, so the tab is inert.
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost)
+                && pluginDiagnostics is not null
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost, pluginDiagnostics)
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;

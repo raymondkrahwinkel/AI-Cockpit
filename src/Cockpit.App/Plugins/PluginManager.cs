@@ -13,7 +13,7 @@ namespace Cockpit.App.Plugins;
 /// for it. Instantiation is a delegate seam so the orchestration is testable without real assembly
 /// loading. One plugin that throws is logged and skipped — it never takes the app or its siblings down.
 /// </summary>
-internal sealed class PluginManager(ILogger<PluginManager> logger) : IDisposable
+internal sealed class PluginManager(ILogger<PluginManager> logger, PluginDiagnostics diagnostics) : IDisposable
 {
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin Plugin)> _loaded = [];
 
@@ -43,12 +43,14 @@ internal sealed class PluginManager(ILogger<PluginManager> logger) : IDisposable
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} failed to load; skipping it.", candidate.FolderId);
+                diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "load", exception.Message);
                 continue;
             }
 
             if (plugin is null)
             {
                 logger.LogWarning("Plugin {PluginId} did not yield an ICockpitPlugin; skipping it.", candidate.FolderId);
+                diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "load", "The plugin did not yield an ICockpitPlugin.");
                 continue;
             }
 
@@ -59,6 +61,7 @@ internal sealed class PluginManager(ILogger<PluginManager> logger) : IDisposable
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during ConfigureServices; skipping it.", candidate.FolderId);
+                diagnostics.Record(candidate.FolderId, candidate.Manifest.Name, "configure", exception.Message);
                 plugin.Dispose();
                 continue;
             }
@@ -83,6 +86,7 @@ internal sealed class PluginManager(ILogger<PluginManager> logger) : IDisposable
             catch (Exception exception)
             {
                 logger.LogWarning(exception, "Plugin {PluginId} threw during Initialize; its contributions are skipped.", discovered.FolderId);
+                diagnostics.Record(discovered.FolderId, discovered.Manifest.Name, "initialize", exception.Message);
             }
         }
     }

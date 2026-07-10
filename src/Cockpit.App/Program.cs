@@ -45,7 +45,9 @@ sealed class Program
         // #14 Plugins — phase 1, before the container is built: discover the plugins installed next to
         // cockpit.json and let each load-decided plugin register its own services. The manager isolates a
         // plugin that fails to load or configure; a discovery failure leaves the app running without plugins.
-        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>());
+        var pluginDiagnostics = new PluginDiagnostics();
+        services.AddSingleton(pluginDiagnostics);
+        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics);
         try
         {
             var discoveredPlugins = new PluginBootstrap()

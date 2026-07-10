@@ -221,6 +221,19 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </DockPanel>
+
+            <!-- Plugin-failure banner (#14): the app kept running; details live in Options → Plugins. -->
+            <Border IsVisible="{Binding HasPluginFailures}" VerticalAlignment="Top" Margin="12,12,12,0"
+                    Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                    BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="✕" Classes="Subtle" Padding="6,0"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            Command="{Binding DismissPluginFailuresCommand}"/>
+                    <TextBlock Text="{Binding PluginFailureBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
+                </DockPanel>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

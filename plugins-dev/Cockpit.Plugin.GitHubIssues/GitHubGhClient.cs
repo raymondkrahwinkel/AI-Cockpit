@@ -6,11 +6,63 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// <summary>
 /// Lists open issues across all repositories for an owner via the local GitHub CLI (<c>gh search issues
 /// --owner &lt;owner&gt; --state open --json …</c>), reusing the user's existing <c>gh</c> login — no token
-/// to paste. Shelling out to a CLI the user already trusts keeps the plugin dependency-free.
+/// to paste. Issues in archived repositories are excluded (the search API returns them, but they are
+/// resolved and filtered against <c>gh repo list --archived</c>). Shelling out to a CLI the user already
+/// trusts keeps the plugin dependency-free.
 /// </summary>
 internal sealed class GitHubGhClient
 {
     public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, CancellationToken cancellationToken)
+    {
+        var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
+        var archived = await _GetArchivedReposAsync(normalizedOwner, cancellationToken);
+
+        var searchArgs = new[]
+        {
+            "search", "issues", "--owner", normalizedOwner, "--state", "open",
+            "--limit", "100", "--json", "number,title,url,body,repository",
+        };
+        var issues = _ParseIssues(await _RunGhAsync(searchArgs, cancellationToken));
+
+        return archived.Count == 0
+            ? issues
+            : issues.Where(issue => !archived.Contains(issue.Repository)).ToList();
+    }
+
+    // The archived repos for the owner; "@me"/blank means the current gh user (no owner argument).
+    private static async Task<HashSet<string>> _GetArchivedReposAsync(string owner, CancellationToken cancellationToken)
+    {
+        var args = new List<string> { "repo", "list" };
+        if (!string.Equals(owner, "@me", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add(owner);
+        }
+
+        args.AddRange(["--archived", "--limit", "1000", "--json", "nameWithOwner"]);
+
+        try
+        {
+            var json = await _RunGhAsync(args.ToArray(), cancellationToken);
+            using var document = JsonDocument.Parse(json);
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                if (element.TryGetProperty("nameWithOwner", out var nwo) && nwo.GetString() is { } name)
+                {
+                    result.Add(name);
+                }
+            }
+
+            return result;
+        }
+        catch
+        {
+            // If the archived list can't be fetched, fail open (show everything) rather than hiding issues.
+            return [];
+        }
+    }
+
+    private static async Task<string> _RunGhAsync(string[] arguments, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo("gh")
         {
@@ -19,16 +71,10 @@ internal sealed class GitHubGhClient
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        startInfo.ArgumentList.Add("search");
-        startInfo.ArgumentList.Add("issues");
-        startInfo.ArgumentList.Add("--owner");
-        startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(owner) ? "@me" : owner);
-        startInfo.ArgumentList.Add("--state");
-        startInfo.ArgumentList.Add("open");
-        startInfo.ArgumentList.Add("--limit");
-        startInfo.ArgumentList.Add("100");
-        startInfo.ArgumentList.Add("--json");
-        startInfo.ArgumentList.Add("number,title,url,body,repository");
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
 
         using var process = new Process { StartInfo = startInfo };
         try
@@ -49,10 +95,10 @@ internal sealed class GitHubGhClient
             throw new InvalidOperationException($"gh exited with code {process.ExitCode}: {stderr.Trim()}");
         }
 
-        return _Parse(stdout);
+        return stdout;
     }
 
-    private static IReadOnlyList<GitHubIssue> _Parse(string json)
+    private static IReadOnlyList<GitHubIssue> _ParseIssues(string json)
     {
         using var document = JsonDocument.Parse(json);
         var issues = new List<GitHubIssue>();

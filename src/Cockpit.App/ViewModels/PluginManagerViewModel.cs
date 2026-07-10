@@ -28,6 +28,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly IPluginStoreClient? _storeClient;
     private readonly IReadOnlyDictionary<string, Func<Control>>? _settingsRegistry;
     private readonly IPluginDialogHost? _dialogHost;
+    private readonly PluginDiagnostics? _diagnostics;
 
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
@@ -60,7 +61,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         IPluginStoreConfigStore storeConfigStore,
         IPluginStoreClient storeClient,
         IReadOnlyDictionary<string, Func<Control>> settingsRegistry,
-        IPluginDialogHost dialogHost)
+        IPluginDialogHost dialogHost,
+        PluginDiagnostics diagnostics)
     {
         _registrationStore = registrationStore;
         _installer = installer;
@@ -70,6 +72,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _storeClient = storeClient;
         _settingsRegistry = settingsRegistry;
         _dialogHost = dialogHost;
+        _diagnostics = diagnostics;
     }
 
     /// <summary>Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.</summary>
@@ -81,7 +84,10 @@ public partial class PluginManagerViewModel : ViewModelBase
             Plugins.Clear();
             foreach (var plugin in discovered)
             {
-                Plugins.Add(new PluginRowViewModel(plugin, _settingsRegistry?.ContainsKey(plugin.FolderId) ?? false));
+                Plugins.Add(new PluginRowViewModel(
+                    plugin,
+                    _settingsRegistry?.ContainsKey(plugin.FolderId) ?? false,
+                    _diagnostics?.ForFolder(plugin.FolderId)?.Error));
             }
 
             HasPlugins = Plugins.Count > 0;

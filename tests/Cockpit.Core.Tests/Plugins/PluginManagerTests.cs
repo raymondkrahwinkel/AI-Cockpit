@@ -89,7 +89,7 @@ public class PluginManagerTests
         second.DisposeCount.Should().Be(1);
     }
 
-    private static PluginManager _Manager() => new(NullLogger<PluginManager>.Instance);
+    private static PluginManager _Manager() => new(NullLogger<PluginManager>.Instance, new PluginDiagnostics());
 
     private static DiscoveredPlugin _Discovered(string id, PluginLoadDecision decision) => new(
         $"/plugins/{id}", id,

@@ -7,12 +7,20 @@ namespace Cockpit.App.ViewModels;
 /// plugin's <see cref="PluginLoadDecision"/>. The manager owns the enable/disable/remove commands and
 /// takes the row as their parameter, so the row itself stays a passive projection of a discovered plugin.
 /// </summary>
-public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false)
+public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, string? failureError = null)
 {
     public DiscoveredPlugin Discovered => discovered;
 
     /// <summary>True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.</summary>
     public bool HasSettings => hasSettings;
+
+    /// <summary>The load/init error for this plugin, if it failed (#14); shown in red on the row so a broken plugin is visible in the manager.</summary>
+    public string? FailureError => failureError;
+
+    /// <summary>True when this plugin failed to load or initialize.</summary>
+    public bool HasFailure => !string.IsNullOrEmpty(failureError);
+
+    public string FailureText => $"⚠ Failed to load: {failureError}";
 
     public string FolderId => discovered.FolderId;
 

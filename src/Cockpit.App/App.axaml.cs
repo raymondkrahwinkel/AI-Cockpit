@@ -80,6 +80,9 @@ public partial class App : Application
             actions,
             _CreatePluginStorage(discovered, registrationStore),
             dialogHost));
+
+        // Surface any load/init failures (phase 1 or 2) as a banner; the app kept running regardless.
+        cockpit.RefreshPluginFailures();
     }
 
     // Seeds the plugin's storage from its saved slice and writes changes back through the store; the load

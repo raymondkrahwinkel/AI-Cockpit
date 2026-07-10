@@ -12,9 +12,10 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// <summary>
 /// The "GitHub Issues" dialog opened from the left-menu button: a search box and a sortable
 /// <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP mode) on
-/// the left, and a details panel on the right that shows the selected issue's title, repository, body and a
-/// link — with buttons to open it on GitHub or inject the rendered template into the active session. Built
-/// in code; the DataGrid theme is provided app-wide by the host.
+/// the left, and a details panel on the right showing the selected issue's title, repository, body, a link,
+/// and a preview of the prompt it would produce (with a copy button). "Add to prompt" injects the prompt
+/// into the active session and only shows when one is active; the copy button always works. Built in code;
+/// the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
@@ -28,12 +29,16 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly DataGrid _grid;
 
     private readonly TextBlock _detailPlaceholder;
-    private readonly StackPanel _detailContent;
+    private readonly DockPanel _detailContent;
     private readonly TextBlock _detailTitle;
     private readonly TextBlock _detailMeta;
+    private readonly Button _inject;
     private readonly SelectableTextBlock _detailBody;
+    private readonly SelectableTextBlock _promptPreview;
+    private readonly TextBlock _detailStatus;
 
     private IReadOnlyList<GitHubIssue> _all = [];
+    private string _renderedPrompt = string.Empty;
 
     public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitActions actions)
     {
@@ -60,35 +65,82 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _grid.Columns.Add(new DataGridTextColumn { Header = "#", Binding = new Binding(nameof(GitHubIssue.Number)), Width = new DataGridLength(64) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Title", Binding = new Binding(nameof(GitHubIssue.Title)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
         _grid.SelectionChanged += (_, _) => _ShowDetail(_grid.SelectedItem as GitHubIssue);
-        _grid.DoubleTapped += (_, _) => _Inject(_grid.SelectedItem as GitHubIssue);
+        _grid.DoubleTapped += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubIssue);
 
-        // Top bar: search on the left, Refresh on the right.
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
         topBar.Children.Add(refresh);
         topBar.Children.Add(_search);
 
-        // Details panel (right): title/meta + actions on top, the body scrolls below.
+        // Details panel (right).
         _detailTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap };
-        _detailMeta = new TextBlock { FontSize = 11, Opacity = 0.7, Margin = new Thickness(0, 2, 0, 0) };
+        _detailMeta = new TextBlock { FontSize = 11, Opacity = 0.7, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
 
-        var inject = new Button { Content = "Add to prompt", Classes = { "Accent" } };
-        inject.Click += (_, _) => _Inject(_grid.SelectedItem as GitHubIssue);
+        _inject = new Button { Content = "Add to prompt", Classes = { "Accent" } };
+        _inject.Click += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubIssue);
         var openBrowser = new Button { Content = "Open in browser" };
         openBrowser.Click += (_, _) => _OpenInBrowser(_grid.SelectedItem as GitHubIssue);
-        var detailButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 8, 0, 8) };
-        detailButtons.Children.Add(inject);
+        var detailButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 8, 0, 0) };
+        detailButtons.Children.Add(_inject);
         detailButtons.Children.Add(openBrowser);
 
         _detailBody = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+        _promptPreview = new SelectableTextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 11,
+            FontFamily = _MonoFont(),
+        };
+        _detailStatus = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitAccentBrush"), Margin = new Thickness(0, 2, 0, 0) };
 
-        var detailHeader = new StackPanel { Children = { _detailTitle, _detailMeta, detailButtons } };
+        var copyButton = new Button { Content = "⧉ Copy", FontSize = 11, Padding = new Thickness(8, 2) };
+        copyButton.Click += async (_, _) => await _CopyPromptAsync();
+        var promptHeader = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+        DockPanel.SetDock(copyButton, Dock.Right);
+        promptHeader.Children.Add(copyButton);
+        promptHeader.Children.Add(new TextBlock { Text = "Prompt preview", FontWeight = FontWeight.SemiBold, FontSize = 11, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center });
+
+        var promptBlock = new Border
+        {
+            Background = _Brush("CockpitSecondaryBgBrush"),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10),
+            Child = _promptPreview,
+        };
+
+        var detailHeader = new StackPanel
+        {
+            Children =
+            {
+                _detailTitle,
+                _detailMeta,
+                detailButtons,
+            },
+        };
         DockPanel.SetDock(detailHeader, Dock.Top);
-        _detailContent = new StackPanel { IsVisible = false };
-        var detailInner = new DockPanel();
-        detailInner.Children.Add(detailHeader);
-        detailInner.Children.Add(new ScrollViewer { Content = _detailBody });
-        _detailContent.Children.Add(detailInner);
+
+        var detailScroll = new ScrollViewer
+        {
+            Content = new StackPanel
+            {
+                Margin = new Thickness(0, 10, 0, 0),
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "Description", FontWeight = FontWeight.SemiBold, FontSize = 11, Opacity = 0.7 },
+                    _detailBody,
+                    promptHeader,
+                    promptBlock,
+                    _detailStatus,
+                },
+            },
+        };
+
+        _detailContent = new DockPanel { IsVisible = false };
+        _detailContent.Children.Add(detailHeader);
+        _detailContent.Children.Add(detailScroll);
 
         _detailPlaceholder = new TextBlock
         {
@@ -173,6 +225,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
     private void _ShowDetail(GitHubIssue? issue)
     {
+        _detailStatus.Text = string.Empty;
         if (issue is null)
         {
             _detailContent.IsVisible = false;
@@ -185,6 +238,48 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _detailTitle.Text = issue.Title;
         _detailMeta.Text = $"{issue.Repository}  ·  #{issue.Number}  ·  {issue.Url}";
         _detailBody.Text = string.IsNullOrWhiteSpace(issue.Body) ? "(no description)" : issue.Body;
+        _renderedPrompt = _RenderPrompt(issue);
+        _promptPreview.Text = _renderedPrompt;
+
+        // "Add to prompt" only makes sense with a live session; otherwise the copy button is the way to grab it.
+        _inject.IsVisible = _actions.HasActiveSession;
+    }
+
+    private string _RenderPrompt(GitHubIssue issue)
+    {
+        var parts = issue.Repository.Split('/', 2);
+        var owner = parts.Length == 2 ? parts[0] : _settings.Owner;
+        var repo = parts.Length == 2 ? parts[1] : _settings.Repo;
+        return PromptTemplate.Render(_settings.Template, issue, owner, repo);
+    }
+
+    private void _AddToPrompt(GitHubIssue? issue)
+    {
+        if (issue is null)
+        {
+            _status.Text = "Select an issue first.";
+            return;
+        }
+
+        if (!_actions.HasActiveSession)
+        {
+            _detailStatus.Text = "No active session — use Copy to put the prompt on the clipboard.";
+            return;
+        }
+
+        _ = _actions.InjectIntoActiveSessionAsync(_RenderPrompt(issue));
+        _detailStatus.Text = $"✓ Added issue #{issue.Number} to the active session's prompt.";
+    }
+
+    private async Task _CopyPromptAsync()
+    {
+        if (string.IsNullOrEmpty(_renderedPrompt))
+        {
+            return;
+        }
+
+        await _actions.SetClipboardTextAsync(_renderedPrompt);
+        _detailStatus.Text = "✓ Prompt copied to the clipboard.";
     }
 
     private void _OpenInBrowser(GitHubIssue? issue)
@@ -201,34 +296,14 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         }
         catch (Exception exception)
         {
-            _status.Text = $"Could not open the browser: {exception.Message}";
+            _detailStatus.Text = $"Could not open the browser: {exception.Message}";
         }
     }
 
-    private void _Inject(GitHubIssue? issue)
-    {
-        if (issue is null)
-        {
-            _status.Text = "Select an issue first.";
-            return;
-        }
-
-        var parts = issue.Repository.Split('/', 2);
-        var owner = parts.Length == 2 ? parts[0] : _settings.Owner;
-        var repo = parts.Length == 2 ? parts[1] : _settings.Repo;
-        var prompt = PromptTemplate.Render(_settings.Template, issue, owner, repo);
-
-        if (_actions.HasActiveSession)
-        {
-            _ = _actions.InjectIntoActiveSessionAsync(prompt);
-            _status.Text = $"Added issue #{issue.Number} to the active session's prompt.";
-        }
-        else
-        {
-            _ = _actions.SetClipboardTextAsync(prompt);
-            _status.Text = $"No active session — issue #{issue.Number} copied to the clipboard.";
-        }
-    }
+    private static FontFamily _MonoFont() =>
+        Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font
+            ? font
+            : new FontFamily("Cascadia Mono, Consolas, monospace");
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

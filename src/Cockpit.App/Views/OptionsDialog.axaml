@@ -240,6 +240,9 @@
                                                        Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                            <TextBlock Text="{Binding FailureText}" IsVisible="{Binding HasFailure}"
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                                                 <Button Content="⚙ Settings" Classes="Compact" IsVisible="{Binding HasSettings}"
                                                         ToolTip.Tip="Configure this plugin"
