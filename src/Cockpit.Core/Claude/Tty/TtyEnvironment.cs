@@ -24,6 +24,16 @@ public static class TtyEnvironment
     public const string TermValue = "xterm-256color";
 
     /// <summary>
+    /// UTF-8 locale forced onto the pty child when the inherited environment has no UTF-8 locale. Claude's
+    /// Ink TUI measures character widths through the C library's <c>wcwidth</c>, which only reports correct
+    /// widths for wide/box-drawing/emoji glyphs under a UTF-8 <c>LC_CTYPE</c>; under <c>C</c>/<c>POSIX</c> or
+    /// a non-UTF-8 locale it miscounts, so the TUI's layout math drifts and frames render overlapping and
+    /// misaligned (spaces left showing an earlier frame's box-drawing rules). <c>C.UTF-8</c> is locale-data
+    /// free (always available on modern glibc/Fedora) so this is a safe universal fallback.
+    /// </summary>
+    public const string Utf8LocaleValue = "C.UTF-8";
+
+    /// <summary>
     /// Builds the environment for the pty child: everything in <paramref name="baseEnvironment"/>
     /// (the inherited parent environment), then <c>TERM</c>, then — when <paramref name="profile"/>
     /// is non-null — <c>CLAUDE_CONFIG_DIR</c> so the spawned CLI reads that profile's own
@@ -53,12 +63,41 @@ public static class TtyEnvironment
 
         environment["TERM"] = TermValue;
 
+        // Guarantee a UTF-8 ctype so claude's TUI measures glyph widths correctly (see Utf8LocaleValue). Only
+        // steps in when the inherited locale is missing or non-UTF-8 — a machine already on a UTF-8 locale
+        // (e.g. en_US.UTF-8) keeps it. Forces LC_ALL so it wins over any non-UTF-8 LC_CTYPE/LC_ALL below it.
+        if (!HasUtf8Locale(environment))
+        {
+            environment["LC_ALL"] = Utf8LocaleValue;
+            environment["LANG"] = Utf8LocaleValue;
+        }
+
         if (profile is not null)
         {
             environment["CLAUDE_CONFIG_DIR"] = profile.ConfigDir;
         }
 
         return environment;
+    }
+
+    /// <summary>
+    /// True when the effective ctype locale is UTF-8. The C library resolves the ctype category as
+    /// <c>LC_ALL</c> (if set) else <c>LC_CTYPE</c> else <c>LANG</c>, so this checks them in that precedence
+    /// and treats a value containing <c>UTF-8</c>/<c>UTF8</c> (case-insensitive) as UTF-8.
+    /// </summary>
+    private static bool HasUtf8Locale(IReadOnlyDictionary<string, string> environment)
+    {
+        var effective =
+            Value(environment, "LC_ALL")
+            ?? Value(environment, "LC_CTYPE")
+            ?? Value(environment, "LANG");
+
+        return effective is not null
+            && (effective.Contains("UTF-8", StringComparison.OrdinalIgnoreCase)
+                || effective.Contains("UTF8", StringComparison.OrdinalIgnoreCase));
+
+        static string? Value(IReadOnlyDictionary<string, string> env, string key) =>
+            env.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : null;
     }
 
     /// <summary>

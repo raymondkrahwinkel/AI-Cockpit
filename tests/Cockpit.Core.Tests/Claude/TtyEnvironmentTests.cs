@@ -36,6 +36,40 @@ public class TtyEnvironmentTests
     }
 
     [Fact]
+    public void Build_WhenNoUtf8Locale_ForcesAUtf8LocaleSoTheTuiMeasuresWidthsCorrectly()
+    {
+        var noUtf8 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["LANG"] = "C" };
+
+        var environment = TtyEnvironment.Build(noUtf8, profile: null);
+
+        environment["LC_ALL"].Should().Be("C.UTF-8");
+        environment["LANG"].Should().Be("C.UTF-8");
+    }
+
+    [Fact]
+    public void Build_WhenNoLocaleAtAll_StillForcesUtf8()
+    {
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null);
+
+        environment["LC_ALL"].Should().Be("C.UTF-8");
+    }
+
+    [Theory]
+    [InlineData("LANG", "en_US.UTF-8")]
+    [InlineData("LC_ALL", "nl_NL.UTF-8")]
+    [InlineData("LC_CTYPE", "en_GB.utf8")]
+    public void Build_WhenAUtf8LocaleIsAlreadyPresent_LeavesItUntouched(string key, string value)
+    {
+        var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [key] = value };
+
+        var environment = TtyEnvironment.Build(env, profile: null);
+
+        // The already-working UTF-8 locale is preserved, and no C.UTF-8 fallback was forced over it.
+        environment[key].Should().Be(value);
+        environment.GetValueOrDefault("LC_ALL").Should().NotBe("C.UTF-8");
+    }
+
+    [Fact]
     public void Build_WithProfile_SetsClaudeConfigDirToTheProfileDirectory()
     {
         var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
