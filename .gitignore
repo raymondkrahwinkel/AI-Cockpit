@@ -19,3 +19,6 @@ ggml-*.bin
 *.bin
 piper-voices/
 *.wav
+
+# Plugin distribution artifacts (#14)
+plugins-dev/dist/

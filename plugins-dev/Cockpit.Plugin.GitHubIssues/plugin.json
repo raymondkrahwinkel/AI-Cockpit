@@ -1,0 +1,11 @@
+{
+  "id": "github-issues",
+  "name": "GitHub Issues",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.GitHubIssues.dll",
+  "entryType": "Cockpit.Plugin.GitHubIssues.GitHubIssuesPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "Shows a repository's open GitHub issues in the left menu; clicking one drops a prompt telling the agent to open and review that issue. The prompt template is editable in Options.",
+  "author": "Cockpit"
+}

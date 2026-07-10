@@ -26,6 +26,11 @@
     <ProjectReference Include="..\..\src\Cockpit.App\Cockpit.App.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\..\src\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
+    <!-- Builds the example plugin (#14) so the loader integration test can load its real assembly, but
+         does not reference it (ReferenceOutputAssembly=false) — the test must load it through the plugin
+         ALC, not the default one, or the type-identity proof would be meaningless. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitHubIssues\Cockpit.Plugin.GitHubIssues.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>
