@@ -65,6 +65,12 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     public bool IsLmStudioProvider => SelectedProvider.Value == SessionProvider.LmStudio;
 
+    /// <summary>Label shown in the profile list, with the provider (and local model) appended (#26).</summary>
+    public string DisplayLabel => ProfileDisplay.Format(Label, SelectedProvider.Value, Model);
+
+    /// <summary>Placeholder for the base-URL field, defaulting to the selected local provider's usual localhost address.</summary>
+    public string BaseUrlPlaceholder => SessionProviderCatalog.DefaultBaseUrl(SelectedProvider.Value);
+
     public string LoginStatusLabel => IsLoggedIn ? "logged in" : "not logged in";
 
     public string LoginStatusBrushKey => IsLoggedIn ? "CockpitStatusDoneBrush" : "CockpitStatusWaitingBrush";
@@ -87,14 +93,24 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsClaudeProvider));
         OnPropertyChanged(nameof(IsLocalProvider));
         OnPropertyChanged(nameof(IsLmStudioProvider));
+        OnPropertyChanged(nameof(DisplayLabel));
+        OnPropertyChanged(nameof(BaseUrlPlaceholder));
 
-        // Pre-fill the local server URL when a fresh profile switches to a local provider, so the operator
-        // starts from the usual localhost address rather than an empty field.
-        if (CanChooseProvider && IsLocalProvider && string.IsNullOrWhiteSpace(BaseUrl))
+        // Point the base URL at the newly chosen provider's default port when adding a profile — including
+        // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.
+        if (CanChooseProvider && IsLocalProvider && (string.IsNullOrWhiteSpace(BaseUrl) || _IsAKnownDefaultUrl(BaseUrl)))
         {
             BaseUrl = SessionProviderCatalog.DefaultBaseUrl(value.Value);
         }
     }
+
+    partial void OnLabelChanged(string value) => OnPropertyChanged(nameof(DisplayLabel));
+
+    partial void OnModelChanged(string value) => OnPropertyChanged(nameof(DisplayLabel));
+
+    private static bool _IsAKnownDefaultUrl(string url) =>
+        url == SessionProviderCatalog.DefaultBaseUrl(SessionProvider.Ollama)
+        || url == SessionProviderCatalog.DefaultBaseUrl(SessionProvider.LmStudio);
 
     public EditableProfileViewModel(ClaudeProfile profile, bool isLoggedIn, bool canChooseProvider = false)
     {

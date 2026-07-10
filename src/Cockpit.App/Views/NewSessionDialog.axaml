@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:profiles="using:Cockpit.Core.Profiles"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -48,6 +49,38 @@
              switching. SelectedKind/IsSdk/IsTty is the seam for showing/hiding kind-specific fields later. -->
         <StackPanel Margin="16" Spacing="12">
 
+            <!-- Profile first: its provider decides which of the options below apply (#26). The picker shows
+                 the provider (and local model) after the label, e.g. "default (Claude CLI)". -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Spacing="3">
+                    <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                              HorizontalAlignment="Stretch">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="profiles:ClaudeProfile">
+                                <TextBlock Text="{Binding ., Converter={x:Static conv:ProfileDisplayConverter.Instance}}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
+                               FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
+                               FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                               IsVisible="{Binding ShowLoginHint}"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Session name is provider-independent, so it is always shown. -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBox Grid.Column="1" Text="{Binding SessionName}"
+                         PlaceholderText="Optional — defaults to Claude N"/>
+            </Grid>
+
             <!-- Kind is Claude-only: a local provider runs solely as an SDK session (TTY spawns the claude CLI). -->
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding IsClaudeProfile}">
                 <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"
@@ -57,36 +90,6 @@
                             ToolTip.Tip="Headless stream-json rendered as the chat UI, with live mode/model/effort switching"/>
                     <Button Content="TTY" Classes.Accent="{Binding IsTty}" Command="{Binding SelectTtyCommand}"
                             ToolTip.Tip="The real interactive claude TUI in a terminal panel"/>
-                </StackPanel>
-            </Grid>
-
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
-                <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <TextBox Grid.Column="1" Text="{Binding SessionName}"
-                         PlaceholderText="Optional — defaults to Claude N"/>
-            </Grid>
-
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
-                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" FontSize="12.5"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="3">
-                    <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
-                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
-                    <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                            BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
-                            CornerRadius="3" Padding="5,1" HorizontalAlignment="Left" Margin="0,1,0,0"
-                            IsVisible="{Binding SelectedProviderLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                        <TextBlock Text="{Binding SelectedProviderLabel}" FontSize="10"
-                                   Foreground="{StaticResource CockpitAccentBrush}"/>
-                    </Border>
-                    <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
-                               FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                    <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
-                               FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
-                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
-                               IsVisible="{Binding ShowLoginHint}"/>
                 </StackPanel>
             </Grid>
 
