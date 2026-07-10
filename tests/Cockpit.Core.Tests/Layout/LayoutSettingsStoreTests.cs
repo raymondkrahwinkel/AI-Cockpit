@@ -39,10 +39,11 @@ public class LayoutSettingsStoreTests : IDisposable
     {
         var store = new LayoutSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, MinimizeToTrayOnClose = true });
+        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, MinimizeToTrayOnClose = true });
         var loaded = await store.LoadAsync();
 
         loaded.SingleSessionLayout.Should().BeTrue();
+        loaded.StackSessionsVertically.Should().BeTrue();
         loaded.MinimizeToTrayOnClose.Should().BeTrue();
     }
 

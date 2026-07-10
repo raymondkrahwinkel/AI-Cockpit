@@ -198,7 +198,8 @@
                     </ItemsControl.Styles>
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <controls:SessionTilePanel/>
+                            <controls:SessionTilePanel
+                                StackVertically="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StackSessionsVertically}"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>

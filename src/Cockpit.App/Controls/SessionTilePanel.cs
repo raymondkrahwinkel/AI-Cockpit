@@ -13,9 +13,25 @@ namespace Cockpit.App.Controls;
 /// </summary>
 public sealed class SessionTilePanel : Panel
 {
+    /// <summary>When true, visible panels stack in a single column (one above the other) instead of the adaptive two-column tiling.</summary>
+    public static readonly StyledProperty<bool> StackVerticallyProperty =
+        AvaloniaProperty.Register<SessionTilePanel, bool>(nameof(StackVertically));
+
+    static SessionTilePanel()
+    {
+        AffectsMeasure<SessionTilePanel>(StackVerticallyProperty);
+        AffectsArrange<SessionTilePanel>(StackVerticallyProperty);
+    }
+
+    public bool StackVertically
+    {
+        get => GetValue(StackVerticallyProperty);
+        set => SetValue(StackVerticallyProperty, value);
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
-        var (columns, rows) = Dimensions(VisibleCount());
+        var (columns, rows) = Dimensions(VisibleCount(), StackVertically);
         if (columns == 0)
         {
             foreach (var child in Children)
@@ -37,7 +53,7 @@ public sealed class SessionTilePanel : Panel
 
     protected override Size ArrangeOverride(Size finalSize)
     {
-        var (columns, rows) = Dimensions(VisibleCount());
+        var (columns, rows) = Dimensions(VisibleCount(), StackVertically);
         if (columns == 0)
         {
             foreach (var child in Children)
@@ -82,12 +98,21 @@ public sealed class SessionTilePanel : Panel
         return count;
     }
 
-    /// <summary>Columns/rows for a visible-child count: one fills, two+ use two columns (3–4 → 2×2) — the adaptive rule the multi-session grid has always used.</summary>
-    public static (int Columns, int Rows) Dimensions(int visibleCount)
+    /// <summary>
+    /// Columns/rows for a visible-child count. Adaptive default: one fills, two+ use two columns (3–4 → 2×2).
+    /// When <paramref name="stackVertically"/> is set, everything goes in a single column (N rows) so the
+    /// panels sit one above the other instead of side by side.
+    /// </summary>
+    public static (int Columns, int Rows) Dimensions(int visibleCount, bool stackVertically = false)
     {
         if (visibleCount <= 0)
         {
             return (0, 0);
+        }
+
+        if (stackVertically)
+        {
+            return (1, visibleCount);
         }
 
         var columns = visibleCount <= 1 ? 1 : 2;

@@ -155,6 +155,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _singleSessionLayout;
 
+    /// <summary>When true, the multi-session grid stacks panels in one column (one above the other) instead of tiling side by side. Bound to the grid's <see cref="Controls.SessionTilePanel.StackVertically"/>.</summary>
+    [ObservableProperty]
+    private bool _stackSessionsVertically;
+
     /// <summary>When true, closing the window hides it to the system tray and keeps the app running (#33). Read by MainWindow on close.</summary>
     [ObservableProperty]
     private bool _minimizeToTrayOnClose;
@@ -602,6 +606,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var settings = await _layoutSettingsStore.LoadAsync();
         SingleSessionLayout = settings.SingleSessionLayout;
+        StackSessionsVertically = settings.StackSessionsVertically;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
     }
 
@@ -617,6 +622,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _layoutSettingsStore.SaveAsync(new LayoutSettings
         {
             SingleSessionLayout = SingleSessionLayout,
+            StackSessionsVertically = StackSessionsVertically,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         });
         LayoutSettingsStatus = "✓ Saved";

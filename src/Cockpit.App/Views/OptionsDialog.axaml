@@ -99,6 +99,11 @@
                                   IsChecked="{Binding SingleSessionLayout}"/>
                         <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <CheckBox Content="Stack sessions vertically (one column)"
+                                  IsChecked="{Binding StackSessionsVertically}"
+                                  IsEnabled="{Binding !SingleSessionLayout}"/>
+                        <TextBlock Text="In the grid, place sessions one above the other instead of side by side. No effect when showing one session at a time."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <CheckBox Content="Minimize to tray when closing the window"
                                   IsChecked="{Binding MinimizeToTrayOnClose}"/>
                         <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."

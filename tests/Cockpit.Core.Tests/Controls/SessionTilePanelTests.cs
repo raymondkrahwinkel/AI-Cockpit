@@ -24,4 +24,17 @@ public class SessionTilePanelTests
         columns.Should().Be(expectedColumns);
         rows.Should().Be(expectedRows);
     }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)] // two sessions stack one above the other instead of side by side
+    [InlineData(3, 3)]
+    [InlineData(4, 4)]
+    public void Dimensions_WhenStackingVertically_UseASingleColumn(int visibleCount, int expectedRows)
+    {
+        var (columns, rows) = SessionTilePanel.Dimensions(visibleCount, stackVertically: true);
+
+        columns.Should().Be(1);
+        rows.Should().Be(expectedRows);
+    }
 }
