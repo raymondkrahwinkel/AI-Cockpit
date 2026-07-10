@@ -261,7 +261,11 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
         try
         {
-            await _session.StartAsync(profile, SelectedPermissionMode.Value, SelectedModel.Value, _lifetimeCancellation.Token);
+            // The model dropdown lists Claude aliases (opus/sonnet/…), which are meaningless to a local
+            // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
+            // a local session keeps its own configured model instead of being clobbered with "opus".
+            var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
+            await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
             ActiveProfileLabel = profile?.Label;
             // The profile is shown separately (ActiveProfileLabel), so keep the status itself clean

@@ -71,8 +71,9 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     [RelayCommand]
     private void AddProfile()
     {
+        // A freshly added profile may pick its provider (#26); an existing one is fixed.
         var added = new EditableProfileViewModel(
-            new ClaudeProfile("new profile", string.Empty), isLoggedIn: false);
+            new ClaudeProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true);
         Profiles.Add(added);
         SelectedProfile = added;
     }
@@ -141,11 +142,11 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             return;
         }
 
-        // A profile needs at least a label and a config directory to be usable; refuse to persist a
-        // half-filled row (e.g. a freshly added one) rather than write junk the picker can't launch.
-        if (Profiles.Any(profile => string.IsNullOrWhiteSpace(profile.Label) || string.IsNullOrWhiteSpace(profile.ConfigDir)))
+        // A profile needs the fields its provider can launch with (a config directory for Claude, a base
+        // URL and model for a local provider); refuse to persist a half-filled row rather than write junk.
+        if (Profiles.Any(profile => !profile.IsValid))
         {
-            StatusMessage = "Every profile needs a label and a config directory.";
+            StatusMessage = "Every profile needs a label, plus a config directory (Claude) or a base URL and model (local).";
             return;
         }
 

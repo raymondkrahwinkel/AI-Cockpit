@@ -137,6 +137,67 @@ public class ManageProfilesDialogViewModelTests
     }
 
     [Fact]
+    public void AddProfile_LetsTheNewRowChooseItsProvider_ButLoadedRowsCannot()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+
+        vm.AddProfileCommand.Execute(null);
+
+        vm.Profiles[0].CanChooseProvider.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LoadAsync_ExistingProfilesCannotChangeProvider()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns([new ClaudeProfile("work", "/home/r/.claude-work")]);
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+
+        await vm.LoadAsync();
+
+        vm.Profiles[0].CanChooseProvider.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Save_LocalProviderProfile_PersistsItsProviderConfig()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        vm.AddProfileCommand.Execute(null);
+        var row = vm.SelectedProfile!;
+        row.Label = "ollama";
+        row.SelectedProvider = SessionProviderCatalog.Resolve(SessionProvider.Ollama);
+        row.BaseUrl = "http://localhost:11434";
+        row.Model = "llama3.1";
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<ClaudeProfile>>(list =>
+                list.Count == 1 &&
+                list[0].Provider == SessionProvider.Ollama &&
+                ((OllamaConfig)list[0].ProviderConfig!).Model == "llama3.1"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Save_LocalProviderWithoutAModel_DoesNotPersist()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        vm.AddProfileCommand.Execute(null);
+        var row = vm.SelectedProfile!;
+        row.Label = "ollama";
+        row.SelectedProvider = SessionProviderCatalog.Resolve(SessionProvider.Ollama); // base URL auto-fills, model stays empty
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        await store.DidNotReceive().SaveAsync(Arg.Any<IReadOnlyList<ClaudeProfile>>(), Arg.Any<CancellationToken>());
+        vm.StatusMessage.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
     public void ToProfile_CollapsesEmptyExecutableAndPurposeToNull()
     {
         var editable = new EditableProfileViewModel(new ClaudeProfile("work", "/home/r/.claude-work"), isLoggedIn: false)

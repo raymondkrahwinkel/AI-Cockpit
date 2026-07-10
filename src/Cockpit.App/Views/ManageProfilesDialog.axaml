@@ -81,6 +81,15 @@
                     </StackPanel>
 
                     <StackPanel Spacing="4">
+                        <TextBlock Text="Provider (fixed after creation)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding Providers}" SelectedItem="{Binding SelectedProvider}"
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"
+                                  IsEnabled="{Binding CanChooseProvider}"/>
+                    </StackPanel>
+
+                    <!-- Claude-CLI provider fields. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
                         <TextBlock Text="Config directory (CLAUDE_CONFIG_DIR)" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <DockPanel LastChildFill="True">
@@ -90,7 +99,7 @@
                         </DockPanel>
                     </StackPanel>
 
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="4" IsVisible="{Binding IsClaudeProvider}">
                         <TextBlock Text="Executable (empty = bundled default)" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <DockPanel LastChildFill="True">
@@ -100,47 +109,71 @@
                         </DockPanel>
                     </StackPanel>
 
+                    <!-- Local (Ollama / LM Studio) provider fields. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                        <TextBlock Text="Server base URL" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding BaseUrl}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="http://localhost:11434"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
+                        <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Model}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="e.g. llama3.1 (from /v1/models)"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsLmStudioProvider}">
+                        <TextBlock Text="API key (optional, only behind a proxy)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
+                    </StackPanel>
+
                     <StackPanel Spacing="4">
                         <TextBlock Text="Purpose" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding Purpose}"/>
                     </StackPanel>
 
-                    <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
-                    <TextBlock Text="Used to launch every new session. Live-switching these mid-session (the per-session dropdowns) is SDK-only — a TTY session only ever uses them as start defaults."
-                               FontSize="11" TextWrapping="Wrap"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <!-- Session defaults + login are Claude-CLI concepts; a local provider has no permission
+                         mode / thinking budget / login, so this whole block is hidden for those. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding IsClaudeProvider}">
+                        <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <TextBlock Text="Used to launch every new session. Live-switching these mid-session (the per-session dropdowns) is SDK-only — a TTY session only ever uses them as start defaults."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
 
-                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
-                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                            <TextBlock Text="Mode" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).PermissionModes}"
-                                      SelectedItem="{Binding SelectedPermissionMode}"
-                                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
-                        </StackPanel>
-                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-                            <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Models}"
-                                      SelectedItem="{Binding SelectedModel}"
-                                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
-                        </StackPanel>
-                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
-                            <TextBlock Text="Effort" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Efforts}"
-                                      SelectedItem="{Binding SelectedEffort}"
-                                      DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
-                        </StackPanel>
-                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
-                            <TextBlock Text="Login" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" Height="30">
-                                <Ellipse Width="8" Height="8"
-                                         Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                                <TextBlock Text="{Binding LoginStatusLabel}" VerticalAlignment="Center"
-                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Mode" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).PermissionModes}"
+                                          SelectedItem="{Binding SelectedPermissionMode}"
+                                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
                             </StackPanel>
-                        </StackPanel>
-                    </Grid>
+                            <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Models}"
+                                          SelectedItem="{Binding SelectedModel}"
+                                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Effort" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Efforts}"
+                                          SelectedItem="{Binding SelectedEffort}"
+                                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="Login" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center" Height="30">
+                                    <Ellipse Width="8" Height="8"
+                                             Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                    <TextBlock Text="{Binding LoginStatusLabel}" VerticalAlignment="Center"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
         </Grid>
