@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Cockpit",
+  "classifications": [ "Cockpit", "Plugin", "Avalonia" ],
+  "identity": "Cockpit.Plugin.Template",
+  "name": "Cockpit plugin",
+  "shortName": "cockpit-plugin",
+  "description": "A starter Cockpit plugin: an ICockpitPlugin that contributes a left-menu section which injects text into the active session.",
+  "sourceName": "Cockpit.Plugin.Sample",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "preferNameDirectory": true
+}

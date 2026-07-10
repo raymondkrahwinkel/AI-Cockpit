@@ -8,6 +8,20 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- This assembly is the plugin SDK (#14): authors reference it to build a plugin. It is packable
+         so it can be published as a NuGet for out-of-repo authoring; its Version's major must equal
+         AbstractionsContract.Version (the manifest's abstractionsVersion the host gates on). XML docs
+         ship for author IntelliSense; CS1591 is not enforced (the SDK guide is the reference). -->
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <PackageId>Cockpit.Plugins.Abstractions</PackageId>
+    <Title>Cockpit Plugin SDK</Title>
+    <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>
+    <Authors>Cockpit</Authors>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

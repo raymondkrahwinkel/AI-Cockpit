@@ -1,0 +1,11 @@
+{
+  "id": "sample",
+  "name": "Sample",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.Sample.dll",
+  "entryType": "Cockpit.Plugin.Sample.SamplePlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "A starter Cockpit plugin — replace this with your own.",
+  "author": "You"
+}
