@@ -11,7 +11,7 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Infrastructure.Claude;
 
 /// <summary>
-/// <see cref="IClaudeSession"/> backed by a headless <c>claude</c> CLI process
+/// <see cref="ISessionDriver"/> backed by a headless <c>claude</c> CLI process
 /// (see <see cref="ClaudeCliProcess"/> for the exact invocation and doc grounding).
 /// </summary>
 /// <remarks>
@@ -26,7 +26,7 @@ namespace Cockpit.Infrastructure.Claude;
 /// in-band. Any still-pending decisions are denied on dispose so a closing session never leaves
 /// the CLI blocked.
 /// </remarks>
-internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
+internal sealed class ClaudeCliSession : ISessionDriver, ITransientService
 {
     private readonly IClaudeCliProcess _process;
     private readonly IPermissionCoordinator _permissionCoordinator;
@@ -60,6 +60,8 @@ internal sealed class ClaudeCliSession : IClaudeSession, ITransientService
         _permissionRuleStore = permissionRuleStore;
         _logger = logger;
     }
+
+    public SessionCapabilities Capabilities => SessionCapabilities.ClaudeCli;
 
     public string? SessionId => _sessionId;
 

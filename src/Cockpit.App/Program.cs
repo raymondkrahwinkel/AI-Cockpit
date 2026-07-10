@@ -63,7 +63,7 @@ sealed class Program
         services.AddSingleton(pluginManager);
 
         // Factory delegate so CockpitViewModel can mint a new ClaudeSessionViewModel (and,
-        // transitively, its own IClaudeSession/CLI process) per "New session" click without
+        // transitively, its own ISessionDriver/CLI process) per "New session" click without
         // holding an injected IServiceProvider itself (service-locator anti-pattern — Code.md §2).
         services.AddTransient<Func<ClaudeSessionViewModel>>(
             provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());

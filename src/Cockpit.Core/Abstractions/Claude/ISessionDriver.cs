@@ -5,11 +5,17 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.Core.Abstractions.Claude;
 
 /// <summary>
-/// Drives a single, persistent, multi-turn <c>claude</c> CLI conversation
-/// (headless "stream-json" mode) and exposes it as a typed event stream.
+/// Drives a single, persistent, multi-turn conversation with one provider and exposes it as a typed
+/// event stream (#26). The Claude-CLI driver is the current implementation (headless "stream-json"
+/// mode); other providers (Ollama, LM Studio) plug in behind the same seam. <see cref="Capabilities"/>
+/// tells the UI which of the control operations below a given driver actually supports, so it renders no
+/// dead controls for providers that lack (say) live permission switching.
 /// </summary>
-public interface IClaudeSession : IAsyncDisposable
+public interface ISessionDriver : IAsyncDisposable
 {
+    /// <summary>What this driver supports, so the UI renders/hides controls per provider.</summary>
+    SessionCapabilities Capabilities { get; }
+
     /// <summary>
     /// The CLI session id once reported by the <c>system/init</c> event, or <see langword="null"/> before that.
     /// </summary>

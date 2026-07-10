@@ -14,7 +14,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// <summary>
 /// Exercises <see cref="ClaudeSessionViewModel"/>'s transcript-shaping logic (the "Thinking..." row
 /// lifecycle) and the configured start path (<see cref="ClaudeSessionViewModel.StartConfiguredAsync"/>,
-/// which the New-session dialog drives) against a fake <see cref="IClaudeSession"/>. <c>Apply</c> is
+/// which the New-session dialog drives) against a fake <see cref="ISessionDriver"/>. <c>Apply</c> is
 /// invoked directly (it is <c>internal</c>, visible via <c>InternalsVisibleTo</c>) rather than through
 /// <c>ConsumeEventsAsync</c>'s dispatcher, since no Avalonia dispatcher is initialized in this host.
 /// </summary>
@@ -25,7 +25,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task StartConfigured_LaunchesWithTheChosenModel()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
 
@@ -40,7 +40,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task StartConfigured_AppliesTheChosenEffortsBudgetOnceLive()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
 
@@ -55,7 +55,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task StartConfigured_InBypass_LocksThePanelPermissionMode()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
 
@@ -71,7 +71,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task StartConfigured_WhenTheLaunchFailsInBypass_DoesNotStrandThePanelOnAPhantomLock()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         session.StartAsync(Arg.Any<ClaudeProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("bad executable")));
@@ -89,7 +89,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task StartConfigured_InALiveMode_LeavesThePermissionModeUnlocked()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
 
@@ -338,7 +338,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task SendAsync_BeforeStart_ShowsAFriendlyErrorAndKeepsTheText()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session) { InputText = "hello" };
 
@@ -537,7 +537,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task SelectedEffortChanged_WhileLive_SendsTheNewBudget()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
         await vm.StartConfiguredAsync(
@@ -554,7 +554,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public void SelectedEffortChanged_BeforeStart_DoesNotTouchTheSession()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
 
@@ -566,7 +566,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task AllowAlwaysExactTool_ResolvesTheSessionWithAnExactAlwaysRule()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
@@ -588,7 +588,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task AllowAlwaysWildcardTool_ResolvesTheSessionWithAWildcardAlwaysRule()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.ToolUse, "Tool: Bash")
@@ -607,7 +607,7 @@ public class ClaudeSessionViewModelTests
 
     private static ClaudeSessionViewModel NewVm()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         return new ClaudeSessionViewModel(session);
     }
@@ -616,7 +616,7 @@ public class ClaudeSessionViewModelTests
     [Fact]
     public async Task SdkSession_WhenAutoSubmitOn_SendsTheTranscriptRightAfterInjection()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var voice = Substitute.For<IVoicePushToTalkService>();
         voice.BeginHold().Returns(true);
@@ -643,9 +643,9 @@ public class ClaudeSessionViewModelTests
         await vm.DisposeAsync();
     }
 
-    private static async Task<(ClaudeSessionViewModel Vm, IClaudeSession Session)> StartedVm()
+    private static async Task<(ClaudeSessionViewModel Vm, ISessionDriver Session)> StartedVm()
     {
-        var session = Substitute.For<IClaudeSession>();
+        var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         var vm = new ClaudeSessionViewModel(session);
         await vm.StartConfiguredAsync(

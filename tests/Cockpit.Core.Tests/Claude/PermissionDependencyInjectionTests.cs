@@ -38,6 +38,6 @@ public class PermissionDependencyInjectionTests
 
         provider.GetService<IPermissionRuleStore>().Should().NotBeNull();
         provider.GetService<IPermissionCoordinator>().Should().NotBeNull();
-        provider.GetService<IClaudeSession>().Should().NotBeNull();
+        provider.GetService<ISessionDriver>().Should().NotBeNull();
     }
 }

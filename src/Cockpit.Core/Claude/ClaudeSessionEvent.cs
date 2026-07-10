@@ -1,7 +1,7 @@
 namespace Cockpit.Core.Claude;
 
 /// <summary>
-/// Base type for every typed event a <see cref="Abstractions.Claude.IClaudeSession"/> can raise.
+/// Base type for every typed event a <see cref="Abstractions.Claude.ISessionDriver"/> can raise.
 /// Mirrors the real stream-json event vocabulary emitted by the <c>claude</c> CLI in
 /// <c>--input-format stream-json --output-format stream-json --verbose --include-partial-messages</c>
 /// mode, as captured against a live process — see

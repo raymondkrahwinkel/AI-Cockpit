@@ -23,7 +23,7 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientService
 {
-    private readonly IClaudeSession? _session;
+    private readonly ISessionDriver? _session;
     private CancellationTokenSource? _lifetimeCancellation;
     private Task? _eventLoopTask;
     private TranscriptEntryViewModel? _currentAssistantEntry;
@@ -182,7 +182,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         "moQmoUloEpqEJqFJaBKahCahSWgSmoQmYXlhqOHSNEsP9wAAAABJRU5ErkJggg==";
 
     public ClaudeSessionViewModel(
-        IClaudeSession session,
+        ISessionDriver session,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,

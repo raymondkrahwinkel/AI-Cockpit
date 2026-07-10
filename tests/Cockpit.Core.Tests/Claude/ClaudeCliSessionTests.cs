@@ -450,7 +450,7 @@ public class ClaudeCliSessionTests
         yield break;
     }
 
-    private static async Task<List<ClaudeSessionEvent>> CollectEventsAsync(Cockpit.Core.Abstractions.Claude.IClaudeSession session)
+    private static async Task<List<ClaudeSessionEvent>> CollectEventsAsync(Cockpit.Core.Abstractions.Claude.ISessionDriver session)
     {
         var events = new List<ClaudeSessionEvent>();
         await foreach (var evt in session.Events)

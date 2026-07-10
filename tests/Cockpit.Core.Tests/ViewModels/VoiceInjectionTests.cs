@@ -26,7 +26,7 @@ public class VoiceInjectionTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9" });
 
-        var vm = new ClaudeSessionViewModel(Substitute.For<IClaudeSession>(), voicePushToTalk, voiceSettingsStore)
+        var vm = new ClaudeSessionViewModel(Substitute.For<ISessionDriver>(), voicePushToTalk, voiceSettingsStore)
         {
             InputText = "before ",
         };
@@ -91,7 +91,7 @@ public class VoiceInjectionTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = false });
 
-        var vm = new ClaudeSessionViewModel(Substitute.For<IClaudeSession>(), voicePushToTalk, voiceSettingsStore);
+        var vm = new ClaudeSessionViewModel(Substitute.For<ISessionDriver>(), voicePushToTalk, voiceSettingsStore);
         await _WaitForVoiceSettingsToLoadAsync(() => !vm.VoiceEnabled);
 
         vm.BeginVoiceHold().Should().BeFalse();
