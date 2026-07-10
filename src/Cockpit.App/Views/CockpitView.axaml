@@ -55,6 +55,10 @@
                             Command="{Binding ManageProfilesCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Add, edit or remove Claude profiles"/>
+                    <Button Content="MCP servers" HorizontalAlignment="Stretch" Classes="Subtle"
+                            Command="{Binding OpenMcpServersCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Add, edit or remove shared MCP servers"/>
                     <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding OptionsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"

@@ -17,6 +17,9 @@ public interface ISessionDialogService
     /// <summary>Shows the Manage-profiles dialog on its own (e.g. from the sidebar), over the main window.</summary>
     Task ShowManageProfilesDialogAsync();
 
+    /// <summary>Shows the MCP-servers dialog (#26), over the main window, for editing the shared MCP-server registry.</summary>
+    Task ShowMcpServersDialogAsync();
+
     /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
     /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's

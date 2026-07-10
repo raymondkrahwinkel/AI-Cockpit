@@ -6,6 +6,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 
 namespace Cockpit.App.Services;
@@ -20,12 +21,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IClaudeProfileStore _profileStore;
     private readonly IClaudeProfileLoginChecker _loginChecker;
     private readonly IModelCatalog _modelCatalog;
+    private readonly IMcpServerStore _mcpServerStore;
 
-    public SessionDialogService(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IModelCatalog modelCatalog)
+    public SessionDialogService(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IModelCatalog modelCatalog, IMcpServerStore mcpServerStore)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _modelCatalog = modelCatalog;
+        _mcpServerStore = mcpServerStore;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -74,6 +77,21 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await viewModel.LoadAsync();
 
         var dialog = new ManageProfilesDialog { DataContext = viewModel };
+        await dialog.ShowDialog(owner);
+    }
+
+    public async Task ShowMcpServersDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        var viewModel = new McpServersViewModel(_mcpServerStore);
+        await viewModel.LoadAsync();
+
+        var dialog = new McpServersDialog { DataContext = viewModel };
+        viewModel.CloseRequested += dialog.Close;
         await dialog.ShowDialog(owner);
     }
 

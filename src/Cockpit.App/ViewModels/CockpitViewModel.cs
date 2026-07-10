@@ -878,6 +878,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowManageProfilesDialogAsync();
     }
 
+    /// <summary>Opens the MCP-servers dialog (#26) from the sidebar to edit the shared MCP-server registry.</summary>
+    [RelayCommand]
+    private async Task OpenMcpServersAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowMcpServersDialogAsync();
+    }
+
     /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
     [RelayCommand]
     private async Task OptionsAsync()

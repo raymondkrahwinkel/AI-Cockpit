@@ -1,0 +1,118 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.McpServersDialog"
+        x:DataType="vm:McpServersViewModel"
+        Title="MCP servers"
+        Width="640" Height="460" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:McpServersViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="0" Content="Remove" Classes="Subtle" HorizontalAlignment="Left"
+                        Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                        Command="{Binding RemoveServerCommand}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="Accent"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid ColumnDefinitions="180,*">
+
+            <DockPanel Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}">
+                <Button DockPanel.Dock="Bottom" Content="+ Add server" Classes="Subtle" Margin="8"
+                        HorizontalAlignment="Left" Foreground="{StaticResource CockpitAccentBrush}"
+                        Command="{Binding AddServerCommand}"/>
+                <ListBox ItemsSource="{Binding Servers}" SelectedItem="{Binding SelectedServer}"
+                         Background="Transparent" Margin="4">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:EditableMcpServerViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                <TextBlock Text="(off)" FontSize="10" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                           IsVisible="{Binding !Enabled}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <ScrollViewer Grid.Column="1"
+                          IsVisible="{Binding SelectedServer, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <StackPanel Margin="16" Spacing="11"
+                            DataContext="{Binding SelectedServer}"
+                            x:DataType="vm:EditableMcpServerViewModel">
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Name" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Name}"/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBlock Text="Transport" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <ComboBox ItemsSource="{Binding Transports}" SelectedItem="{Binding Transport}"
+                                      HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" Content="Enabled" IsChecked="{Binding Enabled}" VerticalAlignment="Bottom"/>
+                    </Grid>
+
+                    <!-- stdio -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsStdio}">
+                        <TextBlock Text="Command" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Command}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="e.g. npx"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsStdio}">
+                        <TextBlock Text="Arguments (one per line)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Args}" AcceptsReturn="True" TextWrapping="NoWrap"
+                                 MinHeight="70" MaxHeight="140" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="-y&#x0a;@modelcontextprotocol/server-filesystem&#x0a;."/>
+                    </StackPanel>
+
+                    <!-- http -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsHttp}">
+                        <TextBlock Text="URL" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding Url}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="https://host/mcp"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsHttp}">
+                        <TextBlock Text="Authentication" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <ComboBox ItemsSource="{Binding AuthModes}" SelectedItem="{Binding Auth}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsApiKeyAuth}">
+                        <TextBlock Text="API key" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
+                        <TextBlock Text="OAuth authority (discovery base)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding OAuthAuthority}" FontFamily="{StaticResource CockpitMonoFont}"
+                                 PlaceholderText="https://login.example.com"/>
+                    </StackPanel>
+                    <StackPanel Spacing="4" IsVisible="{Binding IsOAuthAuth}">
+                        <TextBlock Text="OAuth client id (optional — dynamic registration if empty)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding OAuthClientId}"/>
+                    </StackPanel>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>
