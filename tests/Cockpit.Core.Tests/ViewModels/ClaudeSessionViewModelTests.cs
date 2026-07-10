@@ -113,6 +113,29 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public void Apply_FirstAssistantOutput_ClearsTheThinkingIndicator()
+    {
+        var vm = NewVm();
+        vm.IsAwaitingResponse = true; // as a dispatched turn leaves it until the first sign of activity
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "hi" });
+
+        vm.IsAwaitingResponse.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Apply_NonOutputEvent_LeavesTheThinkingIndicatorUp()
+    {
+        var vm = NewVm();
+        vm.IsAwaitingResponse = true;
+
+        // A connect/status event is not the assistant answering, so the model is still "thinking".
+        vm.Apply(new SessionInitialized { SessionId = "S1", Cwd = "", Tools = [] });
+
+        vm.IsAwaitingResponse.Should().BeTrue();
+    }
+
+    [Fact]
     public void Apply_TextDeltaAfterThinking_RemovesTheThinkingEntry()
     {
         var vm = NewVm();

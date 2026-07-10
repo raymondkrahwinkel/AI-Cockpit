@@ -69,6 +69,31 @@
         <!-- Input bar: queued-message chips, then pending-attachment chips, then dark multiline textbox + accent Send. -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="True">
 
+            <!-- "Thinking…" indicator: shown from send until the assistant's first output, so a local model
+                 that sits silent while it loads/processes visibly signals it is working rather than hung. The
+                 dot pulses so it reads as live activity. -->
+            <Border DockPanel.Dock="Top" IsVisible="{Binding IsAwaitingResponse}" Margin="2,0,0,8"
+                    HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="●" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitAccentBrush}">
+                        <TextBlock.Styles>
+                            <Style Selector="TextBlock">
+                                <Style.Animations>
+                                    <Animation Duration="0:0:1.1" IterationCount="INFINITE">
+                                        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
+                                        <KeyFrame Cue="50%"><Setter Property="Opacity" Value="1.0"/></KeyFrame>
+                                        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
+                                    </Animation>
+                                </Style.Animations>
+                            </Style>
+                        </TextBlock.Styles>
+                    </TextBlock>
+                    <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
+
             <!-- Queued messages (T8): typed while a turn was in flight, dispatched when it completes.
                  Each is a cancellable chip; hidden when the queue is empty. -->
             <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding QueuedMessages}" Margin="0,0,0,8"

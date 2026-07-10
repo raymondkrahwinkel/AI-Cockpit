@@ -11,9 +11,10 @@ namespace Cockpit.Infrastructure.Mcp;
 /// <see cref="IMcpToolProvider"/> that connects to each enabled server in the shared registry via the MCP
 /// client (stdio or streamable-HTTP) and collects their tools (#26). A server that fails to start or is
 /// unreachable is logged and skipped, so the session runs with whatever connected rather than failing.
-/// OAuth-protected servers are a later increment; a server configured for OAuth simply won't connect yet.
+/// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
+/// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
 /// </summary>
-internal sealed class McpToolProvider(IMcpServerStore store, ILogger<McpToolProvider> logger)
+internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer oauthAuthorizer, ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
     public async Task<IMcpToolSession> ConnectAsync(CancellationToken cancellationToken = default)
@@ -42,7 +43,7 @@ internal sealed class McpToolProvider(IMcpServerStore store, ILogger<McpToolProv
         return new McpToolSession(clients, tools, connectedNames);
     }
 
-    private static IClientTransport _BuildTransport(McpServerConfig server) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server) => server.Transport switch
     {
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -55,9 +56,11 @@ internal sealed class McpToolProvider(IMcpServerStore store, ILogger<McpToolProv
             Name = server.Name,
             Endpoint = new Uri(server.Url ?? string.Empty),
             TransportMode = HttpTransportMode.AutoDetect,
+            // A static API key rides as a bearer header; OAuth is negotiated by the SDK via the authorizer.
             AdditionalHeaders = server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey)
                 ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {server.ApiKey}" }
                 : new Dictionary<string, string>(),
+            OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server) : null,
         }),
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };

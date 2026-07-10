@@ -105,6 +105,15 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>
+    /// True from the moment a turn is sent until the assistant produces its first sign of activity (a text
+    /// or thinking delta, or a tool call). Drives the "Thinking…" indicator so a local model — which has no
+    /// streaming thinking and can sit silent while it loads/processes the prompt — visibly shows it is working
+    /// rather than looking hung.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isAwaitingResponse;
+
     /// <summary>True while a pending permission decision or CLI <c>needs_action</c> signal is outstanding, driving <see cref="SessionStatus.NeedsAttention"/>.</summary>
     private bool _needsAttention;
 
@@ -508,6 +517,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, echo));
         _currentAssistantEntry = null;
         IsBusy = true;
+        IsAwaitingResponse = true;
         _needsAttention = false;
         _RecomputeStatus();
 
@@ -519,6 +529,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Send failed: {ex.Message}"));
             IsBusy = false;
+            IsAwaitingResponse = false;
             _RecomputeStatus();
         }
     }
@@ -640,6 +651,12 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="ConsumeEventsAsync"/>.</summary>
     internal void Apply(ClaudeSessionEvent evt)
     {
+        // The first sign of assistant activity (or the turn ending) clears the "Thinking…" indicator.
+        if (evt is AssistantThinkingDelta or AssistantTextDelta or AssistantTextCompleted or ToolUseRequested or TurnCompleted or SessionError)
+        {
+            IsAwaitingResponse = false;
+        }
+
         switch (evt)
         {
             case SessionInitialized init:
