@@ -20,10 +20,22 @@ internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : Dele
         var approved = await gate.RequestApprovalAsync(toolUseId, Name, inputJson, cancellationToken).ConfigureAwait(false);
         if (!approved)
         {
-            return $"Tool call '{Name}' was denied by the user.";
+            const string refusal = "Tool call was denied by the user.";
+            gate.ReportToolResult(toolUseId, refusal, isError: true);
+            return refusal;
         }
 
-        return await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
+            gate.ReportToolResult(toolUseId, result?.ToString() ?? string.Empty, isError: false);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            gate.ReportToolResult(toolUseId, ex.Message, isError: true);
+            throw;
+        }
     }
 
     private static string _SerializeArguments(AIFunctionArguments arguments)

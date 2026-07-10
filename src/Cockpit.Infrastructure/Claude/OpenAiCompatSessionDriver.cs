@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.AI;
@@ -7,42 +8,46 @@ using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Claude;
 
 /// <summary>
 /// <see cref="ISessionDriver"/> for the local OpenAI-compatible providers (Ollama, LM Studio) via
-/// Microsoft.Extensions.AI's <see cref="IChatClient"/>. Chat-only for now (#26 F2.1): it streams
-/// assistant text and reports turn completion, holding the conversation history itself (HTTP is
-/// stateless). The Claude-CLI-specific control operations are no-ops here; <see cref="Capabilities"/>
-/// tells the UI not to offer them. The tool-loop (MCP function-calling + permission gating) lands in a
-/// later increment, at which point tools/permissions flip on.
+/// Microsoft.Extensions.AI's <see cref="IChatClient"/>. It streams assistant text, holds the conversation
+/// history itself (HTTP is stateless), and — when the shared MCP registry has servers — runs an agentic
+/// tool-loop (#26): the model's tool calls are gated through the cockpit's PermissionRequested flow and
+/// executed via MCP only on approval. The Claude-CLI-specific control operations (permission mode, thinking
+/// budget) remain no-ops; <see cref="Capabilities"/> tells the UI which controls to show.
 /// </summary>
-// A classic constructor rather than a primary one: the driver owns real per-session state (the event
-// channel and history) that reads more clearly initialized in a body than captured as parameters.
-internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientService
+internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalGate, ITransientService
 {
     private readonly IChatClientFactory _chatClientFactory;
+    private readonly IMcpToolProvider _mcpToolProvider;
     private readonly ILogger<OpenAiCompatSessionDriver> _logger;
 
     private readonly Channel<ClaudeSessionEvent> _events = Channel.CreateUnbounded<ClaudeSessionEvent>();
     private readonly List<ChatMessage> _history = [];
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingApprovals = new();
+    private readonly ConcurrentDictionary<string, byte> _alwaysAllowedTools = new();
 
-    private IChatClient? _chatClient;
+    private IChatClient? _agent;
+    private IMcpToolSession? _toolSession;
+    private List<AITool> _gatedTools = [];
     private string? _model;
     private string? _sessionId;
     private CancellationTokenSource? _turnCancellation;
 
-    public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, ILogger<OpenAiCompatSessionDriver> logger)
+    public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, IMcpToolProvider mcpToolProvider, ILogger<OpenAiCompatSessionDriver> logger)
     {
         _chatClientFactory = chatClientFactory;
+        _mcpToolProvider = mcpToolProvider;
         _logger = logger;
     }
 
-    // Chat-only: no tools/permissions/plan yet. The model is fixed by the profile (the per-session model
-    // dropdown lists Claude aliases, meaningless here), so no live model switch; thinking off until a
-    // reasoning-capable path is added.
-    public SessionCapabilities Capabilities { get; } = new(
+    // Tool support is set once the MCP servers connect (below); permission mode / model switch / thinking
+    // stay off — the local model is fixed by its profile and tool approval is per-call, not a Claude mode.
+    public SessionCapabilities Capabilities { get; private set; } = new(
         SupportsTools: false,
         SupportsPermissions: false,
         SupportsLiveModelSwitch: false,
@@ -55,15 +60,21 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
 
     public IAsyncEnumerable<ClaudeSessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default)
     {
         var config = profile?.ProviderConfig
             ?? throw new InvalidOperationException($"{nameof(OpenAiCompatSessionDriver)} requires a profile with an OpenAI-compatible provider config.");
 
         Profile = profile;
-        _chatClient = _chatClientFactory.Create(config);
         _model = string.IsNullOrWhiteSpace(model) ? _ModelFrom(config) : model;
         _sessionId = Guid.NewGuid().ToString();
+
+        // Wrap the chat client in the agentic function-invocation loop; each MCP tool is gated so a tool
+        // call is executed only after the operator approves it (the gate is this driver).
+        _agent = new ChatClientBuilder(_chatClientFactory.Create(config)).UseFunctionInvocation().Build();
+        _toolSession = await _mcpToolProvider.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
+        Capabilities = Capabilities with { SupportsTools = _gatedTools.Count > 0 };
 
         // Seed the conversation with the profile's base system prompt so every turn carries it (HTTP is
         // stateless — the client owns the history, so a system message once at the front is enough).
@@ -73,13 +84,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
         }
 
-        _events.Writer.TryWrite(new SessionInitialized { SessionId = _sessionId, Cwd = string.Empty, Tools = [] });
-        return Task.CompletedTask;
+        _events.Writer.TryWrite(new SessionInitialized { SessionId = _sessionId, Cwd = string.Empty, Tools = [.. _toolSession.ConnectedServerNames] });
     }
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
     {
-        if (_chatClient is null)
+        if (_agent is null)
         {
             throw new InvalidOperationException($"{nameof(SendUserMessageAsync)} called before {nameof(StartAsync)}.");
         }
@@ -94,12 +104,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
     private async Task _RunTurnAsync(string text, CancellationToken cancellationToken)
     {
         _history.Add(new ChatMessage(ChatRole.User, text));
-        var options = new ChatOptions { ModelId = _model };
+        var options = new ChatOptions { ModelId = _model, Tools = _gatedTools.Count > 0 ? _gatedTools : null };
         var assistant = new StringBuilder();
 
         try
         {
-            await foreach (var update in _chatClient!.GetStreamingResponseAsync(_history, options, cancellationToken).ConfigureAwait(false))
+            await foreach (var update in _agent!.GetStreamingResponseAsync(_history, options, cancellationToken).ConfigureAwait(false))
             {
                 var delta = update.Text;
                 if (!string.IsNullOrEmpty(delta))
@@ -124,6 +134,33 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         }
     }
 
+    async Task<bool> IToolApprovalGate.RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken)
+    {
+        // Surface the call in the transcript, then either auto-allow (an always-allow rule this session) or
+        // prompt and await the operator's decision on the shared PermissionRequested flow.
+        _events.Writer.TryWrite(new ToolUseRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
+
+        if (_alwaysAllowedTools.ContainsKey(toolName))
+        {
+            return true;
+        }
+
+        var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingApprovals[toolUseId] = decision;
+        _events.Writer.TryWrite(new PermissionRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
+
+        using (cancellationToken.Register(() => decision.TrySetResult(false)))
+        {
+            return await decision.Task.ConfigureAwait(false);
+        }
+    }
+
+    void IToolApprovalGate.ReportToolResult(string toolUseId, string content, bool isError)
+    {
+        _pendingApprovals.TryRemove(toolUseId, out _);
+        _events.Writer.TryWrite(new ToolResult { SessionId = _sessionId, ToolUseId = toolUseId, Content = content, IsError = isError });
+    }
+
     public Task InterruptAsync(CancellationToken cancellationToken = default)
     {
         _turnCancellation?.Cancel();
@@ -140,23 +177,48 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         return Task.CompletedTask;
     }
 
-    // No live control channel on an HTTP provider — these are the Claude-CLI-only operations the UI hides
-    // via Capabilities, so they are deliberate no-ops rather than throwing.
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
+    {
+        if (_pendingApprovals.TryRemove(toolUseId, out var decision))
+        {
+            decision.TrySetResult(allow);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default)
+    {
+        _alwaysAllowedTools.TryAdd(toolName, 0);
+        if (_pendingApprovals.TryRemove(toolUseId, out var decision))
+        {
+            decision.TrySetResult(true);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // No live control channel on an HTTP provider — these Claude-CLI-only operations are deliberate no-ops.
     public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-    public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-    public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _events.Writer.TryComplete();
         _turnCancellation?.Cancel();
         _turnCancellation?.Dispose();
-        _chatClient?.Dispose();
-        return ValueTask.CompletedTask;
+        foreach (var pending in _pendingApprovals.Values)
+        {
+            pending.TrySetResult(false);
+        }
+
+        if (_toolSession is not null)
+        {
+            await _toolSession.DisposeAsync().ConfigureAwait(false);
+        }
+
+        (_agent as IDisposable)?.Dispose();
     }
 
     private static string? _ModelFrom(ProviderConfig config) => config switch

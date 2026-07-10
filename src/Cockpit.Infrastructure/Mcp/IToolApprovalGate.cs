@@ -8,6 +8,12 @@ namespace Cockpit.Infrastructure.Mcp;
 /// </summary>
 internal interface IToolApprovalGate
 {
-    /// <summary>Returns true to run the tool call, false to refuse it. Consults any always-allow rule first, otherwise prompts and awaits the decision.</summary>
+    /// <summary>
+    /// Surfaces the pending tool call (a ToolUse + PermissionRequested on the session) and returns true to
+    /// run it, false to refuse — after consulting any always-allow rule and otherwise awaiting the decision.
+    /// </summary>
     Task<bool> RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken);
+
+    /// <summary>Reports the outcome of a tool call (its result text or a denial/error), so the session shows it under the tool row.</summary>
+    void ReportToolResult(string toolUseId, string content, bool isError);
 }

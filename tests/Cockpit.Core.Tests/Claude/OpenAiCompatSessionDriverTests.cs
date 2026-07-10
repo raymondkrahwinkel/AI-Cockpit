@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Claude;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Mcp;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -85,11 +86,35 @@ public class OpenAiCompatSessionDriverTests
         captured[0].Text.Should().Be("You are a pirate.");
     }
 
+    [Fact]
+    public async Task ToolApproval_EmitsToolUseAndPermissionRequested_AndRespondCompletesTheDecision()
+    {
+        var driver = _CreateDriver(Substitute.For<IChatClient>());
+        await driver.StartAsync(LocalProfile);
+        var gate = (IToolApprovalGate)driver;
+
+        var approval = gate.RequestApprovalAsync("tool_1", "read_file", """{"path":"x"}""", CancellationToken.None);
+        var events = await _CollectUntilAsync(driver, evt => evt is PermissionRequested);
+
+        events.OfType<PermissionRequested>().Should().ContainSingle().Which.ToolName.Should().Be("read_file");
+        events.Should().Contain(evt => evt is ToolUseRequested);
+
+        await driver.RespondToPermissionAsync("tool_1", allow: true);
+        (await approval).Should().BeTrue();
+    }
+
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient)
     {
         var factory = Substitute.For<IChatClientFactory>();
         factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
-        return new OpenAiCompatSessionDriver(factory, NullLogger<OpenAiCompatSessionDriver>.Instance);
+
+        var toolSession = Substitute.For<IMcpToolSession>();
+        toolSession.Tools.Returns(Array.Empty<AIFunction>());
+        toolSession.ConnectedServerNames.Returns(Array.Empty<string>());
+        var toolProvider = Substitute.For<IMcpToolProvider>();
+        toolProvider.ConnectAsync(Arg.Any<CancellationToken>()).Returns(toolSession);
+
+        return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
     }
 
     private static async IAsyncEnumerable<ChatResponseUpdate> _Stream(params string[] chunks)
@@ -111,14 +136,17 @@ public class OpenAiCompatSessionDriverTests
 #pragma warning restore CS0162
     }
 
-    private static async Task<List<ClaudeSessionEvent>> _CollectUntilTurnCompletedAsync(ISessionDriver driver)
+    private static Task<List<ClaudeSessionEvent>> _CollectUntilTurnCompletedAsync(ISessionDriver driver) =>
+        _CollectUntilAsync(driver, evt => evt is TurnCompleted);
+
+    private static async Task<List<ClaudeSessionEvent>> _CollectUntilAsync(ISessionDriver driver, Func<ClaudeSessionEvent, bool> until)
     {
         var events = new List<ClaudeSessionEvent>();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await foreach (var evt in driver.Events.WithCancellation(cts.Token))
         {
             events.Add(evt);
-            if (evt is TurnCompleted)
+            if (until(evt))
             {
                 break;
             }
