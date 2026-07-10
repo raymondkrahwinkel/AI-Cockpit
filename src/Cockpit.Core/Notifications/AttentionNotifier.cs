@@ -19,7 +19,7 @@ internal sealed class AttentionNotifier(
     {
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         var presence = presenceDetector.GetPresence(settings.IdleThreshold);
-        var channel = NotificationRouter.Route(presence, settings.IsEnabled, settings.HasWebhookUrl);
+        var channel = NotificationRouter.Route(presence, settings.LocalEnabled, settings.DiscordEnabled, settings.HasWebhookUrl);
 
         switch (channel)
         {

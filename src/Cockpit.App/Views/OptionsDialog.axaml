@@ -37,18 +37,32 @@
             <TabItem Header="Notifications">
                 <ScrollViewer>
                     <StackPanel Spacing="8" Margin="16">
-                        <CheckBox Content="Enable presence-aware notifications"
-                                  IsChecked="{Binding NotificationsEnabled}"/>
-                        <TextBlock Text="Discord webhook URL (used when away)"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-                        <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Local notifications" FontWeight="SemiBold"/>
+                        <CheckBox Content="Show a local notification when a session needs you (while you're at the PC)"
+                                  IsChecked="{Binding LocalNotificationsEnabled}"/>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Text="Discord (when away)" FontWeight="SemiBold"/>
+                        <CheckBox Content="Send a Discord notification when a session needs you while you're away"
+                                  IsChecked="{Binding DiscordNotificationsEnabled}"/>
+                        <StackPanel Spacing="4" IsVisible="{Binding DiscordNotificationsEnabled}">
+                            <TextBlock Text="Discord webhook URL"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                            <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Away after (idle minutes)"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
-                                           Increment="1" FormatString="0" Width="90"/>
+                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
                         </StackPanel>
+                        <TextBlock Text="How long without keyboard/mouse before you count as away (used for the Discord channel)."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

@@ -10,8 +10,11 @@ public sealed record NotificationSettings
     /// <summary>Default idle time before the operator counts as "away" when the PC is not locked.</summary>
     public static readonly TimeSpan DefaultIdleThreshold = TimeSpan.FromMinutes(15);
 
-    /// <summary>Master switch. When false, no notification is delivered on either channel.</summary>
-    public bool IsEnabled { get; init; } = true;
+    /// <summary>Whether a local OS toast is shown when a session needs attention while you are present. Independent of <see cref="DiscordEnabled"/>.</summary>
+    public bool LocalEnabled { get; init; } = true;
+
+    /// <summary>Whether the Discord webhook is POSTed when a session needs attention while you are away. Independent of <see cref="LocalEnabled"/>.</summary>
+    public bool DiscordEnabled { get; init; }
 
     /// <summary>Discord webhook URL POSTed to when away. Null/empty means the away channel is unavailable.</summary>
     public string? WebhookUrl { get; init; }

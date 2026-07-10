@@ -181,9 +181,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _audioStatus = "Ready.";
 
-    /// <summary>Master switch for presence-aware notifications (toast when present, Discord webhook when away).</summary>
+    /// <summary>Whether a local OS toast is shown when a session needs attention while you are present (independent of Discord).</summary>
     [ObservableProperty]
-    private bool _notificationsEnabled = true;
+    private bool _localNotificationsEnabled = true;
+
+    /// <summary>Whether the Discord webhook is POSTed when a session needs attention while you are away (independent of local toasts).</summary>
+    [ObservableProperty]
+    private bool _discordNotificationsEnabled;
 
     /// <summary>Discord webhook URL POSTed to when the operator is away. Empty disables the away channel.</summary>
     [ObservableProperty]
@@ -472,7 +476,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _notificationSettingsStore.LoadAsync();
-        NotificationsEnabled = settings.IsEnabled;
+        LocalNotificationsEnabled = settings.LocalEnabled;
+        DiscordNotificationsEnabled = settings.DiscordEnabled;
         WebhookUrl = settings.WebhookUrl ?? string.Empty;
         IdleThresholdMinutes = (int)settings.IdleThreshold.TotalMinutes;
     }
@@ -492,7 +497,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var settings = new NotificationSettings
         {
-            IsEnabled = NotificationsEnabled,
+            LocalEnabled = LocalNotificationsEnabled,
+            DiscordEnabled = DiscordNotificationsEnabled,
             WebhookUrl = string.IsNullOrWhiteSpace(WebhookUrl) ? null : WebhookUrl.Trim(),
             IdleThreshold = TimeSpan.FromMinutes(minutes),
         };

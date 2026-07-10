@@ -3,37 +3,41 @@ using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Notifications;
 
-/// <summary>The pure presence → channel routing: present-toast / away-webhook, plus the disabled and no-webhook fallbacks.</summary>
+/// <summary>The pure presence → channel routing with the two independent switches: present→local toast, away→Discord webhook, each gated on its own toggle.</summary>
 public class NotificationRouterTests
 {
     [Fact]
-    public void Route_Present_ChoosesToast()
+    public void Route_Present_LocalEnabled_ChoosesToast()
     {
-        NotificationRouter.Route(PresenceState.Present, isEnabled: true, hasWebhookUrl: true)
+        NotificationRouter.Route(PresenceState.Present, localEnabled: true, discordEnabled: false, hasWebhookUrl: false)
             .Should().Be(NotificationChannel.Toast);
     }
 
     [Fact]
-    public void Route_Away_WithWebhook_ChoosesWebhook()
+    public void Route_Present_LocalDisabled_ChoosesNone()
     {
-        NotificationRouter.Route(PresenceState.Away, isEnabled: true, hasWebhookUrl: true)
+        NotificationRouter.Route(PresenceState.Present, localEnabled: false, discordEnabled: true, hasWebhookUrl: true)
+            .Should().Be(NotificationChannel.None);
+    }
+
+    [Fact]
+    public void Route_Away_DiscordEnabled_WithWebhook_ChoosesWebhook()
+    {
+        NotificationRouter.Route(PresenceState.Away, localEnabled: false, discordEnabled: true, hasWebhookUrl: true)
             .Should().Be(NotificationChannel.Webhook);
     }
 
     [Fact]
-    public void Route_Away_WithoutWebhook_ChoosesNone()
+    public void Route_Away_DiscordEnabled_WithoutWebhook_ChoosesNone()
     {
-        // No webhook configured: don't silently route an away operator to a toast they can't see.
-        NotificationRouter.Route(PresenceState.Away, isEnabled: true, hasWebhookUrl: false)
+        NotificationRouter.Route(PresenceState.Away, localEnabled: true, discordEnabled: true, hasWebhookUrl: false)
             .Should().Be(NotificationChannel.None);
     }
 
-    [Theory]
-    [InlineData(PresenceState.Present)]
-    [InlineData(PresenceState.Away)]
-    public void Route_Disabled_AlwaysChoosesNone(PresenceState presence)
+    [Fact]
+    public void Route_Away_DiscordDisabled_ChoosesNone()
     {
-        NotificationRouter.Route(presence, isEnabled: false, hasWebhookUrl: true)
+        NotificationRouter.Route(PresenceState.Away, localEnabled: true, discordEnabled: false, hasWebhookUrl: true)
             .Should().Be(NotificationChannel.None);
     }
 }

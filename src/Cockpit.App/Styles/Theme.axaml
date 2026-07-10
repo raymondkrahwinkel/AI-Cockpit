@@ -207,6 +207,26 @@
         <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
     </Style>
 
+    <!-- NumericUpDown (e.g. the idle-minutes input): match the cockpit inputs — secondary background,
+         hairline border, rounded — instead of the bare default that clashed with the theme. -->
+    <Style Selector="NumericUpDown">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="MinHeight" Value="34"/>
+    </Style>
+    <Style Selector="NumericUpDown /template/ ButtonSpinner">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="NumericUpDown /template/ ButtonSpinner /template/ RepeatButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
     <!-- Transcript body text: terminal font for the Claude-TTY reading surface. -->
     <Style Selector=":is(TextBlock).transcript">
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>

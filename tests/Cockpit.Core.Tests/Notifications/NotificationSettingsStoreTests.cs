@@ -29,7 +29,8 @@ public class NotificationSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.IsEnabled.Should().BeTrue();
+        settings.LocalEnabled.Should().BeTrue();
+        settings.DiscordEnabled.Should().BeFalse();
         settings.WebhookUrl.Should().BeNull();
         settings.IdleThreshold.Should().Be(NotificationSettings.DefaultIdleThreshold);
     }
@@ -40,7 +41,8 @@ public class NotificationSettingsStoreTests : IDisposable
         var store = new NotificationSettingsStore(_configFilePath);
         var settings = new NotificationSettings
         {
-            IsEnabled = false,
+            LocalEnabled = false,
+            DiscordEnabled = true,
             WebhookUrl = "https://discord.com/api/webhooks/123/abc",
             IdleThreshold = TimeSpan.FromMinutes(30),
         };

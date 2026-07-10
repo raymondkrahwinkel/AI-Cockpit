@@ -36,7 +36,7 @@ public class AttentionNotifierTests
     [Fact]
     public async Task Away_WithWebhook_DeliversWebhook_WithConfiguredUrl_NotToast()
     {
-        _settingsStore.LoadAsync().Returns(new NotificationSettings { WebhookUrl = "https://example/webhook" });
+        _settingsStore.LoadAsync().Returns(new NotificationSettings { DiscordEnabled = true, WebhookUrl = "https://example/webhook" });
         _presenceDetector.GetPresence(Arg.Any<TimeSpan>()).Returns(PresenceState.Away);
 
         await NewSut().NotifyAttentionAsync(Notification);
@@ -48,7 +48,7 @@ public class AttentionNotifierTests
     [Fact]
     public async Task Disabled_DeliversNothing()
     {
-        _settingsStore.LoadAsync().Returns(new NotificationSettings { IsEnabled = false, WebhookUrl = "https://example/webhook" });
+        _settingsStore.LoadAsync().Returns(new NotificationSettings { LocalEnabled = false, DiscordEnabled = false, WebhookUrl = "https://example/webhook" });
         _presenceDetector.GetPresence(Arg.Any<TimeSpan>()).Returns(PresenceState.Away);
 
         await NewSut().NotifyAttentionAsync(Notification);

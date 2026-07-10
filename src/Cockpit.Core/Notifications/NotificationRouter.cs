@@ -9,22 +9,17 @@ namespace Cockpit.Core.Notifications;
 public static class NotificationRouter
 {
     /// <summary>
-    /// Chooses the delivery channel. When notifications are disabled the result is always
-    /// <see cref="NotificationChannel.None"/>, regardless of presence. The away channel falls back
-    /// to <see cref="NotificationChannel.None"/> when no webhook URL is configured, so an away
-    /// operator without a webhook is not silently routed to a toast they cannot see.
+    /// Chooses the delivery channel from the two independent switches. Present routes to a local toast
+    /// only when <paramref name="localEnabled"/> is on; away routes to the Discord webhook only when
+    /// <paramref name="discordEnabled"/> is on and a webhook URL is configured. Either being off (or no
+    /// webhook when away) yields <see cref="NotificationChannel.None"/>.
     /// </summary>
-    public static NotificationChannel Route(PresenceState presence, bool isEnabled, bool hasWebhookUrl)
+    public static NotificationChannel Route(PresenceState presence, bool localEnabled, bool discordEnabled, bool hasWebhookUrl)
     {
-        if (!isEnabled)
-        {
-            return NotificationChannel.None;
-        }
-
         return presence switch
         {
-            PresenceState.Away => hasWebhookUrl ? NotificationChannel.Webhook : NotificationChannel.None,
-            _ => NotificationChannel.Toast,
+            PresenceState.Away => discordEnabled && hasWebhookUrl ? NotificationChannel.Webhook : NotificationChannel.None,
+            _ => localEnabled ? NotificationChannel.Toast : NotificationChannel.None,
         };
     }
 }
