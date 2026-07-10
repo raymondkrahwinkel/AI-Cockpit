@@ -38,6 +38,10 @@ public partial class ClaudeTtyView : UserControl
     private bool _wired;
     private int _lastColumns;
     private int _lastRows;
+    // Coalesces the terminal's resize burst so the pty is spawned/resized once the size settles, not on every
+    // intermediate value. On Wayland/KDE the compositor emits a transient size before the real one; spawning
+    // claude on the transient size and immediately reflowing it is a prime cause of the stacked-at-top render.
+    private DispatcherTimer? _resizeSettle;
 
     public ClaudeTtyView()
     {
@@ -167,22 +171,38 @@ public partial class ClaudeTtyView : UserControl
         _lastRows = Math.Max(1, e.Rows);
         UpdateDiagnostics();
 
-        if (_launchPending)
-        {
-            StartPty();
-            return;
-        }
+        // Debounce: (re)start the settle timer and act only once the size stops changing (see _resizeSettle).
+        _resizeSettle ??= CreateResizeSettleTimer();
+        _resizeSettle.Stop();
+        _resizeSettle.Start();
+    }
 
-        _pty?.Resize((short)_lastColumns, (short)_lastRows);
+    private DispatcherTimer CreateResizeSettleTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_launchPending)
+            {
+                StartPty();
+            }
+            else
+            {
+                _pty?.Resize((short)_lastColumns, (short)_lastRows);
+            }
+        };
+
+        return timer;
     }
 
     /// <summary>
-    /// Forces the TUI to repaint from scratch: clears the emulator (screen + scrollback) and nudges the pty
-    /// size so claude receives a resize (SIGWINCH) and re-renders. This is the manual recovery for the
-    /// reflow/focus glitch where — after a window resize, alt-tab or display-scale change on some Linux
-    /// setups — claude's frames end up stacked at the top with stale content showing through.
+    /// Forces the TUI to repaint: shrinks the pty a couple of rows, waits for claude to react to the resize
+    /// (SIGWINCH), then restores the real size so claude re-renders its managed UI. Manual recovery for the
+    /// reflow glitch where claude's frames end up stacked at the top after a resize/focus change on some
+    /// setups. Does not clear the emulator (that would wipe the scrolled-back conversation claude never re-emits).
     /// </summary>
-    private void ForceRedraw()
+    private async void ForceRedraw()
     {
         var pty = _pty;
         if (pty is null || _lastColumns <= 0 || _lastRows <= 0)
@@ -190,11 +210,13 @@ public partial class ClaudeTtyView : UserControl
             return;
         }
 
-        // ESC[3J clears scrollback, ESC[2J the screen, ESC[H homes the cursor — wipe any stale frames first.
-        Terminal.Write(Encoding.UTF8.GetBytes("[3J[2J[H"));
         try
         {
-            pty.Resize((short)Math.Max(1, _lastColumns - 1), (short)_lastRows);
+            // A genuine two-step resize: shrink, let claude react to the SIGWINCH, then restore. No emulator
+            // clear — claude only re-emits its sticky UI, not the scrolled-back conversation, so clearing
+            // would blank the history.
+            pty.Resize((short)_lastColumns, (short)Math.Max(1, _lastRows - 2));
+            await Task.Delay(90);
             pty.Resize((short)_lastColumns, (short)_lastRows);
         }
         catch (Exception)
@@ -315,6 +337,9 @@ public partial class ClaudeTtyView : UserControl
 
     private void OnUnloaded(object? sender, RoutedEventArgs e)
     {
+        _resizeSettle?.Stop();
+        _resizeSettle = null;
+
         _outputCancellation?.Cancel();
         _outputCancellation?.Dispose();
         _outputCancellation = null;
