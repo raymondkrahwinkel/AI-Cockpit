@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -8,6 +9,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        CockpitWindowChrome.Apply(this, "Cockpit", includeMinimize: true, includeMaximize: true);
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)

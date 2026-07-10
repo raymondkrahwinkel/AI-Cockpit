@@ -3,6 +3,7 @@ using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -18,6 +19,7 @@ public partial class ManageProfilesDialog : Window
     public ManageProfilesDialog()
     {
         InitializeComponent();
+        CockpitWindowChrome.Apply(this);
         DataContextChanged += OnDataContextChanged;
     }
 

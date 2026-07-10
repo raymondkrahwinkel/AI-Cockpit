@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Cockpit.App.Controls;
 
 namespace Cockpit.App.Views;
 
@@ -15,6 +16,7 @@ public partial class OptionsDialog : Window
     public OptionsDialog()
     {
         InitializeComponent();
+        CockpitWindowChrome.Apply(this);
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();

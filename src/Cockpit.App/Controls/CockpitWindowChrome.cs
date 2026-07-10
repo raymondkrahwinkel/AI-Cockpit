@@ -1,0 +1,116 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
+
+namespace Cockpit.App.Controls;
+
+/// <summary>
+/// Applies the cockpit's custom window chrome to any <see cref="Window"/>: it drops the OS title bar and
+/// caption buttons (Avalonia 12 <see cref="WindowDecorations.BorderOnly"/>) while keeping a resizable
+/// border, and wraps the window's content under a hairline title bar with its own caption buttons. Shared
+/// so every window — the plugin dialogs and the app's own dialogs/main window — looks the same. Dialogs
+/// get a Close button only; the main window opts into minimize/maximize.
+/// </summary>
+internal static class CockpitWindowChrome
+{
+    public static void Apply(Window window, string? title = null, bool includeMinimize = false, bool includeMaximize = false)
+    {
+        window.WindowDecorations = WindowDecorations.BorderOnly;
+        window.ExtendClientAreaToDecorationsHint = true;
+        if (_Brush("CockpitPanelBgBrush") is { } background)
+        {
+            window.Background = background;
+        }
+
+        var body = window.Content as Control ?? new Panel();
+        // Detach the existing content before re-parenting it under the chrome, or Avalonia throws while the
+        // control is briefly a child of two parents.
+        window.Content = null;
+        window.Content = _ChromeRoot(window, title ?? window.Title ?? string.Empty, body, includeMinimize, includeMaximize);
+    }
+
+    private static Control _ChromeRoot(Window window, string title, Control body, bool includeMinimize, bool includeMaximize)
+    {
+        var root = new DockPanel();
+        var titleBar = _TitleBar(window, title, includeMinimize, includeMaximize);
+        DockPanel.SetDock(titleBar, Dock.Top);
+        root.Children.Add(titleBar);
+        root.Children.Add(body);
+        return root;
+    }
+
+    private static Control _TitleBar(Window window, string title, bool includeMinimize, bool includeMaximize)
+    {
+        var titleText = new TextBlock
+        {
+            Text = title,
+            FontWeight = FontWeight.SemiBold,
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(14, 0, 0, 0),
+        };
+
+        var captionButtons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Stretch };
+
+        if (includeMinimize)
+        {
+            var minimize = _CaptionButton("—");
+            minimize.Click += (_, _) => window.WindowState = WindowState.Minimized;
+            captionButtons.Children.Add(minimize);
+        }
+
+        if (includeMaximize)
+        {
+            var maximize = _CaptionButton("▢");
+            maximize.Click += (_, _) => window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            captionButtons.Children.Add(maximize);
+        }
+
+        var close = _CaptionButton("✕");
+        close.Click += (_, _) => window.Close();
+        captionButtons.Children.Add(close);
+
+        var bar = new DockPanel { Height = 38 };
+        DockPanel.SetDock(captionButtons, Dock.Right);
+        bar.Children.Add(captionButtons);
+        bar.Children.Add(titleText);
+
+        var wrapper = new Border
+        {
+            Background = _Brush("CockpitSecondaryBgBrush"),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = bar,
+        };
+
+        // Drag the window by the title bar, but not when the press lands on a caption button.
+        wrapper.PointerPressed += (_, e) =>
+        {
+            if (e.Source is not Button)
+            {
+                window.BeginMoveDrag(e);
+            }
+        };
+
+        return wrapper;
+    }
+
+    // A uniform caption button: same width, font size and centred glyph so the buttons line up regardless
+    // of each glyph's own metrics.
+    private static Button _CaptionButton(string glyph) => new()
+    {
+        Content = glyph,
+        Classes = { "Subtle" },
+        FontSize = 13,
+        Width = 46,
+        Padding = new Thickness(0),
+        VerticalAlignment = VerticalAlignment.Stretch,
+        HorizontalContentAlignment = HorizontalAlignment.Center,
+        VerticalContentAlignment = VerticalAlignment.Center,
+    };
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+}

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Cockpit.App.Controls;
 
 namespace Cockpit.App.Views;
 
@@ -13,6 +14,7 @@ public partial class PluginConsentDialog : Window
     public PluginConsentDialog()
     {
         InitializeComponent();
+        CockpitWindowChrome.Apply(this);
     }
 
     private void OnEnable(object? sender, RoutedEventArgs e) => Close(true);

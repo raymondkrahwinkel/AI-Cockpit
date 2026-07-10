@@ -24,10 +24,11 @@ internal sealed class OllamaTranscriptCleanupService(HttpClient httpClient, IVoi
         "add content. Reply with only the cleaned text, nothing else.";
 
     private const string SpeechPrompt =
-        "You rewrite text so a text-to-speech voice can read it aloud naturally. Turn it into smooth, " +
-        "spoken sentences: drop code, file paths, URLs and markdown symbols, and phrase long technical " +
-        "bits the way a person would say them out loud. Keep the meaning and the original language. Reply " +
-        "with only the spoken text, nothing else.";
+        "You turn assistant text into what a person would say out loud when explaining it to someone. " +
+        "Rewrite it as short, natural spoken sentences. Leave out code, file paths, URLs, command names and " +
+        "markdown; mention them in plain words only when they matter. Never read symbols, brackets or " +
+        "punctuation literally, and do not spell things out. Keep the meaning and the original language. " +
+        "Reply with only the spoken text — no preamble, no quotes, no bullet lists.";
 
     private static readonly TranscriptCleanupOptions Options = new();
 

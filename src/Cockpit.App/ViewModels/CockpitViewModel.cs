@@ -694,6 +694,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             InputDeviceName = SelectedInputDevice.DeviceName ?? "",
             OutputDeviceName = SelectedOutputDevice.DeviceName ?? "",
         });
+
+        // Push the read-aloud settings to already-open sessions so toggling naturalization or the voice
+        // takes effect immediately, rather than only on the next session (the enabled/PTT flags keep the
+        // load-at-start behaviour, which the hold path re-reads).
+        foreach (var session in Sessions)
+        {
+            session.NaturalizeReadAloud = VoiceNaturalizeReadAloud;
+            session.TtsVoiceId = SelectedTtsVoice.VoiceId;
+        }
+
         VoiceSettingsStatus = "✓ Saved";
     }
 

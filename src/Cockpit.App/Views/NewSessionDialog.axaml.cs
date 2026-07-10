@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
@@ -13,6 +14,7 @@ public partial class NewSessionDialog : Window
     public NewSessionDialog()
     {
         InitializeComponent();
+        CockpitWindowChrome.Apply(this);
         DataContextChanged += OnDataContextChanged;
     }
 

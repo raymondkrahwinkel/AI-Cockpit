@@ -3,16 +3,18 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.App.Controls;
 using Cockpit.Core.Abstractions;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
 /// <summary>
-/// Shows a plugin's content in a modal window over the cockpit's main window (#14). The window carries the
-/// cockpit background so a plugin dialog looks native; the plugin owns the content control inside it. The
-/// settings variant adds a host-provided Save/Close footer so every plugin's settings dialog behaves the
-/// same — Save calls the view's <see cref="IPluginSettingsView.Save"/> and closes the dialog on success.
+/// Shows a plugin's content in a modal window over the cockpit's main window (#14), wrapped in the shared
+/// cockpit window chrome (<see cref="CockpitWindowChrome"/>) so a plugin dialog looks native to the app.
+/// The plugin owns the content control. The settings variant adds a host-provided Save/Close footer so
+/// every plugin's settings dialog behaves the same — Save calls the view's <see cref="IPluginSettingsView.Save"/>
+/// and closes the dialog on success.
 /// </summary>
 internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 {
@@ -24,6 +26,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         }
 
         window.Content = createContent();
+        CockpitWindowChrome.Apply(window, title);
         await window.ShowDialog(owner);
     }
 
@@ -70,6 +73,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         root.Children.Add(new ScrollViewer { Content = view });
         window.Content = root;
 
+        CockpitWindowChrome.Apply(window, title);
         await window.ShowDialog(owner);
     }
 
@@ -89,7 +93,6 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
             Width = width,
             Height = height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = _Brush("CockpitPanelBgBrush"),
         };
         return true;
     }
