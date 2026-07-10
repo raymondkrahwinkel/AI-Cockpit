@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -10,10 +11,10 @@ namespace Cockpit.Plugin.GitHubIssues;
 
 /// <summary>
 /// The "GitHub Issues" dialog opened from the left-menu button: a search box and a sortable
-/// <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP mode).
-/// Selecting an issue and choosing "Add to prompt" (or double-clicking it) injects the rendered template
-/// into the active session so the agent opens and reviews it. Built in code; the DataGrid theme is provided
-/// app-wide by the host.
+/// <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP mode) on
+/// the left, and a details panel on the right that shows the selected issue's title, repository, body and a
+/// link — with buttons to open it on GitHub or inject the rendered template into the active session. Built
+/// in code; the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
@@ -25,6 +26,13 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly TextBox _search;
     private readonly TextBlock _status;
     private readonly DataGrid _grid;
+
+    private readonly TextBlock _detailPlaceholder;
+    private readonly StackPanel _detailContent;
+    private readonly TextBlock _detailTitle;
+    private readonly TextBlock _detailMeta;
+    private readonly SelectableTextBlock _detailBody;
+
     private IReadOnlyList<GitHubIssue> _all = [];
 
     public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitActions actions)
@@ -40,9 +48,6 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await _LoadAsync();
 
-        var add = new Button { Content = "Add to prompt", Classes = { "Accent" } };
-        add.Click += (_, _) => _Inject(_grid.SelectedItem as GitHubIssue);
-
         _grid = new DataGrid
         {
             IsReadOnly = true,
@@ -54,22 +59,69 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _grid.Columns.Add(new DataGridTextColumn { Header = "Repository", Binding = new Binding(nameof(GitHubIssue.Repository)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "#", Binding = new Binding(nameof(GitHubIssue.Number)), Width = new DataGridLength(64) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Title", Binding = new Binding(nameof(GitHubIssue.Title)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
+        _grid.SelectionChanged += (_, _) => _ShowDetail(_grid.SelectedItem as GitHubIssue);
         _grid.DoubleTapped += (_, _) => _Inject(_grid.SelectedItem as GitHubIssue);
 
+        // Top bar: search on the left, Refresh on the right.
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        buttons.Children.Add(refresh);
-        buttons.Children.Add(add);
-        DockPanel.SetDock(buttons, Dock.Right);
-        topBar.Children.Add(buttons);
+        DockPanel.SetDock(refresh, Dock.Right);
+        topBar.Children.Add(refresh);
         topBar.Children.Add(_search);
+
+        // Details panel (right): title/meta + actions on top, the body scrolls below.
+        _detailTitle = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 14, TextWrapping = TextWrapping.Wrap };
+        _detailMeta = new TextBlock { FontSize = 11, Opacity = 0.7, Margin = new Thickness(0, 2, 0, 0) };
+
+        var inject = new Button { Content = "Add to prompt", Classes = { "Accent" } };
+        inject.Click += (_, _) => _Inject(_grid.SelectedItem as GitHubIssue);
+        var openBrowser = new Button { Content = "Open in browser" };
+        openBrowser.Click += (_, _) => _OpenInBrowser(_grid.SelectedItem as GitHubIssue);
+        var detailButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 8, 0, 8) };
+        detailButtons.Children.Add(inject);
+        detailButtons.Children.Add(openBrowser);
+
+        _detailBody = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+
+        var detailHeader = new StackPanel { Children = { _detailTitle, _detailMeta, detailButtons } };
+        DockPanel.SetDock(detailHeader, Dock.Top);
+        _detailContent = new StackPanel { IsVisible = false };
+        var detailInner = new DockPanel();
+        detailInner.Children.Add(detailHeader);
+        detailInner.Children.Add(new ScrollViewer { Content = _detailBody });
+        _detailContent.Children.Add(detailInner);
+
+        _detailPlaceholder = new TextBlock
+        {
+            Text = "Select an issue to see its details.",
+            FontSize = 12,
+            Opacity = 0.7,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+
+        var detailPanel = new Border
+        {
+            Padding = new Thickness(12),
+            Margin = new Thickness(8, 0, 0, 0),
+            BorderThickness = new Thickness(1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Background = _Brush("CockpitSecondaryBgBrush"),
+            CornerRadius = new CornerRadius(6),
+            Child = new Panel { Children = { _detailPlaceholder, _detailContent } },
+        };
+
+        var split = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,*") };
+        Grid.SetColumn(_grid, 0);
+        Grid.SetColumn(detailPanel, 1);
+        split.Children.Add(_grid);
+        split.Children.Add(detailPanel);
 
         var root = new DockPanel { Margin = new Thickness(16) };
         DockPanel.SetDock(topBar, Dock.Top);
         DockPanel.SetDock(_status, Dock.Bottom);
         root.Children.Add(topBar);
         root.Children.Add(_status);
-        root.Children.Add(_grid);
+        root.Children.Add(split);
         Content = root;
 
         _ = _LoadAsync();
@@ -96,7 +148,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             }
 
             _ApplyFilter();
-            _status.Text = $"{_all.Count} open issue(s). Double-click one, or select it and choose Add to prompt.";
+            _status.Text = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
         }
         catch (Exception exception)
         {
@@ -117,6 +169,40 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         }
 
         _grid.ItemsSource = new ObservableCollection<GitHubIssue>(filtered);
+    }
+
+    private void _ShowDetail(GitHubIssue? issue)
+    {
+        if (issue is null)
+        {
+            _detailContent.IsVisible = false;
+            _detailPlaceholder.IsVisible = true;
+            return;
+        }
+
+        _detailPlaceholder.IsVisible = false;
+        _detailContent.IsVisible = true;
+        _detailTitle.Text = issue.Title;
+        _detailMeta.Text = $"{issue.Repository}  ·  #{issue.Number}  ·  {issue.Url}";
+        _detailBody.Text = string.IsNullOrWhiteSpace(issue.Body) ? "(no description)" : issue.Body;
+    }
+
+    private void _OpenInBrowser(GitHubIssue? issue)
+    {
+        if (issue is null || string.IsNullOrWhiteSpace(issue.Url))
+        {
+            _status.Text = "Select an issue first.";
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(issue.Url) { UseShellExecute = true });
+        }
+        catch (Exception exception)
+        {
+            _status.Text = $"Could not open the browser: {exception.Message}";
+        }
     }
 
     private void _Inject(GitHubIssue? issue)
@@ -143,4 +229,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             _status.Text = $"No active session — issue #{issue.Number} copied to the clipboard.";
         }
     }
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }
