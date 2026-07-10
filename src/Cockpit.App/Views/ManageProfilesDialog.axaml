@@ -123,9 +123,12 @@
                             <Button DockPanel.Dock="Right" Content="Fetch" Classes="Compact" Margin="6,0,0,0"
                                     Command="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).RefreshModelsCommand}"
                                     ToolTip.Tip="List the models installed on this server (/v1/models)"/>
+                            <!-- MinimumPrefixLength=0 opens the suggestion list on focus (click) without
+                                 typing, so the fetched models are pickable, not just type-to-filter. -->
                             <AutoCompleteBox Text="{Binding Model}" ItemsSource="{Binding AvailableModels}"
-                                             FilterMode="ContainsOrdinal" FontFamily="{StaticResource CockpitMonoFont}"
-                                             PlaceholderText="e.g. llama3.1 — type, or Fetch to list installed models"/>
+                                             FilterMode="ContainsOrdinal" MinimumPrefixLength="0"
+                                             FontFamily="{StaticResource CockpitMonoFont}"
+                                             PlaceholderText="Click to pick a fetched model, or type an id"/>
                         </DockPanel>
                         <TextBlock Text="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).ModelFetchStatus}"
                                    FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"

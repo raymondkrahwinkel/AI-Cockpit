@@ -74,7 +74,20 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             profile.AvailableModels.Add(model);
         }
 
-        ModelFetchStatus = models.Count > 0 ? $"{models.Count} model(s)" : "No models found — is the server running?";
+        if (models.Count == 0)
+        {
+            ModelFetchStatus = "No models found — is the server running?";
+            return;
+        }
+
+        // Pre-fill the first model when the field is still empty, so a fetch gives immediate, visible
+        // confirmation; the operator can then click the field to pick a different one.
+        if (string.IsNullOrWhiteSpace(profile.Model))
+        {
+            profile.Model = models[0];
+        }
+
+        ModelFetchStatus = $"Found {models.Count} model(s) — click the field to pick another, or type an id";
     }
 
     /// <summary>Loads the stored profiles into editable rows and selects the first.</summary>
