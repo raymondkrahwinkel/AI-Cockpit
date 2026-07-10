@@ -67,6 +67,13 @@ public static class McpServerPresets
             }),
     ];
 
+    /// <summary>
+    /// The built-in servers every local-model session gets automatically (#26). Local models have no tools of
+    /// their own, so these ship on by default; a registry entry with the same name overrides the built-in
+    /// (e.g. to point filesystem at a different folder), and disabling it there removes it.
+    /// </summary>
+    public static IReadOnlyList<McpServerConfig> LocalDefaults { get; } = [.. All.Select(preset => preset.Template)];
+
     private static string DefaultFilesystemRoot() =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 }

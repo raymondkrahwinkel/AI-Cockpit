@@ -141,6 +141,26 @@ public class OpenAiCompatSessionDriverTests
         string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)).Should().Be("done");
     }
 
+    [Fact]
+    public async Task AutoApproveTools_RunsAToolCallWithoutAPermissionPrompt()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+        var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
+        var driver = _CreateDriver(chatClient, echo);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SetAutoApproveToolsAsync(true);
+        await driver.SendUserMessageAsync("use the tool");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        // The tool still surfaces, but no approval was requested — the "allow all tools" convenience.
+        events.OfType<ToolUseRequested>().Should().ContainSingle();
+        events.OfType<ToolResult>().Should().ContainSingle();
+        events.OfType<PermissionRequested>().Should().BeEmpty();
+    }
+
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools)
     {
         var factory = Substitute.For<IChatClientFactory>();

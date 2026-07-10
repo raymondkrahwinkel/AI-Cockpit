@@ -118,6 +118,14 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     [ObservableProperty]
     private bool _isAwaitingResponse;
 
+    /// <summary>Shows the "Allow all tools" toggle: a local tool session (has tools, but not Claude's own permission modes) whose every MCP call would otherwise need an Allow click.</summary>
+    [ObservableProperty]
+    private bool _showToolAutoApprove;
+
+    /// <summary>When on, this session runs tool calls without prompting (still shown as tool rows). Applied live to the driver.</summary>
+    [ObservableProperty]
+    private bool _autoApproveTools;
+
     /// <summary>True while a pending permission decision or CLI <c>needs_action</c> signal is outstanding, driving <see cref="SessionStatus.NeedsAttention"/>.</summary>
     private bool _needsAttention;
 
@@ -269,6 +277,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         // Now the profile is known, pick the driver for its provider (Claude-CLI vs a local HTTP provider).
         _session = _driverFactory.Create(profile);
         Capabilities = _session.Capabilities;
+        // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
+        // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
+        ShowToolAutoApprove = Capabilities is { SupportsTools: true, SupportsPermissions: false };
         ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
             ? string.Empty
             : SessionProviderCatalog.Resolve(profile.Provider).Label;
@@ -284,6 +295,12 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
             await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
+            // Honour a pre-set "allow all tools" choice (e.g. flipped before the session finished starting).
+            if (AutoApproveTools)
+            {
+                await _session.SetAutoApproveToolsAsync(true, _lifetimeCancellation.Token);
+            }
+
             ActiveProfileLabel = profile?.Label;
             // The profile is shown separately (ActiveProfileLabel), so keep the status itself clean
             // rather than repeating it — "Session started. · personal" read as a duplicate (L6).
@@ -298,6 +315,12 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         {
             Status = $"Failed to start: {ex.Message}";
         }
+    }
+
+    /// <summary>Live-toggles auto-approval of tool calls on the running session's driver (local sessions).</summary>
+    partial void OnAutoApproveToolsChanged(bool value)
+    {
+        _ = _session?.SetAutoApproveToolsAsync(value);
     }
 
     /// <summary>Live-switches the running session's permission mode. No-op before the session has started.</summary>

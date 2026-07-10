@@ -46,8 +46,12 @@
                               IsVisible="{Binding Capabilities.SupportsThinking}"
                               ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
                     <ToggleButton Content="Read aloud" IsChecked="{Binding ReadResponsesAloud}"
-                                  VerticalAlignment="Center" Margin="0,0,0,4"
+                                  VerticalAlignment="Center" Margin="0,0,6,4"
                                   ToolTip.Tip="Read each completed reply aloud, sentence by sentence (voice model downloads on first use)"/>
+                    <ToggleButton Content="Allow all tools" IsChecked="{Binding AutoApproveTools}"
+                                  VerticalAlignment="Center" Margin="0,0,0,4"
+                                  IsVisible="{Binding ShowToolAutoApprove}"
+                                  ToolTip.Tip="Run this local model's tool calls without an Allow prompt each time (they still show as tool rows)"/>
                 </WrapPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Border Background="{StaticResource CockpitSecondaryBgBrush}"

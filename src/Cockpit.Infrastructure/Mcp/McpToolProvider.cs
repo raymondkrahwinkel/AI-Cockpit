@@ -19,13 +19,15 @@ internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer
 {
     public async Task<IMcpToolSession> ConnectAsync(CancellationToken cancellationToken = default)
     {
-        var servers = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var registry = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
         var clients = new List<McpClient>();
         var tools = new List<AIFunction>();
         var connectedNames = new List<string>();
 
-        // Local models host every enabled server except those scoped to Claude only (#26 scoping).
-        foreach (var server in servers.Where(server => server.Enabled && server.Scope != McpServerScope.ClaudeOnly))
+        // Local models host the built-in defaults (filesystem etc.) plus every enabled registry server not
+        // scoped to Claude only (#26). A registry entry overrides the built-in of the same name — including a
+        // disabled one, which removes that default — so defaults are a baseline the user can retarget or drop.
+        foreach (var server in _EffectiveServers(registry).Where(server => server.Enabled))
         {
             try
             {
@@ -42,6 +44,25 @@ internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer
         }
 
         return new McpToolSession(clients, tools, connectedNames);
+    }
+
+    // Built-in local defaults, overlaid with the registry: a registry server (that is not Claude-only)
+    // replaces the built-in of the same name, so the user can retarget filesystem or drop a default by
+    // disabling a same-named entry. Registry-only servers (All/LocalOnly scope) are added as well.
+    internal static IReadOnlyList<McpServerConfig> _EffectiveServers(IReadOnlyList<McpServerConfig> registry)
+    {
+        var byName = new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
+        foreach (var server in McpServerPresets.LocalDefaults)
+        {
+            byName[server.Name] = server;
+        }
+
+        foreach (var server in registry.Where(server => server.Scope != McpServerScope.ClaudeOnly))
+        {
+            byName[server.Name] = server;
+        }
+
+        return [.. byName.Values];
     }
 
     private IClientTransport _BuildTransport(McpServerConfig server) => server.Transport switch

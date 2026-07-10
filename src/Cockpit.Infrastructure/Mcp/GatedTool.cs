@@ -31,10 +31,14 @@ internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : Dele
             gate.ReportToolResult(toolUseId, result?.ToString() ?? string.Empty, isError: false);
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            gate.ReportToolResult(toolUseId, ex.Message, isError: true);
-            throw;
+            // Return the failure as the tool's result rather than rethrowing: a single tool error (a bad
+            // path, an unreachable server) must not abort the whole turn — the model should see the error and
+            // be able to recover or explain it, exactly as it would a normal tool result.
+            var message = $"Tool call failed: {ex.Message}";
+            gate.ReportToolResult(toolUseId, message, isError: true);
+            return message;
         }
     }
 

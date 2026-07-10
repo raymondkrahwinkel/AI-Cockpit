@@ -30,6 +30,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     private readonly List<ChatMessage> _history = [];
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingApprovals = new();
     private readonly ConcurrentDictionary<string, byte> _alwaysAllowedTools = new();
+    private volatile bool _autoApproveTools;
 
     private IChatClient? _agent;
     private IMcpToolSession? _toolSession;
@@ -143,7 +144,9 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // prompt and await the operator's decision on the shared PermissionRequested flow.
         _events.Writer.TryWrite(new ToolUseRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
 
-        if (_alwaysAllowedTools.ContainsKey(toolName))
+        // Auto-approve mode (the session's "allow all tools" toggle) or a per-tool always-allow rule runs the
+        // call without prompting — the tool row is still emitted above, so it stays visible either way.
+        if (_autoApproveTools || _alwaysAllowedTools.ContainsKey(toolName))
         {
             return true;
         }
@@ -196,6 +199,23 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         if (_pendingApprovals.TryRemove(toolUseId, out var decision))
         {
             decision.TrySetResult(true);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        _autoApproveTools = enabled;
+
+        // Flipping it on frees any prompt already waiting, so the operator does not have to answer a prompt
+        // they just chose to stop seeing.
+        if (enabled)
+        {
+            foreach (var pending in _pendingApprovals.Values)
+            {
+                pending.TrySetResult(true);
+            }
         }
 
         return Task.CompletedTask;

@@ -40,4 +40,20 @@ public class GatedToolTests
         calls.Should().Be(0);
         result?.ToString().Should().Contain("denied");
     }
+
+    [Fact]
+    public async Task Invoke_WhenTheToolThrows_ReturnsTheErrorAsResult_WithoutRethrowing()
+    {
+        AIFunction inner = AIFunctionFactory.Create((Func<string>)(() => throw new InvalidOperationException("bad path")), "myTool");
+        var gate = Substitute.For<IToolApprovalGate>();
+        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+        var tool = new GatedTool(inner, gate);
+
+        // A tool error must not abort the turn: it comes back as the result (so the model can react) and is
+        // reported as an error, not thrown.
+        var result = await tool.InvokeAsync();
+
+        result?.ToString().Should().Contain("bad path");
+        gate.Received().ReportToolResult(Arg.Any<string>(), Arg.Is<string>(s => s.Contains("bad path")), true);
+    }
 }

@@ -108,4 +108,12 @@ public interface ISessionDriver : IAsyncDisposable
     /// underlying process exits.
     /// </summary>
     IAsyncEnumerable<ClaudeSessionEvent> Events { get; }
+
+    /// <summary>
+    /// Turns per-tool-call approval prompts on or off for this session. When enabled, tool calls run without
+    /// prompting (still surfaced as tool rows) — the "allow all tools" convenience for local models, whose
+    /// every MCP call would otherwise need an Allow click. Default no-op: the Claude-CLI driver gates through
+    /// its own permission modes instead, so only the local (OpenAI-compatible) driver honours this.
+    /// </summary>
+    Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }
