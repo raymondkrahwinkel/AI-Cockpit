@@ -33,4 +33,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Configured plugin-store URLs (#14) the manager browses for installable plugins; owned by the plugin-store config store.</summary>
     public List<string> PluginStores { get; set; } = [];
+
+    /// <summary>User-configured MCP servers (#26), shared by the local-LLM tool-loop and the Claude CLI; owned by the MCP-server store.</summary>
+    public List<McpServerEntry> McpServers { get; set; } = [];
 }
