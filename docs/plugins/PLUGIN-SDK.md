@@ -1,7 +1,8 @@
 # Cockpit Plugin SDK
 
-Build a plugin that extends the cockpit with its own Options tab, a left-menu section, and actions on the
-active session — without touching the cockpit's own code. This guide is the reference; the
+Build a plugin that extends the cockpit with its own settings, a left-menu section, dialogs, and actions on
+the active session — without touching the cockpit's own code. This guide is the how-to; the
+**[API reference](API-REFERENCE.md)** documents every method with signatures and examples, and the
 [GitHub Issues plugin](../../plugins-dev/Cockpit.Plugin.GitHubIssues) is a complete working example.
 
 > **Trust model — read this first.** A plugin is a .NET assembly that runs **in-process, unsandboxed, with

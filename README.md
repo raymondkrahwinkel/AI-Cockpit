@@ -4,9 +4,11 @@
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC.svg)](https://avaloniaui.net/)
 
-A **desktop cockpit for running multiple Claude Code sessions side by side** — one window, N
-independent `claude` sessions in a grid, each with its own profile, permission gating, model and
-thinking-effort controls, and a readable chat transcript.
+A **desktop cockpit for running multiple AI coding/chat sessions side by side** — one window, N
+independent sessions in a grid. The primary backend is **Claude Code** (each session a headless
+`claude` process), and profiles can also point at **local models** (Ollama, LM Studio); each session
+has its own profile, and — for Claude — permission gating, model and thinking-effort controls, plus a
+readable chat transcript.
 
 - **Multi-session grid** — run several Claude Code sessions at once; a sidebar shows each session's
   live status (busy / waiting / needs attention / done), with zoom, close affordances and a
@@ -21,6 +23,19 @@ thinking-effort controls, and a readable chat transcript.
   underneath, JSON results get a copy button, emoji render properly, and text is selectable.
 - **Live controls** — switch model and thinking-effort budget mid-session over the CLI's control
   channel; interrupt a running turn with Stop.
+- **Multi-provider (local models)** — a profile can run **Ollama** or **LM Studio** instead of
+  Claude, over their OpenAI-compatible `/v1` endpoint. Pick the provider when you create the profile
+  (fixed afterwards), set its base URL and model (Fetch lists the installed models), and give it an
+  optional **base system prompt**. The UI adapts to what a provider supports — a chat-only local
+  session simply doesn't show the Claude-only permission/effort controls (no dead controls). *Tool
+  use / MCP for local models is in progress.*
+- **Voice** — hands-free dictation and talk-back: hold **push-to-talk** (Whisper STT + Silero VAD,
+  with an optional local-LLM cleanup pass) or flip on **open-mic** to listen continuously with
+  automatic start/stop detection, and have replies **read aloud** (Piper voices via sherpa-onnx) with
+  Dutch/English voice routing. All opt-in and fully local.
+- **Plugins** — extend the cockpit with your own settings, sidebar sections and dialogs, and let a
+  plugin act on the active session — installed from a zip or a plugin store, with a first-load
+  consent that pins the assembly hash. See the [plugin docs](#documentation).
 - **Extras** — paste images from the clipboard straight into the conversation, presence-aware
   notifications (OS toast when you're at the machine, Discord webhook when you're away), and an
   experimental raw-TTY mode (Windows) that embeds the real `claude` terminal UI.
@@ -41,6 +56,12 @@ exists*; it never reads, stores or transmits credentials or API keys.
 Permission prompts work through the CLI's own extension point: the cockpit registers itself as an
 MCP `--permission-prompt-tool`, so Claude asks the cockpit before running a tool, exactly like the
 interactive CLI would ask in the terminal.
+
+A **local-model** profile uses a different driver: it talks to a locally running Ollama or LM Studio
+server over its OpenAI-compatible `/v1` endpoint (via `Microsoft.Extensions.AI`), streaming replies
+into the same transcript. Both driver kinds sit behind one `ISessionDriver` seam and advertise their
+`SessionCapabilities`, so the UI renders per provider. Local models stay on your machine; nothing is
+sent to a third party.
 
 ## Requirements
 
@@ -71,6 +92,18 @@ Tests:
 ```
 dotnet test
 ```
+
+## Documentation
+
+- **[Plugin SDK guide](docs/plugins/PLUGIN-SDK.md)** — build a plugin that extends the cockpit
+  (settings, sidebar, dialogs, session actions), package it, install it, and publish a plugin store.
+  A complete working example lives in
+  [`plugins-dev/Cockpit.Plugin.GitHubIssues`](plugins-dev/Cockpit.Plugin.GitHubIssues).
+- **[Plugin API reference](docs/plugins/API-REFERENCE.md)** — every method a plugin can call
+  (`ICockpitHost`, `ICockpitActions`, `IPluginStorage`, `IPluginSettingsView`), with signatures,
+  parameters and short examples.
+- **Scaffold a new plugin:** `dotnet new install ./templates/cockpit-plugin` then
+  `dotnet new cockpit-plugin -n My.Plugin -o plugins-dev/My.Plugin`.
 
 ## How this project is built
 
