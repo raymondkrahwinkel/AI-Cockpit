@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -163,6 +165,7 @@ public partial class ClaudeTtyView : UserControl
     {
         _lastColumns = Math.Max(1, e.Cols);
         _lastRows = Math.Max(1, e.Rows);
+        UpdateDiagnostics();
 
         if (_launchPending)
         {
@@ -171,6 +174,58 @@ public partial class ClaudeTtyView : UserControl
         }
 
         _pty?.Resize((short)_lastColumns, (short)_lastRows);
+    }
+
+    /// <summary>
+    /// Forces the TUI to repaint from scratch: clears the emulator (screen + scrollback) and nudges the pty
+    /// size so claude receives a resize (SIGWINCH) and re-renders. This is the manual recovery for the
+    /// reflow/focus glitch where — after a window resize, alt-tab or display-scale change on some Linux
+    /// setups — claude's frames end up stacked at the top with stale content showing through.
+    /// </summary>
+    private void ForceRedraw()
+    {
+        var pty = _pty;
+        if (pty is null || _lastColumns <= 0 || _lastRows <= 0)
+        {
+            return;
+        }
+
+        // ESC[3J clears scrollback, ESC[2J the screen, ESC[H homes the cursor — wipe any stale frames first.
+        Terminal.Write(Encoding.UTF8.GetBytes("[3J[2J[H"));
+        try
+        {
+            pty.Resize((short)Math.Max(1, _lastColumns - 1), (short)_lastRows);
+            pty.Resize((short)_lastColumns, (short)_lastRows);
+        }
+        catch (Exception)
+        {
+            // The pty may have exited; the output pump already handles that.
+        }
+    }
+
+    private void OnRedrawClick(object? sender, RoutedEventArgs e) => ForceRedraw();
+
+    private void UpdateDiagnostics()
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
+        var session = Environment.GetEnvironmentVariable("XDG_SESSION_TYPE");
+        var lang = Environment.GetEnvironmentVariable("LANG");
+        var lcAll = Environment.GetEnvironmentVariable("LC_ALL");
+
+        var parts = new StringBuilder();
+        parts.Append(CultureInfo.InvariantCulture, $"{RuntimeInformation.OSDescription} · grid {_lastColumns}×{_lastRows} · scale {scale.ToString("0.##", CultureInfo.InvariantCulture)}");
+        if (!string.IsNullOrEmpty(session))
+        {
+            parts.Append(CultureInfo.InvariantCulture, $" · {session}");
+        }
+
+        parts.Append(CultureInfo.InvariantCulture, $" · LANG={lang ?? "(unset)"} LC_ALL={lcAll ?? "(unset)"}");
+        _viewModel.Diagnostics = parts.ToString();
     }
 
     private void StartPty()

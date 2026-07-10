@@ -41,7 +41,14 @@
                     <ToggleButton Content="Read aloud" IsChecked="{Binding ReadResponsesAloud}"
                                   VerticalAlignment="Center"
                                   ToolTip.Tip="Read each assistant reply aloud by tailing the session transcript (voice model downloads on first use)"/>
+                    <Button Content="Redraw" Click="OnRedrawClick" VerticalAlignment="Center"
+                            ToolTip.Tip="Force the terminal to repaint from scratch — recovers the TUI if a resize/focus change left it misaligned or stacked at the top"/>
                 </StackPanel>
+                <!-- Render diagnostics: helps pin down TTY misrendering on remote/uncommon setups (OS,
+                     terminal grid, display scale, locale) without needing shell access on that machine. -->
+                <TextBlock Text="{Binding Diagnostics}" FontSize="10" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           IsVisible="{Binding Diagnostics, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
             </StackPanel>
         </Border>
 

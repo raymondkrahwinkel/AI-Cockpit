@@ -67,6 +67,10 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     [ObservableProperty]
     private string _status = "Not started.";
 
+    /// <summary>One-line render diagnostics (OS, terminal grid, display scale, locale) shown in the TTY header — surfaced so a remote/misrendering machine can be inspected without shell access. Set by the view, which owns the terminal/pty.</summary>
+    [ObservableProperty]
+    private string _diagnostics = string.Empty;
+
     // Parameterless constructor for the Avalonia previewer/Screenshotter design-time context.
     public ClaudeTtyViewModel()
     {
