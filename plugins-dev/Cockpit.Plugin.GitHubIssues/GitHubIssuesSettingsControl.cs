@@ -69,6 +69,9 @@ internal sealed class GitHubIssuesSettingsControl : UserControl
             settings.Token = token.Text?.Trim() ?? string.Empty;
             settings.Template = string.IsNullOrWhiteSpace(template.Text) ? PromptTemplate.Default : template.Text;
             status.Text = "✓ Saved";
+
+            // Close the settings dialog on a successful save; the control finds its hosting window itself.
+            (TopLevel.GetTopLevel(this) as Window)?.Close();
         };
 
         Content = new ScrollViewer
