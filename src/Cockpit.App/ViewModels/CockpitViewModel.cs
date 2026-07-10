@@ -67,20 +67,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
-    /// <summary>Options-dialog tabs contributed by plugins (#14); the dialog appends one <c>TabItem</c> per entry when it opens.</summary>
-    public ObservableCollection<PluginOptionsTab> PluginOptionsTabs { get; } = [];
-
     /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
+
+    /// <summary>Left-menu launcher buttons contributed by plugins (#14); clicking one runs the plugin's action (typically opening a dialog).</summary>
+    public ObservableCollection<PluginSideButton> PluginSideButtons { get; } = [];
+
+    /// <summary>Per-plugin settings views (#14) keyed by plugin folder id, opened from the gear in the plugin manager.</summary>
+    public Dictionary<string, Func<Control>> PluginSettings { get; } = [];
 
     /// <summary>The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.</summary>
     public PluginManagerViewModel Plugins { get; }
 
-    void IPluginContributionSink.AddPluginOptionsTab(string title, Func<Control> createView) =>
-        _OnUiThread(() => PluginOptionsTabs.Add(new PluginOptionsTab(title, createView)));
-
     void IPluginContributionSink.AddPluginSideSection(string title, Func<Control> createView) =>
         _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(title, createView)));
+
+    void IPluginContributionSink.AddPluginSideButton(string title, Action onInvoke) =>
+        _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(title, onInvoke)));
+
+    void IPluginContributionSink.AddPluginSettings(string pluginId, Func<Control> createView) =>
+        _OnUiThread(() => PluginSettings[pluginId] = createView);
 
     // Plugins register contributions from Initialize (run on the UI thread), but a plugin could also
     // add a section later off a background thread — marshal so the bound collections only mutate on the UI thread.
@@ -378,14 +384,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PluginBootstrap? pluginBootstrap = null,
         IPluginStoreConfigStore? pluginStoreConfigStore = null,
         IPluginStoreClient? pluginStoreClient = null,
+        IPluginDialogHost? pluginDialogHost = null,
         IAudioDeviceProvider? audioDeviceProvider = null)
     {
         _audioDeviceProvider = audioDeviceProvider;
-        // The full plugin manager needs its store/installer/bootstrap and store dependencies; when they are
-        // absent (unit tests that don't exercise plugins) the design-time manager is used, so the tab is inert.
+        // The full plugin manager needs its store/installer/bootstrap, store dependencies and the dialog
+        // host; when they are absent (unit tests that don't exercise plugins) the design-time manager is
+        // used, so the tab is inert.
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
-                && pluginStoreConfigStore is not null && pluginStoreClient is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient)
+                && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost)
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;

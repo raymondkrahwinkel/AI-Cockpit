@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
@@ -24,6 +26,8 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
+    private readonly IReadOnlyDictionary<string, Func<Control>>? _settingsRegistry;
+    private readonly IPluginDialogHost? _dialogHost;
 
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
@@ -54,7 +58,9 @@ public partial class PluginManagerViewModel : ViewModelBase
         PluginBootstrap bootstrap,
         ISessionDialogService dialogService,
         IPluginStoreConfigStore storeConfigStore,
-        IPluginStoreClient storeClient)
+        IPluginStoreClient storeClient,
+        IReadOnlyDictionary<string, Func<Control>> settingsRegistry,
+        IPluginDialogHost dialogHost)
     {
         _registrationStore = registrationStore;
         _installer = installer;
@@ -62,6 +68,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         _dialogService = dialogService;
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
+        _settingsRegistry = settingsRegistry;
+        _dialogHost = dialogHost;
     }
 
     /// <summary>Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.</summary>
@@ -73,7 +81,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             Plugins.Clear();
             foreach (var plugin in discovered)
             {
-                Plugins.Add(new PluginRowViewModel(plugin));
+                Plugins.Add(new PluginRowViewModel(plugin, _settingsRegistry?.ContainsKey(plugin.FolderId) ?? false));
             }
 
             HasPlugins = Plugins.Count > 0;
@@ -133,6 +141,17 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _registrationStore.SaveAsync(row.FolderId, new PluginRegistration(Enabled: true, PinnedSha256: row.Discovered.Sha256));
         await LoadAsync();
         StatusMessage = $"'{row.DisplayName}' enabled. Restart the cockpit to load it.";
+    }
+
+    [RelayCommand]
+    private async Task OpenPluginSettingsAsync(PluginRowViewModel row)
+    {
+        if (_dialogHost is null || _settingsRegistry is null || !_settingsRegistry.TryGetValue(row.FolderId, out var createView))
+        {
+            return;
+        }
+
+        await _dialogHost.ShowDialogAsync($"{row.DisplayName} settings", createView, 640, 560);
     }
 
     [RelayCommand]

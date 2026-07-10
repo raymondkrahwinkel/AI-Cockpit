@@ -3,13 +3,25 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.GitHubIssues;
 
 /// <summary>
-/// The plugin's settings, persisted through the host's per-plugin <see cref="IPluginStorage"/> (its slice
-/// of cockpit.json): which repository to read, an optional token (for private repos / higher rate limits)
-/// and the editable prompt template. Each property reads and writes storage directly, so the Options tab
-/// and the issue list always see the same values.
+/// The plugin's settings, persisted through the host's per-plugin <see cref="IPluginStorage"/>. Two modes:
+/// the local GitHub CLI (<see cref="UseGitHubCli"/> — uses your existing <c>gh</c> login and shows open
+/// issues across all repos for <see cref="GhOwner"/>), or a single repository over HTTP with an optional
+/// token. The prompt template dropped on click is editable either way.
 /// </summary>
 internal sealed class GitHubIssuesSettings(IPluginStorage storage)
 {
+    public bool UseGitHubCli
+    {
+        get => storage.Get<bool>("useGhCli");
+        set => storage.Set("useGhCli", value);
+    }
+
+    public string GhOwner
+    {
+        get => storage.Get<string>("ghOwner") is { Length: > 0 } owner ? owner : "@me";
+        set => storage.Set("ghOwner", value);
+    }
+
     public string Owner
     {
         get => storage.Get<string>("owner") ?? string.Empty;

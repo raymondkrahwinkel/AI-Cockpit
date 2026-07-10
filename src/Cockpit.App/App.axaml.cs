@@ -68,15 +68,18 @@ public partial class App : Application
 
         var cockpit = Program.Services.GetRequiredService<CockpitViewModel>();
         var registrationStore = Program.Services.GetRequiredService<IPluginRegistrationStore>();
+        var dialogHost = Program.Services.GetRequiredService<IPluginDialogHost>();
         var actions = new PluginActions(
             cockpit,
             () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard);
 
         pluginManager.Initialize(discovered => new CockpitHost(
+            discovered.FolderId,
             Program.Services,
             cockpit,
             actions,
-            _CreatePluginStorage(discovered, registrationStore)));
+            _CreatePluginStorage(discovered, registrationStore),
+            dialogHost));
     }
 
     // Seeds the plugin's storage from its saved slice and writes changes back through the store; the load

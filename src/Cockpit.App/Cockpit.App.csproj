@@ -17,6 +17,9 @@
     <PackageReference Include="Avalonia" Version="12.0.5" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <!-- The host provides the DataGrid (control + theme) so plugins can use it via Private=false and share
+         its type identity + app-wide theme, instead of each shipping and theming their own copy (#14). -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.5" />
     <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">

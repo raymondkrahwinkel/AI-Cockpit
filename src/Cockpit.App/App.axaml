@@ -11,6 +11,8 @@
 
     <Application.Styles>
         <FluentTheme />
+        <!-- DataGrid theme, app-wide, so plugin dialogs (#14) can host a DataGrid without shipping/theming their own. -->
+        <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
         <StyleInclude Source="avares://Cockpit.App/Styles/Theme.axaml"/>
     </Application.Styles>
 </Application>

@@ -4,9 +4,9 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Sample;
 
 /// <summary>
-/// A starter Cockpit plugin. It contributes one left-menu section; add an Options tab with
-/// <c>host.AddOptionsTab(...)</c>, register your own services in <see cref="ConfigureServices"/>, and
-/// persist settings via <c>host.Storage</c>. See docs/plugins/PLUGIN-SDK.md.
+/// A starter Cockpit plugin. It contributes a left-menu button that opens a dialog; add a settings view
+/// with <c>host.AddSettings(...)</c> (opened from the manager's gear), register your own services in
+/// <see cref="ConfigureServices"/>, and persist settings via <c>host.Storage</c>. See docs/plugins/PLUGIN-SDK.md.
 /// </summary>
 public sealed class SamplePlugin : ICockpitPlugin
 {
@@ -24,7 +24,9 @@ public sealed class SamplePlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        host.AddSideMenuSection("Sample", () => new SamplePanelControl(host));
+        // A left-menu button that opens the plugin's content in a dialog. For plugin settings, also call
+        // host.AddSettings(() => new YourSettingsControl(...)) — it appears behind the gear in the manager.
+        host.AddSideMenuButton("Sample", () => _ = host.ShowDialogAsync("Sample", () => new SamplePanelControl(host)));
     }
 
     public void Dispose()

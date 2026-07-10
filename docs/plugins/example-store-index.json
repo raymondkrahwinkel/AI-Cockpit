@@ -4,10 +4,18 @@
     {
       "id": "github-issues",
       "name": "GitHub Issues",
-      "description": "Shows a repository's open issues in the left menu; clicking one asks the agent to open and review it. The prompt template is editable in Options.",
+      "description": "Browse open GitHub issues across your repos (via the gh CLI) or one repo, and drop a prompt asking the agent to open and review one.",
       "author": "Cockpit",
-      "latestVersion": "1.0.0",
+      "latestVersion": "1.1.0",
       "versions": [
+        {
+          "version": "1.1.0",
+          "path": "github-issues/github-issues-1.1.0.zip",
+          "abstractionsVersion": 1,
+          "minHostVersion": "1.0.0",
+          "sha256": "7f1b7a32913aa84adfe25c687c12cd61d1a24ba2ee1d1220ab4ed47351144977",
+          "notes": "gh CLI support, cross-repo issues, searchable/sortable dialog."
+        },
         {
           "version": "1.0.0",
           "path": "github-issues/github-issues-1.0.0.zip",

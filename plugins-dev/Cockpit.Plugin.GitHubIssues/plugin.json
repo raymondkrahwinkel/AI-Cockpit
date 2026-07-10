@@ -1,11 +1,11 @@
 {
   "id": "github-issues",
   "name": "GitHub Issues",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "entryAssembly": "Cockpit.Plugin.GitHubIssues.dll",
   "entryType": "Cockpit.Plugin.GitHubIssues.GitHubIssuesPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "1.0.0",
-  "description": "Shows a repository's open GitHub issues in the left menu; clicking one drops a prompt telling the agent to open and review that issue. The prompt template is editable in Options.",
+  "description": "Browse open GitHub issues across your repos (via the gh CLI) or one repo in a searchable, sortable dialog; click one to drop a prompt asking the agent to open and review it. The prompt template is editable in settings.",
   "author": "Cockpit"
 }

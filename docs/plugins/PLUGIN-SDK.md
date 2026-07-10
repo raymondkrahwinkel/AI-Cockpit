@@ -15,8 +15,10 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 
 | Contribution point | Method | Result |
 |---|---|---|
-| Options tab | `host.AddOptionsTab(title, () => control)` | A tab in **Options**, next to Notifications/Sessions/Voice/Plugins. |
-| Left-menu section | `host.AddSideMenuSection(title, () => control)` | An accordion under the session list in the sidebar. |
+| Settings | `host.AddSettings(() => control)` | Opened from the **gear** next to your plugin in the Plugins manager — a per-plugin settings dialog (no top-level Options tab). |
+| Left-menu button | `host.AddSideMenuButton(title, onInvoke)` | A launcher button in the sidebar; clicking runs your action (usually opening a dialog). |
+| Dialog | `host.ShowDialogAsync(title, () => control)` | A modal dialog over the main window hosting your control. The host provides the **DataGrid** (control + theme) app-wide, so you can use it. |
+| Left-menu section | `host.AddSideMenuSection(title, () => control)` | An inline accordion under the session list — for small, always-visible content. |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Persist settings | `host.Storage` | Per-plugin key/value storage in `cockpit.json`. |
 | Register services | `plugin.ConfigureServices(services)` | Add your own services to the host DI container (phase 1). |
@@ -36,10 +38,12 @@ public interface ICockpitPlugin : IDisposable
 public interface ICockpitHost
 {
     IServiceProvider Services { get; }
-    void AddOptionsTab(string title, Func<Control> createView);
-    void AddSideMenuSection(string title, Func<Control> createView);
     ICockpitActions Actions { get; }
     IPluginStorage Storage { get; }
+    void AddSettings(Func<Control> createView);                 // opened from the manager's gear
+    void AddSideMenuButton(string title, Action onInvoke);      // sidebar launcher button
+    void AddSideMenuSection(string title, Func<Control> createView); // inline sidebar accordion
+    Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 }
 
 public interface ICockpitActions

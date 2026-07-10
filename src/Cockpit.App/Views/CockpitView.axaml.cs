@@ -13,6 +13,7 @@ namespace Cockpit.App.Views;
 public partial class CockpitView : UserControl
 {
     private INotifyCollectionChanged? _observedSideSections;
+    private INotifyCollectionChanged? _observedSideButtons;
 
     public CockpitView()
     {
@@ -45,15 +46,21 @@ public partial class CockpitView : UserControl
 
         if (_observedSideSections is not null)
         {
-            _observedSideSections.CollectionChanged -= OnPluginSideSectionsChanged;
+            _observedSideSections.CollectionChanged -= OnPluginContributionsChanged;
             _observedSideSections = null;
+        }
+
+        if (_observedSideButtons is not null)
+        {
+            _observedSideButtons.CollectionChanged -= OnPluginContributionsChanged;
+            _observedSideButtons = null;
         }
 
         base.OnDetachedFromVisualTree(e);
     }
 
-    // Renders the plugin-contributed left-menu sections (#14) and keeps them in sync: plugins register
-    // their sections during phase-2 init (before this view attaches), and any later addition rebuilds.
+    // Renders the plugin-contributed left-menu buttons and sections (#14) and keeps them in sync: plugins
+    // register these during phase-2 init (before this view attaches), and any later addition rebuilds.
     private void _AttachPluginSections()
     {
         if (DataContext is not CockpitViewModel cockpit)
@@ -62,11 +69,13 @@ public partial class CockpitView : UserControl
         }
 
         _observedSideSections = cockpit.PluginSideSections;
-        _observedSideSections.CollectionChanged += OnPluginSideSectionsChanged;
+        _observedSideSections.CollectionChanged += OnPluginContributionsChanged;
+        _observedSideButtons = cockpit.PluginSideButtons;
+        _observedSideButtons.CollectionChanged += OnPluginContributionsChanged;
         _RebuildPluginSections();
     }
 
-    private void OnPluginSideSectionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _RebuildPluginSections();
+    private void OnPluginContributionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _RebuildPluginSections();
 
     private void _RebuildPluginSections()
     {
@@ -76,7 +85,7 @@ public partial class CockpitView : UserControl
         }
 
         PluginSectionsHost.Children.Clear();
-        if (cockpit.PluginSideSections.Count == 0)
+        if (cockpit.PluginSideButtons.Count == 0 && cockpit.PluginSideSections.Count == 0)
         {
             PluginSectionsHost.IsVisible = false;
             return;
@@ -86,6 +95,19 @@ public partial class CockpitView : UserControl
         if (this.TryFindResource("CockpitHairlineBrush", out var hairline) && hairline is IBrush brush)
         {
             PluginSectionsHost.Children.Add(new Border { Height = 1, Background = brush, Margin = new Thickness(0, 4) });
+        }
+
+        foreach (var launcher in cockpit.PluginSideButtons)
+        {
+            var button = new Button
+            {
+                Content = launcher.Title,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+            };
+            var invoke = launcher.OnInvoke;
+            button.Click += (_, _) => invoke();
+            PluginSectionsHost.Children.Add(button);
         }
 
         foreach (var section in cockpit.PluginSideSections)

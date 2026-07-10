@@ -43,8 +43,8 @@ public class GitHubIssuesPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        host.OptionsTabs.Should().ContainSingle().Which.Should().Be("GitHub Issues");
-        host.SideSections.Should().ContainSingle().Which.Should().Be("GitHub Issues");
+        host.SettingsRegistered.Should().Be(1);
+        host.SideButtons.Should().ContainSingle().Which.Should().Be("GitHub Issues");
 
         plugin.Dispose();
     }
@@ -72,7 +72,9 @@ public class GitHubIssuesPluginLoadTests
 
     private sealed class RecordingHost : ICockpitHost
     {
-        public List<string> OptionsTabs { get; } = [];
+        public int SettingsRegistered { get; private set; }
+
+        public List<string> SideButtons { get; } = [];
 
         public List<string> SideSections { get; } = [];
 
@@ -82,9 +84,13 @@ public class GitHubIssuesPluginLoadTests
 
         public IPluginStorage Storage { get; } = new MemoryStorage();
 
-        public void AddOptionsTab(string title, Func<Control> createView) => OptionsTabs.Add(title);
+        public void AddSettings(Func<Control> createView) => SettingsRegistered++;
+
+        public void AddSideMenuButton(string title, Action onInvoke) => SideButtons.Add(title);
 
         public void AddSideMenuSection(string title, Func<Control> createView) => SideSections.Add(title);
+
+        public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
     }
 
     private sealed class NoActions : ICockpitActions

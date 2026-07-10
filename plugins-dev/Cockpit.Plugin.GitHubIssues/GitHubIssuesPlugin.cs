@@ -4,20 +4,20 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.GitHubIssues;
 
 /// <summary>
-/// Example plugin (#14) proving the contract end-to-end: it contributes an Options tab (repository, token,
-/// editable prompt template) and a left-menu section listing the repo's open issues, where clicking an
-/// issue injects the rendered template into the active session so the agent opens and reviews it. It needs
-/// no services of its own — its settings live in the host's per-plugin storage — so
-/// <see cref="ConfigureServices"/> is empty and everything is wired in <see cref="Initialize"/>.
+/// Example plugin (#14) proving the contract end-to-end: it registers a settings view (opened from the
+/// plugin manager's gear — GitHub CLI vs single-repo, and the editable prompt template) and a left-menu
+/// button that opens a dialog listing open issues (across all your repos via <c>gh</c>, or one repo over
+/// HTTP), where selecting one injects the rendered template into the active session so the agent opens and
+/// reviews it. Its settings live in the host's per-plugin storage, so <see cref="ConfigureServices"/> is empty.
 /// </summary>
 public sealed class GitHubIssuesPlugin : ICockpitPlugin
 {
     public PluginMetadata Metadata { get; } = new(
         Id: "github-issues",
         DisplayName: "GitHub Issues",
-        Version: "1.0.0",
+        Version: "1.1.0",
         Author: "Cockpit",
-        Description: "Shows a repository's open issues in the left menu; clicking one asks the agent to open and review it. The prompt template is editable in Options.");
+        Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, and drop a prompt asking the agent to open and review one. The prompt template is editable in settings.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -26,10 +26,11 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         var settings = new GitHubIssuesSettings(host.Storage);
-        var client = new GitHubIssuesClient();
 
-        host.AddOptionsTab("GitHub Issues", () => new GitHubIssuesOptionsControl(settings));
-        host.AddSideMenuSection("GitHub Issues", () => new GitHubIssuesPanelControl(settings, client, host.Actions));
+        host.AddSettings(() => new GitHubIssuesSettingsControl(settings));
+        host.AddSideMenuButton(
+            "GitHub Issues",
+            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host.Actions), 860, 620));
     }
 
     public void Dispose()
