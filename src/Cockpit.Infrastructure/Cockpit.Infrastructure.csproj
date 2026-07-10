@@ -19,7 +19,10 @@
          localhost. Later (#26 tool-loop) the same IChatClient hosts MCP tools via ModelContextProtocol. -->
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0" />
-    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
+    <!-- #26 tools/MCP: the MCP client (namespace ModelContextProtocol.Client) that connects the local-LLM
+         tool-loop to the user's MCP servers. Kept on the same 1.4.x line as the AspNetCore server package. -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
     <!-- Read-aloud TTS (#35): sherpa-onnx (Apache-2.0) running Piper VITS voices in-proc — no Python,
          no subprocess. OfflineTts.Generate returns normalized float32 mono PCM plus the voice's own
          sample rate; playback plays at that rate (SoundFlowAudioPlaybackService opens the device on
