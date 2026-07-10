@@ -11,7 +11,14 @@ public interface IPluginRegistrationStore
 {
     Task<IReadOnlyDictionary<string, PluginRegistration>> LoadAllAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Persists a plugin's enabled + pinned-hash state, preserving its stored <see cref="LoadDataAsync"/> key/value data.</summary>
     Task SaveAsync(string folderId, PluginRegistration registration, CancellationToken cancellationToken = default);
 
     Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
+
+    /// <summary>Loads a plugin's own key/value storage slice (its <see cref="Cockpit.Plugins.Abstractions.IPluginStorage"/> data); empty when the plugin has stored nothing.</summary>
+    Task<IReadOnlyDictionary<string, string>> LoadDataAsync(string folderId, CancellationToken cancellationToken = default);
+
+    /// <summary>Persists a plugin's own key/value storage slice, preserving its enabled + pinned-hash state.</summary>
+    Task SaveDataAsync(string folderId, IReadOnlyDictionary<string, string> data, CancellationToken cancellationToken = default);
 }

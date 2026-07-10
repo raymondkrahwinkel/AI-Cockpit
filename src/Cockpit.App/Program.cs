@@ -4,9 +4,12 @@ using Avalonia.Media.Fonts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Plugins;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App;
 
@@ -23,15 +26,39 @@ sealed class Program
         var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "logs", "cockpit.log");
         var services = new ServiceCollection();
-        services.AddLogging(builder =>
+
+        // One logger factory shared between the pre-container plugin pass (below) and DI, so both write
+        // to the same file — a second FileLoggerProvider would truncate the log a second time at startup.
+        var loggerFactory = LoggerFactory.Create(builder =>
         {
             builder.AddConsole();
             builder.AddProvider(new Cockpit.App.Logging.FileLoggerProvider(logPath));
         });
+        services.AddSingleton<ILoggerFactory>(loggerFactory);
+        services.AddLogging();
+
         services.AddCore().AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(Program).Assembly);
+
+        // #14 Plugins — phase 1, before the container is built: discover the plugins installed next to
+        // cockpit.json and let each load-decided plugin register its own services. The manager isolates a
+        // plugin that fails to load or configure; a discovery failure leaves the app running without plugins.
+        var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>());
+        try
+        {
+            var discoveredPlugins = new PluginBootstrap()
+                .DiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
+            var pluginActivator = new PluginActivator(loggerFactory.CreateLogger<PluginActivator>());
+            pluginManager.LoadAndConfigure(discoveredPlugins, services, pluginActivator.Activate);
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger<Program>().LogError(exception, "Plugin discovery failed; continuing without plugins.");
+        }
+
+        services.AddSingleton(pluginManager);
 
         // Factory delegate so CockpitViewModel can mint a new ClaudeSessionViewModel (and,
         // transitively, its own IClaudeSession/CLI process) per "New session" click without

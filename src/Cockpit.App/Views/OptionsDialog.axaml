@@ -28,7 +28,7 @@
             </Grid>
         </Border>
 
-        <TabControl>
+        <TabControl x:Name="Tabs">
 
             <TabItem Header="Notifications">
                 <ScrollViewer>

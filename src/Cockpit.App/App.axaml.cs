@@ -8,9 +8,12 @@ using System.Linq;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Plugins;
 
 namespace Cockpit.App;
 
@@ -45,9 +48,43 @@ public partial class App : Application
             // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
             // portal/keyboard-hook is only ever touched for an operator who opted in.
             _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
+
+            // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
+            // plugin the host built for it so it can register its Options tab / side-menu section.
+            _InitializePlugins();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    // Phase 2 of the plugin lifecycle: each plugin gets a CockpitHost carrying the built service provider,
+    // the cockpit as the contribution sink, the shared actions, and its own persisted storage slice.
+    private void _InitializePlugins()
+    {
+        if (Program.Services.GetService<PluginManager>() is not { } pluginManager)
+        {
+            return;
+        }
+
+        var cockpit = Program.Services.GetRequiredService<CockpitViewModel>();
+        var registrationStore = Program.Services.GetRequiredService<IPluginRegistrationStore>();
+        var actions = new PluginActions(
+            cockpit,
+            () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard);
+
+        pluginManager.Initialize(discovered => new CockpitHost(
+            Program.Services,
+            cockpit,
+            actions,
+            _CreatePluginStorage(discovered, registrationStore)));
+    }
+
+    // Seeds the plugin's storage from its saved slice and writes changes back through the store; the load
+    // blocks briefly on the small config file at startup, which is acceptable on the UI thread here.
+    private static PluginStorage _CreatePluginStorage(DiscoveredPlugin discovered, IPluginRegistrationStore store)
+    {
+        var seed = store.LoadDataAsync(discovered.FolderId).GetAwaiter().GetResult();
+        return new PluginStorage(seed, data => _ = store.SaveDataAsync(discovered.FolderId, data));
     }
 
     /// <summary>Restores and focuses the main window (tray left-click / "Show cockpit").</summary>

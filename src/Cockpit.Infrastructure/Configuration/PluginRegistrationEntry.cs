@@ -9,6 +9,9 @@ internal sealed class PluginRegistrationEntry
 
     public string PinnedSha256 { get; set; } = "";
 
+    /// <summary>The plugin's own key/value storage (<see cref="Cockpit.Plugins.Abstractions.IPluginStorage"/>); values are JSON strings. Owned by the plugin, not the load decision.</summary>
+    public Dictionary<string, string> Data { get; set; } = [];
+
     public static PluginRegistrationEntry FromDomain(PluginRegistration registration) =>
         new() { Enabled = registration.Enabled, PinnedSha256 = registration.PinnedSha256 };
 

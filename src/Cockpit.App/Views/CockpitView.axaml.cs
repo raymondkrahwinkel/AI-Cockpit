@@ -1,7 +1,9 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.SessionSwitching;
 
@@ -9,6 +11,8 @@ namespace Cockpit.App.Views;
 
 public partial class CockpitView : UserControl
 {
+    private INotifyCollectionChanged? _observedSideSections;
+
     public CockpitView()
     {
         InitializeComponent();
@@ -27,6 +31,8 @@ public partial class CockpitView : UserControl
         {
             root.AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Tunnel);
         }
+
+        _AttachPluginSections();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -36,7 +42,60 @@ public partial class CockpitView : UserControl
             root.RemoveHandler(KeyDownEvent, OnRootKeyDown);
         }
 
+        if (_observedSideSections is not null)
+        {
+            _observedSideSections.CollectionChanged -= OnPluginSideSectionsChanged;
+            _observedSideSections = null;
+        }
+
         base.OnDetachedFromVisualTree(e);
+    }
+
+    // Renders the plugin-contributed left-menu sections (#14) and keeps them in sync: plugins register
+    // their sections during phase-2 init (before this view attaches), and any later addition rebuilds.
+    private void _AttachPluginSections()
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        _observedSideSections = cockpit.PluginSideSections;
+        _observedSideSections.CollectionChanged += OnPluginSideSectionsChanged;
+        _RebuildPluginSections();
+    }
+
+    private void OnPluginSideSectionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _RebuildPluginSections();
+
+    private void _RebuildPluginSections()
+    {
+        if (PluginSectionsHost is null || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        PluginSectionsHost.Children.Clear();
+        if (cockpit.PluginSideSections.Count == 0)
+        {
+            PluginSectionsHost.IsVisible = false;
+            return;
+        }
+
+        PluginSectionsHost.IsVisible = true;
+        if (this.TryFindResource("CockpitHairlineBrush", out var hairline) && hairline is IBrush brush)
+        {
+            PluginSectionsHost.Children.Add(new Border { Height = 1, Background = brush, Margin = new Thickness(0, 4) });
+        }
+
+        foreach (var section in cockpit.PluginSideSections)
+        {
+            PluginSectionsHost.Children.Add(new Expander
+            {
+                Header = section.Title,
+                Content = section.CreateView(),
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+            });
+        }
     }
 
     private void OnRootKeyDown(object? sender, KeyEventArgs e)

@@ -42,8 +42,32 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
     }
 
     public Task SaveAsync(string folderId, PluginRegistration registration, CancellationToken cancellationToken = default) =>
-        _configFile.UpdateAsync(file => file.Plugins[folderId] = PluginRegistrationEntry.FromDomain(registration), cancellationToken);
+        _configFile.UpdateAsync(file =>
+        {
+            // Preserve the plugin's own stored data — this write owns only the enabled + hash state.
+            var entry = file.Plugins.TryGetValue(folderId, out var existing) ? existing : new PluginRegistrationEntry();
+            entry.Enabled = registration.Enabled;
+            entry.PinnedSha256 = registration.PinnedSha256;
+            file.Plugins[folderId] = entry;
+        }, cancellationToken);
 
     public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(file => file.Plugins.Remove(folderId), cancellationToken);
+
+    public async Task<IReadOnlyDictionary<string, string>> LoadDataAsync(string folderId, CancellationToken cancellationToken = default)
+    {
+        var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
+        return configFile?.Plugins.TryGetValue(folderId, out var entry) == true
+            ? new Dictionary<string, string>(entry.Data)
+            : new Dictionary<string, string>();
+    }
+
+    public Task SaveDataAsync(string folderId, IReadOnlyDictionary<string, string> data, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(file =>
+        {
+            // Preserve the enabled + hash state — this write owns only the plugin's key/value data.
+            var entry = file.Plugins.TryGetValue(folderId, out var existing) ? existing : new PluginRegistrationEntry();
+            entry.Data = new Dictionary<string, string>(data);
+            file.Plugins[folderId] = entry;
+        }, cancellationToken);
 }

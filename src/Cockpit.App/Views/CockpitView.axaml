@@ -69,6 +69,11 @@
                     </Button>
                 </StackPanel>
 
+                <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the
+                     session list. Built in code-behind from CockpitViewModel.PluginSideSections; hidden
+                     entirely when no plugin contributes a section (no visual noise at zero plugins). -->
+                <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
+
                 <ScrollViewer>
                     <ItemsControl ItemsSource="{Binding Sessions}">
                         <ItemsControl.ItemTemplate>

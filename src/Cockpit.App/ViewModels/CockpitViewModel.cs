@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
@@ -35,7 +38,7 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 // Singleton: it is the single root view model behind the window, and the shutdown path resolves it
 // back to dispose the live sessions (bug #32) — that must be the same instance the window holds.
-public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsyncDisposable
+public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsyncDisposable, IPluginContributionSink
 {
     private static readonly Core.Audio.AudioFormat AudioFormat = new();
 
@@ -61,6 +64,32 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private int _sessionCounter;
 
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
+
+    /// <summary>Options-dialog tabs contributed by plugins (#14); the dialog appends one <c>TabItem</c> per entry when it opens.</summary>
+    public ObservableCollection<PluginOptionsTab> PluginOptionsTabs { get; } = [];
+
+    /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
+    public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
+
+    void IPluginContributionSink.AddPluginOptionsTab(string title, Func<Control> createView) =>
+        _OnUiThread(() => PluginOptionsTabs.Add(new PluginOptionsTab(title, createView)));
+
+    void IPluginContributionSink.AddPluginSideSection(string title, Func<Control> createView) =>
+        _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(title, createView)));
+
+    // Plugins register contributions from Initialize (run on the UI thread), but a plugin could also
+    // add a section later off a background thread — marshal so the bound collections only mutate on the UI thread.
+    private static void _OnUiThread(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(action);
+        }
+    }
 
     /// <summary>False when no session is open, driving the empty-state welcome screen vs. the session grid (#31).</summary>
     public bool HasSessions => Sessions.Count > 0;
