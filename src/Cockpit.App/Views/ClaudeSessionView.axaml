@@ -32,21 +32,31 @@
                     <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104"
                               VerticalAlignment="Center" Margin="0,0,6,4"
+                              IsVisible="{Binding Capabilities.SupportsPermissions}"
                               IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
                               ToolTip.Tip="Permission mode for this session (live-switchable; bypass is locked once the session is launched in it)"/>
                     <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
                               VerticalAlignment="Center" Margin="0,0,6,4"
+                              IsVisible="{Binding Capabilities.SupportsLiveModelSwitch}"
                               ToolTip.Tip="Model for this session (--model at launch, live-switchable)"/>
                     <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
                               VerticalAlignment="Center" Margin="0,0,6,4"
+                              IsVisible="{Binding Capabilities.SupportsThinking}"
                               ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
                     <ToggleButton Content="Read aloud" IsChecked="{Binding ReadResponsesAloud}"
                                   VerticalAlignment="Center" Margin="0,0,0,4"
                                   ToolTip.Tip="Read each completed reply aloud, sentence by sentence (voice model downloads on first use)"/>
                 </WrapPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="5,1" VerticalAlignment="Center"
+                            IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding ProviderBadge}" FontSize="10"
+                                   Foreground="{StaticResource CockpitAccentBrush}"/>
+                    </Border>
                     <TextBlock Text="{Binding Status}" VerticalAlignment="Center" FontSize="11"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center" FontSize="11"

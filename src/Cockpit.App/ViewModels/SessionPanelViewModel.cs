@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Claude;
 using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
@@ -125,6 +126,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         SessionStatus.Done => "Done",
         _ => "Idle",
     };
+
+    /// <summary>What the running session's driver supports (#26), so the view hides controls a local provider does not offer instead of showing dead ones. Defaults to the full Claude-CLI set until a session starts.</summary>
+    [ObservableProperty]
+    private SessionCapabilities _capabilities = SessionCapabilities.ClaudeCli;
+
+    /// <summary>Short provider label shown next to a non-Claude session ("Ollama"/"LM Studio"); empty for a Claude session, which needs no badge.</summary>
+    [ObservableProperty]
+    private string _providerBadge = string.Empty;
 
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;

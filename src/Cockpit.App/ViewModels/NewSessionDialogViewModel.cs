@@ -42,11 +42,17 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public string HeaderText => IsSdk ? "New session" : "New session (TTY)";
 
     /// <summary>
-    /// Both SDK and TTY sessions launch with a mode/model/effort — TTY passes them as launch-only CLI
-    /// flags (<c>--permission-mode</c>/<c>--model</c>/<c>--effort</c>) so the real TUI still starts with
-    /// the operator's chosen defaults, even though it owns any live switching itself afterwards.
+    /// The mode/model/effort options are Claude-CLI concepts, shown only for a Claude profile — TTY passes
+    /// them as launch-only CLI flags, SDK keeps them live-switchable. A local provider has none of these,
+    /// so the whole block is hidden for it (#26).
     /// </summary>
-    public bool ShowSessionOptions => true;
+    public bool ShowSessionOptions => IsClaudeProfile;
+
+    /// <summary>The SDK "stays live-switchable" hint, shown only for a Claude SDK session (a local session has no such dropdowns).</summary>
+    public bool ShowSdkStartHint => IsSdk && IsClaudeProfile;
+
+    /// <summary>The TTY "start defaults only" hint, shown only for a Claude TTY session.</summary>
+    public bool ShowTtyStartHint => IsTty && IsClaudeProfile;
 
     public ObservableCollection<ClaudeProfile> Profiles { get; } = [];
 
@@ -79,17 +85,25 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Config directory of the selected profile, shown under the picker so it is clear where its login lives.</summary>
     public string? SelectedProfileConfigDir => SelectedProfile?.ConfigDir;
 
+    /// <summary>Whether the selected profile runs on the Claude CLI (login + session-option/config fields apply) versus a local HTTP provider (#26).</summary>
+    public bool IsClaudeProfile => SelectedProfile?.Provider is null or SessionProvider.ClaudeCli;
+
+    public bool IsLocalProfile => SelectedProfile is not null && !IsClaudeProfile;
+
+    /// <summary>Provider label shown next to the picker; empty for Claude, which needs no badge.</summary>
+    public string SelectedProviderLabel => IsLocalProfile ? SessionProviderCatalog.Resolve(SelectedProfile!.Provider).Label : string.Empty;
+
     public string LoginStatusLabel => IsSelectedProfileLoggedIn ? "logged in" : "not logged in";
 
-    /// <summary>Guidance shown (in the body) only when the selected profile isn't logged in.</summary>
-    public bool ShowLoginHint => SelectedProfile is not null && !IsSelectedProfileLoggedIn;
+    /// <summary>Guidance shown (in the body) only when the selected Claude profile isn't logged in — a local provider has no login.</summary>
+    public bool ShowLoginHint => IsClaudeProfile && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
 
     public string LoginStatusBrushKey => IsSelectedProfileLoggedIn
         ? "CockpitStatusDoneBrush"
         : "CockpitStatusWaitingBrush";
 
-    /// <summary>Start is only offered for a logged-in profile: launching an unauthenticated one would just fail (no dead control).</summary>
-    public bool CanStart => SelectedProfile is not null && IsSelectedProfileLoggedIn;
+    /// <summary>A Claude profile is only startable once logged in (launching unauthenticated would just fail); a local profile has no login, so it starts as soon as it is selected.</summary>
+    public bool CanStart => SelectedProfile is not null && (IsLocalProfile || IsSelectedProfileLoggedIn);
 
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
@@ -126,8 +140,24 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     partial void OnSelectedProfileChanged(ClaudeProfile? value)
     {
-        IsSelectedProfileLoggedIn = value is not null && (_loginChecker?.IsLoggedIn(value) ?? false);
+        // A local provider has no Claude login concept — treat it as "logged in" so login gating never blocks it.
+        var isClaudeProfile = value?.Provider is null or SessionProvider.ClaudeCli;
+        IsSelectedProfileLoggedIn = value is not null && (!isClaudeProfile || (_loginChecker?.IsLoggedIn(value) ?? false));
         OnPropertyChanged(nameof(SelectedProfileConfigDir));
+        OnPropertyChanged(nameof(IsClaudeProfile));
+        OnPropertyChanged(nameof(IsLocalProfile));
+        OnPropertyChanged(nameof(SelectedProviderLabel));
+
+        // A local provider only runs as an SDK session (TTY spawns the claude CLI, which is Claude-only),
+        // so force SDK and let the view hide the kind selector for it.
+        if (value?.Provider is SessionProvider.Ollama or SessionProvider.LmStudio)
+        {
+            SelectedKind = SessionKind.Sdk;
+        }
+
+        OnPropertyChanged(nameof(ShowSessionOptions));
+        OnPropertyChanged(nameof(ShowSdkStartHint));
+        OnPropertyChanged(nameof(ShowTtyStartHint));
 
         // Choosing a profile loads its saved start defaults (or the app defaults when it has none),
         // which the operator can still override before starting.
@@ -155,6 +185,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsSdk));
         OnPropertyChanged(nameof(IsTty));
         OnPropertyChanged(nameof(HeaderText));
+        OnPropertyChanged(nameof(ShowSdkStartHint));
+        OnPropertyChanged(nameof(ShowTtyStartHint));
     }
 
     [RelayCommand]

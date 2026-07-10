@@ -255,6 +255,10 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
         // Now the profile is known, pick the driver for its provider (Claude-CLI vs a local HTTP provider).
         _session = _driverFactory.Create(profile);
+        Capabilities = _session.Capabilities;
+        ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
+            ? string.Empty
+            : SessionProviderCatalog.Resolve(profile.Provider).Label;
 
         Status = "Starting...";
         _lifetimeCancellation = new CancellationTokenSource();

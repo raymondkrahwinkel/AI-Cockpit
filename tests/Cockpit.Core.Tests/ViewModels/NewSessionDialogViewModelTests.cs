@@ -66,6 +66,34 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
+    public async Task SelectingLocalProfile_IsStartableWithoutLogin_AndHidesClaudeOptions()
+    {
+        var local = new ClaudeProfile("ollama", string.Empty,
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = NewVm(out var loginChecker, local);
+        loginChecker.IsLoggedIn(local).Returns(false); // a local provider has no login
+        await vm.LoadAsync();
+
+        vm.IsLocalProfile.Should().BeTrue();
+        vm.CanStart.Should().BeTrue();
+        vm.ShowSessionOptions.Should().BeFalse();
+        vm.SelectedProviderLabel.Should().Be("Ollama");
+    }
+
+    [Fact]
+    public async Task SelectingLocalProfile_ForcesSdkKind()
+    {
+        var local = new ClaudeProfile("ollama", string.Empty,
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = NewVm(out _, local);
+        vm.SelectTtyCommand.Execute(null);
+
+        await vm.LoadAsync();
+
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+    }
+
+    [Fact]
     public async Task Confirm_RaisesCloseWithTheChosenProfileAndOptions()
     {
         var profile = new ClaudeProfile("work", "/home/r/.claude-work");

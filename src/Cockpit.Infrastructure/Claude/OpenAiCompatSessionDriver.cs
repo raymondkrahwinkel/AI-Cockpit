@@ -39,12 +39,13 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, ITransientServ
         _logger = logger;
     }
 
-    // Chat-only: no tools/permissions/plan yet; the model can be changed between turns (a new request),
-    // no live control channel; thinking off until a reasoning-capable path is added.
+    // Chat-only: no tools/permissions/plan yet. The model is fixed by the profile (the per-session model
+    // dropdown lists Claude aliases, meaningless here), so no live model switch; thinking off until a
+    // reasoning-capable path is added.
     public SessionCapabilities Capabilities { get; } = new(
         SupportsTools: false,
         SupportsPermissions: false,
-        SupportsLiveModelSwitch: true,
+        SupportsLiveModelSwitch: false,
         SupportsPlanMode: false,
         SupportsThinking: false);
 

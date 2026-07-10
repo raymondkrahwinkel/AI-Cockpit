@@ -24,9 +24,11 @@
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                    <Ellipse Width="8" Height="8"
+                    <!-- Login status is Claude-only — a local provider has no login. -->
+                    <Ellipse Width="8" Height="8" IsVisible="{Binding IsClaudeProfile}"
                              Fill="{Binding LoginStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
                     <TextBlock Text="{Binding LoginStatusLabel}" FontSize="12" VerticalAlignment="Center"
+                               IsVisible="{Binding IsClaudeProfile}"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     <Button Content="Manage profiles" Classes="Subtle" FontSize="12" VerticalAlignment="Center"
                             Command="{Binding ManageProfilesCommand}"
@@ -46,7 +48,8 @@
              switching. SelectedKind/IsSdk/IsTty is the seam for showing/hiding kind-specific fields later. -->
         <StackPanel Margin="16" Spacing="12">
 
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
+            <!-- Kind is Claude-only: a local provider runs solely as an SDK session (TTY spawns the claude CLI). -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding IsClaudeProfile}">
                 <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
@@ -70,6 +73,13 @@
                 <StackPanel Grid.Column="1" Spacing="3">
                     <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                               DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                    <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
+                            CornerRadius="3" Padding="5,1" HorizontalAlignment="Left" Margin="0,1,0,0"
+                            IsVisible="{Binding SelectedProviderLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Text="{Binding SelectedProviderLabel}" FontSize="10"
+                                   Foreground="{StaticResource CockpitAccentBrush}"/>
+                    </Border>
                     <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
                                FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
@@ -106,13 +116,13 @@
             <TextBlock Text="Start defaults only — once running, switch live inside the TUI itself (/model, /effort, Shift+Tab). The per-session dropdowns are SDK-only."
                        FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
                        Foreground="{StaticResource CockpitTextFaintBrush}"
-                       IsVisible="{Binding IsTty}"/>
+                       IsVisible="{Binding ShowTtyStartHint}"/>
 
             <!-- SDK hint: short reassurance that these stay live-switchable, mirroring the TTY note above. -->
             <TextBlock Text="These stay live-switchable during the session via the per-session dropdowns."
                        FontSize="11" TextWrapping="Wrap" Margin="72,0,0,0"
                        Foreground="{StaticResource CockpitTextFaintBrush}"
-                       IsVisible="{Binding IsSdk}"/>
+                       IsVisible="{Binding ShowSdkStartHint}"/>
 
         </StackPanel>
     </DockPanel>
