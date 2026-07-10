@@ -22,9 +22,12 @@
              Save buttons the flyout used to have (T13 dialog migration). -->
         <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
-            <Grid ColumnDefinitions="Auto,*">
+            <Grid ColumnDefinitions="Auto,*,Auto">
                 <Button Grid.Column="0" Content="Close" Click="OnClose"/>
-                <Button Grid.Column="1" Content="Save" Classes="Accent" HorizontalAlignment="Right"
+                <TextBlock Grid.Column="1" Text="{Binding AllSettingsStatus}" HorizontalAlignment="Right"
+                           VerticalAlignment="Center" Margin="0,0,12,0"
+                           Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
+                <Button Grid.Column="2" Content="Save" Classes="Accent"
                         Command="{Binding SaveAllSettingsCommand}"/>
             </Grid>
         </Border>
@@ -46,8 +49,6 @@
                             <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
                                            Increment="1" FormatString="0" Width="90"/>
                         </StackPanel>
-                        <TextBlock Text="{Binding NotificationSettingsStatus}"
-                                   Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -68,8 +69,6 @@
                         </StackPanel>
                         <TextBlock Text="Left/Up = previous, Right/Down = next. Word navigation in text fields stays intact."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding SessionSwitchSettingsStatus}"
-                                   Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
 
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -78,8 +77,6 @@
                                   IsChecked="{Binding AutoCloseOnExit}"/>
                         <TextBlock Text="The message is still sent; the session closes once that turn finishes."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding SessionBehaviorSettingsStatus}"
-                                   Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
 
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -92,16 +89,12 @@
                                   IsChecked="{Binding MinimizeToTrayOnClose}"/>
                         <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding LayoutSettingsStatus}"
-                                   Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
 
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Text="Transcript" FontWeight="SemiBold"/>
                         <CheckBox Content="Show a timestamp on each message"
                                   IsChecked="{Binding ShowTimestamps}"/>
-                        <TextBlock Text="{Binding TranscriptDisplaySettingsStatus}"
-                                   Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -206,8 +199,6 @@
                         </StackPanel>
                         <TextBlock Text="Which speaker/headset read-aloud plays to. 'System default' follows your OS setting."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding VoiceSettingsStatus}"
-                                   Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

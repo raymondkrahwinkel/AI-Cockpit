@@ -167,6 +167,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _notificationSettingsStatus = string.Empty;
 
+    /// <summary>One shared "Saved" indicator for the Options dialog's single footer Save (#13), shown next to the Save button instead of a per-section label.</summary>
+    [ObservableProperty]
+    private string _allSettingsStatus = string.Empty;
+
     /// <summary>Master switch for the arrow-key session switch (Ctrl+Arrow by default).</summary>
     [ObservableProperty]
     private bool _sessionSwitchEnabled = true;
@@ -774,6 +778,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
+        AllSettingsStatus = "✓ Saved";
     }
 
     private void AddSession(SessionPanelViewModel session, string? name = null)
