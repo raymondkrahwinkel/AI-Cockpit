@@ -30,4 +30,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Plugin enable + consent state (#14) keyed by plugin folder id; owned by the plugin-registration store.</summary>
     public Dictionary<string, PluginRegistrationEntry> Plugins { get; set; } = [];
+
+    /// <summary>Configured plugin-store URLs (#14) the manager browses for installable plugins; owned by the plugin-store config store.</summary>
+    public List<string> PluginStores { get; set; } = [];
 }

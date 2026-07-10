@@ -1,0 +1,22 @@
+{
+  "name": "Example Cockpit plugin store",
+  "plugins": [
+    {
+      "id": "github-issues",
+      "name": "GitHub Issues",
+      "description": "Shows a repository's open issues in the left menu; clicking one asks the agent to open and review it. The prompt template is editable in Options.",
+      "author": "Cockpit",
+      "latestVersion": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "github-issues/github-issues-1.0.0.zip",
+          "abstractionsVersion": 1,
+          "minHostVersion": "1.0.0",
+          "sha256": "2bcbcdedd5a8eb1aee454f9f6ceba9c4bb33d85e0540b17447c914dbf113ba5a",
+          "notes": "Initial release."
+        }
+      ]
+    }
+  ]
+}

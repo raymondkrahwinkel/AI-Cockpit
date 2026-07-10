@@ -195,6 +195,63 @@ it with `<PackageReference Include="Cockpit.Plugins.Abstractions" Version="1.x" 
 - **Version gate:** build against the host's abstractions major and Avalonia version, or the host rejects
   (or fails to load) your plugin with a clear message.
 
+## Publishing a plugin store
+
+A **store** is any public location serving an `index.json` catalogue plus the plugin zips it lists. The
+cockpit adds a store under **Options → Plugins → Plugin stores**, **Browse**s it, and installs or updates
+from it — every download still goes through the normal validation + first-load consent (and, when the index
+supplies a `sha256`, an integrity check on the downloaded zip).
+
+### Point the cockpit at a store
+
+Any of these work — the cockpit auto-detects the shape:
+
+- **A GitHub repo:** `https://github.com/owner/repo` (or `.../tree/branch`) → it reads
+  `https://raw.githubusercontent.com/owner/repo/<branch, default main>/index.json`.
+- **A direct index URL:** `https://…/index.json`.
+- **A base directory:** `https://…/store` → it appends `index.json`.
+
+### The index — `index.json`
+
+Zip paths are **relative to the index's location**. See
+[example-store-index.json](example-store-index.json).
+
+```json
+{
+  "name": "My Cockpit plugin store",
+  "plugins": [
+    {
+      "id": "github-issues",
+      "name": "GitHub Issues",
+      "description": "One line shown in the catalogue.",
+      "author": "You",
+      "latestVersion": "1.0.0",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "path": "github-issues/github-issues-1.0.0.zip",
+          "abstractionsVersion": 1,
+          "minHostVersion": "1.0.0",
+          "sha256": "<sha-256 of the zip, hex lowercase — optional but recommended>",
+          "notes": "Initial release."
+        }
+      ]
+    }
+  ]
+}
+```
+
+`latestVersion` drives update detection (compared against the installed plugin's `version`); the full
+`versions` history lets you keep older zips around. Compute a zip's checksum with
+`(Get-FileHash plugin.zip -Algorithm SHA256).Hash.ToLower()` (PowerShell) or `sha256sum plugin.zip` — a
+mismatch on download is rejected. A typical repo layout:
+
+```
+index.json
+github-issues/github-issues-1.0.0.zip
+github-issues/github-issues-1.1.0.zip
+```
+
 ## Scaffold a new plugin
 
 Use the `dotnet new` template in [`templates/cockpit-plugin`](../../templates/cockpit-plugin):

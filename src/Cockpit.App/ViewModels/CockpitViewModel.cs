@@ -376,13 +376,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginRegistrationStore? pluginRegistrationStore = null,
         IPluginInstaller? pluginInstaller = null,
         PluginBootstrap? pluginBootstrap = null,
+        IPluginStoreConfigStore? pluginStoreConfigStore = null,
+        IPluginStoreClient? pluginStoreClient = null,
         IAudioDeviceProvider? audioDeviceProvider = null)
     {
         _audioDeviceProvider = audioDeviceProvider;
-        // The full plugin manager needs its store/installer/bootstrap; when they are absent (unit tests
-        // that don't exercise plugins) the design-time manager is used, so the Plugins tab is inert.
+        // The full plugin manager needs its store/installer/bootstrap and store dependencies; when they are
+        // absent (unit tests that don't exercise plugins) the design-time manager is used, so the tab is inert.
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService)
+                && pluginStoreConfigStore is not null && pluginStoreClient is not null
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient)
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
