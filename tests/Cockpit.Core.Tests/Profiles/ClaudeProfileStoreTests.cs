@@ -72,6 +72,26 @@ public class ClaudeProfileStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsProviderConfigs()
+    {
+        var store = new ClaudeProfileStore(_configFilePath);
+        var profiles = new List<ClaudeProfile>
+        {
+            new("claude", @"C:\Users\raymo\.claude"),
+            new("local-ollama", ConfigDir: "", ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1")),
+            new("local-lmstudio", ConfigDir: "", ProviderConfig: new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", "secret-key")),
+        };
+
+        await store.SaveAsync(profiles);
+        var loaded = await store.LoadAsync();
+
+        loaded.Should().BeEquivalentTo(profiles);
+        loaded[0].Provider.Should().Be(SessionProvider.ClaudeCli);
+        loaded[1].Provider.Should().Be(SessionProvider.Ollama);
+        loaded[2].Provider.Should().Be(SessionProvider.LmStudio);
+    }
+
+    [Fact]
     public async Task SaveAsync_CreatesConfigDirectory_WhenAbsent()
     {
         var nestedConfigPath = Path.Combine(_tempDir, "nested", "cockpit.json");

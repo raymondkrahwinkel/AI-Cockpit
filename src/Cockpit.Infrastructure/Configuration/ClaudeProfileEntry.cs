@@ -15,6 +15,8 @@ internal sealed class ClaudeProfileEntry
 
     public ProfileDefaultsEntry? Defaults { get; set; }
 
+    public ProviderConfigEntry? Provider { get; set; }
+
     public static ClaudeProfileEntry FromDomain(ClaudeProfile profile) => new()
     {
         Label = profile.Label,
@@ -22,7 +24,8 @@ internal sealed class ClaudeProfileEntry
         ExecutablePath = profile.ExecutablePath,
         Purpose = profile.Purpose,
         Defaults = profile.Defaults is null ? null : ProfileDefaultsEntry.FromDomain(profile.Defaults),
+        Provider = ProviderConfigEntry.FromDomain(profile.ProviderConfig),
     };
 
-    public ClaudeProfile ToDomain() => new(Label, ConfigDir, ExecutablePath, Purpose, Defaults?.ToDomain());
+    public ClaudeProfile ToDomain() => new(Label, ConfigDir, ExecutablePath, Purpose, Defaults?.ToDomain(), Provider?.ToDomain());
 }
