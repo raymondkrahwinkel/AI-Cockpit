@@ -11,10 +11,12 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
@@ -70,6 +72,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
+
+    /// <summary>The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.</summary>
+    public PluginManagerViewModel Plugins { get; }
 
     void IPluginContributionSink.AddPluginOptionsTab(string title, Func<Control> createView) =>
         _OnUiThread(() => PluginOptionsTabs.Add(new PluginOptionsTab(title, createView)));
@@ -352,6 +357,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Sessions.Add(tty);
         _sessionCounter = Sessions.Count;
         SelectedSession = waiting;
+        Plugins = new PluginManagerViewModel();
     }
 
     public CockpitViewModel(
@@ -367,9 +373,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
         ILayoutSettingsStore layoutSettingsStore,
         IVoiceSettingsStore voiceSettingsStore,
+        IPluginRegistrationStore? pluginRegistrationStore = null,
+        IPluginInstaller? pluginInstaller = null,
+        PluginBootstrap? pluginBootstrap = null,
         IAudioDeviceProvider? audioDeviceProvider = null)
     {
         _audioDeviceProvider = audioDeviceProvider;
+        // The full plugin manager needs its store/installer/bootstrap; when they are absent (unit tests
+        // that don't exercise plugins) the design-time manager is used, so the Plugins tab is inert.
+        Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService)
+            : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
         _dialogService = dialogService;
@@ -732,6 +746,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _RefreshAudioDevicesAsync();
+        await Plugins.LoadAsync();
         await _dialogService.ShowOptionsDialogAsync(this);
     }
 

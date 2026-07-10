@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
@@ -82,5 +83,33 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var dialog = new OptionsDialog { DataContext = viewModel };
         await dialog.ShowDialog(owner);
+    }
+
+    public async Task<string?> PickPluginZipAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Install plugin from zip",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Plugin package (*.zip)") { Patterns = ["*.zip"] }],
+        });
+
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<bool> ShowPluginConsentAsync(PluginConsentInfo info)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return false;
+        }
+
+        var dialog = new PluginConsentDialog { DataContext = info };
+        return await dialog.ShowDialog<bool>(owner);
     }
 }

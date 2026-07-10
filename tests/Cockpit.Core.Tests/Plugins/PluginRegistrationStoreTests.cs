@@ -68,6 +68,39 @@ public class PluginRegistrationStoreTests : IDisposable
         (await pluginStore.LoadAllAsync()).Should().ContainKey("x");
     }
 
+    [Fact]
+    public async Task SaveDataAsync_ThenLoadDataAsync_RoundTrips()
+    {
+        var store = new PluginRegistrationStore(_configFilePath);
+        var data = new Dictionary<string, string> { ["token"] = "\"secret\"", ["repo"] = "\"owner/name\"" };
+
+        await store.SaveDataAsync("github-issues", data);
+
+        (await store.LoadDataAsync("github-issues")).Should().BeEquivalentTo(data);
+    }
+
+    [Fact]
+    public async Task SaveDataAsync_PreservesEnabledAndHash()
+    {
+        var store = new PluginRegistrationStore(_configFilePath);
+        await store.SaveAsync("p", new PluginRegistration(Enabled: true, PinnedSha256: "hash-1"));
+
+        await store.SaveDataAsync("p", new Dictionary<string, string> { ["k"] = "\"v\"" });
+
+        (await store.LoadAllAsync())["p"].Should().Be(new PluginRegistration(true, "hash-1"));
+    }
+
+    [Fact]
+    public async Task SaveAsync_PreservesStoredData()
+    {
+        var store = new PluginRegistrationStore(_configFilePath);
+        await store.SaveDataAsync("p", new Dictionary<string, string> { ["k"] = "\"v\"" });
+
+        await store.SaveAsync("p", new PluginRegistration(Enabled: false, PinnedSha256: "hash-2"));
+
+        (await store.LoadDataAsync("p")).Should().ContainKey("k");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))

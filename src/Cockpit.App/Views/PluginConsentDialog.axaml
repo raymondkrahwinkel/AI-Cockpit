@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.PluginConsentDialog"
+        x:DataType="vm:PluginConsentInfo"
+        Title="Enable plugin?"
+        Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <StackPanel Margin="20" Spacing="12">
+
+        <TextBlock Text="Enable this plugin?" FontSize="16" FontWeight="SemiBold"/>
+
+        <StackPanel Spacing="2">
+            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding Version}" Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
+                <TextBlock Text="{Binding Author}" Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
+            </StackPanel>
+        </StackPanel>
+
+        <StackPanel Spacing="2">
+            <TextBlock Text="Location" Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
+            <TextBlock Text="{Binding FolderPath}" FontFamily="{StaticResource CockpitMonoFont}"
+                       FontSize="11" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <StackPanel Spacing="2">
+            <TextBlock Text="SHA-256 (pinned on consent)" Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
+            <TextBlock Text="{Binding Sha256}" FontFamily="{StaticResource CockpitMonoFont}"
+                       FontSize="11" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}" Padding="12">
+            <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                       Text="A plugin runs with your account's permissions — it is not sandboxed. Only enable plugins you trust. If the file changes later, you will be asked to consent again."/>
+        </Border>
+
+        <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4,0,0">
+            <Button Grid.Column="1" Content="Cancel" Click="OnCancel" Margin="0,0,8,0"/>
+            <Button Grid.Column="2" Content="Enable" Classes="Accent" Click="OnEnable"/>
+        </Grid>
+    </StackPanel>
+</Window>

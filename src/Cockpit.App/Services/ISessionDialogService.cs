@@ -23,4 +23,10 @@ public interface ISessionDialogService
     /// existing option properties/commands.
     /// </summary>
     Task ShowOptionsDialogAsync(CockpitViewModel viewModel);
+
+    /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
+    Task<string?> PickPluginZipAsync();
+
+    /// <summary>Shows the first-load plugin consent dialog (#14); returns true only when the operator explicitly enables the plugin.</summary>
+    Task<bool> ShowPluginConsentAsync(PluginConsentInfo info);
 }

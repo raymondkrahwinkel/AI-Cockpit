@@ -14,6 +14,7 @@ public sealed class PluginBootstrap : ISingletonService
 {
     private readonly PluginDiscovery _discovery = new();
     private readonly PluginRegistrationStore _registrationStore = new();
+    private readonly PluginInstaller _installer = new();
 
     /// <summary>The plugins root — a <c>plugins/</c> folder next to <c>cockpit.json</c>. Each plugin lives in its own subfolder here.</summary>
     public static string PluginsRoot => CockpitConfigPath.PluginsRoot;
@@ -24,6 +25,10 @@ public sealed class PluginBootstrap : ISingletonService
     /// </summary>
     public async Task<IReadOnlyList<DiscoveredPlugin>> DiscoverAsync(int hostAbstractionsMajor, CancellationToken cancellationToken = default)
     {
+        // Delete any folder the operator removed last session before scanning, so a removed plugin is
+        // never rediscovered or loaded.
+        await _installer.SweepRemovalsAsync(cancellationToken).ConfigureAwait(false);
+
         var saved = await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false);
         return await _discovery.DiscoverAsync(PluginsRoot, saved, hostAbstractionsMajor, cancellationToken).ConfigureAwait(false);
     }
