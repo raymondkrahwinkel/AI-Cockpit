@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.SessionSwitching;
 
@@ -89,12 +90,7 @@ public partial class CockpitView : UserControl
 
         foreach (var section in cockpit.PluginSideSections)
         {
-            PluginSectionsHost.Children.Add(new Expander
-            {
-                Header = section.Title,
-                Content = section.CreateView(),
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
-            });
+            PluginSectionsHost.Children.Add(new PluginSectionControl(section.Title, section.CreateView()));
         }
     }
 
