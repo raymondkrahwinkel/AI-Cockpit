@@ -1,3 +1,4 @@
+using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -109,6 +110,42 @@ public class VoicePlaybackQueueTests
         await _WaitUntilAsync(() => audioPlayback.CallCount >= 1);
 
         textToSpeech.Calls.Should().ContainSingle().Which.Text.Should().Be("After a stop.");
+    }
+
+    [Fact]
+    public async Task Enqueue_SegmentsWithDifferentVoices_PlaysEachVoiceAndInsertsSilenceBetween()
+    {
+        var textToSpeech = new FakeTextToSpeechService();
+        var audioPlayback = new FakeAudioPlaybackService();
+        var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
+
+        queue.Enqueue(
+        [
+            new SpeechSegment(["Here is the answer."], "en_US-lessac-medium"),
+            new SpeechSegment(["Dit is het antwoord."], "nl_NL-ronnie-medium"),
+        ]);
+
+        await _WaitUntilAsync(() => textToSpeech.Calls.Count >= 2);
+
+        textToSpeech.Calls.Select(call => call.VoiceId).Should().Equal("en_US-lessac-medium", "nl_NL-ronnie-medium");
+        // The language switch is separated by an inserted all-zero (silent) buffer; the spoken sentences
+        // are non-zero (FakeTextToSpeechService returns a small non-zero waveform).
+        audioPlayback.PlayedBuffers.Should().Contain(buffer => buffer.Length > 0 && buffer.All(sample => sample == 0));
+    }
+
+    [Fact]
+    public async Task Enqueue_SentencesInOneVoice_InsertsNoSilence()
+    {
+        var textToSpeech = new FakeTextToSpeechService();
+        var audioPlayback = new FakeAudioPlaybackService();
+        var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
+
+        queue.Enqueue(["First sentence.", "Second sentence."], "en_US-lessac-medium");
+
+        await _WaitUntilAsync(() => audioPlayback.CallCount >= 2);
+
+        // No language switch means no inserted silence — every played buffer is a spoken sentence.
+        audioPlayback.PlayedBuffers.Should().OnlyContain(buffer => buffer.Any(sample => sample != 0));
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)

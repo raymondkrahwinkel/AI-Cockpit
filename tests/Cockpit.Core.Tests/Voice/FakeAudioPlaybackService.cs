@@ -13,6 +13,9 @@ internal sealed class FakeAudioPlaybackService : IAudioPlaybackService
 
     public int MaxConcurrentCalls { get; private set; }
 
+    /// <summary>Every PCM buffer handed to <see cref="PlayAsync"/>, in order — lets a test tell a spoken sentence (non-zero samples) from an inserted language-switch silence (all-zero).</summary>
+    public List<byte[]> PlayedBuffers { get; } = [];
+
     /// <summary>Runs inside <see cref="PlayAsync"/>, given the caller's cancellation token — a test hook to simulate "still playing" or "cancelled mid-playback".</summary>
     public Func<CancellationToken, Task>? OnPlay { get; set; }
 
@@ -21,6 +24,10 @@ internal sealed class FakeAudioPlaybackService : IAudioPlaybackService
         var concurrent = Interlocked.Increment(ref _concurrentCalls);
         MaxConcurrentCalls = Math.Max(MaxConcurrentCalls, concurrent);
         Interlocked.Increment(ref _callCount);
+        lock (PlayedBuffers)
+        {
+            PlayedBuffers.Add(pcm.ToArray());
+        }
         try
         {
             if (OnPlay is not null)

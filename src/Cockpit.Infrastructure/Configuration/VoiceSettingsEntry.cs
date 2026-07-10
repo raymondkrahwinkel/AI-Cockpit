@@ -25,6 +25,8 @@ internal sealed class VoiceSettingsEntry
 
     public string TtsVoiceId { get; set; } = "en_US-lessac-medium";
 
+    public string TtsVoiceIdDutch { get; set; } = "nl_NL-ronnie-medium";
+
     public string SttLanguage { get; set; } = "auto";
 
     public string InputDeviceName { get; set; } = "";
@@ -45,6 +47,7 @@ internal sealed class VoiceSettingsEntry
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
         TtsVoiceId = settings.TtsVoiceId,
+        TtsVoiceIdDutch = settings.TtsVoiceIdDutch,
         SttLanguage = settings.SttLanguage,
         InputDeviceName = settings.InputDeviceName,
         OutputDeviceName = settings.OutputDeviceName,
@@ -63,6 +66,7 @@ internal sealed class VoiceSettingsEntry
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
         TtsVoiceId = TtsVoiceId,
+        TtsVoiceIdDutch = TtsVoiceIdDutch,
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,

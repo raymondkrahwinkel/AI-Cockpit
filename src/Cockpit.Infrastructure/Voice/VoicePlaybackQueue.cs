@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Audio;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Voice;
 
@@ -22,8 +23,12 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private readonly IAudioPlaybackService _audioPlayback;
     private readonly ILogger<VoicePlaybackQueue> _logger;
 
-    private readonly Channel<(IReadOnlyList<string> Sentences, string VoiceId)> _channel =
-        Channel.CreateUnbounded<(IReadOnlyList<string>, string)>();
+    // ~90ms of silence between two consecutive segments whose voice differs, so a Dutch/English switch
+    // reads as a natural pause rather than the timbre jumping mid-breath.
+    private static readonly TimeSpan InterLanguageGap = TimeSpan.FromMilliseconds(90);
+
+    private readonly Channel<IReadOnlyList<SpeechSegment>> _channel =
+        Channel.CreateUnbounded<IReadOnlyList<SpeechSegment>>();
 
     private CancellationTokenSource _playbackCancellation = new();
     private readonly Task _consumerTask;
@@ -46,8 +51,19 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             return;
         }
 
-        _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) for playback", sentences.Count);
-        _channel.Writer.TryWrite((sentences, voiceId));
+        Enqueue([new SpeechSegment(sentences, voiceId)]);
+    }
+
+    public void Enqueue(IReadOnlyList<SpeechSegment> segments)
+    {
+        var sentenceCount = segments.Sum(segment => segment.Sentences.Count);
+        if (sentenceCount == 0)
+        {
+            return;
+        }
+
+        _logger.LogInformation("Read-aloud enqueued {Count} sentence(s) across {Segments} voice segment(s)", sentenceCount, segments.Count);
+        _channel.Writer.TryWrite(segments);
     }
 
     public void StopAll()
@@ -65,33 +81,65 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
     private async Task _ConsumeAsync()
     {
-        await foreach (var (sentences, voiceId) in _channel.Reader.ReadAllAsync())
+        await foreach (var segments in _channel.Reader.ReadAllAsync())
         {
             var cancellationToken = _playbackCancellation.Token;
-            foreach (var sentence in sentences)
+            string? previousVoiceId = null;
+            var lastSampleRate = 0;
+
+            foreach (var segment in segments)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
 
-                try
+                if (previousVoiceId is not null && segment.VoiceId != previousVoiceId && lastSampleRate > 0)
                 {
-                    _logger.LogDebug("Read-aloud playing sentence: \"{Sentence}\"", sentence);
-                    var audio = await _textToSpeech.SynthesizeAsync(sentence, voiceId, cancellationToken).ConfigureAwait(false);
-                    var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
-                    await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)
-                        .ConfigureAwait(false);
+                    try
+                    {
+                        await _PlaySilenceAsync(lastSampleRate, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                 }
-                catch (OperationCanceledException)
+
+                foreach (var sentence in segment.Sentences)
                 {
-                    break;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    try
+                    {
+                        _logger.LogDebug("Read-aloud playing sentence: \"{Sentence}\"", sentence);
+                        var audio = await _textToSpeech.SynthesizeAsync(sentence, segment.VoiceId, cancellationToken).ConfigureAwait(false);
+                        lastSampleRate = audio.SampleRate;
+                        var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
+                        await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "TTS playback failed for a queued sentence; skipping it.");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "TTS playback failed for a queued sentence; skipping it.");
-                }
+
+                previousVoiceId = segment.VoiceId;
             }
         }
+    }
+
+    private Task _PlaySilenceAsync(int sampleRate, CancellationToken cancellationToken)
+    {
+        var silence = new byte[(int)(sampleRate * InterLanguageGap.TotalSeconds) * 2];
+        return _audioPlayback.PlayAsync(silence, new AudioFormat(sampleRate, Channels: 1), cancellationToken);
     }
 }

@@ -28,7 +28,9 @@ internal sealed class OllamaTranscriptCleanupService(HttpClient httpClient, IVoi
         "Rewrite it as short, natural spoken sentences. Leave out code, file paths, URLs, command names and " +
         "markdown; mention them in plain words only when they matter. Never read symbols, brackets or " +
         "punctuation literally, and do not spell things out. Keep the meaning and the original language. " +
-        "Reply with only the spoken text — no preamble, no quotes, no bullet lists.";
+        "Mark the language of each part with [[nl]] before Dutch text and [[en]] before English text, and " +
+        "switch the marker whenever the language changes, even for a single word or phrase. Begin with the " +
+        "marker for the first language. Reply with only the marked spoken text — no preamble, no quotes, no bullet lists.";
 
     private static readonly TranscriptCleanupOptions Options = new();
 
