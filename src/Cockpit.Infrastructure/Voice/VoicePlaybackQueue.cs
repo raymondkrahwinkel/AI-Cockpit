@@ -33,6 +33,11 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private CancellationTokenSource _playbackCancellation = new();
     private readonly Task _consumerTask;
 
+    // Read and written only on the single consumer thread, so no synchronization is needed.
+    private bool _isPlaybackActive;
+
+    public event EventHandler<bool>? PlaybackActiveChanged;
+
     public VoicePlaybackQueue(ITextToSpeechService textToSpeech, IAudioPlaybackService audioPlayback, ILogger<VoicePlaybackQueue> logger)
     {
         _textToSpeech = textToSpeech;
@@ -83,6 +88,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     {
         await foreach (var segments in _channel.Reader.ReadAllAsync())
         {
+            _SetPlaybackActive(true);
             var cancellationToken = _playbackCancellation.Token;
             string? previousVoiceId = null;
             var lastSampleRate = 0;
@@ -134,7 +140,25 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
                 previousVoiceId = segment.VoiceId;
             }
+
+            // Only go idle once nothing is waiting behind this batch, so back-to-back read-aloud turns do
+            // not flap the barge-in guard off and on between them.
+            if (_channel.Reader.Count == 0)
+            {
+                _SetPlaybackActive(false);
+            }
         }
+    }
+
+    private void _SetPlaybackActive(bool active)
+    {
+        if (_isPlaybackActive == active)
+        {
+            return;
+        }
+
+        _isPlaybackActive = active;
+        PlaybackActiveChanged?.Invoke(this, active);
     }
 
     private Task _PlaySilenceAsync(int sampleRate, CancellationToken cancellationToken)

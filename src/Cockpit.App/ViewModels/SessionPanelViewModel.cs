@@ -347,6 +347,25 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
     }
 
+    /// <summary>
+    /// Injects an open-mic transcript into this session and submits it when <see cref="AutoSubmitAfterVoice"/>
+    /// is on — the finished-transcript half of <see cref="EndVoiceHoldAsync"/>, for the hands-free open-mic
+    /// path that produces text without a hold.
+    /// </summary>
+    public void InjectVoiceTranscript(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        OnVoiceTextReady(text);
+        if (AutoSubmitAfterVoice)
+        {
+            OnVoiceSubmitRequested();
+        }
+    }
+
     /// <summary>Injects a finished voice transcript into this session kind's own input surface (chat input box or raw pty bytes).</summary>
     protected abstract void OnVoiceTextReady(string text);
 

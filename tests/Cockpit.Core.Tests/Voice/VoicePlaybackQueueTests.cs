@@ -148,6 +148,36 @@ public class VoicePlaybackQueueTests
         audioPlayback.PlayedBuffers.Should().OnlyContain(buffer => buffer.Any(sample => sample != 0));
     }
 
+    [Fact]
+    public async Task Enqueue_RaisesPlaybackActiveThenIdle_ForBargeIn()
+    {
+        var textToSpeech = new FakeTextToSpeechService();
+        var audioPlayback = new FakeAudioPlaybackService();
+        var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
+        var states = new List<bool>();
+        queue.PlaybackActiveChanged += (_, active) =>
+        {
+            lock (states)
+            {
+                states.Add(active);
+            }
+        };
+
+        queue.Enqueue(["A sentence."], "en_US-lessac-medium");
+
+        await _WaitUntilAsync(() =>
+        {
+            lock (states)
+            {
+                return states.Contains(false);
+            }
+        });
+        lock (states)
+        {
+            states.Should().Equal(true, false);
+        }
+    }
+
     private static async Task _WaitUntilAsync(Func<bool> condition)
     {
         for (var i = 0; i < 100 && !condition(); i++)

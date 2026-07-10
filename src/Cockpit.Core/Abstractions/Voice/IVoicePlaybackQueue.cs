@@ -19,6 +19,13 @@ public interface IVoicePlaybackQueue
     /// </summary>
     void Enqueue(IReadOnlyList<SpeechSegment> segments);
 
+    /// <summary>
+    /// Raised when read-aloud playback becomes active (a batch starts) or goes idle (the queue drains),
+    /// so open-mic dictation can pause itself while the cockpit is speaking and never transcribe its own
+    /// text-to-speech. Fires on the playback consumer thread — subscribers marshal as needed.
+    /// </summary>
+    event EventHandler<bool>? PlaybackActiveChanged;
+
     /// <summary>Cancels whatever is currently synthesizing/playing and discards anything still queued.</summary>
     void StopAll();
 }

@@ -303,6 +303,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _voiceAutoSubmit;
 
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicEnabled"/>: listen continuously with VAD endpointing instead of holding the push-to-talk key. Off by default; applies on restart.</summary>
+    [ObservableProperty]
+    private bool _voiceOpenMicEnabled;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicSilenceTimeoutMs"/>: trailing silence (ms) that ends an open-mic utterance. Tunable.</summary>
+    [ObservableProperty]
+    private int _voiceOpenMicSilenceTimeoutMs = 800;
+
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.NaturalizeReadAloud"/>: rewrite read-aloud text into natural speech via the local LLM before synthesis (#35). Off by default.</summary>
     [ObservableProperty]
     private bool _voiceNaturalizeReadAloud;
@@ -632,6 +640,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
         VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
+        VoiceOpenMicEnabled = settings.OpenMicEnabled;
+        VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
         VoiceNaturalizeReadAloud = settings.NaturalizeReadAloud;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
         SelectedDutchTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceIdDutch) ?? PiperVoiceCatalog.DutchDefault;
@@ -699,6 +709,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,
             AutoSubmitAfterVoice = VoiceAutoSubmit,
+            OpenMicEnabled = VoiceOpenMicEnabled,
+            OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
             NaturalizeReadAloud = VoiceNaturalizeReadAloud,
             TtsVoiceId = SelectedTtsVoice.VoiceId,
             TtsVoiceIdDutch = SelectedDutchTtsVoice.VoiceId,

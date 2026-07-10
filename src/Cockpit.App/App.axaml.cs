@@ -49,6 +49,10 @@ public partial class App : Application
             // portal/keyboard-hook is only ever touched for an operator who opted in.
             _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
 
+            // Open-mic dictation: likewise a no-op unless voice and open-mic are both enabled, so the mic
+            // is never opened for an operator who never opted in.
+            _ = Program.Services.GetRequiredService<OpenMicCoordinator>().StartAsync();
+
             // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
             // plugin the host built for it so it can register its Options tab / side-menu section.
             _InitializePlugins();
