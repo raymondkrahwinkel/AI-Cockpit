@@ -38,6 +38,8 @@ public class VoiceSettingsStoreTests : IDisposable
         settings.SttLanguage.Should().Be("auto");
         settings.InputDeviceName.Should().BeEmpty();
         settings.OutputDeviceName.Should().BeEmpty();
+        settings.OpenMicEnabled.Should().BeFalse();
+        settings.OpenMicSilenceTimeoutMs.Should().Be(800);
     }
 
     [Fact]
@@ -61,6 +63,8 @@ public class VoiceSettingsStoreTests : IDisposable
             SttLanguage = "nl",
             InputDeviceName = "Yeti Stereo Microphone",
             OutputDeviceName = "Built-in Speakers",
+            OpenMicEnabled = true,
+            OpenMicSilenceTimeoutMs = 1200,
         });
         var loaded = await store.LoadAsync();
 
@@ -78,6 +82,8 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.SttLanguage.Should().Be("nl");
         loaded.InputDeviceName.Should().Be("Yeti Stereo Microphone");
         loaded.OutputDeviceName.Should().Be("Built-in Speakers");
+        loaded.OpenMicEnabled.Should().BeTrue();
+        loaded.OpenMicSilenceTimeoutMs.Should().Be(1200);
     }
 
     [Fact]

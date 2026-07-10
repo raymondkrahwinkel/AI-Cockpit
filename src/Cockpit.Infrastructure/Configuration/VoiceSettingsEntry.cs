@@ -35,6 +35,10 @@ internal sealed class VoiceSettingsEntry
 
     public bool NaturalizeReadAloud { get; set; }
 
+    public bool OpenMicEnabled { get; set; }
+
+    public int OpenMicSilenceTimeoutMs { get; set; } = 800;
+
     public static VoiceSettingsEntry FromDomain(VoiceSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -52,6 +56,8 @@ internal sealed class VoiceSettingsEntry
         InputDeviceName = settings.InputDeviceName,
         OutputDeviceName = settings.OutputDeviceName,
         NaturalizeReadAloud = settings.NaturalizeReadAloud,
+        OpenMicEnabled = settings.OpenMicEnabled,
+        OpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -71,5 +77,7 @@ internal sealed class VoiceSettingsEntry
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,
         NaturalizeReadAloud = NaturalizeReadAloud,
+        OpenMicEnabled = OpenMicEnabled,
+        OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
     };
 }

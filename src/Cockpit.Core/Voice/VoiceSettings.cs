@@ -79,4 +79,18 @@ public sealed record VoiceSettings
     /// so paths, code and markdown read as natural speech. Off by default (adds a local LLM call per turn).
     /// </summary>
     public bool NaturalizeReadAloud { get; init; }
+
+    /// <summary>
+    /// When true, open-mic dictation listens continuously and detects speech start/stop itself (VAD
+    /// endpointing) instead of requiring the push-to-talk hotkey to be held. Off by default: opt-in like
+    /// voice itself, so the microphone is never held open for an operator who never turns it on.
+    /// </summary>
+    public bool OpenMicEnabled { get; init; }
+
+    /// <summary>
+    /// How long a trailing silence must last (milliseconds) before open-mic treats the utterance as
+    /// finished and submits it — the endpointing pause. Tunable because the right value depends on the
+    /// operator's speaking cadence; 800ms is a conversational default.
+    /// </summary>
+    public int OpenMicSilenceTimeoutMs { get; init; } = 800;
 }
