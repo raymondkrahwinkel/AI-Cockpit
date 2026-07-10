@@ -168,7 +168,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _readResponsesAloud;
 
-    partial void OnReadResponsesAloudChanged(bool value) => OnReadAloudToggleChanged(value);
+    partial void OnReadResponsesAloudChanged(bool value)
+    {
+        // Turning read-aloud off must silence it now — stop in-flight and queued playback immediately,
+        // not just suppress future turns.
+        if (!value)
+        {
+            _voicePlaybackQueue?.StopAll();
+        }
+
+        OnReadAloudToggleChanged(value);
+    }
 
     /// <summary>
     /// Hook for a session kind whose read-aloud source needs starting/stopping when the toggle flips.

@@ -51,7 +51,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
 
         var refresh = new Button { Content = "Refresh" };
-        refresh.Click += async (_, _) => await _LoadAsync();
+        refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
 
         _grid = new DataGrid
         {
@@ -176,17 +176,17 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         root.Children.Add(split);
         Content = root;
 
-        _ = _LoadAsync();
+        _ = _LoadAsync(forceRefresh: false);
     }
 
-    private async Task _LoadAsync()
+    private async Task _LoadAsync(bool forceRefresh)
     {
         _status.Text = "Loading…";
         try
         {
             if (_settings.UseGitHubCli)
             {
-                _all = await _gh.SearchOpenIssuesAsync(_settings.GhOwner, CancellationToken.None);
+                _all = await _gh.SearchOpenIssuesAsync(_settings.GhOwner, forceRefresh, CancellationToken.None);
             }
             else
             {

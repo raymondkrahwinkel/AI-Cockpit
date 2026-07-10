@@ -51,22 +51,6 @@
                             Command="{Binding OptionsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Configure notifications, sessions, and voice"/>
-                    <Button Content="Tools" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Foreground="{StaticResource CockpitTextFaintBrush}">
-                        <Button.Flyout>
-                            <Flyout Placement="RightEdgeAlignedBottom">
-                                <StackPanel Spacing="8" Width="200">
-                                    <TextBlock Text="Audio (F0)" FontWeight="SemiBold"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Button Content="Record" Command="{Binding RecordAudioCommand}"/>
-                                        <Button Content="Stop" Command="{Binding StopRecordingAudioCommand}"/>
-                                        <Button Content="Play" Command="{Binding PlayAudioCommand}"/>
-                                    </StackPanel>
-                                    <TextBlock Text="{Binding AudioStatus}" Foreground="{StaticResource CockpitTextSecondaryBrush}" TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
                 </StackPanel>
 
                 <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the

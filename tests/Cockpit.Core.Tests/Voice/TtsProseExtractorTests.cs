@@ -88,4 +88,14 @@ public class TtsProseExtractorTests
 
         sentences.Should().Equal("This is bold and code and italic.");
     }
+
+    [Fact]
+    public void Extract_ReplacesPathsAndUrlsWithNaturalWords()
+    {
+        var sentences = TtsProseExtractor.Extract("I edited `C:\\Users\\raymo\\Notes.md` — see https://example.com/docs for the /home/raymond/config path.");
+
+        sentences.Should().ContainSingle();
+        sentences[0].Should().NotContain("C:\\").And.NotContain("https://").And.NotContain("/home/raymond");
+        sentences[0].Should().Contain("a path").And.Contain("a link");
+    }
 }

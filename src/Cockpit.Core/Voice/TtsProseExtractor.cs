@@ -49,6 +49,8 @@ public static partial class TtsProseExtractor
     /// <summary>Appends a block's plain text, forcing a sentence boundary after it — headings and list items rarely end in punctuation, and without one the next block would run on into the same spoken sentence.</summary>
     private static void _AppendAsSentence(StringBuilder builder, IReadOnlyList<MarkdownInline> inlines)
     {
+        // Inline code is kept (short identifiers like `git` read fine) — but a path or URL inside it is
+        // cleaned by _StripNonSpeech just like one in plain prose, so "C:\…" does not get spelled out.
         var text = _StripNonSpeech(string.Concat(inlines.Select(inline => inline.Text)));
         if (text.Length == 0)
         {
@@ -86,6 +88,13 @@ public static partial class TtsProseExtractor
     /// </summary>
     private static string _StripNonSpeech(string text)
     {
+        // Replace things that read terribly aloud with a short natural stand-in before stripping symbols:
+        // URLs ("https://…") and file paths (Windows "C:\…" or POSIX "/home/…") become "a link"/"a path"
+        // so a sentence stays speakable instead of the engine spelling out every slash and separator.
+        text = UrlPattern().Replace(text, "a link");
+        text = WindowsPathPattern().Replace(text, "a path");
+        text = UnixPathPattern().Replace(text, "a path");
+
         var builder = new StringBuilder(text.Length);
         foreach (var rune in text.EnumerateRunes())
         {
@@ -112,4 +121,13 @@ public static partial class TtsProseExtractor
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex CollapseWhitespace();
+
+    [GeneratedRegex(@"https?://\S+")]
+    private static partial Regex UrlPattern();
+
+    [GeneratedRegex(@"(?:[A-Za-z]:\\|\\\\)[^\s""']+")]
+    private static partial Regex WindowsPathPattern();
+
+    [GeneratedRegex(@"(?<![\w.])~?/[\w.\-]+(?:/[\w.\-]+)+/?")]
+    private static partial Regex UnixPathPattern();
 }

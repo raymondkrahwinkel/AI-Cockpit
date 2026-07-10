@@ -6,16 +6,34 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// <summary>
 /// Lists open issues across all repositories for an owner via the local GitHub CLI (<c>gh search issues
 /// --owner &lt;owner&gt; --state open --json …</c>), reusing the user's existing <c>gh</c> login — no token
-/// to paste. Issues in archived repositories are excluded (the search API returns them, but they are
-/// resolved and filtered against <c>gh repo list --archived</c>). Shelling out to a CLI the user already
-/// trusts keeps the plugin dependency-free.
+/// to paste. Issues in archived repositories are excluded (resolved against <c>gh repo list --archived</c>).
+/// Results are cached briefly per owner so reopening the dialog or clicking around does not re-shell out on
+/// every view; the archived-repo list (which rarely changes) is cached longer. Refresh forces a re-fetch.
 /// </summary>
 internal sealed class GitHubGhClient
 {
-    public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, CancellationToken cancellationToken)
+    private static readonly TimeSpan IssueTtl = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan ArchivedTtl = TimeSpan.FromMinutes(10);
+    private static readonly object CacheGate = new();
+    private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubIssue> Issues)> IssueCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
+
+    public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, bool forceRefresh, CancellationToken cancellationToken)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
-        var archived = await _GetArchivedReposAsync(normalizedOwner, cancellationToken);
+
+        if (!forceRefresh)
+        {
+            lock (CacheGate)
+            {
+                if (IssueCache.TryGetValue(normalizedOwner, out var cached) && DateTimeOffset.UtcNow - cached.At < IssueTtl)
+                {
+                    return cached.Issues;
+                }
+            }
+        }
+
+        var archived = await _GetArchivedReposAsync(normalizedOwner, forceRefresh, cancellationToken);
 
         var searchArgs = new[]
         {
@@ -23,15 +41,33 @@ internal sealed class GitHubGhClient
             "--limit", "100", "--json", "number,title,url,body,repository",
         };
         var issues = _ParseIssues(await _RunGhAsync(searchArgs, cancellationToken));
-
-        return archived.Count == 0
+        var result = archived.Count == 0
             ? issues
             : issues.Where(issue => !archived.Contains(issue.Repository)).ToList();
+
+        lock (CacheGate)
+        {
+            IssueCache[normalizedOwner] = (DateTimeOffset.UtcNow, result);
+        }
+
+        return result;
     }
 
-    // The archived repos for the owner; "@me"/blank means the current gh user (no owner argument).
-    private static async Task<HashSet<string>> _GetArchivedReposAsync(string owner, CancellationToken cancellationToken)
+    // The archived repos for the owner; "@me"/blank means the current gh user (no owner argument). Cached
+    // longer than issues since archiving is rare.
+    private static async Task<HashSet<string>> _GetArchivedReposAsync(string owner, bool forceRefresh, CancellationToken cancellationToken)
     {
+        if (!forceRefresh)
+        {
+            lock (CacheGate)
+            {
+                if (ArchivedCache.TryGetValue(owner, out var cached) && DateTimeOffset.UtcNow - cached.At < ArchivedTtl)
+                {
+                    return cached.Archived;
+                }
+            }
+        }
+
         var args = new List<string> { "repo", "list" };
         if (!string.Equals(owner, "@me", StringComparison.OrdinalIgnoreCase))
         {
@@ -40,11 +76,12 @@ internal sealed class GitHubGhClient
 
         args.AddRange(["--archived", "--limit", "1000", "--json", "nameWithOwner"]);
 
+        HashSet<string> result;
         try
         {
             var json = await _RunGhAsync(args.ToArray(), cancellationToken);
             using var document = JsonDocument.Parse(json);
-            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var element in document.RootElement.EnumerateArray())
             {
                 if (element.TryGetProperty("nameWithOwner", out var nwo) && nwo.GetString() is { } name)
@@ -52,14 +89,19 @@ internal sealed class GitHubGhClient
                     result.Add(name);
                 }
             }
-
-            return result;
         }
         catch
         {
             // If the archived list can't be fetched, fail open (show everything) rather than hiding issues.
             return [];
         }
+
+        lock (CacheGate)
+        {
+            ArchivedCache[owner] = (DateTimeOffset.UtcNow, result);
+        }
+
+        return result;
     }
 
     private static async Task<string> _RunGhAsync(string[] arguments, CancellationToken cancellationToken)
