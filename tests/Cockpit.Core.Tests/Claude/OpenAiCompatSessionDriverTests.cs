@@ -103,14 +103,52 @@ public class OpenAiCompatSessionDriverTests
         (await approval).Should().BeTrue();
     }
 
-    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient)
+    [Fact]
+    public async Task LocalToolCall_SurfacesToolUseAndResult_ThroughTheFunctionInvocationLoop()
+    {
+        // The model asks to call "echo" on its first streamed response, then (after the tool result is fed
+        // back) answers with plain text — the exact shape UseFunctionInvocation drives for a local model.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+        var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
+        var driver = _CreateDriver(chatClient, echo);
+
+        await driver.StartAsync(LocalProfile);
+        driver.Capabilities.SupportsTools.Should().BeTrue();
+        await driver.SendUserMessageAsync("use the tool");
+
+        var events = new List<ClaudeSessionEvent>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await foreach (var evt in driver.Events.WithCancellation(cts.Token))
+        {
+            events.Add(evt);
+            if (evt is PermissionRequested permission)
+            {
+                await driver.RespondToPermissionAsync(permission.ToolUseId, allow: true);
+            }
+
+            if (evt is TurnCompleted)
+            {
+                break;
+            }
+        }
+
+        // The tool call and its result surface as their own events, so the UI can render tool rows for a
+        // local model exactly as it does for Claude.
+        events.OfType<ToolUseRequested>().Should().ContainSingle().Which.ToolName.Should().Be("echo");
+        events.OfType<ToolResult>().Should().ContainSingle().Which.Content.Should().Contain("echoed:hi");
+        string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)).Should().Be("done");
+    }
+
+    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools)
     {
         var factory = Substitute.For<IChatClientFactory>();
         factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
 
         var toolSession = Substitute.For<IMcpToolSession>();
-        toolSession.Tools.Returns(Array.Empty<AIFunction>());
-        toolSession.ConnectedServerNames.Returns(Array.Empty<string>());
+        toolSession.Tools.Returns(tools);
+        toolSession.ConnectedServerNames.Returns(tools.Length == 0 ? Array.Empty<string>() : new[] { "test-server" });
         var toolProvider = Substitute.For<IMcpToolProvider>();
         toolProvider.ConnectAsync(Arg.Any<CancellationToken>()).Returns(toolSession);
 
@@ -123,6 +161,18 @@ public class OpenAiCompatSessionDriverTests
         {
             yield return new ChatResponseUpdate(ChatRole.Assistant, chunk);
         }
+
+        await Task.CompletedTask;
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> _ToolCall(string name, params (string Key, object? Value)[] args)
+    {
+        var arguments = args.ToDictionary(pair => pair.Key, pair => pair.Value);
+        yield return new ChatResponseUpdate
+        {
+            Role = ChatRole.Assistant,
+            Contents = [new FunctionCallContent($"call_{name}", name, arguments)],
+        };
 
         await Task.CompletedTask;
     }

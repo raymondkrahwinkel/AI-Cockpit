@@ -651,10 +651,17 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="ConsumeEventsAsync"/>.</summary>
     internal void Apply(ClaudeSessionEvent evt)
     {
-        // The first sign of assistant activity (or the turn ending) clears the "Thinking…" indicator.
-        if (evt is AssistantThinkingDelta or AssistantTextDelta or AssistantTextCompleted or ToolUseRequested or TurnCompleted or SessionError)
+        // "Thinking…" tracks the model working with no visible output yet. Any assistant output, a tool
+        // call surfacing, a pending permission, or the turn ending clears it; a completed tool result re-arms
+        // it, since the model then processes that result before its next output — so activity stays visible
+        // across the whole tool round-trip (send → think → tool → run → think → answer).
+        if (evt is AssistantThinkingDelta or AssistantTextDelta or AssistantTextCompleted or ToolUseRequested or PermissionRequested or TurnCompleted or SessionError)
         {
             IsAwaitingResponse = false;
+        }
+        else if (evt is ToolResult)
+        {
+            IsAwaitingResponse = true;
         }
 
         switch (evt)
