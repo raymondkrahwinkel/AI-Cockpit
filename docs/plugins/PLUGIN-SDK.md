@@ -72,6 +72,23 @@ public sealed record PluginMetadata(string Id, string DisplayName, string Versio
 3. **`Dispose()`** runs when the plugin is disabled or the app exits. Note: the assembly is **not** unloaded
    until the process restarts (a loaded plugin cannot be truly unloaded) — "disable" means UI off + Dispose.
 
+### Settings dialog
+
+Register a settings view with `host.AddSettings(() => new MySettingsControl(...))`; it opens from the gear
+next to your plugin in the manager. The host wraps it in a dialog with a **Close** button, and — if your
+control implements `IPluginSettingsView` — a **Save** button too:
+
+```csharp
+public sealed class MySettingsControl : UserControl, IPluginSettingsView
+{
+    public bool Save() { /* persist via host.Storage */ return true; } // return false to keep the dialog open
+}
+```
+
+The host calls `Save()` and closes the dialog when it returns true, so every plugin's settings dialog gets
+the same Save/Close behaviour — you don't add your own Save button. A view that applies changes live can
+skip the interface and just gets a Close button.
+
 ## The manifest — `plugin.json`
 
 Ships in the plugin's folder root. Parsed and validated **before** anything is loaded.

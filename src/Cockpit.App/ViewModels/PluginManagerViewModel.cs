@@ -151,7 +151,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        await _dialogHost.ShowDialogAsync($"{row.DisplayName} settings", createView, 640, 560);
+        await _dialogHost.ShowSettingsDialogAsync($"{row.DisplayName} settings", createView, 640, 560);
     }
 
     [RelayCommand]

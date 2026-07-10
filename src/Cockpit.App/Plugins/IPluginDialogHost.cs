@@ -6,4 +6,7 @@ namespace Cockpit.App.Plugins;
 public interface IPluginDialogHost
 {
     Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height);
+
+    /// <summary>Opens a plugin's settings view with a host-provided Save/Close footer; Save calls the view's <c>IPluginSettingsView.Save()</c> and closes on success.</summary>
+    Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height);
 }
