@@ -102,6 +102,10 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     [ObservableProperty]
     private string _status = "Not started.";
 
+    /// <summary>Hover text on the status line listing the session's connected tool names, so it is verifiable which tools (e.g. file tools) the model actually has.</summary>
+    [ObservableProperty]
+    private string _connectedToolsTooltip = string.Empty;
+
     [ObservableProperty]
     private bool _isBusy;
 
@@ -667,7 +671,13 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         switch (evt)
         {
             case SessionInitialized init:
-                Status = $"Connected ({init.Tools.Count} tools, cwd={init.Cwd}).";
+                Status = string.IsNullOrEmpty(init.Cwd)
+                    ? $"Connected ({init.Tools.Count} tools)."
+                    : $"Connected ({init.Tools.Count} tools, cwd={init.Cwd}).";
+                // Surface the actual tool names on hover so it is verifiable which tools are available.
+                ConnectedToolsTooltip = init.Tools.Count == 0
+                    ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
+                    : $"Tools: {string.Join(", ", init.Tools)}";
                 break;
 
             case AssistantThinkingDelta thinking:

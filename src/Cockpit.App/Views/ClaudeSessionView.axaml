@@ -58,7 +58,8 @@
                                    Foreground="{StaticResource CockpitAccentBrush}"/>
                     </Border>
                     <TextBlock Text="{Binding Status}" VerticalAlignment="Center" FontSize="11"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               ToolTip.Tip="{Binding ConnectedToolsTooltip}"/>
                     <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center" FontSize="11"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

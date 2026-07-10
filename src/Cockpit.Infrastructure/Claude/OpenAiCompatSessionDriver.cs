@@ -84,7 +84,10 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
         }
 
-        _events.Writer.TryWrite(new SessionInitialized { SessionId = _sessionId, Cwd = string.Empty, Tools = [.. _toolSession.ConnectedServerNames] });
+        // Report the actual tool names (not the server names) so the session's "N tools" count is real and
+        // the UI can show exactly which tools — e.g. read_file — the local model has, making it verifiable
+        // whether a file tool is even available before wondering why the model didn't call one.
+        _events.Writer.TryWrite(new SessionInitialized { SessionId = _sessionId, Cwd = string.Empty, Tools = [.. _gatedTools.Select(tool => tool.Name)] });
     }
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default)
