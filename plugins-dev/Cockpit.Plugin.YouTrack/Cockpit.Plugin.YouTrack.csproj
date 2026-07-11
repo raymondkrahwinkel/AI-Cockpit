@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Plugin #42: YouTrack open issues per project inline in the left menu (up to 5, click-to-inject) plus a
+       "view all" dialog, mirroring the GitHub Pull Requests plugin (#41). YouTrack has no gh-CLI equivalent,
+       so this plugin is HTTP-only against a configured instance + permanent token — no CLI-vs-HTTP toggle.
+       Built OUTSIDE the main solution (plugins-dev/) so the app build stays clean; package its
+       bin/<config>/net10.0 output into a .zip and install it via Options -> Plugins. EnableDynamicLoading
+       emits the .deps.json the host's AssemblyDependencyResolver needs. The shared assemblies
+       (Cockpit.Plugins.Abstractions, Avalonia, the DI abstractions) are compile-only (Private=false /
+       ExcludeAssets=runtime) so the host's copies load and shared types keep one identity — the plugin
+       folder ships only its own DLL + plugin.json. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

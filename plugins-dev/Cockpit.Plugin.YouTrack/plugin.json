@@ -1,0 +1,11 @@
+{
+  "id": "youtrack",
+  "name": "YouTrack",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.YouTrack.dll",
+  "entryType": "Cockpit.Plugin.YouTrack.YouTrackPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "Shows up to 5 open YouTrack issues inline under the session list for a configured project (over HTTP with a permanent token — YouTrack has no CLI), plus a dialog listing every open issue in a searchable, sortable grid; click one to drop a prompt asking the agent to work on it. The prompt template is editable in settings.",
+  "author": "Cockpit"
+}
