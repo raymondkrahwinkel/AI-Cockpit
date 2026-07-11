@@ -27,24 +27,48 @@ internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer
         // Local models host the built-in defaults (filesystem etc.) plus every enabled registry server not
         // scoped to Claude only (#26). A registry entry overrides the built-in of the same name — including a
         // disabled one, which removes that default — so defaults are a baseline the user can retarget or drop.
-        foreach (var server in _EffectiveServers(registry).Where(server => server.Enabled))
+        var enabledServers = _EffectiveServers(registry).Where(server => server.Enabled).ToList();
+
+        // Connect every enabled server concurrently rather than one-by-one — sequential connect + list-tools
+        // round-trips added up badly once more than one server was configured. Each connect keeps its own
+        // try/catch (in _ConnectServerAsync), so a server that fails or is unreachable is still skipped without
+        // blocking — or now, delaying — the others. Task.WhenAll returns its results in the same order as the
+        // input sequence regardless of which task finishes first, so the resulting tools/connected-names lists
+        // stay in the same (deterministic) order as enabledServers even though the connects race in parallel.
+        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, cancellationToken)));
+
+        foreach (var connection in connections)
         {
-            try
+            if (connection is null)
             {
-                var client = await McpClient.CreateAsync(_BuildTransport(server), cancellationToken: cancellationToken).ConfigureAwait(false);
-                clients.Add(client);
-                var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                tools.AddRange(serverTools);
-                connectedNames.Add(server.Name);
+                continue;
             }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "MCP server {Name} could not be connected — skipping its tools", server.Name);
-            }
+
+            clients.Add(connection.Client);
+            tools.AddRange(connection.Tools);
+            connectedNames.Add(connection.Name);
         }
 
         return new McpToolSession(clients, tools, connectedNames);
     }
+
+    private async Task<ServerConnection?> _ConnectServerAsync(McpServerConfig server, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = await McpClient.CreateAsync(_BuildTransport(server), cancellationToken: cancellationToken).ConfigureAwait(false);
+            var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            return new ServerConnection(client, [.. serverTools], server.Name);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MCP server {Name} could not be connected — skipping its tools", server.Name);
+            return null;
+        }
+    }
+
+    /// <summary>One server's successful connect result: the live client (kept for disposal), its tools, and its name.</summary>
+    private sealed record ServerConnection(McpClient Client, IReadOnlyList<AIFunction> Tools, string Name);
 
     // Built-in local defaults, overlaid with the registry: a registry server (that is not Claude-only)
     // replaces the built-in of the same name, so the user can retarget filesystem or drop a default by
