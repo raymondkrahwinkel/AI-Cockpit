@@ -52,7 +52,7 @@ dotnet build plugins-dev/My.Plugin -c Release
 Compress-Archive -Path plugins-dev/My.Plugin/bin/Release/net10.0/* -DestinationPath my-plugin-1.0.0.zip
 
 # 4. Install: in the cockpit, Options -> Plugins -> Install from zip..., pick the zip,
-#    "Review & enable", consent, then restart the cockpit.
+#    "Review & enable", consent, then click "Restart cockpit now" (#53) — or restart it yourself.
 ```
 
 That scaffolds a plugin with a left-menu button that opens a dialog (see
@@ -278,7 +278,9 @@ public void Initialize(ICockpitHost host)
    Compress-Archive -Path bin/Release/net10.0/* -DestinationPath my-plugin-1.0.0.zip
    ```
 3. **Install:** in the cockpit, **Options → Plugins → Install from zip…**, pick the zip, then **Review &
-   enable** and consent. Enabling takes effect on the **next restart** (a plugin can't be loaded live).
+   enable** and consent. Enabling takes effect on the **next restart** (a plugin can't be loaded live) — a
+   **"Restart cockpit now"** button (#53) appears right there once one is pending, so you don't have to close
+   and relaunch the app by hand.
 
 ## Installing, enabling, disabling, removing
 

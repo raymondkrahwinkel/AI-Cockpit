@@ -292,6 +292,10 @@
                         <TextBlock Text="{Binding StatusMessage}"
                                    IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                    Foreground="{StaticResource CockpitAccentBrush}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        <Button Content="Restart cockpit now" Classes="Accent" Command="{Binding RestartNowCommand}"
+                                IsVisible="{Binding NeedsRestart}"
+                                ToolTip.Tip="Restarts the cockpit for you — applies the plugin change(s) above without closing and relaunching it yourself."
+                                HorizontalAlignment="Left"/>
                         <TextBlock Text="No plugins installed yet."
                                    IsVisible="{Binding !HasPlugins}"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>

@@ -30,6 +30,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly IPluginDialogHost? _dialogHost;
     private readonly PluginDiagnostics? _diagnostics;
     private readonly IPluginContributionSink? _contributionSink;
+    private readonly IAppRestartService? _restartService;
 
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
@@ -49,6 +50,18 @@ public partial class PluginManagerViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>
+    /// True once an install/enable/disable/remove has actually changed plugin state this session (#53) — the
+    /// manager shows a "Restart now" button once this flips, instead of the operator having to remember to
+    /// close and relaunch the app by hand. Sticky for the session: it never resets to false, since an
+    /// earlier change still needs that restart even after a later one.
+    /// </summary>
+    [ObservableProperty]
+    private bool _needsRestart;
+
+    /// <summary>Whether a "Restart now" affordance can do anything — false in the design-time/no-op constructor, where there is no real app to restart.</summary>
+    public bool CanRestart => _restartService is not null;
+
     /// <summary>Design-time constructor for the previewer.</summary>
     public PluginManagerViewModel()
     {
@@ -64,7 +77,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         IReadOnlyDictionary<string, Func<Control>> settingsRegistry,
         IPluginDialogHost dialogHost,
         PluginDiagnostics diagnostics,
-        IPluginContributionSink? contributionSink = null)
+        IPluginContributionSink? contributionSink = null,
+        IAppRestartService? restartService = null)
     {
         _registrationStore = registrationStore;
         _installer = installer;
@@ -76,7 +90,11 @@ public partial class PluginManagerViewModel : ViewModelBase
         _dialogHost = dialogHost;
         _diagnostics = diagnostics;
         _contributionSink = contributionSink;
+        _restartService = restartService;
     }
+
+    [RelayCommand(CanExecute = nameof(CanRestart))]
+    private void RestartNow() => _restartService?.Restart();
 
     /// <summary>Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.</summary>
     public async Task LoadAsync()
@@ -150,6 +168,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _registrationStore.SaveAsync(row.FolderId, new PluginRegistration(Enabled: true, PinnedSha256: row.Discovered.Sha256));
         await LoadAsync();
         StatusMessage = $"'{row.DisplayName}' enabled. Restart the cockpit to load it.";
+        NeedsRestart = true;
     }
 
     [RelayCommand]
@@ -179,6 +198,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _registrationStore.SaveAsync(row.FolderId, new PluginRegistration(Enabled: false, PinnedSha256: row.Discovered.Sha256));
         await LoadAsync();
         StatusMessage = $"'{row.DisplayName}' disabled. Restart the cockpit to unload it.";
+        NeedsRestart = true;
     }
 
     [RelayCommand]
@@ -193,6 +213,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         await _registrationStore.RemoveAsync(row.FolderId);
         await LoadAsync();
         StatusMessage = $"'{row.DisplayName}' will be removed on the next restart.";
+        NeedsRestart = true;
     }
 
     [RelayCommand]
@@ -342,6 +363,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         else
         {
             StatusMessage = installedMessage;
+            NeedsRestart = true;
         }
     }
 

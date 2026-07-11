@@ -618,7 +618,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginStoreClient? pluginStoreClient = null,
         IPluginDialogHost? pluginDialogHost = null,
         PluginDiagnostics? pluginDiagnostics = null,
-        IAudioDeviceProvider? audioDeviceProvider = null)
+        IAudioDeviceProvider? audioDeviceProvider = null,
+        IAppRestartService? appRestartService = null)
     {
         _audioDeviceProvider = audioDeviceProvider;
         _pluginDiagnostics = pluginDiagnostics;
@@ -628,7 +629,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost, pluginDiagnostics, this)
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost, pluginDiagnostics, this, appRestartService)
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
