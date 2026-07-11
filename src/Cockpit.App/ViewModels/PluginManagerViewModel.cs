@@ -29,6 +29,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly IReadOnlyDictionary<string, Func<Control>>? _settingsRegistry;
     private readonly IPluginDialogHost? _dialogHost;
     private readonly PluginDiagnostics? _diagnostics;
+    private readonly IPluginContributionSink? _contributionSink;
 
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
@@ -62,7 +63,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         IPluginStoreClient storeClient,
         IReadOnlyDictionary<string, Func<Control>> settingsRegistry,
         IPluginDialogHost dialogHost,
-        PluginDiagnostics diagnostics)
+        PluginDiagnostics diagnostics,
+        IPluginContributionSink? contributionSink = null)
     {
         _registrationStore = registrationStore;
         _installer = installer;
@@ -73,6 +75,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _settingsRegistry = settingsRegistry;
         _dialogHost = dialogHost;
         _diagnostics = diagnostics;
+        _contributionSink = contributionSink;
     }
 
     /// <summary>Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.</summary>
@@ -157,7 +160,12 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        await _dialogHost.ShowSettingsDialogAsync($"{row.DisplayName} settings", createView, 640, 560);
+        await _dialogHost.ShowSettingsDialogAsync(
+            $"{row.DisplayName} settings",
+            createView,
+            640,
+            560,
+            onSaved: () => _contributionSink?.NotifySettingsSaved(row.FolderId));
     }
 
     [RelayCommand]

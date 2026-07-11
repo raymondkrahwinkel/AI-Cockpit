@@ -30,7 +30,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         await window.ShowDialog(owner);
     }
 
-    public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height)
+    public async Task ShowSettingsDialogAsync(string title, Func<Control> createView, double width, double height, Action? onSaved = null)
     {
         if (!_TryCreateWindow(title, width, height, out var window, out var owner))
         {
@@ -52,6 +52,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
             {
                 if (settingsView.Save())
                 {
+                    onSaved?.Invoke();
                     window.Close();
                 }
             };

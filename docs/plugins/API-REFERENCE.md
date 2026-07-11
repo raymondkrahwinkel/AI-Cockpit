@@ -77,6 +77,7 @@ public interface ICockpitHost
     void AddSideMenuButton(string title, Action onInvoke);
     void AddSideMenuSection(string title, Func<Control> createView);
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
+    void OnSettingsSaved(Action callback); // default no-op
 }
 ```
 
@@ -124,6 +125,28 @@ Opens a **modal dialog** over the main window hosting your content; you own the 
 - The host provides a themed **DataGrid** app-wide, so your content may use it.
 ```csharp
 await host.ShowDialogAsync("Issues", () => BuildIssuesView(), width: 900, height: 600);
+```
+
+### `void OnSettingsSaved(Action callback)`
+Registers `callback` to run (UI thread) after **this plugin's own** settings are saved from the manager's
+gear (#52) — i.e. your `IPluginSettingsView.Save()` returned `true`. Enabling/disabling/installing a plugin
+still needs a restart (its assembly can't be unloaded/loaded live), but a settings change doesn't have to.
+- **When you need this:** a contribution that read settings once at construction and cached the result — e.g.
+  a side-menu section's already-fetched list (`AddSideMenuSection`) — should subscribe and reload.
+- **When you don't:** a contribution that reads `Storage`-backed settings fresh on every access already
+  reflects a save. A dialog opened via `ShowDialogAsync`/`AddSideMenuButton` is rebuilt fresh (its
+  `createContent`/`onInvoke` factory runs again) each time it's opened, so it too already picks up a save
+  without this.
+- Default implementation is a no-op, so this is safe to skip if it doesn't apply to your plugin.
+```csharp
+internal sealed class MySideSectionControl : UserControl
+{
+    public MySideSectionControl(MySettings settings, ICockpitHost host)
+    {
+        // ...build the list from settings...
+        host.OnSettingsSaved(() => _ = ReloadAsync());
+    }
+}
 ```
 
 ---

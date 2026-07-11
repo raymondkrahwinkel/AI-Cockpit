@@ -60,6 +60,10 @@ internal sealed class YouTrackSideSectionControl : UserControl
             Children = { header, _list, viewAll },
         };
 
+        // Re-fetch with the just-saved settings (instance URL/token/project) instead of leaving this
+        // already-built section showing data loaded under the old configuration until an app restart (#52).
+        host.OnSettingsSaved(() => _ = _LoadAsync());
+
         _ = _LoadAsync();
     }
 

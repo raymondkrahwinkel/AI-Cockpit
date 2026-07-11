@@ -307,6 +307,12 @@ What actually happens under the hood, so you can reason about the "restart to ap
   install's services, a version update, a real folder deletion — only takes full effect after restarting the
   cockpit. The manager surfaces this in its messaging; don't expect a freshly-installed plugin's
   `ConfigureServices` registrations to be live before that restart.
+- **This does not apply to settings (#52).** Saving your plugin's settings view (the gear's Save button)
+  never needs a restart — it's a plain `IPluginStorage` write, not a code load. A settings-backed value read
+  fresh on every access (the common pattern; see the example plugins) reflects the save immediately, and a
+  dialog opened via `ShowDialogAsync`/`AddSideMenuButton` is rebuilt fresh each time it opens. Only a
+  contribution that cached settings-derived data at construction (e.g. a side-menu section's already-fetched
+  list) needs to explicitly reload — via `host.OnSettingsSaved(...)`, documented in the [API reference](API-REFERENCE.md#icockpithost).
 
 ## Publishing the SDK as a NuGet (out-of-repo authors)
 

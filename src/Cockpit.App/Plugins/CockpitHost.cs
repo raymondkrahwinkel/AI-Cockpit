@@ -35,4 +35,7 @@ internal sealed class CockpitHost(
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
         dialogHost.ShowDialogAsync(title, createContent, width, height);
+
+    public void OnSettingsSaved(Action callback) =>
+        contributionSink.AddSettingsSavedHandler(pluginId, callback);
 }

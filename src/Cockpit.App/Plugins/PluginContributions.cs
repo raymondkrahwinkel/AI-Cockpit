@@ -21,4 +21,10 @@ public interface IPluginContributionSink
     void AddPluginSideButton(string title, Action onInvoke);
 
     void AddPluginSettings(string pluginId, Func<Control> createView);
+
+    /// <summary>Registers <paramref name="callback"/> to run when <paramref name="pluginId"/>'s settings are next saved (#52) — see <see cref="ICockpitHost.OnSettingsSaved"/>.</summary>
+    void AddSettingsSavedHandler(string pluginId, Action callback);
+
+    /// <summary>Runs every callback registered via <see cref="AddSettingsSavedHandler"/> for <paramref name="pluginId"/> (#52) — called once that plugin's settings dialog Save() has returned true.</summary>
+    void NotifySettingsSaved(string pluginId);
 }

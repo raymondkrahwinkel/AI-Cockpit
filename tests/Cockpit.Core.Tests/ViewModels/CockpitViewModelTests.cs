@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
@@ -686,6 +687,53 @@ public class CockpitViewModelTests
 
         vm.IsTerminalFontCustom.Should().BeFalse();
         vm.TerminalFontFamily.Should().Be("Consolas");
+    }
+
+    // #52: a settings-Save should let a plugin's already-built contributions (e.g. a side-menu section that
+    // fetched data once at construction) refresh without an app restart. CockpitViewModel is the
+    // IPluginContributionSink every CockpitHost is built against, so it's the seam that routes a save for one
+    // plugin's id to only that plugin's registered callbacks.
+    [Fact]
+    public void SettingsSaved_RunsOnlyTheHandlersRegisteredForThatPluginId()
+    {
+        var vm = NewVm();
+        var sink = (IPluginContributionSink)vm;
+        var prCalls = 0;
+        var youTrackCalls = 0;
+        sink.AddSettingsSavedHandler("github-pull-requests", () => prCalls++);
+        sink.AddSettingsSavedHandler("youtrack", () => youTrackCalls++);
+
+        sink.NotifySettingsSaved("github-pull-requests");
+
+        prCalls.Should().Be(1);
+        youTrackCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public void SettingsSaved_RunsEveryHandlerRegisteredForThatPluginId()
+    {
+        var vm = NewVm();
+        var sink = (IPluginContributionSink)vm;
+        var firstCalls = 0;
+        var secondCalls = 0;
+        sink.AddSettingsSavedHandler("youtrack", () => firstCalls++);
+        sink.AddSettingsSavedHandler("youtrack", () => secondCalls++);
+
+        sink.NotifySettingsSaved("youtrack");
+
+        firstCalls.Should().Be(1);
+        secondCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public void SettingsSaved_WithNoHandlersRegistered_DoesNotThrow()
+    {
+        var vm = NewVm();
+        var sink = (IPluginContributionSink)vm;
+
+        var act = () => sink.NotifySettingsSaved("no-such-plugin");
+
+        act.Should().NotThrow();
     }
 
     private static async Task<CockpitViewModel> NewVmWithSessionsAsync(int count)

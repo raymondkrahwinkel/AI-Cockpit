@@ -26,6 +26,7 @@ using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -80,6 +81,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Per-plugin settings views (#14) keyed by plugin folder id, opened from the gear in the plugin manager.</summary>
     public Dictionary<string, Func<Control>> PluginSettings { get; } = [];
 
+    /// <summary>Settings-saved callbacks (#52) keyed by plugin folder id, registered via <see cref="ICockpitHost.OnSettingsSaved"/> and run once that plugin's settings dialog Save() returns true.</summary>
+    private readonly Dictionary<string, List<Action>> _settingsSavedHandlers = [];
+
     /// <summary>The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.</summary>
     public PluginManagerViewModel Plugins { get; }
 
@@ -115,6 +119,37 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     void IPluginContributionSink.AddPluginSettings(string pluginId, Func<Control> createView) =>
         _OnUiThread(() => PluginSettings[pluginId] = createView);
+
+    // Unlike the three contributions above, registration here touches only this private dictionary — never
+    // a bound ObservableCollection — and both members are reached exclusively from Avalonia UI-thread
+    // callbacks in practice (a contribution's own constructor, and the settings dialog's Save click), so no
+    // dispatcher hop is needed. Kept synchronous rather than routed through _OnUiThread — that hop only
+    // actually runs when something later pumps the dispatcher queue, which a unit test never does.
+    void IPluginContributionSink.AddSettingsSavedHandler(string pluginId, Action callback)
+    {
+        if (!_settingsSavedHandlers.TryGetValue(pluginId, out var handlers))
+        {
+            handlers = [];
+            _settingsSavedHandlers[pluginId] = handlers;
+        }
+
+        handlers.Add(callback);
+    }
+
+    void IPluginContributionSink.NotifySettingsSaved(string pluginId)
+    {
+        if (!_settingsSavedHandlers.TryGetValue(pluginId, out var handlers))
+        {
+            return;
+        }
+
+        // Snapshot before invoking: a handler could itself register another (unlikely, but avoids mutating
+        // the list while iterating it).
+        foreach (var handler in handlers.ToArray())
+        {
+            handler();
+        }
+    }
 
     // Plugins register contributions from Initialize (run on the UI thread), but a plugin could also
     // add a section later off a background thread — marshal so the bound collections only mutate on the UI thread.
@@ -593,7 +628,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost, pluginDiagnostics)
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost, pluginDiagnostics, this)
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;

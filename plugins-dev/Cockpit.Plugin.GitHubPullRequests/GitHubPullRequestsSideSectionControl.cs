@@ -61,6 +61,10 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             Children = { header, _list, viewAll },
         };
 
+        // Re-fetch with the just-saved settings (owner/repo, token, gh-CLI toggle) instead of leaving this
+        // already-built section showing data loaded under the old configuration until an app restart (#52).
+        host.OnSettingsSaved(() => _ = _LoadAsync(forceRefresh: true));
+
         _ = _LoadAsync(forceRefresh: false);
     }
 
