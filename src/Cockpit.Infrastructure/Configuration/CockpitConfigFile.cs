@@ -38,6 +38,14 @@ internal sealed class CockpitConfigFile
     /// <summary>Configured plugin-store URLs (#14) the manager browses for installable plugins; owned by the plugin-store config store.</summary>
     public List<string> PluginStores { get; set; } = [];
 
+    /// <summary>
+    /// First-run marker (#43) for the built-in default store: set the first time <see cref="PluginStores"/>
+    /// is resolved, whether that resolution seeded the default store (empty list, unmarked) or merely
+    /// recognized an existing list as already the operator's own. Once true, the default is never added again —
+    /// removing the default store is a durable choice, not something the next load undoes.
+    /// </summary>
+    public bool PluginStoresDefaultSeeded { get; set; }
+
     /// <summary>User-configured MCP servers (#26), shared by the local-LLM tool-loop and the Claude CLI; owned by the MCP-server store.</summary>
     public List<McpServerEntry> McpServers { get; set; } = [];
 }

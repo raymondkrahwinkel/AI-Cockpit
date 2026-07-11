@@ -66,6 +66,47 @@ public class PluginStoreConfigStoreTests : IDisposable
         (await storeConfig.LoadAsync()).Should().ContainSingle();
     }
 
+    [Fact]
+    public async Task LoadAsync_FreshInstall_SeedsDefaultStoreAndMarksSeeded()
+    {
+        var store = new PluginStoreConfigStore(_configFilePath);
+
+        var stores = await store.LoadAsync();
+
+        stores.Should().BeEquivalentTo(PluginStoreConfigStore.DefaultStoreUrl);
+
+        // Persisted, not just an in-memory return value — round-trips on a fresh instance too.
+        var reloaded = new PluginStoreConfigStore(_configFilePath);
+        (await reloaded.LoadAsync()).Should().BeEquivalentTo(PluginStoreConfigStore.DefaultStoreUrl);
+    }
+
+    [Fact]
+    public async Task LoadAsync_AlreadySeededAndEmptied_DoesNotReAddDefault()
+    {
+        var store = new PluginStoreConfigStore(_configFilePath);
+        await store.LoadAsync(); // seeds the default + sets the marker
+
+        await store.RemoveAsync(PluginStoreConfigStore.DefaultStoreUrl);
+
+        (await store.LoadAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LoadAsync_PreExistingInstallWithOwnStores_LeavesListUntouchedButMarksSeeded()
+    {
+        var store = new PluginStoreConfigStore(_configFilePath);
+        // Simulates a pre-#43 install: stores already configured, marker never set.
+        await store.AddAsync("https://github.com/a/b");
+
+        var stores = await store.LoadAsync();
+
+        stores.Should().BeEquivalentTo("https://github.com/a/b");
+
+        // Marker is now set, so emptying the list afterwards must not seed the default either.
+        await store.RemoveAsync("https://github.com/a/b");
+        (await store.LoadAsync()).Should().BeEmpty();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDir))
