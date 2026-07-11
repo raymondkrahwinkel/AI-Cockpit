@@ -147,6 +147,6 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
             ? $"Plugin update available: {newUpdates[0].Name} {newUpdates[0].InstalledVersion} → {newUpdates[0].LatestVersion}"
             : $"{newUpdates.Count} plugin updates available";
 
-        _toastService.Show(message, ToastSeverity.Information, "View", () => _ = _cockpit.OpenPluginsOptionsTabAsync());
+        _toastService.Show(message, ToastSeverity.Information, "View", () => _ = _cockpit.OpenPluginStoreUpdatesAsync());
     }
 }

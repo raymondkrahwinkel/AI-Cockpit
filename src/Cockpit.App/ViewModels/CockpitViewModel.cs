@@ -1154,8 +1154,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowOptionsDialogAsync(this);
     }
 
-    /// <summary>Opens the Options dialog straight to the Plugins tab (#59) — the action button on a plugin-update toast, skipping the audio-device refresh <see cref="OptionsAsync"/> does since it is irrelevant here.</summary>
-    public async Task OpenPluginsOptionsTabAsync()
+    /// <summary>
+    /// Opens the plugin store dialog (#62) with the "Available updates" filter preselected (#65) — the
+    /// action button on a plugin-update toast, so the operator lands straight on the updates list instead
+    /// of the full Options→Plugins tab. Skips the audio-device refresh <see cref="OptionsAsync"/> does
+    /// since it is irrelevant here.
+    /// </summary>
+    public async Task OpenPluginStoreUpdatesAsync()
     {
         if (_dialogService is null)
         {
@@ -1163,7 +1168,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await Plugins.LoadAsync();
-        await _dialogService.ShowOptionsDialogAsync(this, selectPluginsTab: true);
+        await _dialogService.ShowPluginStoreDialogAsync(Plugins, PluginStoreFilter.UpdatesAvailable);
     }
 
     /// <summary>Opens the About dialog (#46) from the sidebar: app name, version, description and links.</summary>

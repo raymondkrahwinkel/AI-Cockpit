@@ -22,7 +22,14 @@ namespace Cockpit.Core.Tests.Voice;
 /// <summary>Builds a <see cref="CockpitViewModel"/> wired entirely to substitutes/defaults for tests that only need its session selection (e.g. the voice coordinators).</summary>
 internal static class TestCockpit
 {
-    public static CockpitViewModel NewViewModel()
+    public static CockpitViewModel NewViewModel() => NewViewModel(out _);
+
+    /// <summary>
+    /// Same as <see cref="NewViewModel()"/> but also hands back the substitute <see cref="ISessionDialogService"/>
+    /// wired into the view model, for tests that need to verify a dialog was opened (e.g. a toast action
+    /// invoked through <see cref="Cockpit.App.ViewModels.CockpitViewModel.OpenPluginStoreUpdatesAsync"/>, #65).
+    /// </summary>
+    public static CockpitViewModel NewViewModel(out ISessionDialogService dialogService)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -39,10 +46,11 @@ internal static class TestCockpit
         var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
         terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
 
+        dialogService = Substitute.For<ISessionDialogService>();
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
-            Substitute.For<ISessionDialogService>(),
+            dialogService,
             Substitute.For<IAudioCaptureService>(),
             Substitute.For<IAudioPlaybackService>(),
             Substitute.For<IAttentionNotifier>(),

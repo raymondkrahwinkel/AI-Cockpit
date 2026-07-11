@@ -747,6 +747,19 @@ public class CockpitViewModelTests
         return vm;
     }
 
+    [Fact]
+    public async Task OpenPluginStoreUpdatesAsync_OpensTheStoreDialogWithTheAvailableUpdatesFilterPreselected()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService);
+
+        await vm.OpenPluginStoreUpdatesAsync();
+
+        await dialogService.Received(1).ShowPluginStoreDialogAsync(
+            Arg.Is<PluginManagerViewModel>(manager => manager == vm.Plugins),
+            PluginStoreFilter.UpdatesAvailable);
+    }
+
     private static CockpitViewModel NewVm(ISessionDialogService? dialogService = null, ITerminalSettingsStore? terminalSettingsStore = null, ILayoutSettingsStore? layoutSettingsStore = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();

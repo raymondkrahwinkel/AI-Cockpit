@@ -10,7 +10,7 @@ namespace Cockpit.App.ViewModels;
 /// The plugin store dialog (#62): a browsing/presentation layer over the existing
 /// <see cref="PluginManagerViewModel"/> rather than a second catalogue or install path. It wraps the
 /// same shared instance the Options→Plugins tab uses (<c>CockpitViewModel.Plugins</c>) and adds search,
-/// sort, sidebar filtering (Discover/All/category/Installed/Updates available) and a
+/// sort, sidebar filtering (Discover/All/category/Installed/Available updates) and a
 /// selected-plugin detail panel over its <see cref="PluginManagerViewModel.AvailablePlugins"/>. Every
 /// install/update, the consent step and the restart banner all still go through <see cref="Manager"/>'s
 /// own commands/properties unchanged — this view model never downloads or installs anything itself.
@@ -56,7 +56,15 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
     }
 
-    public PluginStoreDialogViewModel(PluginManagerViewModel manager)
+    /// <param name="manager">The shared plugin manager instance (see <see cref="Manager"/>).</param>
+    /// <param name="initialFilter">
+    /// The sidebar scope preselected when the dialog opens (#65) — e.g. a plugin-update toast opening
+    /// straight onto <see cref="PluginStoreFilter.UpdatesAvailable"/> instead of the default Discover
+    /// page. Falls back to <see cref="SidebarItems"/>'s first entry (Discover) when null or when no
+    /// sidebar item matches it yet (the catalogue may still be empty at construction time — once it
+    /// loads, <see cref="_RebuildSidebarItems"/> re-selects the same filter by value).
+    /// </param>
+    public PluginStoreDialogViewModel(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null)
     {
         _manager = manager;
         _onAvailablePluginsChanged = (_, _) => _OnCatalogueChanged();
@@ -67,7 +75,9 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         _manager.PropertyChanged += _onManagerPropertyChanged;
 
         _RebuildSidebarItems();
-        SelectedSidebarItem = SidebarItems[0];
+        SelectedSidebarItem = initialFilter is null
+            ? SidebarItems[0]
+            : SidebarItems.FirstOrDefault(item => item.Filter == initialFilter) ?? SidebarItems[0];
         _RecomputeFiltered();
     }
 

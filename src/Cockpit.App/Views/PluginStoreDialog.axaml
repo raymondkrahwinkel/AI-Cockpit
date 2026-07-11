@@ -51,7 +51,7 @@
 
         <Grid ColumnDefinitions="200,*,Auto">
 
-            <!-- Sidebar: Discover / All plugins / categories / Installed / Updates available, plus the
+            <!-- Sidebar: Discover / All plugins / categories / Installed / Available updates, plus the
                  collapsible "+ Manage stores" panel (store-URL add/remove moved here from Options). -->
             <DockPanel Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}">
                 <StackPanel DockPanel.Dock="Bottom" Margin="8" Spacing="6">
@@ -86,7 +86,7 @@
                 <ListBox ItemsSource="{Binding SidebarItems}" SelectedItem="{Binding SelectedSidebarItem}"
                          Background="Transparent" Margin="4">
                     <ListBox.Styles>
-                        <!-- A zero-count "Installed"/"Updates available" entry is greyed out and unclickable
+                        <!-- A zero-count "Installed"/"Available updates" entry is greyed out and unclickable
                              rather than hidden — IsEnabled=False both dims it (default disabled styling)
                              and blocks selection. -->
                         <Style Selector="ListBoxItem" x:DataType="vm:PluginStoreSidebarItem">

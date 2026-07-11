@@ -105,14 +105,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await dialog.ShowDialog(owner);
     }
 
-    public async Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager)
+    public async Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null)
     {
         if (_ActiveOwnerWindow() is not { } owner)
         {
             return;
         }
 
-        var viewModel = new PluginStoreDialogViewModel(manager);
+        var viewModel = new PluginStoreDialogViewModel(manager, initialFilter);
         var dialog = new PluginStoreDialog { DataContext = viewModel };
         await viewModel.LoadAsync();
         await dialog.ShowDialog(owner);

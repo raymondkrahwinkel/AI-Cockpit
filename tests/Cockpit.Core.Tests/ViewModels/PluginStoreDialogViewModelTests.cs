@@ -57,7 +57,31 @@ public class PluginStoreDialogViewModelTests
         var vm = new PluginStoreDialogViewModel(manager);
 
         vm.SidebarItems.Select(item => item.Label).Should().Equal(
-            "Discover", "All plugins", "AI providers", "Issue trackers", "Other", "Installed (0)", "Updates available (0)");
+            "Discover", "All plugins", "AI providers", "Issue trackers", "Other", "Installed (0)", "Available updates (0)");
+        vm.SelectedSidebarItem.Should().Be(PluginStoreSidebarItem.Discover);
+    }
+
+    [Fact]
+    public void Constructor_WithInitialFilter_PreselectsThatSidebarItem()
+    {
+        var manager = _ManagerWith(
+            _Row("a", "Alpha", installedVersion: "1.0.0", latestVersion: "1.0.0"),
+            _Row("b", "Beta", installedVersion: "1.0.0", latestVersion: "2.0.0"));
+
+        var vm = new PluginStoreDialogViewModel(manager, PluginStoreFilter.UpdatesAvailable);
+
+        vm.SelectedSidebarItem.Should().NotBeNull();
+        vm.SelectedSidebarItem!.Filter.Should().Be(PluginStoreFilter.UpdatesAvailable);
+        vm.FilteredPlugins.Should().ContainSingle().Which.Name.Should().Be("Beta");
+    }
+
+    [Fact]
+    public void Constructor_WithNoInitialFilter_DefaultsToDiscover()
+    {
+        var manager = _ManagerWith(_Row("a", "Alpha"));
+
+        var vm = new PluginStoreDialogViewModel(manager);
+
         vm.SelectedSidebarItem.Should().Be(PluginStoreSidebarItem.Discover);
     }
 
@@ -84,10 +108,10 @@ public class PluginStoreDialogViewModelTests
         var vm = new PluginStoreDialogViewModel(manager);
 
         var installed = vm.SidebarItems.Single(item => item.Label.StartsWith("Installed"));
-        var updates = vm.SidebarItems.Single(item => item.Label.StartsWith("Updates available"));
+        var updates = vm.SidebarItems.Single(item => item.Label.StartsWith("Available updates"));
         installed.Label.Should().Be("Installed (2)");
         installed.IsEnabled.Should().BeTrue();
-        updates.Label.Should().Be("Updates available (1)");
+        updates.Label.Should().Be("Available updates (1)");
         updates.IsEnabled.Should().BeTrue();
 
         vm.SelectedSidebarItem = updates;

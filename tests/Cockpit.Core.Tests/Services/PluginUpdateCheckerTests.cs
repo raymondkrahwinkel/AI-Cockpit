@@ -1,4 +1,5 @@
 using Cockpit.App.Services;
+using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Plugins;
@@ -105,6 +106,28 @@ public class PluginUpdateCheckerTests
     }
 
     [Fact]
+    public async Task CheckNowAsync_ToastAction_OpensPluginStoreDialogWithAvailableUpdatesFilterPreselected()
+    {
+        var toastService = Substitute.For<IToastService>();
+        Action? capturedAction = null;
+        toastService.Show(Arg.Any<string>(), Arg.Any<ToastSeverity>(), Arg.Any<string?>(), Arg.Do<Action?>(action => capturedAction = action));
+        var cockpit = TestCockpit.NewViewModel(out var dialogService);
+        var checker = _CreateChecker(
+            installed: [_Plugin("youtrack", "YouTrack", "1.0.0")],
+            storeClient: _StoreClientReturning(_Entry("youtrack", "1.1.0")),
+            toastService: toastService,
+            cockpit: cockpit);
+
+        await checker.CheckNowAsync();
+        capturedAction.Should().NotBeNull("the toast's action button must be wired to something");
+        capturedAction!.Invoke();
+
+        await dialogService.Received(1).ShowPluginStoreDialogAsync(
+            Arg.Is<PluginManagerViewModel>(manager => manager == cockpit.Plugins),
+            PluginStoreFilter.UpdatesAvailable);
+    }
+
+    [Fact]
     public async Task CheckNowAsync_CalledTwiceForTheSameUpdate_OnlyTriggersOneToast()
     {
         var toastService = Substitute.For<IToastService>();
@@ -151,7 +174,8 @@ public class PluginUpdateCheckerTests
     private static PluginUpdateChecker _CreateChecker(
         IReadOnlyList<DiscoveredPlugin> installed,
         IPluginStoreClient storeClient,
-        IToastService toastService)
+        IToastService toastService,
+        CockpitViewModel? cockpit = null)
     {
         var storeConfigStore = Substitute.For<IPluginStoreConfigStore>();
         storeConfigStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([StoreUrl]);
@@ -161,7 +185,7 @@ public class PluginUpdateCheckerTests
             storeConfigStore,
             storeClient,
             toastService,
-            TestCockpit.NewViewModel(),
+            cockpit ?? TestCockpit.NewViewModel(),
             NullLogger<PluginUpdateChecker>.Instance);
     }
 

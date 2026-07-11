@@ -26,14 +26,17 @@ public interface ISessionDialogService
     /// window) — a browsing/presentation layer around <paramref name="manager"/>, the same
     /// <see cref="PluginManagerViewModel"/> instance the Options→Plugins tab uses. Every install/update,
     /// the consent step and the restart banner go through that shared instance unchanged.
+    /// <paramref name="initialFilter"/> preselects a sidebar scope (#65: a plugin-update toast's action
+    /// opens straight onto <see cref="PluginStoreFilter.UpdatesAvailable"/>); null keeps the default
+    /// Discover page.
     /// </summary>
-    Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager);
+    Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager, PluginStoreFilter? initialFilter = null);
 
     /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
     /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
     /// existing option properties/commands. <paramref name="selectPluginsTab"/> opens straight to the
-    /// Plugins tab (#59: a plugin-update toast's action) instead of the default first tab.
+    /// Plugins tab instead of the default first tab.
     /// </summary>
     Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false);
 
