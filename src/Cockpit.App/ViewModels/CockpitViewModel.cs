@@ -1154,6 +1154,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowOptionsDialogAsync(this);
     }
 
+    /// <summary>Opens the Options dialog straight to the Plugins tab (#59) — the action button on a plugin-update toast, skipping the audio-device refresh <see cref="OptionsAsync"/> does since it is irrelevant here.</summary>
+    public async Task OpenPluginsOptionsTabAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await Plugins.LoadAsync();
+        await _dialogService.ShowOptionsDialogAsync(this, selectPluginsTab: true);
+    }
+
     /// <summary>Opens the About dialog (#46) from the sidebar: app name, version, description and links.</summary>
     [RelayCommand]
     private async Task AboutAsync()

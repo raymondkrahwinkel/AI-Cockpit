@@ -19,5 +19,18 @@ public partial class OptionsDialog : Window
         CockpitWindowChrome.Apply(this);
     }
 
+    /// <summary>Opens straight to the Plugins tab (#59: a plugin-update toast's action). Looked up by header text rather than a hardcoded index, so a future tab reorder can't silently select the wrong one.</summary>
+    public void SelectPluginsTab()
+    {
+        foreach (var item in Tabs.Items)
+        {
+            if (item is TabItem { Header: "Plugins" })
+            {
+                Tabs.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 }

@@ -104,7 +104,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await dialog.ShowDialog(owner);
     }
 
-    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
+    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -112,6 +112,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var dialog = new OptionsDialog { DataContext = viewModel };
+        if (selectPluginsTab)
+        {
+            dialog.SelectPluginsTab();
+        }
+
         await dialog.ShowDialog(owner);
     }
 

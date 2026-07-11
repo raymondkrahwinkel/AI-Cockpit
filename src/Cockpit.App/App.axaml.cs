@@ -7,6 +7,7 @@ using System;
 using System.Linq;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
@@ -21,6 +22,7 @@ public partial class App : Application
 {
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private MainWindow? _mainWindow;
+    private DispatcherTimer? _pluginUpdateTimer;
 
     /// <summary>
     /// True once a real quit was requested (tray "Quit"), so <see cref="MainWindow"/> lets the close
@@ -59,6 +61,14 @@ public partial class App : Application
             // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
             // plugin the host built for it so it can register its Options tab / side-menu section.
             _InitializePlugins();
+
+            // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
+            // gets compared), then every 15 minutes for the rest of the run.
+            var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
+            _ = pluginUpdateChecker.CheckNowAsync();
+            _pluginUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
+            _pluginUpdateTimer.Tick += (_, _) => _ = pluginUpdateChecker.CheckNowAsync();
+            _pluginUpdateTimer.Start();
         }
 
         base.OnFrameworkInitializationCompleted();
