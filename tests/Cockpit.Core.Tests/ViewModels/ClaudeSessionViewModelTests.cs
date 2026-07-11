@@ -145,6 +145,43 @@ public class ClaudeSessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    /// <summary>
+    /// <see cref="SessionPanelViewModel.ProviderBadge"/> lives on the shared base (#26) so the sidebar tile
+    /// can bind to it regardless of session subtype; this proves a local provider's session sets it there.
+    /// </summary>
+    [Fact]
+    public async Task StartConfigured_LocalSession_SetsTheBaseProviderBadge()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var localProfile = new ClaudeProfile("ollama", ConfigDir: "",
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
+
+        await vm.StartConfiguredAsync(
+            localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.ProviderBadge.Should().Be("Ollama");
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>A Claude-CLI session needs no badge — it is the default provider and gets no sidebar/header pill.</summary>
+    [Fact]
+    public async Task StartConfigured_ClaudeCliSession_LeavesTheBaseProviderBadgeEmpty()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.ProviderBadge.Should().BeEmpty();
+
+        await vm.DisposeAsync();
+    }
+
     [Fact]
     public void Apply_ThinkingDelta_AddsAThinkingEntry()
     {
