@@ -87,6 +87,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.</summary>
     public PluginManagerViewModel Plugins { get; }
 
+    /// <summary>Owns the live toast collection (#61); <see cref="Toasts"/> below is what <c>CockpitView.axaml</c>'s overlay actually binds to.</summary>
+    public ToastHostViewModel ToastHost { get; } = new();
+
+    /// <summary>Toasts currently shown by the overlay (#61), fed by <see cref="Services.ToastService"/> via <see cref="ToastHost"/>.</summary>
+    public ObservableCollection<ToastViewModel> Toasts => ToastHost.Toasts;
+
     /// <summary>A dismissible banner shown when one or more plugins failed to load (#14) — the app keeps running; details are in Options → Plugins.</summary>
     [ObservableProperty]
     private string _pluginFailureBanner = string.Empty;

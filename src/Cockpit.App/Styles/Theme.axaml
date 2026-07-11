@@ -36,6 +36,8 @@
             <Color x:Key="CockpitStatusBusyColor">#4A90E2</Color>
             <Color x:Key="CockpitStatusWaitingColor">#E0A33E</Color>
             <Color x:Key="CockpitStatusDoneColor">#5AA576</Color>
+            <!-- Error toast severity (#61) — no session status used red before this, so a new token. -->
+            <Color x:Key="CockpitStatusErrorColor">#D64545</Color>
 
             <SolidColorBrush x:Key="CockpitAccentBrush" Color="{StaticResource CockpitAccentColor}"/>
             <SolidColorBrush x:Key="CockpitAccentHoverBrush" Color="#E08867"/>
@@ -43,6 +45,7 @@
             <SolidColorBrush x:Key="CockpitStatusBusyBrush" Color="{StaticResource CockpitStatusBusyColor}"/>
             <SolidColorBrush x:Key="CockpitStatusWaitingBrush" Color="{StaticResource CockpitStatusWaitingColor}"/>
             <SolidColorBrush x:Key="CockpitStatusDoneBrush" Color="{StaticResource CockpitStatusDoneColor}"/>
+            <SolidColorBrush x:Key="CockpitStatusErrorBrush" Color="{StaticResource CockpitStatusErrorColor}"/>
 
             <!-- Geometry -->
             <CornerRadius x:Key="CockpitControlRadius">6</CornerRadius>
