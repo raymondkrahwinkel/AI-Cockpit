@@ -141,6 +141,15 @@
                         <TextBox Text="{Binding ApiKey}" PasswordChar="•"/>
                     </StackPanel>
 
+                    <!-- Plugin-registered provider fields (#45): the plugin's own config view (API key,
+                         model, base URL, ...) is embedded here instead of a fixed set of controls, since a
+                         plugin's config shape is opaque to the host. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProvider}">
+                        <TextBlock Text="Provider settings" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <ContentControl Content="{Binding PluginConfigView.View}"/>
+                    </StackPanel>
+
                     <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">
                         <TextBlock Text="Base system prompt (optional)" FontSize="11"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>

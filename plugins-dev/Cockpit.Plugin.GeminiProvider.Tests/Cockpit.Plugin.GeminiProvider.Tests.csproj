@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the Gemini/OpenAI provider plugin's own driver logic (#45) — kept OUTSIDE Cockpit.slnx
+       and outside Cockpit.Core.Tests, in its own project alongside the plugin under plugins-dev/, same as
+       the plugin itself is built outside the main solution. Unlike Cockpit.Core.Tests' plugin references
+       (ReferenceOutputAssembly=false, loaded only through PluginActivator to prove type identity), this
+       project references the plugin normally: it tests the plugin's own internal driver/config-view logic
+       directly, which needs no type-identity proof. Run explicitly with `dotnet test` in this folder (or
+       against this .csproj) — it is not picked up by `dotnet test` at the repo root, which only discovers
+       Cockpit.slnx's test project. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Plugin.GeminiProvider\Cockpit.Plugin.GeminiProvider.csproj" />
+  </ItemGroup>
+
+</Project>

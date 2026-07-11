@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Provider plugin (#45, fase A worked example): registers Gemini and OpenAI as selectable session
+       providers, both talking over an OpenAI-Chat-Completions-compatible HTTP endpoint via
+       Microsoft.Extensions.AI's IChatClient — the exact stack Cockpit.Infrastructure.Claude.OpenAiCompatSessionDriver
+       already runs for Ollama/LM Studio, just registered through the new plugin-provider seam instead of a
+       built-in enum case. Built OUTSIDE the main solution (plugins-dev/) so the app build stays clean;
+       package its bin/<config>/net10.0 output into a .zip and install it via Options -> Plugins.
+       EnableDynamicLoading emits the .deps.json the host's AssemblyDependencyResolver needs. The shared
+       assemblies (Cockpit.Plugins.Abstractions, Avalonia, Microsoft.Extensions.AI/.OpenAI) are compile-only
+       (Private=false / ExcludeAssets=runtime) so the host's own copies (Cockpit.Infrastructure already
+       carries Microsoft.Extensions.AI/.OpenAI for the built-in local-model driver) load and shared types
+       keep one identity — the plugin folder ships only its own DLL + plugin.json. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- Same Microsoft.Extensions.AI / .OpenAI versions as Cockpit.Infrastructure — the host's copies load
+         at runtime (this plugin ships none of its own), so the version must line up for type identity. -->
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.7.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.7.0">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The chat/streaming/error-handling loop (OpenAiCompatPluginSessionDriver) is real logic worth its
+         own unit tests against a fake IChatClient, mirroring the host's OpenAiCompatSessionDriverTests —
+         unlike the other example plugins' internal HTTP clients, which have none. Its dedicated test
+         project (own solution, not part of Cockpit.slnx — see that project's own header comment) needs
+         this grant since the driver/config types stay internal, matching this plugin's own style. -->
+    <InternalsVisibleTo Include="Cockpit.Plugin.GeminiProvider.Tests" />
+  </ItemGroup>
+
+</Project>

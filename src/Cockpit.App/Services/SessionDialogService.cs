@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Infrastructure.Claude;
 
 namespace Cockpit.App.Services;
 
@@ -23,13 +24,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IClaudeProfileLoginChecker _loginChecker;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly IPluginProviderRegistry _pluginProviderRegistry;
 
-    public SessionDialogService(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IModelCatalog modelCatalog, IMcpServerStore mcpServerStore)
+    public SessionDialogService(
+        IClaudeProfileStore profileStore,
+        IClaudeProfileLoginChecker loginChecker,
+        IModelCatalog modelCatalog,
+        IMcpServerStore mcpServerStore,
+        IPluginProviderRegistry pluginProviderRegistry)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
+        _pluginProviderRegistry = pluginProviderRegistry;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -74,7 +82,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     private async Task ShowManageProfilesAsync(Window owner)
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog);
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry);
         await viewModel.LoadAsync();
 
         var dialog = new ManageProfilesDialog { DataContext = viewModel };

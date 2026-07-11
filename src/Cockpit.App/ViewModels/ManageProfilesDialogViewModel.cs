@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Claude;
 
 namespace Cockpit.App.ViewModels;
 
@@ -18,6 +19,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     private readonly IClaudeProfileStore? _profileStore;
     private readonly IClaudeProfileLoginChecker? _loginChecker;
     private readonly IModelCatalog? _modelCatalog;
+    private readonly IPluginProviderRegistry? _pluginProviderRegistry;
+    private readonly IReadOnlyList<SessionProviderOption> _providers;
 
     /// <summary>Raised when the dialog should close (after a save, or on cancel).</summary>
     public event Action? CloseRequested;
@@ -39,6 +42,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 
     public ManageProfilesDialogViewModel()
     {
+        _providers = SessionProviderCatalog.Providers;
+
         // Design-time preview: one editable profile so the dialog renders in the previewer.
         var sample = new EditableProfileViewModel(
             new ClaudeProfile("personal", "~/.claude-personal", Purpose: "private"), isLoggedIn: true);
@@ -46,11 +51,21 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         SelectedProfile = sample;
     }
 
-    public ManageProfilesDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IModelCatalog? modelCatalog = null)
+    public ManageProfilesDialogViewModel(
+        IClaudeProfileStore profileStore,
+        IClaudeProfileLoginChecker loginChecker,
+        IModelCatalog? modelCatalog = null,
+        IPluginProviderRegistry? pluginProviderRegistry = null)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _modelCatalog = modelCatalog;
+        _pluginProviderRegistry = pluginProviderRegistry;
+
+        // Snapshot the plugin-registered providers once per dialog open (#45) — registrations only ever
+        // happen at plugin-load time, well before this dialog can be shown, so a live-updating list buys
+        // nothing here.
+        _providers = pluginProviderRegistry is null ? SessionProviderCatalog.Providers : SessionProviderCatalog.AllProviders(pluginProviderRegistry);
     }
 
     /// <summary>Status of the last model refresh (count or a "server not running" hint), shown next to the model picker.</summary>
@@ -102,7 +117,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         Profiles.Clear();
         foreach (var profile in profiles)
         {
-            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false));
+            Profiles.Add(new EditableProfileViewModel(profile, _loginChecker?.IsLoggedIn(profile) ?? false, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry));
         }
 
         SelectedProfile = Profiles.FirstOrDefault();
@@ -113,7 +128,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     {
         // A freshly added profile may pick its provider (#26); an existing one is fixed.
         var added = new EditableProfileViewModel(
-            new ClaudeProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true);
+            new ClaudeProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
         Profiles.Add(added);
         SelectedProfile = added;
     }
