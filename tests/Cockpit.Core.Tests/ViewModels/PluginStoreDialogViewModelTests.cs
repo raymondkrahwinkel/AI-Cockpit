@@ -154,6 +154,22 @@ public class PluginStoreDialogViewModelTests
     }
 
     [Fact]
+    public void IsLoadingCatalogue_TrueOnlyWhileBusyWithStoresConfiguredAndNothingLoadedYet()
+    {
+        var manager = new PluginManagerViewModel();
+        var vm = new PluginStoreDialogViewModel(manager);
+
+        vm.IsLoadingCatalogue.Should().BeFalse("no stores are configured yet");
+
+        manager.Stores.Add("github.com/example/plugins");
+        manager.IsBusy = true;
+        vm.IsLoadingCatalogue.Should().BeTrue();
+
+        manager.AvailablePlugins.Add(_Row("a", "Alpha"));
+        vm.IsLoadingCatalogue.Should().BeFalse("the catalogue has loaded something even while still busy");
+    }
+
+    [Fact]
     public void HasNoStores_ReflectsTheManagersStoreList()
     {
         var manager = new PluginManagerViewModel();

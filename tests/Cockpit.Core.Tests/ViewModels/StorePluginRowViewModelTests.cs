@@ -18,13 +18,14 @@ public class StorePluginRowViewModelTests
         string? homepage = null,
         string? repository = null,
         bool featured = false,
-        string? published = null) => new(
+        string? published = null,
+        string latestVersion = "1.0.0") => new(
         Id: "github-issues",
         Name: name,
         Description: "d",
         Author: "me",
-        LatestVersion: "1.0.0",
-        Versions: [new PluginStoreVersion("1.0.0", "github-issues/1.0.0.zip", 1, "1.0.0", "sha", null)],
+        LatestVersion: latestVersion,
+        Versions: [new PluginStoreVersion(latestVersion, "github-issues/1.0.0.zip", 1, "1.0.0", "sha", null)],
         Category: category,
         Icon: icon,
         Homepage: homepage,
@@ -115,5 +116,32 @@ public class StorePluginRowViewModelTests
         var row = new StorePluginRowViewModel(_Entry(published: published), "url", null);
 
         row.PublishedDate.Should().BeNull();
+    }
+
+    [Fact]
+    public void PrimaryActionLabel_NotInstalled_IsInstall()
+    {
+        var row = new StorePluginRowViewModel(_Entry(), "url", null);
+
+        row.PrimaryActionLabel.Should().Be("Install");
+        row.CanTakePrimaryAction.Should().BeTrue();
+    }
+
+    [Fact]
+    public void PrimaryActionLabel_InstalledWithNewerStoreVersion_IsUpdate()
+    {
+        var row = new StorePluginRowViewModel(_Entry(latestVersion: "2.0.0"), "url", "1.0.0");
+
+        row.PrimaryActionLabel.Should().Be("Update");
+        row.CanTakePrimaryAction.Should().BeTrue();
+    }
+
+    [Fact]
+    public void PrimaryActionLabel_InstalledUpToDate_IsDisabledBadge()
+    {
+        var row = new StorePluginRowViewModel(_Entry(latestVersion: "1.0.0"), "url", "1.0.0");
+
+        row.PrimaryActionLabel.Should().Be("Installed ✓");
+        row.CanTakePrimaryAction.Should().BeFalse();
     }
 }

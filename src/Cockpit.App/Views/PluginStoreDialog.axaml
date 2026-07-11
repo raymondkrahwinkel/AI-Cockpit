@@ -1,0 +1,255 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:views="using:Cockpit.App.Views"
+        xmlns:core="using:Cockpit.Core.Plugins"
+        xmlns:sys="using:System"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.PluginStoreDialog"
+        x:DataType="vm:PluginStoreDialogViewModel"
+        Title="Plugin store"
+        Width="920" Height="640" MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:PluginStoreDialogViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Footer: restart banner (once an install/update needs it) on the left, Close on the right —
+             NeedsRestart/RestartNowCommand are the same manager properties the Options tab uses. -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <Button Grid.Column="0" Content="Restart cockpit now" Classes="Accent" HorizontalAlignment="Left"
+                        Command="{Binding Manager.RestartNowCommand}"
+                        IsVisible="{Binding Manager.NeedsRestart}"
+                        ToolTip.Tip="Restarts the cockpit for you — applies the plugin change(s) above without closing and relaunching it yourself."/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Manager.StatusMessage}" VerticalAlignment="Center" FontSize="11"
+                               MaxWidth="420" TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               IsVisible="{Binding Manager.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <Button Content="Close" Click="OnClose"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Search/sort bar, always visible above every filter/page. -->
+        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,12" IsEnabled="{Binding !Manager.IsBusy}">
+                <TextBox Text="{Binding SearchText}" Width="260" PlaceholderText="Search plugins…"/>
+                <ComboBox ItemsSource="{Binding SortModes}" SelectedItem="{Binding SelectedSortModeOption}"
+                          DisplayMemberBinding="{Binding Label}"/>
+                <Button Content="↻ Refresh" Classes="Compact" Command="{Binding RefreshCommand}"/>
+            </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="200,*,Auto">
+
+            <!-- Sidebar: Discover / All plugins / categories / Installed / Updates available, plus the
+                 collapsible "+ Manage stores" panel (store-URL add/remove moved here from Options). -->
+            <DockPanel Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}">
+                <StackPanel DockPanel.Dock="Bottom" Margin="8" Spacing="6">
+                    <Button Content="+ Manage stores" Classes="Subtle" HorizontalAlignment="Left"
+                            Foreground="{StaticResource CockpitAccentBrush}"
+                            Command="{Binding ToggleManageStoresCommand}"/>
+
+                    <StackPanel Spacing="6" IsVisible="{Binding IsManageStoresOpen}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBox Text="{Binding Manager.NewStoreUrl}" Width="120" FontSize="11"
+                                     PlaceholderText="owner/repo or index.json URL"/>
+                            <Button Content="Add" Classes="Compact" Command="{Binding Manager.AddStoreCommand}"/>
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding Manager.Stores}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sys:String">
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding}" FontSize="10" VerticalAlignment="Center"
+                                                   MaxWidth="120" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <Button Content="✕" Classes="Compact Subtle" FontSize="10"
+                                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                Command="{Binding $parent[ItemsControl].((vm:PluginStoreDialogViewModel)DataContext).Manager.RemoveStoreCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+
+                <ListBox ItemsSource="{Binding SidebarItems}" SelectedItem="{Binding SelectedSidebarItem}"
+                         Background="Transparent" Margin="4">
+                    <ListBox.Styles>
+                        <!-- A zero-count "Installed"/"Updates available" entry is greyed out and unclickable
+                             rather than hidden — IsEnabled=False both dims it (default disabled styling)
+                             and blocks selection. -->
+                        <Style Selector="ListBoxItem" x:DataType="vm:PluginStoreSidebarItem">
+                            <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PluginStoreSidebarItem">
+                            <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- Main content: loading / no-stores / grid+rails, mutually exclusive states (§1.8). -->
+            <Panel Grid.Column="1">
+
+                <TextBlock Text="Loading plugin catalogue…" IsVisible="{Binding IsLoadingCatalogue}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                <StackPanel IsVisible="{Binding HasNoStores}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Spacing="10" MaxWidth="320">
+                    <TextBlock Text="No plugin stores configured yet." HorizontalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <TextBox Text="{Binding Manager.NewStoreUrl}" Width="240"
+                                 PlaceholderText="github.com/owner/repo or index.json URL"/>
+                        <Button Content="Add" Command="{Binding Manager.AddStoreCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <ScrollViewer IsVisible="{Binding !HasNoStores}">
+                    <StackPanel Margin="16" Spacing="16">
+
+                        <!-- Discover rails: Featured + Recently added, above the same "All plugins" grid. -->
+                        <StackPanel Spacing="8" IsVisible="{Binding ShowDiscoverRails}">
+                            <StackPanel Spacing="8" IsVisible="{Binding HasFeaturedPlugins}">
+                                <TextBlock Text="Featured" FontWeight="SemiBold"/>
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                    <ItemsControl ItemsSource="{Binding FeaturedPlugins}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="10"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:StorePluginRowViewModel">
+                                                <views:StorePluginCardView/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </StackPanel>
+
+                            <StackPanel Spacing="8" IsVisible="{Binding HasRecentlyAddedPlugins}">
+                                <TextBlock Text="Recently added" FontWeight="SemiBold"/>
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                    <ItemsControl ItemsSource="{Binding RecentlyAddedPlugins}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="10"/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:StorePluginRowViewModel">
+                                                <views:StorePluginCardView/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </StackPanel>
+
+                            <TextBlock Text="All plugins" FontWeight="SemiBold"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding EmptyStateMessage}"
+                                   IsVisible="{Binding !HasFilteredResults}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                        <ItemsControl ItemsSource="{Binding FilteredPlugins}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" ItemSpacing="10" LineSpacing="10"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:StorePluginRowViewModel">
+                                    <views:StorePluginCardView/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Panel>
+
+            <!-- Detail panel: collapses to nothing when no plugin is selected. -->
+            <Border Grid.Column="2" Width="340" Background="{StaticResource CockpitPanelBgBrush}"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1,0,0,0"
+                    IsVisible="{Binding SelectedPlugin, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <ScrollViewer>
+                    <StackPanel Margin="16" Spacing="10" DataContext="{Binding SelectedPlugin}"
+                                x:DataType="vm:StorePluginRowViewModel">
+
+                        <Button Content="✕" Classes="Subtle" HorizontalAlignment="Right"
+                                Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).CloseDetailsCommand}"/>
+
+                        <Border Width="56" Height="56" CornerRadius="12" Background="{StaticResource CockpitSecondaryBgBrush}"
+                                HorizontalAlignment="Left">
+                            <Panel>
+                                <TextBlock Text="{Binding IconGlyphOrNull}" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           IsVisible="{Binding IconGlyphOrNull, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                <TextBlock Text="{Binding MonogramLetter}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                           IsVisible="{Binding IconGlyphOrNull, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                            </Panel>
+                        </Border>
+
+                        <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Author}" Foreground="{StaticResource CockpitTextSecondaryBrush}" IsVisible="{Binding HasAuthor}"/>
+                        <Border Background="{StaticResource CockpitSecondaryBgBrush}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
+                            <TextBlock Text="{Binding Category}" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        </Border>
+
+                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                        <StackPanel Spacing="4">
+                            <Button Content="Homepage ↗" Classes="Subtle" HorizontalAlignment="Left"
+                                    Foreground="{StaticResource CockpitAccentBrush}"
+                                    IsVisible="{Binding HasHomepage}" Click="OnOpenHomepage"/>
+                            <Button Content="Repository ↗" Classes="Subtle" HorizontalAlignment="Left"
+                                    Foreground="{StaticResource CockpitAccentBrush}"
+                                    IsVisible="{Binding HasRepository}" Click="OnOpenRepository"/>
+                        </StackPanel>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+                        <TextBlock Text="Versions" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{Binding Entry.Versions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="core:PluginStoreVersion">
+                                    <StackPanel Margin="0,0,0,6">
+                                        <TextBlock Text="{Binding Version, StringFormat='v{0}'}" FontWeight="SemiBold" FontSize="12"/>
+                                        <TextBlock Text="{Binding Notes}" FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding Notes, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+                        <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                        <Button Content="{Binding PrimaryActionLabel}" Classes="Accent" HorizontalAlignment="Stretch"
+                                IsEnabled="{Binding CanTakePrimaryAction}"
+                                Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.InstallFromStoreCommand}"
+                                CommandParameter="{Binding}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

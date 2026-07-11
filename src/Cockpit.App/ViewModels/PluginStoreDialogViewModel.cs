@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -19,6 +20,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     private readonly PluginManagerViewModel _manager;
     private readonly NotifyCollectionChangedEventHandler _onAvailablePluginsChanged;
     private readonly NotifyCollectionChangedEventHandler _onStoresChanged;
+    private readonly PropertyChangedEventHandler _onManagerPropertyChanged;
     private bool _isDisposed;
 
     /// <summary>The wrapped manager — the store dialog's XAML binds installs/updates, the restart banner and store-URL management straight to its commands/properties (e.g. <c>Manager.InstallFromStoreCommand</c>, <c>Manager.NeedsRestart</c>).</summary>
@@ -59,15 +61,17 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         _manager = manager;
         _onAvailablePluginsChanged = (_, _) => _OnCatalogueChanged();
         _onStoresChanged = (_, _) => _OnCatalogueChanged();
+        _onManagerPropertyChanged = _OnManagerPropertyChanged;
         _manager.AvailablePlugins.CollectionChanged += _onAvailablePluginsChanged;
         _manager.Stores.CollectionChanged += _onStoresChanged;
+        _manager.PropertyChanged += _onManagerPropertyChanged;
 
         _RebuildSidebarItems();
         SelectedSidebarItem = SidebarItems[0];
         _RecomputeFiltered();
     }
 
-    /// <summary>Unsubscribes from the shared manager's collections — call when the dialog closes; the manager itself outlives the dialog (it is the Options tab's own instance), so a dialog that forgot this would leak one subscription per open.</summary>
+    /// <summary>Unsubscribes from the shared manager's collections/property-changed — call when the dialog closes; the manager itself outlives the dialog (it is the Options tab's own instance), so a dialog that forgot this would leak one subscription per open.</summary>
     public void Dispose()
     {
         if (_isDisposed)
@@ -77,17 +81,42 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
         _manager.AvailablePlugins.CollectionChanged -= _onAvailablePluginsChanged;
         _manager.Stores.CollectionChanged -= _onStoresChanged;
+        _manager.PropertyChanged -= _onManagerPropertyChanged;
         _isDisposed = true;
+    }
+
+    private void _OnManagerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(PluginManagerViewModel.IsBusy))
+        {
+            OnPropertyChanged(nameof(IsLoadingCatalogue));
+        }
     }
 
     /// <summary>True when no store is configured yet — the grid column is replaced by the "no stores" panel (§1.8).</summary>
     public bool HasNoStores => _manager.Stores.Count == 0;
+
+    /// <summary>True during the first catalogue fetch (stores configured, nothing loaded yet, a browse in flight) — the grid shows the "Loading plugin catalogue…" message instead of an empty state (§1.8).</summary>
+    public bool IsLoadingCatalogue => _manager.IsBusy && !HasNoStores && _manager.AvailablePlugins.Count == 0;
 
     /// <summary>The Discover page's Featured/Recently-added rails only show above the "All plugins" grid when Discover is selected and there is no active search (§1.4).</summary>
     public bool ShowDiscoverRails => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Discover && string.IsNullOrWhiteSpace(SearchText);
 
     /// <summary>The empty-state message for the current filter/search combination (§1.8) — search takes priority over the filter-specific message.</summary>
     public string EmptyStateMessage => BuildEmptyStateMessage(SelectedSidebarItem?.Filter ?? PluginStoreFilter.Discover, SearchText);
+
+    public bool HasFeaturedPlugins => FeaturedPlugins.Count > 0;
+
+    public bool HasRecentlyAddedPlugins => RecentlyAddedPlugins.Count > 0;
+
+    public bool HasFilteredResults => FilteredPlugins.Count > 0;
+
+    /// <summary>The sort combobox's bound item — a thin wrapper so the picker binds to a <see cref="PluginStoreSortModeOption"/> object while <see cref="SelectedSortMode"/> (the enum) stays the plain, test-friendly source of truth.</summary>
+    public PluginStoreSortModeOption SelectedSortModeOption
+    {
+        get => SortModes.First(option => option.Mode == SelectedSortMode);
+        set => SelectedSortMode = value.Mode;
+    }
 
     /// <summary>Reloads the catalogue through the shared manager (its own fetch/problems handling, unchanged) — called when the dialog opens and by the Refresh button.</summary>
     public async Task LoadAsync()
@@ -121,7 +150,11 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     partial void OnSearchTextChanged(string value) => _RecomputeFiltered();
 
-    partial void OnSelectedSortModeChanged(PluginStoreSortMode value) => _RecomputeFiltered();
+    partial void OnSelectedSortModeChanged(PluginStoreSortMode value)
+    {
+        OnPropertyChanged(nameof(SelectedSortModeOption));
+        _RecomputeFiltered();
+    }
 
     partial void OnSelectedSidebarItemChanged(PluginStoreSidebarItem? value) => _RecomputeFiltered();
 
@@ -130,6 +163,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         _RebuildSidebarItems();
         _RecomputeFiltered();
         OnPropertyChanged(nameof(HasNoStores));
+        OnPropertyChanged(nameof(IsLoadingCatalogue));
     }
 
     // Rebuilds the sidebar from the manager's current catalogue (categories + Installed/Updates counts
@@ -182,6 +216,9 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
         OnPropertyChanged(nameof(ShowDiscoverRails));
         OnPropertyChanged(nameof(EmptyStateMessage));
+        OnPropertyChanged(nameof(HasFeaturedPlugins));
+        OnPropertyChanged(nameof(HasRecentlyAddedPlugins));
+        OnPropertyChanged(nameof(HasFilteredResults));
     }
 
     private static void _Replace(ObservableCollection<StorePluginRowViewModel> target, IReadOnlyList<StorePluginRowViewModel> source)

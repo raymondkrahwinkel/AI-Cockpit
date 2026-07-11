@@ -77,4 +77,10 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
     /// added" and sorts last under "Recently updated".
     /// </summary>
     public DateOnly? PublishedDate => DateOnly.TryParse(entry.Published, out var parsed) ? parsed : null;
+
+    /// <summary>The store dialog card/detail's primary action button label — "Install", "Update", or a disabled "Installed" badge once up to date.</summary>
+    public string PrimaryActionLabel => !IsInstalled ? "Install" : UpdateAvailable ? "Update" : "Installed ✓";
+
+    /// <summary>Whether the primary action button does anything — false once installed and up to date, when it becomes a disabled badge instead.</summary>
+    public bool CanTakePrimaryAction => CanInstall || CanUpdate;
 }
