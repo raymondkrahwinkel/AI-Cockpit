@@ -16,6 +16,8 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Profiles;
 using Exclr8.Terminal;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Views;
 
@@ -41,10 +43,23 @@ public partial class ClaudeTtyView : UserControl
     private bool _wired;
     private int _lastColumns;
     private int _lastRows;
+    // The size actually last sent to the pty (initial launch or a settle-tick Resize) — #58's reference
+    // point for telling a real resize apart from a net-zero round trip. See TtyResizeSettleDecision.
+    private int _ptyColumns;
+    private int _ptyRows;
     // Coalesces the terminal's resize burst so the pty is spawned/resized once the size settles, not on every
     // intermediate value. On Wayland/KDE the compositor emits a transient size before the real one; spawning
     // claude on the transient size and immediately reflowing it is a prime cause of the stacked-at-top render.
     private DispatcherTimer? _resizeSettle;
+
+    // #58 confirmation logging: every Exclr8 Resized event and every pty.Resize call, so the net-zero
+    // round-trip signature (>=2 Resized with different sizes within the settle window, followed by one
+    // pty.Resize equal to the previous pty size) can be confirmed from %APPDATA%\Cockpit\logs\cockpit.log.
+    // Resolved from the app's DI container rather than injected: this UserControl is constructed by the
+    // XAML view locator/designer, not by the container, matching the existing Program.Services lookups in
+    // App.axaml.cs. Skipped in the XAML previewer, where Program.Services is never assigned.
+    private readonly ILogger<ClaudeTtyView>? _logger =
+        Design.IsDesignMode ? null : Program.Services.GetService<ILogger<ClaudeTtyView>>();
 
     // Auto-redraw (#55): debounces a burst of redraw triggers (focus, activation, visibility) into a
     // single ForceRedraw() once they stop arriving, same restart-on-trigger approach as _resizeSettle
@@ -157,7 +172,8 @@ public partial class ClaudeTtyView : UserControl
     /// </summary>
     private void ScheduleAutoRedraw()
     {
-        if (!TtyAutoRedrawGate.ShouldScheduleRedraw(_pty is not null, _lastColumns, _lastRows))
+        if (!TtyAutoRedrawGate.ShouldScheduleRedraw(
+                _pty is not null, _lastColumns, _lastRows, _resizeSettle is { IsEnabled: true }))
         {
             return;
         }
@@ -336,6 +352,14 @@ public partial class ClaudeTtyView : UserControl
         _lastRows = Math.Max(1, e.Rows);
         UpdateDiagnostics();
 
+        // #58 confirmation logging: the glitch's signature is >=2 of these with different sizes within
+        // the ~150ms settle window, followed by exactly one "pty.Resize" log line equal to the previous
+        // pty size (see CreateResizeSettleTimer below). RenderScaling is logged alongside so a fractional-
+        // scaling renegotiation showing up as the trigger is visible directly in the log.
+        var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
+        _logger?.LogInformation(
+            "Exclr8 Resized -> {Columns}x{Rows} (scale {Scale})", _lastColumns, _lastRows, scale);
+
         // Debounce: (re)start the settle timer and act only once the size stops changing (see _resizeSettle).
         _resizeSettle ??= CreateResizeSettleTimer();
         _resizeSettle.Stop();
@@ -351,10 +375,35 @@ public partial class ClaudeTtyView : UserControl
             if (_launchPending)
             {
                 StartPty();
+                return;
+            }
+
+            if (_pty is not { } pty)
+            {
+                return;
+            }
+
+            // #58: decide deterministically instead of unconditionally resizing. A settled size that
+            // differs from what the pty already has is a real resize — claude sees a changed winsize and
+            // repaints via SIGWINCH on its own. A settled size that nets back to the pty's current size is
+            // the net-zero round trip (Exclr8's buffer mutated getting there, but claude's winsize never
+            // changed, so it never got a SIGWINCH to repaint from) — force the redraw claude otherwise
+            // never triggers instead of sending an identical, no-op resize.
+            var decision = TtyResizeSettleDecision.Decide(_ptyColumns, _ptyRows, _lastColumns, _lastRows);
+            if (decision == TtyResizeSettleAction.Resize)
+            {
+                _logger?.LogInformation(
+                    "pty.Resize -> {Columns}x{Rows} (was {PreviousColumns}x{PreviousRows})",
+                    _lastColumns, _lastRows, _ptyColumns, _ptyRows);
+                pty.Resize((short)_lastColumns, (short)_lastRows);
+                _ptyColumns = _lastColumns;
+                _ptyRows = _lastRows;
             }
             else
             {
-                _pty?.Resize((short)_lastColumns, (short)_lastRows);
+                _logger?.LogInformation(
+                    "Net-zero resize round trip at {Columns}x{Rows} -> ForceRedraw", _lastColumns, _lastRows);
+                ForceRedraw();
             }
         };
 
@@ -363,9 +412,12 @@ public partial class ClaudeTtyView : UserControl
 
     /// <summary>
     /// Forces the TUI to repaint: shrinks the pty a couple of rows, waits for claude to react to the resize
-    /// (SIGWINCH), then restores the real size so claude re-renders its managed UI. Manual recovery for the
-    /// reflow glitch where claude's frames end up stacked at the top after a resize/focus change on some
-    /// setups. Does not clear the emulator (that would wipe the scrolled-back conversation claude never re-emits).
+    /// (SIGWINCH), then restores the real size so claude re-renders its managed UI. Recovers the reflow
+    /// glitch where claude's frames end up stacked at the top after a resize/focus change on some setups —
+    /// fired deterministically by the resize-settle timer's net-zero-round-trip decision (#58,
+    /// <see cref="TtyResizeSettleDecision"/>), by the #55 auto-redraw vangnet for a pure focus/activation
+    /// event with no resize transient at all, and manually via the Redraw button. Does not clear the
+    /// emulator (that would wipe the scrolled-back conversation claude never re-emits).
     /// </summary>
     private async void ForceRedraw()
     {
@@ -437,6 +489,9 @@ public partial class ClaudeTtyView : UserControl
                 _pendingEffort,
                 (short)_lastColumns,
                 (short)_lastRows);
+            _ptyColumns = _lastColumns;
+            _ptyRows = _lastRows;
+            _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);
         }
         catch (Exception ex)
         {
