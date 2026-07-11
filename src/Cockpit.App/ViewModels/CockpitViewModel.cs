@@ -293,6 +293,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>Pushes the vertical-stack layout signal to every open TTY session as it changes (#54), so a switch to/from stacked-vertically re-docks each panel's header live, the same as flipping the terminal font settings.</summary>
+    partial void OnStackSessionsVerticallyChanged(bool value)
+    {
+        foreach (var session in Sessions)
+        {
+            if (session is ClaudeTtyViewModel tty)
+            {
+                tty.IsVerticalLayout = value;
+            }
+        }
+    }
+
     /// <summary>True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.</summary>
     public bool ShowSinglePane => SingleSessionLayout || IsZoomed;
 
@@ -1148,6 +1160,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             tty.TerminalFontFamily = TerminalFontFamily;
             tty.TerminalFontSize = TerminalFontSize;
+            // Seed the current stacked-vertically layout (#54); OnStackSessionsVerticallyChanged keeps it
+            // live afterwards, same pattern as the font settings above.
+            tty.IsVerticalLayout = StackSessionsVertically;
         }
 
         session.CloseRequested += OnSessionCloseRequested;

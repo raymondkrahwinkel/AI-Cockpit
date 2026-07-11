@@ -9,6 +9,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -94,6 +95,7 @@ public partial class ClaudeTtyView : UserControl
 
         WireTerminal();
         _ApplyTerminalFont();
+        _ApplyHeaderLayout();
     }
 
     /// <summary>
@@ -187,6 +189,10 @@ public partial class ClaudeTtyView : UserControl
         {
             _ApplyTerminalFont();
         }
+        else if (e.PropertyName == nameof(ClaudeTtyViewModel.IsVerticalLayout))
+        {
+            _ApplyHeaderLayout();
+        }
     }
 
     private void _ApplyTerminalFont()
@@ -198,6 +204,36 @@ public partial class ClaudeTtyView : UserControl
 
         Terminal.FontFamily = _viewModel.TerminalFontFamily;
         Terminal.FontSize = _viewModel.TerminalFontSize;
+    }
+
+    /// <summary>
+    /// Re-docks the header beside the terminal in stacked-vertical layout instead of above it (#54):
+    /// applied imperatively, same reasoning as <see cref="_ApplyTerminalFont"/> — <c>DockPanel.Dock</c>
+    /// and the status row's <c>Orientation</c> both need to flip together with
+    /// <see cref="ClaudeTtyViewModel.IsVerticalLayout"/>, and a converter pair for two properties driven
+    /// by one bool is more machinery than just setting them here on attach and on every VM change.
+    /// Stacked panels are wide and short, so a left-hand header column reads better there than a
+    /// top-docked one that eats into the little height each panel gets; the normal grid keeps it on top.
+    /// </summary>
+    private void _ApplyHeaderLayout()
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        if (_viewModel.IsVerticalLayout)
+        {
+            DockPanel.SetDock(HeaderPanel, Dock.Left);
+            HeaderPanel.Margin = new Thickness(0, 0, 8, 0);
+            StatusRow.Orientation = Orientation.Vertical;
+        }
+        else
+        {
+            DockPanel.SetDock(HeaderPanel, Dock.Top);
+            HeaderPanel.Margin = new Thickness(0, 0, 0, 6);
+            StatusRow.Orientation = Orientation.Horizontal;
+        }
     }
 
     /// <summary>

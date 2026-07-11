@@ -85,6 +85,16 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     [ObservableProperty]
     private int _terminalFontSize = 13;
 
+    /// <summary>
+    /// Mirrors <c>CockpitViewModel.StackSessionsVertically</c> (#24), the multi-session grid's
+    /// stacked-vertically layout — seeded at session creation and pushed live on every change (see
+    /// <c>CockpitViewModel.OnStackSessionsVerticallyChanged</c>). Bound in <c>ClaudeTtyView.axaml.cs</c> to
+    /// dock the header beside the terminal instead of above it (#54): stacked panels are wide and short,
+    /// so a top-docked header burns proportionally more of the little height each panel gets.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isVerticalLayout;
+
     // Parameterless constructor for the Avalonia previewer/Screenshotter design-time context.
     public ClaudeTtyViewModel()
     {

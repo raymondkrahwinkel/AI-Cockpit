@@ -635,6 +635,34 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task NewTtySession_IsSeededWithTheCurrentVerticalLayoutSetting()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
+        var vm = NewVm(dialogService);
+        vm.StackSessionsVertically = true;
+
+        await vm.NewSessionCommand.ExecuteAsync(null);
+
+        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+        tty.IsVerticalLayout.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ChangingStackSessionsVertically_PushesLiveToOpenTtySessions()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
+        var vm = NewVm(dialogService);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+
+        vm.StackSessionsVertically = true;
+
+        tty.IsVerticalLayout.Should().BeTrue();
+    }
+
+    [Fact]
     public void ChoosingCustomThenTypingAFont_DrivesTheEffectiveFontFamily()
     {
         var vm = NewVm();
