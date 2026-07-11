@@ -151,10 +151,10 @@ internal sealed class GitHubPrGhClient
             var title = element.TryGetProperty("title", out var t) ? t.GetString() ?? string.Empty : string.Empty;
             var url = element.TryGetProperty("url", out var u) ? u.GetString() ?? string.Empty : string.Empty;
             var body = element.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString() : null;
-            var repository = element.TryGetProperty("repository", out var repo) && repo.TryGetProperty("nameWithOwner", out var nwo)
+            var repository = element.TryGetProperty("repository", out var repo) && repo.ValueKind == JsonValueKind.Object && repo.TryGetProperty("nameWithOwner", out var nwo)
                 ? nwo.GetString() ?? string.Empty
                 : string.Empty;
-            var author = element.TryGetProperty("author", out var a) && a.TryGetProperty("login", out var login)
+            var author = element.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.Object && a.TryGetProperty("login", out var login)
                 ? login.GetString() ?? string.Empty
                 : string.Empty;
             pullRequests.Add(new GitHubPullRequest(number, title, url, body, repository, author));

@@ -83,7 +83,8 @@ internal sealed class YouTrackClient
                 continue;
             }
 
-            if (field.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Object && value.TryGetProperty("name", out var valueName))
+            if (field.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.Object
+                && value.TryGetProperty("name", out var valueName) && valueName.ValueKind == JsonValueKind.String)
             {
                 return valueName.GetString();
             }

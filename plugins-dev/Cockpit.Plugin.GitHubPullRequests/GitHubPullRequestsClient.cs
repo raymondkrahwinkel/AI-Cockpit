@@ -39,7 +39,7 @@ internal sealed class GitHubPullRequestsClient
             var title = element.TryGetProperty("title", out var t) ? t.GetString() ?? string.Empty : string.Empty;
             var htmlUrl = element.TryGetProperty("html_url", out var u) ? u.GetString() ?? string.Empty : string.Empty;
             var body = element.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString() : null;
-            var author = element.TryGetProperty("user", out var user) && user.TryGetProperty("login", out var login)
+            var author = element.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.Object && user.TryGetProperty("login", out var login)
                 ? login.GetString() ?? string.Empty
                 : string.Empty;
             pullRequests.Add(new GitHubPullRequest(number, title, htmlUrl, body, repository, author));
