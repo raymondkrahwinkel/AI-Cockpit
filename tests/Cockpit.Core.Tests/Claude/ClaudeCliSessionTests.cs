@@ -27,6 +27,15 @@ public class ClaudeCliSessionTests
         process.Started.Should().BeTrue();
     }
 
+    /// <summary>Claude backs pasted image content blocks in <c>SendUserMessageAsync</c> (#64) — the only built-in driver whose capabilities advertise vision support.</summary>
+    [Fact]
+    public async Task Capabilities_SupportsVision_IsTrue()
+    {
+        await using var session = new ClaudeCliSession(new FakeClaudeCliProcess(), new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
+
+        session.Capabilities.SupportsVision.Should().BeTrue();
+    }
+
     [Fact]
     public async Task StartAsync_WithProfile_PassesProfileToProcessAndExposesItOnSession()
     {

@@ -48,12 +48,16 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     // Tool support is set once the MCP servers connect (below); permission mode / model switch / thinking
     // stay off — the local model is fixed by its profile and tool approval is per-call, not a Claude mode.
+    // SupportsVision stays false too: SendUserMessageAsync below ignores the images parameter entirely, so
+    // advertising vision support here would be the exact dead promise #64 exists to prevent (fase 2 adds
+    // real image-block support before this ever flips true).
     public SessionCapabilities Capabilities { get; private set; } = new(
         SupportsTools: false,
         SupportsPermissions: false,
         SupportsLiveModelSwitch: false,
         SupportsPlanMode: false,
-        SupportsThinking: false);
+        SupportsThinking: false,
+        SupportsVision: false);
 
     public string? SessionId => _sessionId;
 

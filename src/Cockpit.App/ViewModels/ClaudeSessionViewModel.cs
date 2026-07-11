@@ -53,6 +53,15 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>True while at least one image is queued, so the chip strip can hide when empty.</summary>
     public bool HasPendingAttachments => PendingAttachments.Count > 0;
 
+    /// <summary>
+    /// True when this session's driver actually sends pasted images to the model (#64) — gates
+    /// <see cref="AddPastedImage"/> so a provider without <see cref="SessionCapabilities.SupportsVision"/>
+    /// (Ollama/LM Studio, the current plugin providers) never silently drops a pasted image. Notified
+    /// alongside <see cref="SessionPanelViewModel.Capabilities"/> in <see cref="StartWithProfileAsync"/>,
+    /// the one place that property changes after the driver starts.
+    /// </summary>
+    public bool CanPasteImages => Capabilities is { SupportsVision: true };
+
     /// <summary>Messages typed while a turn was in flight, dispatched in order as turns complete (T8).</summary>
     public ObservableCollection<QueuedMessageViewModel> QueuedMessages { get; } = [];
 
@@ -307,6 +316,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             // connects during StartAsync — so read them here rather than right after Create(), which would
             // always see the driver's pre-start (all-false) defaults.
             Capabilities = _session.Capabilities;
+            OnPropertyChanged(nameof(CanPasteImages));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
             // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
             var isLocalToolSession = Capabilities is { SupportsTools: true, SupportsPermissions: false };
@@ -457,8 +467,21 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// CTRL+V handler, which owns the Avalonia clipboard read; the view model only sees PNG bytes so
     /// it stays free of UI-toolkit types and unit-testable.
     /// </summary>
+    /// <remarks>
+    /// Gated on <see cref="CanPasteImages"/> (#64): the CTRL+V gesture has no button to hide, so a session
+    /// whose driver would otherwise silently drop the image (<see cref="SessionCapabilities.SupportsVision"/>
+    /// false — today's Ollama/LM Studio/plugin sessions) gets a transcript notice instead of a queued
+    /// attachment that vanishes unsent.
+    /// </remarks>
     public void AddPastedImage(byte[] pngBytes)
     {
+        if (!CanPasteImages)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(
+                TranscriptEntryKind.Error, "This session's provider does not support image input — the pasted image was not attached."));
+            return;
+        }
+
         PendingAttachments.Add(new ImageAttachmentViewModel(pngBytes, a => PendingAttachments.Remove(a)));
     }
 

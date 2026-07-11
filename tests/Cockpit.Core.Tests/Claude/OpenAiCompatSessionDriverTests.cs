@@ -47,6 +47,9 @@ public class OpenAiCompatSessionDriverTests
         driver.SessionId.Should().NotBeNullOrEmpty();
         driver.Capabilities.SupportsTools.Should().BeFalse();
         driver.Capabilities.SupportsPermissions.Should().BeFalse();
+        // SendUserMessageAsync ignores the images parameter entirely (#64) — advertising vision support
+        // here would be the exact dead promise the capability model exists to prevent.
+        driver.Capabilities.SupportsVision.Should().BeFalse();
     }
 
     [Fact]

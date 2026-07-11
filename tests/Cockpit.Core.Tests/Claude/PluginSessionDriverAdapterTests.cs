@@ -23,7 +23,31 @@ public class PluginSessionDriverAdapterTests
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
 
         adapter.Capabilities.Should().Be(new SessionCapabilities(
-            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
+            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
+            SupportsVision: false));
+    }
+
+    /// <summary>
+    /// SupportsVision (#64) is mapped straight through from the plugin's own capabilities rather than forced
+    /// false like the three live-control flags — no example plugin sets it true today (fase 2 not built
+    /// yet), but the adapter itself must not be the thing standing in the way once one does.
+    /// </summary>
+    [Fact]
+    public void Capabilities_MapsSupportsVisionFromThePluginCapabilities_WhenFalse()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false, SupportsVision: false) };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        adapter.Capabilities.SupportsVision.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Capabilities_MapsSupportsVisionFromThePluginCapabilities_WhenTrue()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false, SupportsVision: true) };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        adapter.Capabilities.SupportsVision.Should().BeTrue();
     }
 
     /// <summary>

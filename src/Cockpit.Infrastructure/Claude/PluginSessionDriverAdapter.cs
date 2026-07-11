@@ -18,13 +18,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
-    // than a flag a plugin could set true with nothing behind it (#45 review finding 3).
+    // than a flag a plugin could set true with nothing behind it (#45 review finding 3). SupportsVision is
+    // mapped straight through instead of forced false: every built-in example plugin already reports it
+    // false (IPluginSessionDriver.SendUserMessageAsync has no images parameter yet, #64 fase 2), so this
+    // stays honest without another host-side change once that surface can actually carry images.
     public SessionCapabilities Capabilities { get; } = new(
         SupportsTools: pluginCapabilities.SupportsTools,
         SupportsPermissions: pluginCapabilities.SupportsPermissions,
         SupportsLiveModelSwitch: false,
         SupportsPlanMode: false,
-        SupportsThinking: false);
+        SupportsThinking: false,
+        SupportsVision: pluginCapabilities.SupportsVision);
 
     public string? SessionId => inner.SessionId;
 

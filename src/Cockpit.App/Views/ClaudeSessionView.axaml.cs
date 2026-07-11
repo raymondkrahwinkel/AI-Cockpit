@@ -154,6 +154,9 @@ public partial class ClaudeSessionView : UserControl
     /// <summary>
     /// Handles CTRL+V ourselves: a bitmap on the clipboard becomes a PNG pending attachment on the
     /// view model; otherwise any clipboard text is inserted into the input as a normal text paste.
+    /// <see cref="ClaudeSessionViewModel.AddPastedImage"/> itself gates on <see cref="ClaudeSessionViewModel.CanPasteImages"/>
+    /// (#64) — a session whose driver cannot actually send images gets a transcript notice instead of a
+    /// silently vanishing attachment, since CTRL+V has no button here to hide.
     /// </summary>
     private async System.Threading.Tasks.Task _HandlePasteAsync()
     {

@@ -174,6 +174,81 @@ public class ClaudeSessionViewModelTests
     }
 
     /// <summary>
+    /// <see cref="ClaudeSessionViewModel.CanPasteImages"/> (#64) follows <see cref="SessionCapabilities.SupportsVision"/>
+    /// once the session has actually started — a Claude-CLI session reports it true since
+    /// <see cref="SessionCapabilities.ClaudeCli"/> is the driver's real preset.
+    /// </summary>
+    [Fact]
+    public async Task StartConfigured_ClaudeCliSession_ReportsCanPasteImagesTrue()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(SessionCapabilities.ClaudeCli);
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.CanPasteImages.Should().BeTrue();
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// A local (OpenAI-compatible) session's driver never sends pasted images (#64) — <see cref="ClaudeSessionViewModel.CanPasteImages"/>
+    /// reports false once such a session starts, mirroring how <see cref="SessionCapabilities.SupportsVision"/> stays
+    /// false for that driver.
+    /// </summary>
+    [Fact]
+    public async Task StartConfigured_LocalSession_ReportsCanPasteImagesFalse()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
+            SupportsVision: false));
+        var localProfile = new ClaudeProfile("ollama", ConfigDir: "",
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
+
+        await vm.StartConfiguredAsync(
+            localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.CanPasteImages.Should().BeFalse();
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
+    /// The concrete gap #64 closes: before this, a pasted image queued as a pending attachment on any
+    /// session regardless of provider, even though only Claude actually sent it — the operator saw a chip,
+    /// sent the message, and the image vanished silently on a local/plugin session. Now
+    /// <see cref="ClaudeSessionViewModel.AddPastedImage"/> refuses the attachment when
+    /// <see cref="ClaudeSessionViewModel.CanPasteImages"/> is false and leaves a transcript notice instead.
+    /// </summary>
+    [Fact]
+    public async Task AddPastedImage_WhenCanPasteImagesIsFalse_DoesNotQueueTheAttachment_AndLeavesATranscriptNotice()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
+            SupportsVision: false));
+        var localProfile = new ClaudeProfile("ollama", ConfigDir: "",
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
+        await vm.StartConfiguredAsync(
+            localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.AddPastedImage([1, 2, 3]);
+
+        vm.PendingAttachments.Should().BeEmpty();
+        vm.Transcript.Should().Contain(entry => entry.Kind == TranscriptEntryKind.Error && entry.Text.Contains("does not support image input"));
+
+        await vm.DisposeAsync();
+    }
+
+    /// <summary>
     /// <see cref="SessionPanelViewModel.ProviderBadge"/> lives on the shared base (#26) so the sidebar tile
     /// can bind to it regardless of session subtype; this proves a local provider's session sets it there.
     /// </summary>
