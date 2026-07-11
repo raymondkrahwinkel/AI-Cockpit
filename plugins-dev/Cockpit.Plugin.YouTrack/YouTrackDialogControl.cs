@@ -10,21 +10,29 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.YouTrack;
 
 /// <summary>
-/// The "YouTrack Issues" dialog opened from the side section's "View all issues" button: a search box and a
-/// sortable <see cref="DataGrid"/> of open issues for the configured project on the left, and a details panel
-/// on the right showing the selected issue's summary, state, description, a link, and a preview of the prompt
-/// it would produce (with a copy button). "Add to prompt" injects the prompt into the active session and
-/// only shows when one is active; the copy button always works. Built in code; the DataGrid theme is
-/// provided app-wide by the host.
+/// The "YouTrack Issues" dialog opened from the side-menu button (#48): an instance selector (which of the
+/// configured <see cref="YouTrackInstance"/>s to query), a project filter (plus "All", populated from the
+/// instance's admin API with a silent fallback to the projects already present in the fetched issues), a state
+/// filter (plus "All", populated from the already-fetched issues' State/Stage custom field) and a search box,
+/// driving a sortable <see cref="DataGrid"/> of open issues on the left plus a details panel on the right —
+/// summary, state, description, a link, and a preview of the prompt it would produce (with a copy button).
+/// Switching instance or project re-fetches (a different instance is a different server; a specific project
+/// narrows the server-side query); switching state or typing a search term only re-filters the already-fetched
+/// list, client-side. "Add to prompt" injects into the active session and only shows when one is active; the
+/// copy button always works. Built in code; the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class YouTrackDialogControl : UserControl
 {
+    private const string AllOption = "All";
     private const int MaxResults = 100;
 
     private readonly YouTrackSettings _settings;
     private readonly ICockpitActions _actions;
     private readonly YouTrackClient _client = new();
 
+    private readonly ComboBox _instanceSelector;
+    private readonly ComboBox _projectFilter;
+    private readonly ComboBox _stateFilter;
     private readonly TextBox _search;
     private readonly TextBlock _status;
     private readonly DataGrid _grid;
@@ -41,18 +49,49 @@ internal sealed class YouTrackDialogControl : UserControl
     private IReadOnlyList<YouTrackIssue> _all = [];
     private string _renderedPrompt = string.Empty;
 
+    // Guards the project-filter reset that _OnInstanceChangedAsync does after fetching the new instance's
+    // projects: setting _projectFilter.SelectedItem there would otherwise also fire _OnProjectChangedAsync
+    // and trigger a second, redundant issues fetch before the first one (driven explicitly below) even ran.
+    private bool _isSyncingProjectFilter;
+
     public YouTrackDialogControl(YouTrackSettings settings, ICockpitActions actions)
     {
         _settings = settings;
         _actions = actions;
 
-        _search = new TextBox { PlaceholderText = "Filter by id, summary or state…", Width = 320 };
+        _instanceSelector = new ComboBox
+        {
+            ItemsSource = settings.Instances,
+            Width = 160,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        _instanceSelector.SelectionChanged += async (_, _) => await _OnInstanceChangedAsync();
+
+        _projectFilter = new ComboBox
+        {
+            ItemsSource = new List<string> { AllOption },
+            SelectedIndex = 0,
+            Width = 160,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        _projectFilter.SelectionChanged += async (_, _) => await _OnProjectChangedAsync();
+
+        _stateFilter = new ComboBox
+        {
+            ItemsSource = new List<string> { AllOption },
+            SelectedIndex = 0,
+            Width = 140,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        _stateFilter.SelectionChanged += (_, _) => _ApplyFilter();
+
+        _search = new TextBox { PlaceholderText = "Filter by id, summary or state…", Width = 260 };
         _search.TextChanged += (_, _) => _ApplyFilter();
 
         _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
 
         var refresh = new Button { Content = "Refresh" };
-        refresh.Click += async (_, _) => await _LoadAsync();
+        refresh.Click += async (_, _) => await _LoadIssuesAsync();
 
         _grid = new DataGrid
         {
@@ -62,6 +101,7 @@ internal sealed class YouTrackDialogControl : UserControl
             SelectionMode = DataGridSelectionMode.Single,
             GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
         };
+        _grid.Columns.Add(new DataGridTextColumn { Header = "Project", Binding = new Binding(nameof(YouTrackIssue.Project)), Width = new DataGridLength(90) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Id", Binding = new Binding(nameof(YouTrackIssue.IdReadable)), Width = new DataGridLength(90) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Summary", Binding = new Binding(nameof(YouTrackIssue.Summary)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "State", Binding = new Binding(nameof(YouTrackIssue.State)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
@@ -70,7 +110,13 @@ internal sealed class YouTrackDialogControl : UserControl
 
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
+        DockPanel.SetDock(_instanceSelector, Dock.Left);
+        DockPanel.SetDock(_projectFilter, Dock.Left);
+        DockPanel.SetDock(_stateFilter, Dock.Left);
         topBar.Children.Add(refresh);
+        topBar.Children.Add(_instanceSelector);
+        topBar.Children.Add(_projectFilter);
+        topBar.Children.Add(_stateFilter);
         topBar.Children.Add(_search);
 
         // Details panel (right).
@@ -177,21 +223,82 @@ internal sealed class YouTrackDialogControl : UserControl
         root.Children.Add(split);
         Content = root;
 
-        _ = _LoadAsync();
+        _Initialize();
     }
 
-    private async Task _LoadAsync()
+    private void _Initialize()
     {
+        if (_settings.Instances.Count == 0)
+        {
+            _status.Text = "No YouTrack instances configured — add one in settings.";
+            return;
+        }
+
+        // Fires _OnInstanceChangedAsync, which loads that instance's projects and issues.
+        _instanceSelector.SelectedIndex = 0;
+    }
+
+    private async Task _OnInstanceChangedAsync()
+    {
+        if (_instanceSelector.SelectedItem is not YouTrackInstance instance)
+        {
+            return;
+        }
+
+        _status.Text = "Loading projects…";
+        var projects = string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token)
+            ? []
+            : await _client.GetProjectsAsync(instance.InstanceUrl, instance.Token, CancellationToken.None);
+
+        var options = new List<string> { AllOption };
+        options.AddRange(projects.OrderBy(project => project, StringComparer.OrdinalIgnoreCase));
+
+        _isSyncingProjectFilter = true;
+        _projectFilter.ItemsSource = options;
+        _projectFilter.SelectedItem = !string.IsNullOrWhiteSpace(instance.DefaultProjectTag) && options.Contains(instance.DefaultProjectTag)
+            ? instance.DefaultProjectTag
+            : AllOption;
+        _isSyncingProjectFilter = false;
+
+        await _LoadIssuesAsync();
+    }
+
+    private async Task _OnProjectChangedAsync()
+    {
+        if (_isSyncingProjectFilter)
+        {
+            return;
+        }
+
+        await _LoadIssuesAsync();
+    }
+
+    private async Task _LoadIssuesAsync()
+    {
+        if (_instanceSelector.SelectedItem is not YouTrackInstance instance)
+        {
+            _status.Text = _settings.Instances.Count == 0
+                ? "No YouTrack instances configured — add one in settings."
+                : "Select an instance.";
+            return;
+        }
+
         _status.Text = "Loading…";
         try
         {
-            if (string.IsNullOrWhiteSpace(_settings.InstanceUrl) || string.IsNullOrWhiteSpace(_settings.Token) || string.IsNullOrWhiteSpace(_settings.ProjectTag))
+            if (string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token))
             {
-                _status.Text = "Set the instance URL, token and project in settings.";
+                _status.Text = $"\"{instance.Label}\" is missing an instance URL or token — check settings.";
+                _all = [];
+                _ApplyFilter();
                 return;
             }
 
-            _all = await _client.GetOpenIssuesAsync(_settings.InstanceUrl, _settings.Token, _settings.ProjectTag, _settings.ExtraQuery, MaxResults, CancellationToken.None);
+            var selectedProject = _projectFilter.SelectedItem as string;
+            var projectTag = string.IsNullOrEmpty(selectedProject) || selectedProject == AllOption ? null : selectedProject;
+
+            _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter: null, MaxResults, CancellationToken.None);
+            _PopulateStateFilter();
             _ApplyFilter();
             _status.Text = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
         }
@@ -201,13 +308,41 @@ internal sealed class YouTrackDialogControl : UserControl
         }
     }
 
+    // Rebuilds the state dropdown from the distinct states in the freshly loaded issues, keeping the previous
+    // selection if it is still present (otherwise falls back to "All") — mirrors the GitHub Issues dialog's
+    // repository-filter population, just on the State/Stage custom field instead.
+    private void _PopulateStateFilter()
+    {
+        var previousSelection = _stateFilter.SelectedItem as string;
+        var states = _all
+            .Select(issue => issue.State)
+            .Where(state => !string.IsNullOrEmpty(state))
+            .Select(state => state!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(state => state, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var options = new List<string> { AllOption };
+        options.AddRange(states);
+        _stateFilter.ItemsSource = options;
+        _stateFilter.SelectedItem = previousSelection is not null && options.Contains(previousSelection)
+            ? previousSelection
+            : AllOption;
+    }
+
     private void _ApplyFilter()
     {
         var query = _search.Text?.Trim();
+        var selectedState = _stateFilter.SelectedItem as string;
         IEnumerable<YouTrackIssue> filtered = _all;
+        if (!string.IsNullOrEmpty(selectedState) && selectedState != AllOption)
+        {
+            filtered = filtered.Where(issue => string.Equals(issue.State, selectedState, StringComparison.OrdinalIgnoreCase));
+        }
+
         if (!string.IsNullOrEmpty(query))
         {
-            filtered = _all.Where(issue =>
+            filtered = filtered.Where(issue =>
                 issue.Summary.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || issue.IdReadable.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || (issue.State?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false));
@@ -229,7 +364,7 @@ internal sealed class YouTrackDialogControl : UserControl
         _detailPlaceholder.IsVisible = false;
         _detailContent.IsVisible = true;
         _detailTitle.Text = issue.Summary;
-        var url = YouTrackClient.BuildIssueUrl(_settings.InstanceUrl, issue.IdReadable);
+        var url = _BuildIssueUrl(issue);
         _detailMeta.Text = $"{issue.IdReadable}  ·  {issue.State ?? "(no state)"}  ·  {url}";
         _detailBody.Text = string.IsNullOrWhiteSpace(issue.Description) ? "(no description)" : issue.Description;
         _renderedPrompt = PromptTemplate.Render(_settings.Template, issue, url);
@@ -253,8 +388,7 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
-        var url = YouTrackClient.BuildIssueUrl(_settings.InstanceUrl, issue.IdReadable);
-        _ = _actions.InjectIntoActiveSessionAsync(PromptTemplate.Render(_settings.Template, issue, url));
+        _ = _actions.InjectIntoActiveSessionAsync(PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
         _detailStatus.Text = $"✓ Added issue {issue.IdReadable} to the active session's prompt.";
     }
 
@@ -279,13 +413,19 @@ internal sealed class YouTrackDialogControl : UserControl
 
         try
         {
-            Process.Start(new ProcessStartInfo(YouTrackClient.BuildIssueUrl(_settings.InstanceUrl, issue.IdReadable)) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(_BuildIssueUrl(issue)) { UseShellExecute = true });
         }
         catch (Exception exception)
         {
             _detailStatus.Text = $"Could not open the browser: {exception.Message}";
         }
     }
+
+    // The selected instance's base URL, not the issue's own project — an issue never carries its instance.
+    private string _BuildIssueUrl(YouTrackIssue issue) =>
+        _instanceSelector.SelectedItem is YouTrackInstance instance
+            ? YouTrackClient.BuildIssueUrl(instance.InstanceUrl, issue.IdReadable)
+            : string.Empty;
 
     private static FontFamily _MonoFont() =>
         Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font

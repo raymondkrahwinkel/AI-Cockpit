@@ -6,28 +6,40 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.YouTrack;
 
 /// <summary>
-/// The plugin's settings view (opened from the gear in the plugin manager), built in code: instance base
-/// URL, permanent token, project short-name, an optional extra query filter, and the editable prompt
-/// template. Implements <see cref="IPluginSettingsView"/>, so the host renders the Save/Close footer and
-/// <see cref="Save"/> persists on Save (the host then closes the dialog).
+/// The plugin's settings view (opened from the gear in the plugin manager), built in code: a manageable list
+/// of <see cref="YouTrackInstance"/> rows (add/remove, each with its own base URL/token/default project — #48)
+/// and the shared, editable prompt template. Implements <see cref="IPluginSettingsView"/>, so the host renders
+/// the Save/Close footer and <see cref="Save"/> persists on Save (the host then closes the dialog).
 /// </summary>
 internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
 {
     private readonly YouTrackSettings _settings;
-    private readonly TextBox _instanceUrl;
-    private readonly TextBox _token;
-    private readonly TextBox _projectTag;
-    private readonly TextBox _extraQuery;
+    private readonly StackPanel _instancesPanel;
+    private readonly List<YouTrackInstanceRowControl> _rows = [];
     private readonly TextBox _template;
 
     public YouTrackSettingsControl(YouTrackSettings settings)
     {
         _settings = settings;
 
-        _instanceUrl = new TextBox { Text = settings.InstanceUrl, PlaceholderText = "https://<instance>.youtrack.cloud/api" };
-        _token = new TextBox { Text = settings.Token, PlaceholderText = "permanent token", PasswordChar = '•' };
-        _projectTag = new TextBox { Text = settings.ProjectTag, PlaceholderText = "project short-name (e.g. PROJ)" };
-        _extraQuery = new TextBox { Text = settings.ExtraQuery, PlaceholderText = "extra query filter (optional, e.g. Priority: Critical)" };
+        _instancesPanel = new StackPanel();
+
+        var existingInstances = settings.Instances;
+        if (existingInstances.Count == 0)
+        {
+            _AddRow(new YouTrackInstance(string.Empty, string.Empty, string.Empty, string.Empty));
+        }
+        else
+        {
+            foreach (var instance in existingInstances)
+            {
+                _AddRow(instance);
+            }
+        }
+
+        var addInstance = new Button { Content = "+ Add instance" };
+        addInstance.Click += (_, _) => _AddRow(new YouTrackInstance(string.Empty, string.Empty, string.Empty, string.Empty));
+
         _template = new TextBox
         {
             Text = settings.Template,
@@ -44,15 +56,10 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
                 Spacing = 8,
                 Children =
                 {
-                    _Label("Instance base URL"),
-                    SettingsHelpRow.Build(_instanceUrl, "Your YouTrack REST API base, e.g. https://<instance>.youtrack.cloud/api (self-hosted: https://<host>/youtrack/api)."),
-                    _Label("Permanent token"),
-                    SettingsHelpRow.Build(_token, "Permanent token. In YouTrack: profile -> Account Security -> New token (scope: YouTrack)."),
-                    _Hint("Never shared or hardcoded — stored only in this cockpit's local settings."),
-                    _Label("Project short-name (tag)"),
-                    SettingsHelpRow.Build(_projectTag, "Project short name (e.g. the prefix in issue IDs like PROJ-123). Find it in the project's settings."),
-                    _Label("Extra query filter (optional — appended to the open-issues search)"),
-                    SettingsHelpRow.Build(_extraQuery, "Optional YouTrack query fragment appended to the open-issues search (e.g. \"Priority: Critical\"), using YouTrack's query syntax."),
+                    _Label("YouTrack instances"),
+                    _Hint("Each instance is a separate YouTrack (cloud or self-hosted) with its own base URL and permanent token. Pick one in the issues dialog."),
+                    _instancesPanel,
+                    addInstance,
                     _Label("Prompt template — placeholders: {id} {idReadable} {summary} {url} {project} {description}"),
                     SettingsHelpRow.Build(_template, "Prompt inserted when you click an issue. Placeholders: {id} {idReadable} {summary} {url} {project} {description}."),
                 },
@@ -60,13 +67,22 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
         };
     }
 
-    /// <summary>Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.</summary>
+    private void _AddRow(YouTrackInstance instance)
+    {
+        var row = new YouTrackInstanceRowControl(instance);
+        row.RemoveRequested += () =>
+        {
+            _rows.Remove(row);
+            _instancesPanel.Children.Remove(row);
+        };
+        _rows.Add(row);
+        _instancesPanel.Children.Add(row);
+    }
+
+    /// <summary>Persists every non-blank instance row plus the template to the plugin's storage; always succeeds, so the host closes the dialog.</summary>
     public bool Save()
     {
-        _settings.InstanceUrl = string.IsNullOrWhiteSpace(_instanceUrl.Text) ? string.Empty : _instanceUrl.Text.Trim().TrimEnd('/');
-        _settings.Token = _token.Text?.Trim() ?? string.Empty;
-        _settings.ProjectTag = _projectTag.Text?.Trim() ?? string.Empty;
-        _settings.ExtraQuery = _extraQuery.Text?.Trim() ?? string.Empty;
+        _settings.Instances = _rows.Where(row => !row.IsBlank).Select(row => row.ToInstance()).ToList();
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         return true;
     }

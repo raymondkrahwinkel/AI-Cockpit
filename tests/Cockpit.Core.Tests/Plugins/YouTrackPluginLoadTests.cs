@@ -9,12 +9,13 @@ using FluentAssertions;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// End-to-end loader proof (#42), mirroring <see cref="GitHubPullRequestsPluginLoadTests"/>: loads the real
-/// compiled YouTrack plugin through the actual <see cref="PluginActivator"/> / <see cref="PluginLoadContext"/>
-/// and asserts type-identity holds (the plugin's ICockpitPlugin resolves to the host's copy — the cast would
-/// be null otherwise), its metadata is right, and its settings + inline side-menu-section contributions
-/// register (no side-menu button — the section itself hosts the "view all" entry point). The test project
-/// builds the plugin (a ReferenceOutputAssembly=false project reference), so its output is always present.
+/// End-to-end loader proof (#42, reworked in #48 to a side-menu button mirroring
+/// <see cref="GitHubIssuesPluginLoadTests"/>): loads the real compiled YouTrack plugin through the actual
+/// <see cref="PluginActivator"/> / <see cref="PluginLoadContext"/> and asserts type-identity holds (the
+/// plugin's ICockpitPlugin resolves to the host's copy — the cast would be null otherwise), its metadata is
+/// right, and its settings + side-menu-button contributions register (no inline side-menu section anymore —
+/// the button opens the issues dialog directly, like GitHub Issues). The test project builds the plugin (a
+/// ReferenceOutputAssembly=false project reference), so its output is always present.
 /// </summary>
 public class YouTrackPluginLoadTests
 {
@@ -45,8 +46,8 @@ public class YouTrackPluginLoadTests
         plugin.Initialize(host);
 
         host.SettingsRegistered.Should().Be(1);
-        host.SideButtons.Should().BeEmpty();
-        host.SideSections.Should().ContainSingle().Which.Should().Be("YouTrack");
+        host.SideButtons.Should().ContainSingle().Which.Should().Be("YouTrack");
+        host.SideSections.Should().BeEmpty();
 
         plugin.Dispose();
     }

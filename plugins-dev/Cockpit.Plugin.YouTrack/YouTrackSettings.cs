@@ -4,40 +4,49 @@ namespace Cockpit.Plugin.YouTrack;
 
 /// <summary>
 /// The plugin's settings, persisted through the host's per-plugin <see cref="IPluginStorage"/>. YouTrack has
-/// no local CLI equivalent to <c>gh</c>, so this plugin is HTTP-only: an instance base URL (left empty until
-/// configured — no default instance, since there is no universal one), a permanent token (runtime-configured
-/// — never hardcoded), the project short-name to track, and an optional extra query filter appended to the
-/// open-issues search. The prompt template dropped on click is editable too.
+/// no local CLI equivalent to <c>gh</c>, so this plugin is HTTP-only per instance: a list of
+/// <see cref="YouTrackInstance"/> (each its own base URL + permanent token + optional default project), so one
+/// cockpit can pull issues from several YouTracks (#48). The prompt template dropped on click is shared across
+/// every instance.
 /// </summary>
 internal sealed class YouTrackSettings(IPluginStorage storage)
 {
-    public string InstanceUrl
+    public List<YouTrackInstance> Instances
     {
-        get => storage.Get<string>("instanceUrl") ?? string.Empty;
-        set => storage.Set("instanceUrl", value);
-    }
-
-    public string Token
-    {
-        get => storage.Get<string>("token") ?? string.Empty;
-        set => storage.Set("token", value);
-    }
-
-    public string ProjectTag
-    {
-        get => storage.Get<string>("projectTag") ?? string.Empty;
-        set => storage.Set("projectTag", value);
-    }
-
-    public string ExtraQuery
-    {
-        get => storage.Get<string>("extraQuery") ?? string.Empty;
-        set => storage.Set("extraQuery", value);
+        get => _LoadInstances();
+        set => storage.Set("instances", value);
     }
 
     public string Template
     {
         get => storage.Get<string>("template") ?? PromptTemplate.Default;
         set => storage.Set("template", value);
+    }
+
+    // Back-compat (#48): before instances were a list, this plugin had exactly one — instanceUrl/token/projectTag
+    // stored directly. Migrate that single config into a one-item list on first read instead of a returning
+    // user silently losing their configured instance (an empty list, requiring them to notice and re-enter it).
+    private List<YouTrackInstance> _LoadInstances()
+    {
+        var stored = storage.Get<List<YouTrackInstance>>("instances");
+        if (stored is { Count: > 0 })
+        {
+            return stored;
+        }
+
+        var legacyInstanceUrl = storage.Get<string>("instanceUrl");
+        var legacyToken = storage.Get<string>("token");
+        if (string.IsNullOrWhiteSpace(legacyInstanceUrl) && string.IsNullOrWhiteSpace(legacyToken))
+        {
+            return [];
+        }
+
+        var legacyProjectTag = storage.Get<string>("projectTag");
+        var migrated = new List<YouTrackInstance>
+        {
+            new("Default", legacyInstanceUrl ?? string.Empty, legacyToken ?? string.Empty, legacyProjectTag ?? string.Empty),
+        };
+        storage.Set("instances", migrated);
+        return migrated;
     }
 }

@@ -5,22 +5,24 @@ using System.Text.Json;
 namespace Cockpit.Plugin.YouTrack;
 
 /// <summary>
-/// Fetches open ("#Unresolved") issues for a single YouTrack project over a plain <see cref="HttpClient"/>,
+/// Fetches open ("#Unresolved") issues for a single YouTrack instance over a plain <see cref="HttpClient"/>,
 /// authenticated with a permanent token — YouTrack has no local CLI equivalent to <c>gh</c>, so this plugin
 /// is HTTP-only. Mirrors the query shape from the YouTrack skill: <c>GET {instance}/issues?fields=…&amp;
-/// query=project:{tag} #Unresolved [extra]&amp;$top={n}</c>. Callers are expected to validate that the
-/// instance URL, token and project tag are set before calling — this client assumes valid input and lets
-/// HTTP/JSON failures surface as exceptions for the UI layer to report.
+/// query=[project:{tag}] #Unresolved [extra]&amp;$top={n}</c>, where a null/empty project tag means every
+/// project on the instance (the dialog's "All" filter, #48) — the response's own <c>project.shortName</c>
+/// tells each issue which project it belongs to either way. Callers are expected to validate that the
+/// instance URL and token are set before calling — this client assumes valid input and lets HTTP/JSON
+/// failures surface as exceptions for the UI layer to report.
 /// </summary>
 internal sealed class YouTrackClient
 {
     private static readonly HttpClient Http = new();
 
-    public async Task<IReadOnlyList<YouTrackIssue>> GetOpenIssuesAsync(string instanceBaseUrl, string token, string projectTag, string? extraFilter, int top, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<YouTrackIssue>> GetOpenIssuesAsync(string instanceBaseUrl, string token, string? projectTag, string? extraFilter, int top, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
         var query = BuildQuery(projectTag, extraFilter);
-        var url = $"{baseUrl}/issues?fields=idReadable,id,summary,description,customFields(name,value(name))&query={Uri.EscapeDataString(query)}&$top={top}";
+        var url = $"{baseUrl}/issues?fields=idReadable,id,summary,description,project(shortName),customFields(name,value(name))&query={Uri.EscapeDataString(query)}&$top={top}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.ParseAdd("application/json");
@@ -41,17 +43,62 @@ internal sealed class YouTrackClient
             var description = element.TryGetProperty("description", out var descriptionProperty) && descriptionProperty.ValueKind == JsonValueKind.String
                 ? descriptionProperty.GetString()
                 : null;
+            var project = _ExtractProject(element, projectTag);
             var state = _ExtractState(element);
-            issues.Add(new YouTrackIssue(id, idReadable, summary, description, projectTag, state));
+            issues.Add(new YouTrackIssue(id, idReadable, summary, description, project, state));
         }
 
         return issues;
     }
 
-    /// <summary>project:{tag} #Unresolved, plus an optional extra filter (e.g. "Priority: Critical") appended verbatim.</summary>
-    internal static string BuildQuery(string projectTag, string? extraFilter)
+    /// <summary>
+    /// Distinct project short-names configured on the instance, via the admin API (needs the token's account
+    /// to have project-admin read access). Returns an empty list — never throws — when that call fails, e.g.
+    /// a token scoped without admin access; the dialog then falls back to the projects already present in the
+    /// fetched issues (#48).
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetProjectsAsync(string instanceBaseUrl, string token, CancellationToken cancellationToken)
     {
-        var query = $"project:{projectTag} #Unresolved";
+        try
+        {
+            var baseUrl = instanceBaseUrl.TrimEnd('/');
+            var url = $"{baseUrl}/admin/projects?fields=shortName,name";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Accept.ParseAdd("application/json");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var response = await Http.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return [];
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+            var projects = new List<string>();
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                if (element.TryGetProperty("shortName", out var shortNameProperty) && shortNameProperty.ValueKind == JsonValueKind.String
+                    && shortNameProperty.GetString() is { Length: > 0 } shortName)
+                {
+                    projects.Add(shortName);
+                }
+            }
+
+            return projects;
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>[project:{tag}] #Unresolved, plus an optional extra filter (e.g. "Priority: Critical") appended verbatim. A null/empty tag omits the project clause, matching every project on the instance.</summary>
+    internal static string BuildQuery(string? projectTag, string? extraFilter)
+    {
+        var query = string.IsNullOrWhiteSpace(projectTag) ? "#Unresolved" : $"project:{projectTag} #Unresolved";
         return string.IsNullOrWhiteSpace(extraFilter) ? query : $"{query} {extraFilter.Trim()}";
     }
 
@@ -65,6 +112,20 @@ internal sealed class YouTrackClient
         }
 
         return $"{trimmed}/issue/{idReadable}";
+    }
+
+    // The response's own project.shortName when present, otherwise the tag the query was scoped to (absent
+    // for an "All projects" query, in which case the issue simply shows no project).
+    private static string _ExtractProject(JsonElement element, string? fallbackProjectTag)
+    {
+        if (element.TryGetProperty("project", out var project) && project.ValueKind == JsonValueKind.Object
+            && project.TryGetProperty("shortName", out var shortNameProperty) && shortNameProperty.ValueKind == JsonValueKind.String
+            && shortNameProperty.GetString() is { Length: > 0 } shortName)
+        {
+            return shortName;
+        }
+
+        return fallbackProjectTag ?? string.Empty;
     }
 
     // "State" (most projects) or "Stage" (e.g. EJ, per the YouTrack skill) — the first matching custom field's value name.

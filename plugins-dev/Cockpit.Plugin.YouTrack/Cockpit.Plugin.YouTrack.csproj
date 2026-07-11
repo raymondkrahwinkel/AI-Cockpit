@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Plugin #42: YouTrack open issues per project inline in the left menu (up to 5, click-to-inject) plus a
-       "view all" dialog, mirroring the GitHub Pull Requests plugin (#41). YouTrack has no gh-CLI equivalent,
-       so this plugin is HTTP-only against a configured instance + permanent token — no CLI-vs-HTTP toggle.
+  <!-- Plugin #42, reworked in #48: a left-menu button opens a dialog listing open YouTrack issues across one
+       or more configured instances (instance/project/state filters, click-to-inject), mirroring the GitHub
+       Issues plugin. YouTrack has no gh-CLI equivalent, so this plugin is HTTP-only per instance — a base URL
+       + permanent token each, no CLI-vs-HTTP toggle.
        Built OUTSIDE the main solution (plugins-dev/) so the app build stays clean; package its
        bin/<config>/net10.0 output into a .zip and install it via Options -> Plugins. EnableDynamicLoading
        emits the .deps.json the host's AssemblyDependencyResolver needs. The shared assemblies
