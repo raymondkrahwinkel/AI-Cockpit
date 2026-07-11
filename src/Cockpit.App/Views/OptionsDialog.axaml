@@ -125,9 +125,19 @@
                             <TextBlock Text="Font family"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
-                            <AutoCompleteBox Text="{Binding TerminalFontFamily}" ItemsSource="{Binding TerminalFontFamilies}"
-                                             FilterMode="ContainsOrdinal" MinimumPrefixLength="0" Width="260"
-                                             ToolTip.Tip="Pick a common monospace font, or type your own family name / fallback list"/>
+                            <ComboBox ItemsSource="{Binding TerminalFontChoices}"
+                                      SelectedItem="{Binding TerminalFontSelection}"
+                                      Width="260"
+                                      ToolTip.Tip="Pick a common monospace font, or choose Custom… to enter your own"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                    IsVisible="{Binding IsTerminalFontCustom}">
+                            <TextBlock Text="Custom font"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding TerminalCustomFontFamily}" Width="260"
+                                     PlaceholderText="e.g. JetBrains Mono, monospace"
+                                     ToolTip.Tip="Type a font family name; a comma-separated fallback list also works"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                             <TextBlock Text="Font size"

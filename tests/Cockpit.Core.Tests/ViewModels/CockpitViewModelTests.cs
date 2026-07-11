@@ -545,6 +545,60 @@ public class CockpitViewModelTests
         tty.TerminalFontSize.Should().Be(24);
     }
 
+    [Fact]
+    public async Task LoadingACuratedFont_SelectsItInTheDropdownWithoutCustomMode()
+    {
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings { FontFamily = "JetBrains Mono", FontSize = 14 });
+
+        var vm = NewVm(terminalSettingsStore: terminalSettingsStore);
+        await Task.Delay(50);
+
+        vm.TerminalFontSelection.Should().Be("JetBrains Mono");
+        vm.IsTerminalFontCustom.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task LoadingAFontOutsideTheCuratedList_ReopensInCustomMode()
+    {
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings { FontFamily = "Comic Mono", FontSize = 14 });
+
+        var vm = NewVm(terminalSettingsStore: terminalSettingsStore);
+        await Task.Delay(50);
+
+        vm.TerminalFontSelection.Should().Be(CockpitViewModel.CustomFontChoice);
+        vm.IsTerminalFontCustom.Should().BeTrue();
+        vm.TerminalCustomFontFamily.Should().Be("Comic Mono");
+        vm.TerminalFontFamily.Should().Be("Comic Mono");
+    }
+
+    [Fact]
+    public void ChoosingCustomThenTypingAFont_DrivesTheEffectiveFontFamily()
+    {
+        var vm = NewVm();
+
+        vm.TerminalFontSelection = CockpitViewModel.CustomFontChoice;
+        vm.IsTerminalFontCustom.Should().BeTrue();
+
+        vm.TerminalCustomFontFamily = "Comic Mono, monospace";
+
+        vm.TerminalFontFamily.Should().Be("Comic Mono, monospace");
+    }
+
+    [Fact]
+    public void SwitchingFromCustomBackToACuratedFont_UsesThatFontAndLeavesCustomMode()
+    {
+        var vm = NewVm();
+        vm.TerminalFontSelection = CockpitViewModel.CustomFontChoice;
+        vm.TerminalCustomFontFamily = "Comic Mono";
+
+        vm.TerminalFontSelection = "Consolas";
+
+        vm.IsTerminalFontCustom.Should().BeFalse();
+        vm.TerminalFontFamily.Should().Be("Consolas");
+    }
+
     private static async Task<CockpitViewModel> NewVmWithSessionsAsync(int count)
     {
         var vm = NewVm();

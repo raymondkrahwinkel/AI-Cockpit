@@ -171,9 +171,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>
     /// Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
-    /// per-session. Fed straight into <c>TerminalControl.FontFamily</c>, so both a single family name and
-    /// a comma-separated fallback list work; the curated <see cref="TerminalFontFamilies"/> list offers
-    /// common choices but the field stays free text.
+    /// per-session. The effective value fed straight into <c>TerminalControl.FontFamily</c>, so both a
+    /// single family name and a comma-separated fallback list work. Driven by the Options dropdown
+    /// (<see cref="TerminalFontSelection"/>): a curated choice sets it directly, the "Custom…" choice
+    /// mirrors <see cref="TerminalCustomFontFamily"/>.
     /// </summary>
     [ObservableProperty]
     private string _terminalFontFamily = "Cascadia Mono, Consolas, monospace";
@@ -182,10 +183,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private int _terminalFontSize = 13;
 
+    /// <summary>Selected item in the Options font-family dropdown (#40) — a curated family or <see cref="CustomFontChoice"/>. Drives <see cref="TerminalFontFamily"/> and toggles <see cref="IsTerminalFontCustom"/>.</summary>
+    [ObservableProperty]
+    private string _terminalFontSelection = "Cascadia Mono, Consolas, monospace";
+
+    /// <summary>True when the font-family dropdown is on "Custom…" (#40), revealing the free-text box bound to <see cref="TerminalCustomFontFamily"/>.</summary>
+    [ObservableProperty]
+    private bool _isTerminalFontCustom;
+
+    /// <summary>Free-text font family entered when the dropdown is on "Custom…" (#40); mirrored into <see cref="TerminalFontFamily"/> while custom is active.</summary>
+    [ObservableProperty]
+    private string _terminalCustomFontFamily = string.Empty;
+
     [ObservableProperty]
     private string _terminalSettingsStatus = string.Empty;
 
-    /// <summary>Curated monospace font choices offered by the Options dialog's editable Terminal font-family box — the field also accepts free text for any font installed locally.</summary>
+    /// <summary>Sentinel item in the font-family dropdown (#40) that switches to a free-text box for any font not in the curated list.</summary>
+    public const string CustomFontChoice = "Custom…";
+
+    /// <summary>Curated monospace font choices offered by the Options dialog's Terminal font-family dropdown; any font not listed is reachable via <see cref="CustomFontChoice"/>.</summary>
     public IReadOnlyList<string> TerminalFontFamilies { get; } =
     [
         "Cascadia Mono, Consolas, monospace",
@@ -195,6 +211,53 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         "DejaVu Sans Mono",
         "Courier New",
     ];
+
+    /// <summary>Items for the Options font-family dropdown (#40): the curated families plus the "Custom…" sentinel.</summary>
+    public IReadOnlyList<string> TerminalFontChoices => [.. TerminalFontFamilies, CustomFontChoice];
+
+    /// <summary>Maps the dropdown selection to the effective font family (#40): "Custom…" reveals the free-text box and uses its value, any other choice is used directly.</summary>
+    partial void OnTerminalFontSelectionChanged(string value)
+    {
+        if (value == CustomFontChoice)
+        {
+            IsTerminalFontCustom = true;
+            if (!string.IsNullOrWhiteSpace(TerminalCustomFontFamily))
+            {
+                TerminalFontFamily = TerminalCustomFontFamily;
+            }
+        }
+        else
+        {
+            IsTerminalFontCustom = false;
+            TerminalFontFamily = value;
+        }
+    }
+
+    /// <summary>While the dropdown is on "Custom…" (#40), keeps the effective font family in sync with the free-text box.</summary>
+    partial void OnTerminalCustomFontFamilyChanged(string value)
+    {
+        if (IsTerminalFontCustom && !string.IsNullOrWhiteSpace(value))
+        {
+            TerminalFontFamily = value;
+        }
+    }
+
+    /// <summary>Aligns the dropdown/custom-box state with the effective <see cref="TerminalFontFamily"/> (#40) — used after loading from the store so a saved custom font reopens in the "Custom…" state.</summary>
+    private void SyncTerminalFontSelectionFromFamily()
+    {
+        if (TerminalFontFamilies.Contains(TerminalFontFamily))
+        {
+            IsTerminalFontCustom = false;
+            TerminalCustomFontFamily = string.Empty;
+            TerminalFontSelection = TerminalFontFamily;
+        }
+        else
+        {
+            TerminalCustomFontFamily = TerminalFontFamily;
+            IsTerminalFontCustom = true;
+            TerminalFontSelection = CustomFontChoice;
+        }
+    }
 
     /// <summary>Pushes the terminal font family to every open TTY session as it changes (#40), so Options → Terminal applies live without a restart.</summary>
     partial void OnTerminalFontFamilyChanged(string value)
@@ -695,6 +758,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _terminalSettingsStore.LoadAsync();
         TerminalFontFamily = settings.FontFamily;
         TerminalFontSize = settings.FontSize;
+        SyncTerminalFontSelectionFromFamily();
     }
 
     /// <summary>Persists the TTY terminal-appearance settings (#40) edited in the Options dialog to <c>cockpit.json</c>, clamping the font size to the supported range.</summary>
