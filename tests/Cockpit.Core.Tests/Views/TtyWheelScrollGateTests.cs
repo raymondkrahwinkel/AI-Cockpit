@@ -4,33 +4,47 @@ using FluentAssertions;
 namespace Cockpit.Core.Tests.Views;
 
 /// <summary>
-/// The pure alt-screen-wheel-to-arrow-keys logic behind #56: Exclr8.Terminal's alternate screen has no
-/// scrollback, so a wheel notch over a full-screen TUI that hasn't requested mouse tracking (Claude
-/// Code's TUI) otherwise does nothing — this mirrors xterm's alternateScroll fallback instead.
+/// The pure wheel-decision logic behind #56/#57: Exclr8.Terminal's alternate screen has no scrollback, so
+/// a wheel notch over a full-screen TUI that hasn't requested mouse tracking (Claude Code's TUI) is
+/// forwarded as an arrow-key press instead (mirrors xterm's alternateScroll fallback); the primary/inline
+/// screen Claude Code's TUI actually renders on keeps real scrollback, so it gets Exclr8's native
+/// line-based scroll directly; mouse-tracking requests on the alternate screen are left untouched for
+/// TerminalControl's own SGR-mouse-report path.
 /// </summary>
 public class TtyWheelScrollGateTests
 {
     [Fact]
-    public void ShouldForwardAsArrowKeys_AltScreenWithoutMouseTracking_ReturnsTrue()
+    public void Decide_AltScreenWithoutMouseTracking_ReturnsForwardArrowKeys()
     {
-        TtyWheelScrollGate.ShouldForwardAsArrowKeys(isAltScreen: true, mouseMode: 0).Should().BeTrue();
+        TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode: 0).Should().Be(TtyWheelScrollAction.ForwardArrowKeys);
     }
 
     [Fact]
-    public void ShouldForwardAsArrowKeys_PrimaryScreen_ReturnsFalse()
+    public void Decide_PrimaryScreen_ReturnsNativeScroll()
     {
-        // The primary screen has real scrollback — TerminalControl's own pixel-scroll handling applies.
-        TtyWheelScrollGate.ShouldForwardAsArrowKeys(isAltScreen: false, mouseMode: 0).Should().BeFalse();
+        // #57: the primary screen has real scrollback — scroll Exclr8's buffer directly.
+        TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode: 0).Should().Be(TtyWheelScrollAction.NativeScroll);
     }
 
     [Theory]
     [InlineData(1000)]
     [InlineData(1002)]
     [InlineData(1003)]
-    public void ShouldForwardAsArrowKeys_AltScreenWithMouseTrackingRequested_ReturnsFalse(int mouseMode)
+    public void Decide_PrimaryScreenRegardlessOfMouseMode_ReturnsNativeScroll(int mouseMode)
+    {
+        // Mouse-tracking modes only mean anything on the alternate screen in this codebase's usage —
+        // still native-scroll the primary screen regardless of a stray MouseMode value.
+        TtyWheelScrollGate.Decide(isAltScreen: false, mouseMode).Should().Be(TtyWheelScrollAction.NativeScroll);
+    }
+
+    [Theory]
+    [InlineData(1000)]
+    [InlineData(1002)]
+    [InlineData(1003)]
+    public void Decide_AltScreenWithMouseTrackingRequested_ReturnsPassThrough(int mouseMode)
     {
         // The app asked for mouse reporting — TerminalControl's own SGR-mouse-report path already covers it.
-        TtyWheelScrollGate.ShouldForwardAsArrowKeys(isAltScreen: true, mouseMode).Should().BeFalse();
+        TtyWheelScrollGate.Decide(isAltScreen: true, mouseMode).Should().Be(TtyWheelScrollAction.PassThrough);
     }
 
     [Fact]
