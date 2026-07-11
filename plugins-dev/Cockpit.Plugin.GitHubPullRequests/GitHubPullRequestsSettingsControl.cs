@@ -30,12 +30,18 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             Content = "Use local GitHub CLI (gh) — lists open pull requests across all your repos",
             IsChecked = settings.UseGitHubCli,
         };
+        var useGhRow = SettingsHelpRow.Build(_useGh, "Use the installed `gh` CLI (uses your existing gh login, no token) instead of a single-repo HTTP call.");
 
         _ghOwner = new TextBox { Text = settings.GhOwner, PlaceholderText = "@me (or an org / user)" };
         var ghPanel = new StackPanel
         {
             Spacing = 6,
-            Children = { _Label("Owner (whose repositories to search)"), _ghOwner, _Hint("Uses your existing gh login — no token needed.") },
+            Children =
+            {
+                _Label("Owner (whose repositories to search)"),
+                SettingsHelpRow.Build(_ghOwner, "Owner (user or org, e.g. \"octocat\" or \"@me\" for yourself) whose repositories to search — cross-repo, unlike the single owner/repo below."),
+                _Hint("Uses your existing gh login — no token needed."),
+            },
         };
 
         _owner = new TextBox { Text = settings.Owner, PlaceholderText = "owner (e.g. octocat)" };
@@ -46,9 +52,12 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             Spacing = 6,
             Children =
             {
-                _Label("Repository owner"), _owner,
-                _Label("Repository name"), _repo,
-                _Label("Access token (optional — for private repos or a higher rate limit)"), _token,
+                _Label("Repository owner"),
+                SettingsHelpRow.Build(_owner, "The account or org name from the repository's URL, e.g. the \"owner\" in github.com/owner/repo."),
+                _Label("Repository name"),
+                SettingsHelpRow.Build(_repo, "The repository name — the second segment of the repository's URL, e.g. the \"repo\" in github.com/owner/repo."),
+                _Label("Access token (optional — for private repos or a higher rate limit)"),
+                SettingsHelpRow.Build(_token, "Personal access token. Create at github.com/settings/tokens (classic: scope `repo` for private repos; fine-grained: Issues/Pull requests read). Optional for public repos."),
             },
         };
 
@@ -78,11 +87,11 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                 Spacing = 8,
                 Children =
                 {
-                    _useGh,
+                    useGhRow,
                     ghPanel,
                     httpPanel,
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body} {author}"),
-                    _template,
+                    SettingsHelpRow.Build(_template, "Prompt inserted when you click a pull request. Placeholders: {number} {title} {url} {owner} {repo} {body} {author}."),
                 },
             },
         };

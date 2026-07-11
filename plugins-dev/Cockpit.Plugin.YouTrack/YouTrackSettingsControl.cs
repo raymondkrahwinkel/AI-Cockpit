@@ -26,7 +26,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
 
         _instanceUrl = new TextBox { Text = settings.InstanceUrl, PlaceholderText = "https://<instance>.youtrack.cloud/api" };
         _token = new TextBox { Text = settings.Token, PlaceholderText = "permanent token", PasswordChar = '•' };
-        _projectTag = new TextBox { Text = settings.ProjectTag, PlaceholderText = "project short-name (e.g. EWB)" };
+        _projectTag = new TextBox { Text = settings.ProjectTag, PlaceholderText = "project short-name (e.g. PROJ)" };
         _extraQuery = new TextBox { Text = settings.ExtraQuery, PlaceholderText = "extra query filter (optional, e.g. Priority: Critical)" };
         _template = new TextBox
         {
@@ -44,13 +44,17 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
                 Spacing = 8,
                 Children =
                 {
-                    _Label("Instance base URL"), _instanceUrl,
-                    _Label("Permanent token"), _token,
-                    _Hint("Generate one in YouTrack under Profile -> Account Security -> New Token. Never shared or hardcoded — stored only in this cockpit's local settings."),
-                    _Label("Project short-name (tag)"), _projectTag,
-                    _Label("Extra query filter (optional — appended to the open-issues search)"), _extraQuery,
+                    _Label("Instance base URL"),
+                    SettingsHelpRow.Build(_instanceUrl, "Your YouTrack REST API base, e.g. https://<instance>.youtrack.cloud/api (self-hosted: https://<host>/youtrack/api)."),
+                    _Label("Permanent token"),
+                    SettingsHelpRow.Build(_token, "Permanent token. In YouTrack: profile -> Account Security -> New token (scope: YouTrack)."),
+                    _Hint("Never shared or hardcoded — stored only in this cockpit's local settings."),
+                    _Label("Project short-name (tag)"),
+                    SettingsHelpRow.Build(_projectTag, "Project short name (e.g. the prefix in issue IDs like PROJ-123). Find it in the project's settings."),
+                    _Label("Extra query filter (optional — appended to the open-issues search)"),
+                    SettingsHelpRow.Build(_extraQuery, "Optional YouTrack query fragment appended to the open-issues search (e.g. \"Priority: Critical\"), using YouTrack's query syntax."),
                     _Label("Prompt template — placeholders: {id} {idReadable} {summary} {url} {project} {description}"),
-                    _template,
+                    SettingsHelpRow.Build(_template, "Prompt inserted when you click an issue. Placeholders: {id} {idReadable} {summary} {url} {project} {description}."),
                 },
             },
         };
@@ -59,7 +63,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     /// <summary>Persists every field to the plugin's storage; always succeeds, so the host closes the dialog.</summary>
     public bool Save()
     {
-        _settings.InstanceUrl = string.IsNullOrWhiteSpace(_instanceUrl.Text) ? "https://eveworkbench.youtrack.cloud/api" : _instanceUrl.Text.Trim().TrimEnd('/');
+        _settings.InstanceUrl = string.IsNullOrWhiteSpace(_instanceUrl.Text) ? string.Empty : _instanceUrl.Text.Trim().TrimEnd('/');
         _settings.Token = _token.Text?.Trim() ?? string.Empty;
         _settings.ProjectTag = _projectTag.Text?.Trim() ?? string.Empty;
         _settings.ExtraQuery = _extraQuery.Text?.Trim() ?? string.Empty;

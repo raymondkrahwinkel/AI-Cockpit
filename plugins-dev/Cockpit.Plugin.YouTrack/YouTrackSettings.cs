@@ -4,16 +4,16 @@ namespace Cockpit.Plugin.YouTrack;
 
 /// <summary>
 /// The plugin's settings, persisted through the host's per-plugin <see cref="IPluginStorage"/>. YouTrack has
-/// no local CLI equivalent to <c>gh</c>, so this plugin is HTTP-only: an instance base URL (prefilled with a
-/// convenience default, not a secret), a permanent token (runtime-configured — never hardcoded), the project
-/// short-name to track, and an optional extra query filter appended to the open-issues search. The prompt
-/// template dropped on click is editable too.
+/// no local CLI equivalent to <c>gh</c>, so this plugin is HTTP-only: an instance base URL (left empty until
+/// configured — no default instance, since there is no universal one), a permanent token (runtime-configured
+/// — never hardcoded), the project short-name to track, and an optional extra query filter appended to the
+/// open-issues search. The prompt template dropped on click is editable too.
 /// </summary>
 internal sealed class YouTrackSettings(IPluginStorage storage)
 {
     public string InstanceUrl
     {
-        get => storage.Get<string>("instanceUrl") is { Length: > 0 } url ? url : "https://eveworkbench.youtrack.cloud/api";
+        get => storage.Get<string>("instanceUrl") ?? string.Empty;
         set => storage.Set("instanceUrl", value);
     }
 

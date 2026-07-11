@@ -55,7 +55,7 @@ internal sealed class YouTrackClient
         return string.IsNullOrWhiteSpace(extraFilter) ? query : $"{query} {extraFilter.Trim()}";
     }
 
-    /// <summary>The issue's web URL, derived from the API base URL by dropping a trailing "/api" — e.g. "https://x.youtrack.cloud/api" -> "https://x.youtrack.cloud/issue/EWB-42".</summary>
+    /// <summary>The issue's web URL, derived from the API base URL by dropping a trailing "/api" — e.g. "https://x.youtrack.cloud/api" -> "https://x.youtrack.cloud/issue/PROJ-123".</summary>
     internal static string BuildIssueUrl(string instanceBaseUrl, string idReadable)
     {
         var trimmed = instanceBaseUrl.TrimEnd('/');
