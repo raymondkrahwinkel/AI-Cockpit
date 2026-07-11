@@ -1,7 +1,10 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Claude;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
@@ -44,4 +47,62 @@ internal sealed class CockpitHost(
 
     public void AddSessionProvider(SessionProviderRegistration registration) =>
         services.GetRequiredService<IPluginProviderRegistry>().Register(registration);
+
+    /// <summary>
+    /// Idempotent upsert-by-name into the shared <see cref="IMcpServerStore"/> registry (#60). No entry named
+    /// <see cref="McpServerContribution.Name"/> yet → add one (enabled by default, scoped as requested). An
+    /// entry already exists → refresh only the plugin-owned <see cref="McpServerConfig.Url"/>/
+    /// <see cref="McpServerConfig.Auth"/>/<see cref="McpServerConfig.ApiKey"/>, leaving
+    /// <see cref="McpServerConfig.Enabled"/> and <see cref="McpServerConfig.Scope"/> untouched — respects a
+    /// server the user disabled or rescoped from the MCP-servers dialog instead of clobbering their choice on
+    /// every plugin restart/settings-save. Deliberately does <em>not</em> track "the user deleted this on
+    /// purpose": a removed entry is indistinguishable from one never registered, so it comes back as a fresh
+    /// (enabled) add the next time the plugin calls this — bounded to the plugin's own trigger points
+    /// (<c>Initialize</c>, its settings-saved callback), not a background loop, so it is a re-add on explicit
+    /// action rather than a silent fight with the user.
+    /// </summary>
+    public async Task AddMcpServer(McpServerContribution contribution)
+    {
+        var store = services.GetRequiredService<IMcpServerStore>();
+        var servers = (await store.LoadAsync().ConfigureAwait(false)).ToList();
+        var existingIndex = servers.FindIndex(server => string.Equals(server.Name, contribution.Name, StringComparison.Ordinal));
+
+        if (existingIndex < 0)
+        {
+            servers.Add(new McpServerConfig
+            {
+                Name = contribution.Name,
+                Transport = McpTransport.Http,
+                Scope = _ToServerScope(contribution.Scope),
+                Url = contribution.Url,
+                Auth = _ToAuth(contribution.BearerToken),
+                ApiKey = contribution.BearerToken,
+            });
+        }
+        else
+        {
+            servers[existingIndex] = servers[existingIndex] with
+            {
+                Transport = McpTransport.Http,
+                Url = contribution.Url,
+                Auth = _ToAuth(contribution.BearerToken),
+                ApiKey = contribution.BearerToken,
+            };
+        }
+
+        await store.SaveAsync(servers).ConfigureAwait(false);
+    }
+
+    private static McpServerAuth _ToAuth(string? bearerToken) =>
+        string.IsNullOrEmpty(bearerToken) ? McpServerAuth.None : McpServerAuth.ApiKey;
+
+    // Maps by name, not ordinal — Cockpit.Plugins.Abstractions.Mcp.McpContributionScope and Cockpit.Core.Mcp.McpServerScope
+    // are declared independently (isolation, see the ICockpitHost doc comment) and are free to diverge in order.
+    private static McpServerScope _ToServerScope(McpContributionScope scope) => scope switch
+    {
+        McpContributionScope.All => McpServerScope.All,
+        McpContributionScope.LocalOnly => McpServerScope.LocalOnly,
+        McpContributionScope.ClaudeOnly => McpServerScope.ClaudeOnly,
+        _ => McpServerScope.All,
+    };
 }

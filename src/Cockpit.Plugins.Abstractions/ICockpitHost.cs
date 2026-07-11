@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugins.Abstractions;
@@ -54,4 +55,21 @@ public interface ICockpitHost
     void AddSessionProvider(SessionProviderRegistration registration)
     {
     }
+
+    /// <summary>
+    /// Registers (or updates) an HTTP MCP server in the shared registry (#60) — e.g. a YouTrack/JetBrains
+    /// remote MCP endpoint — so both session worlds (the local tool-loop and the Claude fan-out) can use its
+    /// tools without the user having to add it by hand in the MCP-servers dialog. Idempotent upsert-by-name:
+    /// calling this again with the same <see cref="McpServerContribution.Name"/> refreshes the URL/token of
+    /// an existing entry rather than adding a duplicate, and never force-changes an entry's enabled state or
+    /// scope — a server the user disabled, rescoped, or deleted from the dialog stays that way (deleted
+    /// means "absent", so it is treated like a first-time registration and re-added; see the host's own
+    /// implementation for the exact rule). Returns a <see cref="Task"/> (not suffixed <c>Async</c> to match
+    /// the requested #60 contract name) because the upsert persists to disk; call it fire-and-forget
+    /// (<c>_ = host.AddMcpServer(...)</c>) from a synchronous callback such as <see cref="ICockpitPlugin.Initialize"/>,
+    /// same as other async host operations invoked from sync contribution points. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host overrides it.
+    /// </summary>
+    Task AddMcpServer(McpServerContribution contribution) => Task.CompletedTask;
 }

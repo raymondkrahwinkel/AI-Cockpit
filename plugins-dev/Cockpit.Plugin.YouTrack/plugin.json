@@ -1,11 +1,11 @@
 {
   "id": "youtrack",
   "name": "YouTrack",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "entryAssembly": "Cockpit.Plugin.YouTrack.dll",
   "entryType": "Cockpit.Plugin.YouTrack.YouTrackPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "1.0.0",
-  "description": "A left-menu button opens a dialog listing open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters, in a searchable, sortable grid; click one to drop a prompt asking the agent to work on it. The prompt template is editable in settings.",
+  "description": "A left-menu button opens a dialog listing open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters, in a searchable, sortable grid; click one to drop a prompt asking the agent to work on it. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools.",
   "author": "Cockpit"
 }

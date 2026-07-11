@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the YouTrack plugin's own MCP-registration logic (#60) — kept OUTSIDE Cockpit.slnx and
+       outside Cockpit.Core.Tests, in its own project alongside the plugin under plugins-dev/, same as
+       Cockpit.Plugin.GeminiProvider.Tests / Cockpit.Plugin.CliAgentProvider.Tests. Unlike Cockpit.Core.Tests'
+       plugin references (ReferenceOutputAssembly=false, loaded only through PluginActivator to prove type
+       identity), this project references the plugin normally: it tests YouTrackMcpRegistration's pure
+       per-instance mapping directly, which needs no type-identity proof. Run explicitly with `dotnet test`
+       in this folder (or against this .csproj) — it is not picked up by `dotnet test` at the repo root,
+       which only discovers Cockpit.slnx's test project (which does still get the plugin's real-assembly
+       load-through-PluginActivator proof, see YouTrackPluginLoadTests in Cockpit.Core.Tests). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Plugin.YouTrack\Cockpit.Plugin.YouTrack.csproj" />
+  </ItemGroup>
+
+</Project>

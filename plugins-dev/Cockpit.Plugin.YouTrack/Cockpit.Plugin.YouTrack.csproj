@@ -44,4 +44,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets Cockpit.Plugin.YouTrack.Tests unit-test YouTrackMcpRegistration's internal per-instance mapping
+         directly (#60), same pattern as Cockpit.Plugin.GeminiProvider's grant to its own Tests project. -->
+    <InternalsVisibleTo Include="Cockpit.Plugin.YouTrack.Tests" />
+  </ItemGroup>
+
 </Project>
