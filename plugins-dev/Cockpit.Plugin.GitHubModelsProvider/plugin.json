@@ -1,0 +1,11 @@
+{
+  "id": "github-models-provider",
+  "name": "GitHub Models",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.GitHubModelsProvider.dll",
+  "entryType": "Cockpit.Plugin.GitHubModelsProvider.GitHubModelsProviderPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "Adds GitHub Models as a selectable session provider, over its OpenAI-compatible chat-completions endpoint (models.github.ai/inference) via Microsoft.Extensions.AI. Configure a GitHub personal access token (models:read scope) and model per profile in Manage profiles. Experimental.",
+  "author": "Cockpit"
+}

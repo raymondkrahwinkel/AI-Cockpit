@@ -46,6 +46,11 @@
          AddSessionProvider registers it too. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.CliAgentProvider\Cockpit.Plugin.CliAgentProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Same pattern for the GitHub Models provider plugin (#63) — GitHub Models via the same OpenAiCompat
+         session-provider stack the Gemini/OpenAI provider plugin (#45) uses, so the loader integration test
+         can load its real assembly and prove AddSessionProvider registers it too. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitHubModelsProvider\Cockpit.Plugin.GitHubModelsProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>
