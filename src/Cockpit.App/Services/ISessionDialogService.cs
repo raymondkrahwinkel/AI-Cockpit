@@ -21,6 +21,15 @@ public interface ISessionDialogService
     Task ShowMcpServersDialogAsync();
 
     /// <summary>
+    /// Shows the plugin store dialog (#62) over the currently active window (typically the Options dialog
+    /// it was opened from, so it centers over the dialog stack rather than jumping behind it to the main
+    /// window) — a browsing/presentation layer around <paramref name="manager"/>, the same
+    /// <see cref="PluginManagerViewModel"/> instance the Options→Plugins tab uses. Every install/update,
+    /// the consent step and the restart banner go through that shared instance unchanged.
+    /// </summary>
+    Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager);
+
+    /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
     /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
     /// existing option properties/commands. <paramref name="selectPluginsTab"/> opens straight to the

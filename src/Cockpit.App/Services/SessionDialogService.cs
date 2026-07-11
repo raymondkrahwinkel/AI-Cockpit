@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
@@ -104,6 +105,33 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await dialog.ShowDialog(owner);
     }
 
+    public async Task ShowPluginStoreDialogAsync(PluginManagerViewModel manager)
+    {
+        if (_ActiveOwnerWindow() is not { } owner)
+        {
+            return;
+        }
+
+        var viewModel = new PluginStoreDialogViewModel(manager);
+        var dialog = new PluginStoreDialog { DataContext = viewModel };
+        await viewModel.LoadAsync();
+        await dialog.ShowDialog(owner);
+    }
+
+    // Most dialogs are only ever shown over the main window, so they hardcode it as the owner. The store
+    // dialog can itself be a step below another modal (Options → Store), so it — and anything the store
+    // dialog opens in turn, like plugin consent — needs the topmost active window instead, or it centers
+    // behind the dialog stack rather than over it (#62 design-doc caveat).
+    private static Window? _ActiveOwnerWindow()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main } lifetime)
+        {
+            return null;
+        }
+
+        return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
+    }
+
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
@@ -139,7 +167,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public async Task<bool> ShowPluginConsentAsync(PluginConsentInfo info)
     {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        // Uses the active window, not always MainWindow: an install/update triggered from the plugin store
+        // dialog (itself opened over Options) must show consent over that dialog stack, not behind it.
+        if (_ActiveOwnerWindow() is not { } owner)
         {
             return false;
         }

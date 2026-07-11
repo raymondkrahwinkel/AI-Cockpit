@@ -1,7 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
-        xmlns:sys="using:System"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -348,63 +347,9 @@
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"/>
 
                         <TextBlock Text="Plugin stores" FontWeight="SemiBold"/>
-                        <TextBlock Text="Point at a public repo (github.com/owner/repo) or a direct index.json URL, then Browse to install or update plugins from it."
+                        <TextBlock Text="Browse a store's catalogue to install or update plugins, search/filter by category, and manage which stores are configured — all from one window."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBox Text="{Binding NewStoreUrl}" Width="300"
-                                     PlaceholderText="github.com/owner/repo  or  https://…/index.json"/>
-                            <Button Content="Add" Command="{Binding AddStoreCommand}"/>
-                            <Button Content="Browse" Command="{Binding BrowseStoresCommand}" IsEnabled="{Binding !IsBusy}"/>
-                        </StackPanel>
-
-                        <ItemsControl ItemsSource="{Binding Stores}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="sys:String">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
-                                        <TextBlock Text="{Binding}" FontSize="11" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" TextTrimming="CharacterEllipsis" MaxWidth="360"/>
-                                        <Button Content="Remove" Classes="Compact Subtle"
-                                                Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).RemoveStoreCommand}"
-                                                CommandParameter="{Binding}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <ItemsControl ItemsSource="{Binding AvailablePlugins}" Margin="0,6,0,0">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:StorePluginRowViewModel">
-                                    <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                            CornerRadius="{StaticResource CockpitControlRadius}" Margin="0,0,0,8" Padding="12">
-                                        <StackPanel Spacing="4">
-                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding LatestVersion}"
-                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                                           VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding Author}" IsVisible="{Binding HasAuthor}"
-                                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
-                                                           VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                            <TextBlock Text="{Binding StatusText}" FontSize="11"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
-                                                <Button Content="Install" Classes="Compact" IsVisible="{Binding CanInstall}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).InstallFromStoreCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                                <Button Content="Update" Classes="Compact" IsVisible="{Binding CanUpdate}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).InstallFromStoreCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <Button Content="Browse store…" Command="{Binding OpenStoreDialogCommand}" HorizontalAlignment="Left"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
