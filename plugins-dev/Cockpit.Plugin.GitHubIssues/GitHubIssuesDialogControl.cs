@@ -10,20 +10,25 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.GitHubIssues;
 
 /// <summary>
-/// The "GitHub Issues" dialog opened from the left-menu button: a search box and a sortable
-/// <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP mode) on
-/// the left, and a details panel on the right showing the selected issue's title, repository, body, a link,
-/// and a preview of the prompt it would produce (with a copy button). "Add to prompt" injects the prompt
-/// into the active session and only shows when one is active; the copy button always works. Built in code;
-/// the DataGrid theme is provided app-wide by the host.
+/// The "GitHub Issues" dialog opened from the left-menu button: a repository filter, a search box, and a
+/// sortable <see cref="DataGrid"/> of open issues (across all repos in GitHub CLI mode, or one repo in HTTP
+/// mode) on the left, and a details panel on the right showing the selected issue's title, repository, body,
+/// a link, and a preview of the prompt it would produce (with a copy button). The repository filter is
+/// populated from the distinct <see cref="GitHubIssue.Repository"/> values in the loaded issues plus an
+/// "All" entry (default); it filters the grid client-side, no extra API calls. "Add to prompt" injects the
+/// prompt into the active session and only shows when one is active; the copy button always works. Built in
+/// code; the DataGrid theme is provided app-wide by the host.
 /// </summary>
 internal sealed class GitHubIssuesDialogControl : UserControl
 {
+    private const string AllRepositoriesOption = "All";
+
     private readonly GitHubIssuesSettings _settings;
     private readonly ICockpitActions _actions;
     private readonly GitHubIssuesClient _http = new();
     private readonly GitHubGhClient _gh = new();
 
+    private readonly ComboBox _repoFilter;
     private readonly TextBox _search;
     private readonly TextBlock _status;
     private readonly DataGrid _grid;
@@ -44,6 +49,15 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     {
         _settings = settings;
         _actions = actions;
+
+        _repoFilter = new ComboBox
+        {
+            ItemsSource = new List<string> { AllRepositoriesOption },
+            SelectedIndex = 0,
+            Width = 200,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        _repoFilter.SelectionChanged += (_, _) => _ApplyFilter();
 
         _search = new TextBox { PlaceholderText = "Filter by title, repository or number…", Width = 320 };
         _search.TextChanged += (_, _) => _ApplyFilter();
@@ -69,7 +83,9 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
+        DockPanel.SetDock(_repoFilter, Dock.Left);
         topBar.Children.Add(refresh);
+        topBar.Children.Add(_repoFilter);
         topBar.Children.Add(_search);
 
         // Details panel (right).
@@ -199,6 +215,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                 _all = await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, CancellationToken.None);
             }
 
+            _PopulateRepoFilter();
             _ApplyFilter();
             _status.Text = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
         }
@@ -208,13 +225,39 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         }
     }
 
+    // Rebuilds the repository dropdown from the distinct repositories in the freshly loaded issues, keeping
+    // the previous selection if it is still present (otherwise falls back to "All").
+    private void _PopulateRepoFilter()
+    {
+        var previousSelection = _repoFilter.SelectedItem as string;
+        var repositories = _all
+            .Select(issue => issue.Repository)
+            .Where(repository => !string.IsNullOrEmpty(repository))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(repository => repository, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var options = new List<string> { AllRepositoriesOption };
+        options.AddRange(repositories);
+        _repoFilter.ItemsSource = options;
+        _repoFilter.SelectedItem = previousSelection is not null && options.Contains(previousSelection)
+            ? previousSelection
+            : AllRepositoriesOption;
+    }
+
     private void _ApplyFilter()
     {
         var query = _search.Text?.Trim();
+        var selectedRepo = _repoFilter.SelectedItem as string;
         IEnumerable<GitHubIssue> filtered = _all;
+        if (!string.IsNullOrEmpty(selectedRepo) && selectedRepo != AllRepositoriesOption)
+        {
+            filtered = filtered.Where(issue => string.Equals(issue.Repository, selectedRepo, StringComparison.OrdinalIgnoreCase));
+        }
+
         if (!string.IsNullOrEmpty(query))
         {
-            filtered = _all.Where(issue =>
+            filtered = filtered.Where(issue =>
                 issue.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || issue.Repository.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || issue.Number.ToString().Contains(query, StringComparison.OrdinalIgnoreCase));
