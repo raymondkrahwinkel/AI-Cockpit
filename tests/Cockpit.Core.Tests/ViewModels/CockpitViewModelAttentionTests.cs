@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Layout;
@@ -10,6 +11,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
@@ -84,6 +86,8 @@ public class CockpitViewModelAttentionTests
         layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
         var dialogService = Substitute.For<ISessionDialogService>();
         dialogService.ShowNewSessionDialogAsync().Returns(new NewSessionResult(
             SessionKind.Sdk,
@@ -104,6 +108,7 @@ public class CockpitViewModelAttentionTests
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
-            voiceSettingsStore);
+            voiceSettingsStore,
+            terminalSettingsStore);
     }
 }

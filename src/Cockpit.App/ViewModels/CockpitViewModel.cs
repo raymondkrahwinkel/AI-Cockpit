@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Plugins;
@@ -22,6 +23,7 @@ using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 
@@ -56,6 +58,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
+    private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly PluginDiagnostics? _pluginDiagnostics;
     private readonly List<byte> _recordedPcm = [];
@@ -165,6 +168,57 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
+
+    /// <summary>
+    /// Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
+    /// per-session. Fed straight into <c>TerminalControl.FontFamily</c>, so both a single family name and
+    /// a comma-separated fallback list work; the curated <see cref="TerminalFontFamilies"/> list offers
+    /// common choices but the field stays free text.
+    /// </summary>
+    [ObservableProperty]
+    private string _terminalFontFamily = "Cascadia Mono, Consolas, monospace";
+
+    /// <summary>Global TTY terminal font size in points (#40), clamped to <see cref="Cockpit.Core.Terminal.TerminalSettings.MinFontSize"/>-<see cref="Cockpit.Core.Terminal.TerminalSettings.MaxFontSize"/> on save.</summary>
+    [ObservableProperty]
+    private int _terminalFontSize = 13;
+
+    [ObservableProperty]
+    private string _terminalSettingsStatus = string.Empty;
+
+    /// <summary>Curated monospace font choices offered by the Options dialog's editable Terminal font-family box — the field also accepts free text for any font installed locally.</summary>
+    public IReadOnlyList<string> TerminalFontFamilies { get; } =
+    [
+        "Cascadia Mono, Consolas, monospace",
+        "Consolas",
+        "JetBrains Mono",
+        "Fira Code",
+        "DejaVu Sans Mono",
+        "Courier New",
+    ];
+
+    /// <summary>Pushes the terminal font family to every open TTY session as it changes (#40), so Options → Terminal applies live without a restart.</summary>
+    partial void OnTerminalFontFamilyChanged(string value)
+    {
+        foreach (var session in Sessions)
+        {
+            if (session is ClaudeTtyViewModel tty)
+            {
+                tty.TerminalFontFamily = value;
+            }
+        }
+    }
+
+    /// <summary>Pushes the terminal font size to every open TTY session as it changes (#40), same live-apply as <see cref="OnTerminalFontFamilyChanged"/>.</summary>
+    partial void OnTerminalFontSizeChanged(int value)
+    {
+        foreach (var session in Sessions)
+        {
+            if (session is ClaudeTtyViewModel tty)
+            {
+                tty.TerminalFontSize = value;
+            }
+        }
+    }
 
     /// <summary>True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.</summary>
     public bool ShowSinglePane => SingleSessionLayout || IsZoomed;
@@ -436,6 +490,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
         ILayoutSettingsStore layoutSettingsStore,
         IVoiceSettingsStore voiceSettingsStore,
+        ITerminalSettingsStore terminalSettingsStore,
         IPluginRegistrationStore? pluginRegistrationStore = null,
         IPluginInstaller? pluginInstaller = null,
         PluginBootstrap? pluginBootstrap = null,
@@ -467,6 +522,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
         _layoutSettingsStore = layoutSettingsStore;
         _voiceSettingsStore = voiceSettingsStore;
+        _terminalSettingsStore = terminalSettingsStore;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
         Sessions.CollectionChanged += (_, _) =>
@@ -482,6 +538,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadSessionBehaviorSettingsAsync();
         _ = LoadLayoutSettingsAsync();
         _ = LoadVoiceSettingsAsync();
+        _ = LoadTerminalSettingsAsync();
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -626,6 +683,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
         });
         LayoutSettingsStatus = "✓ Saved";
+    }
+
+    private async Task LoadTerminalSettingsAsync()
+    {
+        if (_terminalSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _terminalSettingsStore.LoadAsync();
+        TerminalFontFamily = settings.FontFamily;
+        TerminalFontSize = settings.FontSize;
+    }
+
+    /// <summary>Persists the TTY terminal-appearance settings (#40) edited in the Options dialog to <c>cockpit.json</c>, clamping the font size to the supported range.</summary>
+    [RelayCommand]
+    private async Task SaveTerminalSettingsAsync()
+    {
+        if (_terminalSettingsStore is null)
+        {
+            return;
+        }
+
+        var fontFamily = string.IsNullOrWhiteSpace(TerminalFontFamily)
+            ? "Cascadia Mono, Consolas, monospace"
+            : TerminalFontFamily.Trim();
+        var fontSize = Math.Clamp(TerminalFontSize, TerminalSettings.MinFontSize, TerminalSettings.MaxFontSize);
+
+        await _terminalSettingsStore.SaveAsync(new TerminalSettings { FontFamily = fontFamily, FontSize = fontSize });
+        TerminalFontFamily = fontFamily;
+        TerminalFontSize = fontSize;
+        TerminalSettingsStatus = "✓ Saved";
     }
 
     private async Task LoadVoiceSettingsAsync()
@@ -923,6 +1012,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
+        await SaveTerminalSettingsCommand.ExecuteAsync(null);
         AllSettingsStatus = "✓ Saved";
     }
 
@@ -938,6 +1028,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Same for the auto-close-on-exit behaviour (T10); the session raises CloseRequested when an
         // "exit" turn completes and the cockpit runs its normal close flow.
         session.AutoCloseOnExit = AutoCloseOnExit;
+        // Seed a TTY session with the current global terminal-appearance preference (#40); further
+        // changes reach it live via OnTerminalFontFamilyChanged/OnTerminalFontSizeChanged. No effect on
+        // SDK sessions — the setting is TTY-only.
+        if (session is ClaudeTtyViewModel tty)
+        {
+            tty.TerminalFontFamily = TerminalFontFamily;
+            tty.TerminalFontSize = TerminalFontSize;
+        }
+
         session.CloseRequested += OnSessionCloseRequested;
 
         _lastStatus[session] = session.SessionStatus;

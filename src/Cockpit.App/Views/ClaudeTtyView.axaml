@@ -59,11 +59,14 @@
         <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="4"
                 Background="Black">
-            <!-- TerminalControl.FontFamily is a plain string (resolved via Avalonia's FontManager, so
-                 comma-fallback applies) — not an Avalonia FontFamily, so it can't bind the CockpitMonoFont
-                 resource. Keep the same fallback list: "Cascadia Mono" is Windows-only, so without the
-                 monospace fallback the terminal dropped to the proportional UI font on Linux/macOS, which
-                 put a phantom gap between the text and the block cursor. -->
+            <!-- TerminalControl.FontFamily/FontSize are plain CLR properties (not registered
+                 AvaloniaProperties), so Avalonia's compiled-binding XAML compiler can't target them
+                 directly (AVLN3000) — the code-behind applies the VM's font settings imperatively
+                 instead (#40), the same "code-behind owns the terminal plumbing" pattern already used
+                 for Input/Output/Resized below. Default mirrors the old hardcoded fallback list:
+                 "Cascadia Mono" is Windows-only, so without the monospace fallback the terminal dropped
+                 to the proportional UI font on Linux/macOS, which put a phantom gap between the text and
+                 the block cursor. -->
             <term:TerminalControl x:Name="Terminal" FontFamily="Cascadia Mono, Consolas, monospace" FontSize="13"/>
         </Border>
     </DockPanel>

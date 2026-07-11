@@ -6,7 +6,8 @@ namespace Cockpit.Infrastructure.Configuration;
 /// profile store owns <see cref="Profiles"/>, the notification store owns <see cref="Notifications"/>,
 /// the permission-rule store owns <see cref="PermissionRules"/>, the session-switch store owns
 /// <see cref="SessionSwitching"/>, the transcript-display store owns <see cref="TranscriptDisplay"/>,
-/// the layout store owns <see cref="Layout"/>, the voice store owns <see cref="Voice"/>.
+/// the layout store owns <see cref="Layout"/>, the voice store owns <see cref="Voice"/>, the
+/// terminal-settings store owns <see cref="Terminal"/>.
 /// Kept as a plain DTO separate from the domain records so the on-disk shape can evolve independently.
 /// </summary>
 internal sealed class CockpitConfigFile
@@ -27,6 +28,9 @@ internal sealed class CockpitConfigFile
     public LayoutSettingsEntry? Layout { get; set; }
 
     public VoiceSettingsEntry? Voice { get; set; }
+
+    /// <summary>Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.</summary>
+    public TerminalSettingsEntry? Terminal { get; set; }
 
     /// <summary>Plugin enable + consent state (#14) keyed by plugin folder id; owned by the plugin-registration store.</summary>
     public Dictionary<string, PluginRegistrationEntry> Plugins { get; set; } = [];

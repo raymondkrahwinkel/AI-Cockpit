@@ -3,6 +3,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Layout;
@@ -10,6 +11,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
@@ -439,6 +441,8 @@ public class CockpitViewModelTests
         layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
 
         var vm = new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
@@ -452,7 +456,8 @@ public class CockpitViewModelTests
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
-            voiceSettingsStore);
+            voiceSettingsStore,
+            terminalSettingsStore);
 
         await vm.SaveAllSettingsCommand.ExecuteAsync(null);
 
@@ -462,6 +467,7 @@ public class CockpitViewModelTests
         await sessionBehaviorSettingsStore.Received(1).SaveAsync(Arg.Any<SessionBehaviorSettings>(), Arg.Any<CancellationToken>());
         await layoutSettingsStore.Received(1).SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>());
         await voiceSettingsStore.Received(1).SaveAsync(Arg.Any<VoiceSettings>(), Arg.Any<CancellationToken>());
+        await terminalSettingsStore.Received(1).SaveAsync(Arg.Any<TerminalSettings>(), Arg.Any<CancellationToken>());
 
         vm.NotificationSettingsStatus.Should().Be("✓ Saved");
         vm.SessionSwitchSettingsStatus.Should().Be("✓ Saved");
@@ -469,6 +475,74 @@ public class CockpitViewModelTests
         vm.SessionBehaviorSettingsStatus.Should().Be("✓ Saved");
         vm.LayoutSettingsStatus.Should().Be("✓ Saved");
         vm.VoiceSettingsStatus.Should().Be("✓ Saved");
+        vm.TerminalSettingsStatus.Should().Be("✓ Saved");
+    }
+
+    [Fact]
+    public async Task Constructor_LoadsTerminalSettingsFromStore()
+    {
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings { FontFamily = "JetBrains Mono", FontSize = 18 });
+
+        var vm = NewVm(terminalSettingsStore: terminalSettingsStore);
+
+        // The load runs fire-and-forget from the constructor (same pattern as the other settings
+        // sections); give it a beat to complete before asserting.
+        await Task.Delay(50);
+
+        vm.TerminalFontFamily.Should().Be("JetBrains Mono");
+        vm.TerminalFontSize.Should().Be(18);
+    }
+
+    [Fact]
+    public async Task SaveTerminalSettingsCommand_ClampsFontSizeAndTrimsBlankFontFamilyToTheDefault()
+    {
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
+        var vm = NewVm(terminalSettingsStore: terminalSettingsStore);
+        vm.TerminalFontFamily = "   ";
+        vm.TerminalFontSize = 999;
+
+        await vm.SaveTerminalSettingsCommand.ExecuteAsync(null);
+
+        await terminalSettingsStore.Received(1).SaveAsync(
+            Arg.Is<TerminalSettings>(s => s.FontFamily == "Cascadia Mono, Consolas, monospace" && s.FontSize == TerminalSettings.MaxFontSize),
+            Arg.Any<CancellationToken>());
+        vm.TerminalFontFamily.Should().Be("Cascadia Mono, Consolas, monospace");
+        vm.TerminalFontSize.Should().Be(TerminalSettings.MaxFontSize);
+        vm.TerminalSettingsStatus.Should().Be("✓ Saved");
+    }
+
+    [Fact]
+    public async Task NewTtySession_IsSeededWithTheCurrentTerminalFontSettings()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
+        var vm = NewVm(dialogService);
+        vm.TerminalFontFamily = "Fira Code";
+        vm.TerminalFontSize = 20;
+
+        await vm.NewSessionCommand.ExecuteAsync(null);
+
+        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+        tty.TerminalFontFamily.Should().Be("Fira Code");
+        tty.TerminalFontSize.Should().Be(20);
+    }
+
+    [Fact]
+    public async Task ChangingTerminalFontSettings_PushesLiveToOpenTtySessions()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
+        var vm = NewVm(dialogService);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+
+        vm.TerminalFontFamily = "DejaVu Sans Mono";
+        vm.TerminalFontSize = 24;
+
+        tty.TerminalFontFamily.Should().Be("DejaVu Sans Mono");
+        tty.TerminalFontSize.Should().Be(24);
     }
 
     private static async Task<CockpitViewModel> NewVmWithSessionsAsync(int count)
@@ -482,7 +556,7 @@ public class CockpitViewModelTests
         return vm;
     }
 
-    private static CockpitViewModel NewVm(ISessionDialogService? dialogService = null)
+    private static CockpitViewModel NewVm(ISessionDialogService? dialogService = null, ITerminalSettingsStore? terminalSettingsStore = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
@@ -499,6 +573,12 @@ public class CockpitViewModelTests
         layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
+        if (terminalSettingsStore is null)
+        {
+            terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+            terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
+        }
+
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
@@ -511,7 +591,8 @@ public class CockpitViewModelTests
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
-            voiceSettingsStore);
+            voiceSettingsStore,
+            terminalSettingsStore);
     }
 
     private static ISessionDialogService DefaultDialogService()

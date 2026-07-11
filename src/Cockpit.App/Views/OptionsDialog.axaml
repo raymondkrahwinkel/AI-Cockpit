@@ -114,6 +114,30 @@
                         <TextBlock Text="Transcript" FontWeight="SemiBold"/>
                         <CheckBox Content="Show a timestamp on each message"
                                   IsChecked="{Binding ShowTimestamps}"/>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <!-- TTY-only (#40): the SDK transcript renders its own chat UI, not a terminal
+                             grid, so a font setting has nothing to apply to there. One global setting for
+                             every TTY session — not per-profile or per-session. -->
+                        <TextBlock Text="Terminal (TTY sessions)" FontWeight="SemiBold"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Font family"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <AutoCompleteBox Text="{Binding TerminalFontFamily}" ItemsSource="{Binding TerminalFontFamilies}"
+                                             FilterMode="ContainsOrdinal" MinimumPrefixLength="0" Width="260"
+                                             ToolTip.Tip="Pick a common monospace font, or type your own family name / fallback list"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Font size"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="32"
+                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

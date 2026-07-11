@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -61,6 +62,7 @@ public partial class ClaudeTtyView : UserControl
         {
             _viewModel.LaunchRequested -= OnLaunchRequested;
             _viewModel.VoiceTranscriptReady -= _OnVoiceTranscriptReady;
+            _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
         _viewModel = DataContext as ClaudeTtyViewModel;
@@ -68,12 +70,42 @@ public partial class ClaudeTtyView : UserControl
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
             _viewModel.VoiceTranscriptReady += _OnVoiceTranscriptReady;
+            _viewModel.PropertyChanged += _OnViewModelPropertyChanged;
             // The profile may already have been configured (dialog confirmed) before this view existed;
             // pull any pending launch now that we are subscribed. The VM's guard makes this fire once.
             _viewModel.TryRaiseLaunch();
         }
 
         WireTerminal();
+        _ApplyTerminalFont();
+    }
+
+    /// <summary>
+    /// TerminalControl.FontFamily/FontSize are plain CLR properties, not registered AvaloniaProperties,
+    /// so they can't be targeted by a compiled XAML binding (#40) — applied here imperatively instead,
+    /// both on attach and every time the global terminal-settings VM property changes, so Options →
+    /// Terminal takes effect live. Both setters re-measure the cell and reflow the grid on assignment,
+    /// which raises <see cref="Exclr8.Terminal.TerminalControl.Resized"/> if the new metrics change the
+    /// column/row count — <see cref="OnTerminalResized"/> then resizes the pty to match, the same as a
+    /// window resize.
+    /// </summary>
+    private void _OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ClaudeTtyViewModel.TerminalFontFamily) or nameof(ClaudeTtyViewModel.TerminalFontSize))
+        {
+            _ApplyTerminalFont();
+        }
+    }
+
+    private void _ApplyTerminalFont()
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        Terminal.FontFamily = _viewModel.TerminalFontFamily;
+        Terminal.FontSize = _viewModel.TerminalFontSize;
     }
 
     /// <summary>

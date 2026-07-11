@@ -6,12 +6,14 @@ using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using FluentAssertions;
@@ -183,6 +185,8 @@ public class VoicePushToTalkCoordinatorTests
         layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
+        var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
+        terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
         return new CockpitViewModel(
             () => new ClaudeSessionViewModel(),
             () => new ClaudeTtyViewModel(),
@@ -195,6 +199,7 @@ public class VoicePushToTalkCoordinatorTests
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
-            voiceSettingsStore);
+            voiceSettingsStore,
+            terminalSettingsStore);
     }
 }

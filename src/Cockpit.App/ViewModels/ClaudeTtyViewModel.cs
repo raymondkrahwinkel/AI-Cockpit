@@ -71,6 +71,20 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     [ObservableProperty]
     private string _diagnostics = string.Empty;
 
+    /// <summary>
+    /// Global TTY terminal font family (#40), mirrored from <c>CockpitViewModel.TerminalFontFamily</c> at
+    /// session creation and pushed live on every settings change (see
+    /// <c>CockpitViewModel.OnTerminalFontFamilyChanged</c>). Bound in <c>ClaudeTtyView.axaml</c> straight
+    /// onto <c>TerminalControl.FontFamily</c>, which re-measures and reflows the grid on assignment — no
+    /// session restart needed.
+    /// </summary>
+    [ObservableProperty]
+    private string _terminalFontFamily = "Cascadia Mono, Consolas, monospace";
+
+    /// <summary>Global TTY terminal font size in points (#40); same mirror/live-push wiring as <see cref="TerminalFontFamily"/>.</summary>
+    [ObservableProperty]
+    private int _terminalFontSize = 13;
+
     // Parameterless constructor for the Avalonia previewer/Screenshotter design-time context.
     public ClaudeTtyViewModel()
     {
