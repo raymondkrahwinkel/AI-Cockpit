@@ -57,6 +57,24 @@ public class McpToolProviderConnectAsyncTests
     }
 
     [Fact]
+    public async Task ConnectAsync_WithASessionSelection_ConnectsOnlyTheNamedServers()
+    {
+        await using var serverA = await InProcessMcpHttpServer.StartAsync<McpTestToolA>();
+        await using var serverB = await InProcessMcpHttpServer.StartAsync<McpTestToolB>();
+        var provider = _ProviderFor(_DisableBuiltIns().Concat(
+        [
+            new McpServerConfig { Name = "server-a", Transport = McpTransport.Http, Url = serverA.Url },
+            new McpServerConfig { Name = "server-b", Transport = McpTransport.Http, Url = serverB.Url },
+        ]));
+
+        // The per-session selection (#44) excludes server-b — on top of both being registry-enabled.
+        await using var session = await provider.ConnectAsync(new HashSet<string> { "server-a" });
+
+        session.ConnectedServerNames.Should().Equal("server-a");
+        session.Tools.Should().ContainSingle().Which.Name.Should().Be("tool_a");
+    }
+
+    [Fact]
     public async Task ConnectAsync_SkipsAnUnreachableServer_WhileStillConnectingTheOthers()
     {
         await using var serverA = await InProcessMcpHttpServer.StartAsync<McpTestToolA>();

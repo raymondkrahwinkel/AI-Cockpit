@@ -61,7 +61,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     public IAsyncEnumerable<ClaudeSessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, CancellationToken cancellationToken = default)
     {
         var config = profile?.ProviderConfig
             ?? throw new InvalidOperationException($"{nameof(OpenAiCompatSessionDriver)} requires a profile with an OpenAI-compatible provider config.");
@@ -73,7 +73,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // Wrap the chat client in the agentic function-invocation loop; each MCP tool is gated so a tool
         // call is executed only after the operator approves it (the gate is this driver).
         _agent = new ChatClientBuilder(_chatClientFactory.Create(config)).UseFunctionInvocation().Build();
-        _toolSession = await _mcpToolProvider.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        _toolSession = await _mcpToolProvider.ConnectAsync(enabledMcpServerNames, cancellationToken).ConfigureAwait(false);
         _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
         Capabilities = Capabilities with { SupportsTools = _gatedTools.Count > 0 };
 

@@ -13,9 +13,11 @@ internal interface IClaudeCliProcess : IAsyncDisposable
     /// Starts the underlying process, optionally under a specific <see cref="ClaudeProfile"/>
     /// (its own <c>CLAUDE_CONFIG_DIR</c> and, if set, its own executable). Must be called
     /// exactly once. <paramref name="model"/>, when non-null/whitespace, is passed as
-    /// <c>--model &lt;value&gt;</c> at launch.
+    /// <c>--model &lt;value&gt;</c> at launch. <paramref name="enabledMcpServerNames"/> is the
+    /// per-session MCP-server selection (#44) fanned out to the <c>--mcp-config</c> this spawn reads;
+    /// <see langword="null"/> keeps the pre-#44 behaviour of fanning out the full registry.
     /// </summary>
-    void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null);
+    void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null);
 
     /// <summary>Writes a single line (without trailing newline) to the process's stdin and flushes.</summary>
     Task WriteLineAsync(string line, CancellationToken cancellationToken = default);

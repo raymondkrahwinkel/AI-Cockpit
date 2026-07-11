@@ -39,7 +39,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker);
+        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerStore);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };

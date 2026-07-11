@@ -17,9 +17,10 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer oauthAuthorizer, ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
-    public async Task<IMcpToolSession> ConnectAsync(CancellationToken cancellationToken = default)
+    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, CancellationToken cancellationToken = default)
     {
         var registry = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
         var clients = new List<McpClient>();
         var tools = new List<AIFunction>();
         var connectedNames = new List<string>();
@@ -27,7 +28,9 @@ internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer
         // Local models host the built-in defaults (filesystem etc.) plus every enabled registry server not
         // scoped to Claude only (#26). A registry entry overrides the built-in of the same name — including a
         // disabled one, which removes that default — so defaults are a baseline the user can retarget or drop.
-        var enabledServers = _EffectiveServers(registry).Where(server => server.Enabled).ToList();
+        // The per-session selection (#44) is applied to the registry above, before this merge, so a built-in
+        // default is never excluded just because it is not part of the registry-derived checklist.
+        var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
 
         // Connect every enabled server concurrently rather than one-by-one — sequential connect + list-tools
         // round-trips added up badly once more than one server was configured. Each connect keeps its own

@@ -114,6 +114,20 @@
                           DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
             </Grid>
 
+            <!-- Per-session MCP-server selection (#44): a checkbox per enabled registry server, defaulting to
+                 all checked (matching the pre-#44 behaviour). Hidden entirely when the registry has none. -->
+            <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasMcpServers}">
+                <TextBlock Grid.Column="0" Text="MCP" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding McpServers}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
+                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+
             <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI
                  owns live switching itself, unlike the SDK per-session dropdowns. -->
             <TextBlock Text="Start defaults only — once running, switch live inside the TUI itself (/model, /effort, Shift+Tab). The per-session dropdowns are SDK-only."

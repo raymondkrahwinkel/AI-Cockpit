@@ -75,6 +75,29 @@ public class ClaudeCliSessionTests
     }
 
     [Fact]
+    public async Task StartAsync_WithEnabledMcpServerNames_PassesTheSelectionToProcess()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
+        var selection = new HashSet<string> { "server-a" };
+
+        await session.StartAsync(enabledMcpServerNames: selection);
+
+        process.StartedWithEnabledMcpServerNames.Should().BeSameAs(selection);
+    }
+
+    [Fact]
+    public async Task StartAsync_WithoutEnabledMcpServerNames_LeavesItNull()
+    {
+        var process = new FakeClaudeCliProcess();
+        await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
+
+        await session.StartAsync();
+
+        process.StartedWithEnabledMcpServerNames.Should().BeNull();
+    }
+
+    [Fact]
     public async Task SetPermissionModeAsync_WritesControlRequestWithSubtypeAndMode()
     {
         var process = new FakeClaudeCliProcess();

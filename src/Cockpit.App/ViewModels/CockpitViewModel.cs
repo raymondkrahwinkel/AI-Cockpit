@@ -1063,7 +1063,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var session = _sessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort);
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames);
         }
         else
         {

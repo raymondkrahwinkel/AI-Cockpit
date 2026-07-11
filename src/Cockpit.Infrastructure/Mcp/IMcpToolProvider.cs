@@ -7,5 +7,11 @@ namespace Cockpit.Infrastructure.Mcp;
 /// </summary>
 internal interface IMcpToolProvider
 {
-    Task<IMcpToolSession> ConnectAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// <paramref name="enabledServerNames"/> is the per-session MCP selection from the New-session dialog
+    /// (#44): when non-null, only registry servers named in it are connected, on top of the registry's own
+    /// enabled/scope filtering. <see langword="null"/> keeps the pre-#44 behaviour of using every eligible
+    /// registry server.
+    /// </summary>
+    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, CancellationToken cancellationToken = default);
 }

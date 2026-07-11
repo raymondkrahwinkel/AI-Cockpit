@@ -36,9 +36,12 @@ public interface ISessionDriver : IAsyncDisposable
     /// whatever the host process's own environment/config already provides). Must be called
     /// once before <see cref="SendUserMessageAsync"/> or <see cref="Events"/> produce anything.
     /// <paramref name="model"/>, when non-null/whitespace, is passed as <c>--model &lt;value&gt;</c>
-    /// at launch (e.g. <c>"opus"</c>, <c>"sonnet"</c>, <c>"haiku"</c>).
+    /// at launch (e.g. <c>"opus"</c>, <c>"sonnet"</c>, <c>"haiku"</c>). <paramref name="enabledMcpServerNames"/>
+    /// is the per-session MCP-server selection from the New-session dialog (#44): when non-null, it narrows
+    /// the shared MCP registry to just those names for this session, on top of the registry's own
+    /// enabled/scope filtering; <see langword="null"/> keeps the pre-#44 behaviour of using the full registry.
     /// </summary>
-    Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, CancellationToken cancellationToken = default);
+    Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a user message as a single stream-json line on the CLI's stdin.

@@ -1,17 +1,20 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// Backs the New-session dialog (#31/#17/#15/#32): pick the session kind (SDK vs TTY), a profile, and
+/// Backs the New-session dialog (#31/#17/#15/#32/#44): pick the session kind (SDK vs TTY), a profile, and
 /// its start mode/model/effort. Choosing a profile loads its saved defaults (<see cref="ProfileDefaults"/>),
 /// which the operator can still override before starting. Mode here offers all four modes including
-/// bypass, since bypass is launch-only and this dialog is the one place it can be chosen. The view
-/// closes via <see cref="CloseRequested"/>, carrying the choices on confirm or null on cancel.
+/// bypass, since bypass is launch-only and this dialog is the one place it can be chosen. Also lets the
+/// operator uncheck individual MCP servers from the shared registry for just this session (#44) via
+/// <see cref="McpServers"/>. The view closes via <see cref="CloseRequested"/>, carrying the choices on
+/// confirm or null on cancel.
 /// </summary>
 /// <remarks>
 /// <see cref="SelectedKind"/> plus the <see cref="IsSdk"/>/<see cref="IsTty"/> computed pair is the
@@ -23,6 +26,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IClaudeProfileLoginChecker? _loginChecker;
     private readonly IClaudeProfileStore? _profileStore;
+    private readonly IMcpServerStore? _mcpServerStore;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
     public event Action<NewSessionResult?>? CloseRequested;
@@ -55,6 +59,15 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public bool ShowTtyStartHint => IsTty && IsClaudeProfile;
 
     public ObservableCollection<ClaudeProfile> Profiles { get; } = [];
+
+    /// <summary>
+    /// The shared registry's enabled MCP servers (#44), each with its own checkbox so the operator can opt
+    /// individual ones out of just this session. Defaults to all checked, matching the pre-#44 behaviour.
+    /// </summary>
+    public ObservableCollection<McpServerSelectionItemViewModel> McpServers { get; } = [];
+
+    /// <summary>Whether the MCP checklist is shown at all — hidden when the registry has no enabled servers.</summary>
+    public bool HasMcpServers => McpServers.Count > 0;
 
     /// <summary>All four modes — including the launch-only bypass — since this dialog is the one place bypass can be chosen.</summary>
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
@@ -119,13 +132,17 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker)
+    public NewSessionDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
+        _mcpServerStore = mcpServerStore;
     }
 
-    /// <summary>Loads the profiles and selects the first, so the dialog opens ready to confirm.</summary>
+    /// <summary>
+    /// Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the
+    /// shared registry's enabled MCP servers (#44) into the checklist, all pre-checked.
+    /// </summary>
     public async Task LoadAsync()
     {
         if (_profileStore is null)
@@ -141,6 +158,18 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
 
         SelectedProfile = Profiles.FirstOrDefault();
+
+        if (_mcpServerStore is not null)
+        {
+            var registry = await _mcpServerStore.LoadAsync();
+            McpServers.Clear();
+            foreach (var server in registry.Where(server => server.Enabled))
+            {
+                McpServers.Add(new McpServerSelectionItemViewModel(server.Name));
+            }
+
+            OnPropertyChanged(nameof(HasMcpServers));
+        }
     }
 
     partial void OnSelectedProfileChanged(ClaudeProfile? value)
@@ -213,7 +242,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
 
         var name = string.IsNullOrWhiteSpace(SessionName) ? null : SessionName.Trim();
-        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name));
+        IReadOnlySet<string>? enabledMcpServerNames = HasMcpServers
+            ? McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name).ToHashSet()
+            : null;
+        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name, enabledMcpServerNames));
     }
 
     [RelayCommand]

@@ -30,6 +30,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     private ISessionDriver? _session;
     private CancellationTokenSource? _lifetimeCancellation;
     private Task? _eventLoopTask;
+
+    /// <summary>The per-session MCP-server selection (#44) from the New-session dialog, set just before <see cref="StartWithProfileAsync"/> reads it in <see cref="StartConfiguredAsync"/>.</summary>
+    private IReadOnlySet<string>? _enabledMcpServerNames;
     private TranscriptEntryViewModel? _currentAssistantEntry;
     private TranscriptEntryViewModel? _currentThinkingEntry;
 
@@ -238,7 +241,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(ClaudeProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort)
+    public async Task StartConfiguredAsync(ClaudeProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null)
     {
         if (_eventLoopTask is not null)
         {
@@ -254,6 +257,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         IsPermissionModeLocked = isBypass;
         SelectedModel = model;
         SelectedEffort = effort;
+        _enabledMcpServerNames = enabledMcpServerNames;
 
         await StartWithProfileAsync(profile);
 
@@ -289,7 +293,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _lifetimeCancellation.Token);
+            await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
 
             // Capabilities (notably SupportsTools) only settle once the driver has actually started — the

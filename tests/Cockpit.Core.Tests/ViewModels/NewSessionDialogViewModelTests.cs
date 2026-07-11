@@ -1,5 +1,7 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using FluentAssertions;
 using NSubstitute;
@@ -224,6 +226,82 @@ public class NewSessionDialogViewModelTests
         vm.PermissionModes.Select(mode => mode.Value).Should().Contain("bypassPermissions");
     }
 
+    [Fact]
+    public async Task LoadAsync_PopulatesTheMcpChecklist_AllCheckedByDefault()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVmWithMcp(out _, [profile],
+            new McpServerConfig { Name = "server-a" },
+            new McpServerConfig { Name = "server-b" });
+
+        await vm.LoadAsync();
+
+        vm.HasMcpServers.Should().BeTrue();
+        vm.McpServers.Select(server => server.Name).Should().Equal("server-a", "server-b");
+        vm.McpServers.Should().OnlyContain(server => server.IsEnabledForSession);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ExcludesDisabledRegistryServers_FromTheChecklist()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVmWithMcp(out _, [profile],
+            new McpServerConfig { Name = "on" },
+            new McpServerConfig { Name = "off", Enabled = false });
+
+        await vm.LoadAsync();
+
+        vm.McpServers.Select(server => server.Name).Should().Equal("on");
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithNoRegistryServers_HasMcpServersIsFalse()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVmWithMcp(out _, [profile]);
+
+        await vm.LoadAsync();
+
+        vm.HasMcpServers.Should().BeFalse();
+        vm.McpServers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Confirm_WithAnUncheckedMcpServer_ExcludesItFromTheResult()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVmWithMcp(out var loginChecker, [profile],
+            new McpServerConfig { Name = "server-a" },
+            new McpServerConfig { Name = "server-b" });
+        loginChecker.IsLoggedIn(profile).Returns(true);
+        await vm.LoadAsync();
+
+        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession = false;
+
+        NewSessionResult? result = null;
+        vm.CloseRequested += r => result = r;
+        vm.ConfirmCommand.Execute(null);
+
+        result.Should().NotBeNull();
+        result!.EnabledMcpServerNames.Should().BeEquivalentTo(["server-a"]);
+    }
+
+    [Fact]
+    public async Task Confirm_WithNoRegistryServers_CarriesANullMcpSelection()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVmWithMcp(out var loginChecker, [profile]);
+        loginChecker.IsLoggedIn(profile).Returns(true);
+        await vm.LoadAsync();
+
+        NewSessionResult? result = null;
+        vm.CloseRequested += r => result = r;
+        vm.ConfirmCommand.Execute(null);
+
+        result.Should().NotBeNull();
+        result!.EnabledMcpServerNames.Should().BeNull();
+    }
+
     private static NewSessionDialogViewModel NewVm(out IClaudeProfileLoginChecker loginChecker, params ClaudeProfile[] profiles)
     {
         var store = Substitute.For<IClaudeProfileStore>();
@@ -235,5 +313,24 @@ public class NewSessionDialogViewModelTests
         }
 
         return new NewSessionDialogViewModel(store, loginChecker);
+    }
+
+    private static NewSessionDialogViewModel NewVmWithMcp(
+        out IClaudeProfileLoginChecker loginChecker,
+        ClaudeProfile[] profiles,
+        params McpServerConfig[] registry)
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
+        loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        foreach (var profile in profiles)
+        {
+            loginChecker.IsLoggedIn(profile).Returns(true);
+        }
+
+        var mcpServerStore = Substitute.For<IMcpServerStore>();
+        mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
+
+        return new NewSessionDialogViewModel(store, loginChecker, mcpServerStore);
     }
 }
