@@ -41,6 +41,11 @@
          the loader integration test can load its real assembly and prove AddSessionProvider registers. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GeminiProvider\Cockpit.Plugin.GeminiProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Same pattern for the CLI agent (Codex) provider plugin (#45 fase B1) — the first subprocess-backed
+         session-provider plugin, so the loader integration test can load its real assembly and prove
+         AddSessionProvider registers it too. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.CliAgentProvider\Cockpit.Plugin.CliAgentProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Provider plugin (#45, fase B1): registers "Codex CLI" as a selectable session provider, driven as a
+       proces-per-turn subprocess (spawn -> one turn -> exit; multi-turn via `codex exec resume <threadId>`)
+       rather than the persistent single-process model ClaudeCliProcess/ClaudeCliSession use — see
+       Cockpit-ProviderPlugins-PhaseB-CLI-2026-07-11.md §2.1 for why the lifecycle differs. Built OUTSIDE the
+       main solution (plugins-dev/) so the app build stays clean; package its bin/<config>/net10.0 output into
+       a .zip and install it via Options -> Plugins. EnableDynamicLoading emits the .deps.json the host's
+       AssemblyDependencyResolver needs. The shared assemblies (Cockpit.Plugins.Abstractions, Avalonia, the DI
+       abstractions) are compile-only (Private=false / ExcludeAssets=runtime) so the host's own copies load and
+       shared types keep one identity — the plugin folder ships only its own DLL + plugin.json. No
+       Cockpit.Infrastructure reference: ClaudeCliProcess/ClaudeCliSession/ClaudeStreamJsonParser are the
+       blueprint for this plugin's ICliSubprocess/CliSubprocessPluginSessionDriver/CodexJsonlEventMapper, not a
+       dependency — plugins reference Abstractions only, so the subprocess-I/O seam is a small copy of that
+       pattern living in this plugin's own assembly (see the design doc §2.0). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The subprocess driver/mapper (CliSubprocessPluginSessionDriver, CodexJsonlEventMapper,
+         ProcessCliSubprocess) is real logic worth its own unit tests against a fake ICliSubprocess, mirroring
+         the Gemini/OpenAI plugin's own OpenAiCompatPluginSessionDriverTests. Its dedicated test project (own
+         solution, not part of Cockpit.slnx — see that project's own header comment) needs this grant since the
+         driver/config/mapper types stay internal, matching this plugin's own style. -->
+    <InternalsVisibleTo Include="Cockpit.Plugin.CliAgentProvider.Tests" />
+  </ItemGroup>
+
+</Project>
