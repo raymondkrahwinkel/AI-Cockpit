@@ -53,4 +53,73 @@ public class PluginStoreIndexTests
         PluginStoreIndex.TryParse("{ not json", out _, out var error).Should().BeFalse();
         error.Should().NotBeNullOrEmpty();
     }
+
+    [Fact]
+    public void TryParse_EntryWithStoreDialogFields_ReadsAllSix()
+    {
+        const string json = """
+        {
+          "name": "My Store",
+          "plugins": [
+            {
+              "id": "github-issues",
+              "name": "GitHub Issues",
+              "description": "d",
+              "author": "me",
+              "latestVersion": "1.2.0",
+              "category": "Issue trackers",
+              "icon": "🐛",
+              "homepage": "https://example.com/github-issues",
+              "repository": "https://github.com/example/plugins",
+              "featured": true,
+              "published": "2026-05-12",
+              "versions": [
+                { "version": "1.2.0", "path": "github-issues/gh-1.2.0.zip", "abstractionsVersion": 1, "minHostVersion": "1.0.0", "sha256": "abc", "notes": "n" }
+              ]
+            }
+          ]
+        }
+        """;
+
+        PluginStoreIndex.TryParse(json, out var index, out _).Should().BeTrue();
+        var entry = index!.Plugins[0];
+        entry.Category.Should().Be("Issue trackers");
+        entry.Icon.Should().Be("🐛");
+        entry.Homepage.Should().Be("https://example.com/github-issues");
+        entry.Repository.Should().Be("https://github.com/example/plugins");
+        entry.Featured.Should().BeTrue();
+        entry.Published.Should().Be("2026-05-12");
+    }
+
+    [Fact]
+    public void TryParse_EntryWithoutStoreDialogFields_YieldsNeatDefaults()
+    {
+        // Mirrors today's production index.json — none of the #62 fields exist yet.
+        const string json = """
+        {
+          "name": "My Store",
+          "plugins": [
+            {
+              "id": "github-issues",
+              "name": "GitHub Issues",
+              "description": "d",
+              "author": "me",
+              "latestVersion": "1.2.0",
+              "versions": [
+                { "version": "1.2.0", "path": "github-issues/gh-1.2.0.zip", "abstractionsVersion": 1, "minHostVersion": "1.0.0", "sha256": "abc", "notes": "n" }
+              ]
+            }
+          ]
+        }
+        """;
+
+        PluginStoreIndex.TryParse(json, out var index, out _).Should().BeTrue();
+        var entry = index!.Plugins[0];
+        entry.Category.Should().BeNull();
+        entry.Icon.Should().BeNull();
+        entry.Homepage.Should().BeNull();
+        entry.Repository.Should().BeNull();
+        entry.Featured.Should().BeFalse();
+        entry.Published.Should().BeNull();
+    }
 }
