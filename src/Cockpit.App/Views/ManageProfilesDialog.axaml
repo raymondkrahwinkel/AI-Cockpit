@@ -149,6 +149,13 @@
                                  PlaceholderText="Sent as the first system message of every conversation"/>
                     </StackPanel>
 
+                    <!-- Only a local provider (Ollama/LM Studio) gates tool calls through the per-call
+                         approval prompt (#26) — Claude uses its own permission modes instead, so this
+                         toggle is meaningless for it. -->
+                    <CheckBox Content="Auto-approve tool calls" IsChecked="{Binding AutoApproveTools}"
+                              IsVisible="{Binding IsLocalProvider}"
+                              ToolTip.Tip="New sessions under this profile start with 'Allow all tools' already on"/>
+
                     <StackPanel Spacing="4">
                         <TextBlock Text="Purpose" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <TextBox Text="{Binding Purpose}"/>

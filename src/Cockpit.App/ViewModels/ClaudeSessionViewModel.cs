@@ -276,10 +276,6 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
         // Now the profile is known, pick the driver for its provider (Claude-CLI vs a local HTTP provider).
         _session = _driverFactory.Create(profile);
-        Capabilities = _session.Capabilities;
-        // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
-        // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
-        ShowToolAutoApprove = Capabilities is { SupportsTools: true, SupportsPermissions: false };
         ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
             ? string.Empty
             : SessionProviderCatalog.Resolve(profile.Provider).Label;
@@ -295,8 +291,28 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
             await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
-            // Honour a pre-set "allow all tools" choice (e.g. flipped before the session finished starting).
-            if (AutoApproveTools)
+
+            // Capabilities (notably SupportsTools) only settle once the driver has actually started — the
+            // local (OpenAI-compatible) driver's SupportsTools flips true only after its MCP tool session
+            // connects during StartAsync — so read them here rather than right after Create(), which would
+            // always see the driver's pre-start (all-false) defaults.
+            Capabilities = _session.Capabilities;
+            // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
+            // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
+            var isLocalToolSession = Capabilities is { SupportsTools: true, SupportsPermissions: false };
+            ShowToolAutoApprove = isLocalToolSession;
+
+            // A profile marked "auto-approve tools" (#26) seeds the toggle for a fresh local tool session, so
+            // it starts already on instead of needing the operator to flip it every time for a profile they
+            // trust. wasAlreadyOn distinguishes that from a choice the operator flipped before the session
+            // finished starting: assigning the property below only calls the driver (through
+            // OnAutoApproveToolsChanged) when the value actually changes, i.e. exactly the freshly-seeded
+            // case — the pre-set case needs its own explicit re-apply just after, since any hook call at
+            // flip-time hit a session that didn't exist yet (_session is only assigned earlier in this call).
+            var wasAlreadyOn = AutoApproveTools;
+            AutoApproveTools = AutoApproveTools || (isLocalToolSession && profile?.Defaults?.AutoApproveTools == true);
+
+            if (AutoApproveTools && wasAlreadyOn)
             {
                 await _session.SetAutoApproveToolsAsync(true, _lifetimeCancellation.Token);
             }

@@ -11,12 +11,15 @@ internal sealed class ProfileDefaultsEntry
 
     public string Effort { get; set; } = string.Empty;
 
+    public bool AutoApproveTools { get; set; }
+
     public static ProfileDefaultsEntry FromDomain(ProfileDefaults defaults) => new()
     {
         PermissionMode = defaults.PermissionMode,
         Model = defaults.Model,
         Effort = defaults.Effort,
+        AutoApproveTools = defaults.AutoApproveTools,
     };
 
-    public ProfileDefaults ToDomain() => new(PermissionMode, Model, Effort);
+    public ProfileDefaults ToDomain() => new(PermissionMode, Model, Effort, AutoApproveTools);
 }

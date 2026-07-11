@@ -125,6 +125,43 @@ public class ManageProfilesDialogViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_TurnsAStoredAutoApproveToolsDefaultIntoTheEditableRow()
+    {
+        var work = new ClaudeProfile("ollama", ConfigDir: "",
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"),
+            Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
+        var store = Substitute.For<IClaudeProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns([work]);
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+
+        await vm.LoadAsync();
+
+        vm.Profiles.Should().ContainSingle().Which.AutoApproveTools.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Save_PersistsTheAutoApproveToolsDefault()
+    {
+        var store = Substitute.For<IClaudeProfileStore>();
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        vm.AddProfileCommand.Execute(null);
+        var row = vm.SelectedProfile!;
+        row.Label = "ollama";
+        row.SelectedProvider = SessionProviderCatalog.Resolve(SessionProvider.Ollama);
+        row.BaseUrl = "http://localhost:11434";
+        row.Model = "llama3.1";
+        row.AutoApproveTools = true;
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<ClaudeProfile>>(list =>
+                list.Count == 1 &&
+                list[0].Defaults!.AutoApproveTools),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Save_WithAnEmptyConfigDir_DoesNotPersistAndReportsIt()
     {
         var store = Substitute.For<IClaudeProfileStore>();

@@ -103,6 +103,49 @@ public class ClaudeSessionViewModelTests
     }
 
     [Fact]
+    public async Task StartConfigured_LocalToolSession_SeedsAutoApproveToolsFromTheProfileDefault()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
+        var localProfile = new ClaudeProfile("ollama", ConfigDir: "",
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"),
+            Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
+
+        await vm.StartConfiguredAsync(
+            localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.ShowToolAutoApprove.Should().BeTrue();
+        vm.AutoApproveTools.Should().BeTrue();
+        await session.Received(1).SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartConfigured_LocalToolSession_WithoutTheProfileDefault_LeavesAutoApproveToolsOff()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
+        var localProfile = new ClaudeProfile("ollama", ConfigDir: "",
+            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = new ClaudeSessionViewModel(FactoryFor(session));
+
+        await vm.StartConfiguredAsync(
+            localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        vm.ShowToolAutoApprove.Should().BeTrue();
+        vm.AutoApproveTools.Should().BeFalse();
+        await session.DidNotReceive().SetAutoApproveToolsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public void Apply_ThinkingDelta_AddsAThinkingEntry()
     {
         var vm = NewVm();

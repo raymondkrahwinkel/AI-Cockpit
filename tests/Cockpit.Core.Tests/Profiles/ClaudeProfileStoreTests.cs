@@ -72,6 +72,30 @@ public class ClaudeProfileStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_ThenLoadAsync_RoundTripsAutoApproveToolsDefault()
+    {
+        var store = new ClaudeProfileStore(_configFilePath);
+        var profiles = new List<ClaudeProfile>
+        {
+            new("ollama", ConfigDir: "",
+                ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"),
+                Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true)),
+            new("lmstudio", ConfigDir: "",
+                ProviderConfig: new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct"),
+                Defaults: new ProfileDefaults("default", "sonnet", "medium")),
+        };
+
+        await store.SaveAsync(profiles);
+        var loaded = await store.LoadAsync();
+
+        // Explicitly opted-in survives, and the (default) false of the second profile is not flipped to
+        // true by the round-trip — the two are not conflated.
+        loaded.Should().BeEquivalentTo(profiles);
+        loaded[0].Defaults!.AutoApproveTools.Should().BeTrue();
+        loaded[1].Defaults!.AutoApproveTools.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task SaveAsync_ThenLoadAsync_RoundTripsProviderConfigs()
     {
         var store = new ClaudeProfileStore(_configFilePath);

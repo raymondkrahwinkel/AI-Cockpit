@@ -35,6 +35,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private EffortOption _selectedEffort;
 
+    /// <summary>Whether a session under this profile starts with "allow all tools" already on (#26) — only meaningful for a local provider, which gates tool calls per-call rather than through Claude's permission modes.</summary>
+    [ObservableProperty]
+    private bool _autoApproveTools;
+
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;
 
@@ -129,6 +133,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _selectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode);
         _selectedModel = SessionOptionCatalog.ResolveModel(profile.Defaults?.Model);
         _selectedEffort = SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort);
+        _autoApproveTools = profile.Defaults?.AutoApproveTools ?? false;
         _selectedProvider = SessionProviderCatalog.Resolve(profile.Provider);
         _canChooseProvider = canChooseProvider;
         _isLoggedIn = isLoggedIn;
@@ -147,7 +152,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         ConfigDir.Trim(),
         string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim(),
         string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
-        new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value),
+        new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value, AutoApproveTools),
         _ToProviderConfig());
 
     private ProviderConfig? _ToProviderConfig()
