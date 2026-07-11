@@ -1063,6 +1063,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowOptionsDialogAsync(this);
     }
 
+    /// <summary>Opens the About dialog (#46) from the sidebar: app name, version, description and links.</summary>
+    [RelayCommand]
+    private async Task AboutAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowAboutDialogAsync();
+    }
+
     /// <summary>
     /// Persists every options section in one go — the Options dialog's single footer Save (#13)
     /// replaces the six per-section Save buttons the flyout used to have.

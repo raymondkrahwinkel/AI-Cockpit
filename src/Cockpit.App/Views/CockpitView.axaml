@@ -63,6 +63,10 @@
                             Command="{Binding OptionsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Configure notifications, sessions, and voice"/>
+                    <Button Content="About" HorizontalAlignment="Stretch" Classes="Subtle"
+                            Command="{Binding AboutCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="App version and links"/>
                 </StackPanel>
 
                 <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the

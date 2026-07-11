@@ -1,3 +1,4 @@
+using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -132,5 +133,17 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var dialog = new PluginConsentDialog { DataContext = info };
         return await dialog.ShowDialog<bool>(owner);
+    }
+
+    public async Task ShowAboutDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
+        var dialog = new AboutDialog { DataContext = info };
+        await dialog.ShowDialog(owner);
     }
 }

@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.AboutDialog"
+        x:DataType="vm:AboutInfo"
+        Title="About"
+        Width="380" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:AboutInfo AppName="AI-Cockpit" VersionText="1.0.0"
+                      Description="A multi-session cockpit for driving Claude Code side by side."
+                      GitHubUrl="https://github.com/raymondkrahwinkel/AI-Cockpit"
+                      PluginStoreUrl="https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins"/>
+    </Design.DataContext>
+
+    <StackPanel Margin="20" Spacing="12">
+
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <Border Width="36" Height="36" CornerRadius="10"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                <TextBlock Text="AI" FontSize="15" FontWeight="Bold"
+                           Foreground="{StaticResource CockpitAccentBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <StackPanel Spacing="1" VerticalAlignment="Center">
+                <TextBlock Text="{Binding AppName}" FontSize="16" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding VersionText, StringFormat='Version {0}'}"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
+            </StackPanel>
+        </StackPanel>
+
+        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12"
+                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+        <StackPanel Spacing="6">
+            <Button Content="GitHub repository" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
+                    Foreground="{StaticResource CockpitAccentBrush}"
+                    Click="OnOpenGitHub" ToolTip.Tip="{Binding GitHubUrl}"/>
+            <Button Content="Plugin store" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
+                    Foreground="{StaticResource CockpitAccentBrush}"
+                    Click="OnOpenPluginStore" ToolTip.Tip="{Binding PluginStoreUrl}"/>
+        </StackPanel>
+
+        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+            <Button Grid.Column="1" Content="Close" Click="OnClose"/>
+        </Grid>
+    </StackPanel>
+</Window>

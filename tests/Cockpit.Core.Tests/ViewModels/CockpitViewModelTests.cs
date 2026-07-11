@@ -40,6 +40,17 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task AboutCommand_ShowsTheAboutDialog()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogService);
+
+        await vm.AboutCommand.ExecuteAsync(null);
+
+        await dialogService.Received(1).ShowAboutDialogAsync();
+    }
+
+    [Fact]
     public async Task NewSession_WhenTheDialogIsCancelled_AddsNoSession()
     {
         var dialogService = Substitute.For<ISessionDialogService>();

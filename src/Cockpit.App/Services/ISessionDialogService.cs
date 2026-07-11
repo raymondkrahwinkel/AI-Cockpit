@@ -32,4 +32,7 @@ public interface ISessionDialogService
 
     /// <summary>Shows the first-load plugin consent dialog (#14); returns true only when the operator explicitly enables the plugin.</summary>
     Task<bool> ShowPluginConsentAsync(PluginConsentInfo info);
+
+    /// <summary>Shows the About dialog (#46) over the main window: app name, version, description and links.</summary>
+    Task ShowAboutDialogAsync();
 }
