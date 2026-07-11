@@ -44,4 +44,37 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
     /// <summary>The store version to install — the one matching <see cref="PluginStoreEntry.LatestVersion"/>, else the first listed.</summary>
     public PluginStoreVersion? LatestVersionEntry =>
         entry.Versions?.FirstOrDefault(version => version.Version == entry.LatestVersion) ?? entry.Versions?.FirstOrDefault();
+
+    /// <summary>The store dialog's (#62) sidebar/category-chip label — an uncategorised entry (pre-#62 index, or one that never set it) falls under "Other" rather than showing blank.</summary>
+    public string Category => string.IsNullOrWhiteSpace(entry.Category) ? OtherCategory : entry.Category;
+
+    /// <summary>True when the entry declares its own category, as opposed to falling back to <see cref="OtherCategory"/>.</summary>
+    public bool HasCategory => !string.IsNullOrWhiteSpace(entry.Category);
+
+    /// <summary>The store dialog's fallback category bucket name for entries without one.</summary>
+    public const string OtherCategory = "Other";
+
+    /// <summary>The entry's icon glyph (emoji/unicode character), or null when it did not set one — the card/detail view then falls back to <see cref="MonogramLetter"/>.</summary>
+    public string? IconGlyphOrNull => string.IsNullOrWhiteSpace(entry.Icon) ? null : entry.Icon;
+
+    /// <summary>Upper-cased first letter of <see cref="Name"/>, used as the icon fallback when <see cref="IconGlyphOrNull"/> is null.</summary>
+    public string MonogramLetter => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
+
+    public string? Homepage => entry.Homepage;
+
+    public bool HasHomepage => !string.IsNullOrWhiteSpace(entry.Homepage);
+
+    public string? Repository => entry.Repository;
+
+    public bool HasRepository => !string.IsNullOrWhiteSpace(entry.Repository);
+
+    /// <summary>Whether the store marked this entry for the Discover page's "Featured" rail.</summary>
+    public bool IsFeatured => entry.Featured;
+
+    /// <summary>
+    /// <see cref="PluginStoreEntry.Published"/> parsed as a date, or null when it is missing or not a
+    /// valid ISO-8601 date — an invalid/absent date must never throw, it just drops out of "Recently
+    /// added" and sorts last under "Recently updated".
+    /// </summary>
+    public DateOnly? PublishedDate => DateOnly.TryParse(entry.Published, out var parsed) ? parsed : null;
 }
