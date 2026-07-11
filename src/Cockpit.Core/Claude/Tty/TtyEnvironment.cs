@@ -63,6 +63,13 @@ public static class TtyEnvironment
                 continue;
             }
 
+            // Drop the host terminal emulator's self-identification (see IsHostTerminalIdentityMarker) —
+            // the pty child is rendered by Exclr8, not by whatever terminal Cockpit itself runs in.
+            if (IsHostTerminalIdentityMarker(key))
+            {
+                continue;
+            }
+
             environment[key] = value;
         }
 
@@ -124,4 +131,27 @@ public static class TtyEnvironment
         key.StartsWith("CLAUDECODE", StringComparison.OrdinalIgnoreCase)
         || key.StartsWith("CLAUDE_CODE_", StringComparison.OrdinalIgnoreCase)
         || key.StartsWith("CLAUDE_AGENT_", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True for the environment variables a host terminal emulator uses to self-identify to child
+    /// processes — <c>TERM_PROGRAM</c>/<c>TERM_PROGRAM_VERSION</c> (set by most modern terminals,
+    /// including Ghostty, which sets <c>TERM_PROGRAM=ghostty</c>) and Ghostty's own <c>GHOSTTY_*</c>
+    /// variables (e.g. <c>GHOSTTY_RESOURCES_DIR</c>, <c>GHOSTTY_BIN_DIR</c>). Stripped for the same
+    /// reason <see cref="TermValue"/> pins <c>TERM</c> to a generic value: the pty child (<c>claude</c>)
+    /// is actually rendered by Cockpit's own Exclr8 terminal emulator, not by whatever terminal
+    /// launched Cockpit. If <c>TERM_PROGRAM=ghostty</c> leaked through, claude's Ink TUI would detect
+    /// "running inside Ghostty" and pick a Ghostty-specific render path (advanced escape sequences
+    /// Ghostty supports) that Exclr8 does not match, causing a vertical render desync (input echo
+    /// jumping to the top row instead of tracking the cursor).
+    /// <c>TERMINFO</c>/<c>TERMINFO_DIRS</c> are deliberately NOT matched here: claude's Ink TUI is a
+    /// Node.js process that does not consult the ncurses terminfo database for its own rendering
+    /// decisions, so a Ghostty-pointed <c>TERMINFO_DIRS</c> does not reproduce this bug — scrubbing it
+    /// would only risk breaking an unrelated subprocess that does shell out to a terminfo-aware tool.
+    /// <c>COLORTERM</c> is also deliberately not matched — it is a generic truecolor-support signal
+    /// (not a terminal-identity marker) and Exclr8 does support truecolor, so it should pass through.
+    /// </summary>
+    public static bool IsHostTerminalIdentityMarker(string key) =>
+        key.Equals("TERM_PROGRAM", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("TERM_PROGRAM_VERSION", StringComparison.OrdinalIgnoreCase)
+        || key.StartsWith("GHOSTTY_", StringComparison.OrdinalIgnoreCase);
 }

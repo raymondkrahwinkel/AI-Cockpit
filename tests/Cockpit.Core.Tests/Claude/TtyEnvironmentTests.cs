@@ -184,4 +184,38 @@ public class TtyEnvironmentTests
 
         environment["TERM"].Should().Be("xterm-256color");
     }
+
+    [Fact]
+    public void Build_StripsTheHostTerminalIdentityMarkers_SoTheChildDoesNotDetectGhosttyAndDesyncItsRenderPath()
+    {
+        var baseWithGhosttyMarkers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["TERM_PROGRAM"] = "ghostty",
+            ["TERM_PROGRAM_VERSION"] = "1.2.3",
+            ["GHOSTTY_RESOURCES_DIR"] = @"C:\Program Files\Ghostty\resources",
+            ["GHOSTTY_BIN_DIR"] = @"C:\Program Files\Ghostty\bin",
+            ["COLORTERM"] = "truecolor",
+            ["PATH"] = @"C:\Windows",
+        };
+
+        var environment = TtyEnvironment.Build(baseWithGhosttyMarkers, profile: null, UserProfileDir);
+
+        environment.ContainsKey("TERM_PROGRAM").Should().BeFalse();
+        environment.ContainsKey("TERM_PROGRAM_VERSION").Should().BeFalse();
+        environment.ContainsKey("GHOSTTY_RESOURCES_DIR").Should().BeFalse();
+        environment.ContainsKey("GHOSTTY_BIN_DIR").Should().BeFalse();
+        environment["TERM"].Should().Be("xterm-256color");
+        environment["COLORTERM"].Should().Be("truecolor");
+        environment["PATH"].Should().Be(@"C:\Windows");
+    }
+
+    [Fact]
+    public void Build_WithoutHostTerminalIdentityMarkers_LeavesUnrelatedVariablesUntouched()
+    {
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null, UserProfileDir);
+
+        environment["USERPROFILE"].Should().Be(UserProfileDir);
+        environment["PATH"].Should().Be(@"C:\Windows;C:\Windows\System32");
+        environment["APPDATA"].Should().Be(@"C:\Users\raymo\AppData\Roaming");
+    }
 }
