@@ -67,6 +67,13 @@ public partial class ClaudeTtyView : UserControl
     private DispatcherTimer? _autoRedrawDebounce;
     private WindowBase? _activatedWindow;
 
+    // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
+    // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
+    // doesn't flood the log while a reproduction (double-click + type) still has enough samples to show
+    // the render-state jump.
+    private const int KeyDiagThrottleEvery = 10;
+    private int _keyDiagCounter;
+
     public ClaudeTtyView()
     {
         InitializeComponent();
@@ -91,6 +98,12 @@ public partial class ClaudeTtyView : UserControl
         // primary/inline-screen native scroll): tunnel so we intercept before TerminalControl's own
         // OnPointerWheelChanged would otherwise run unconditionally — see OnTerminalWheel/TtyWheelScrollGate.
         AddHandler(InputElement.PointerWheelChangedEvent, OnTerminalWheel, RoutingStrategies.Tunnel);
+
+        // #58 diagnostic instrumentation (observe-only, no behavior change): tunnel so the "before"
+        // snapshot is captured before TerminalControl's own OnPointerPressed — which unconditionally sets
+        // e.Handled = true and, on a double-click, mutates the buffer via SelectWord — has run. Reproduces
+        // Rick's trigger exactly: double-click in the TTY + typing, no interaction outside the TTY.
+        AddHandler(InputElement.PointerPressedEvent, OnTerminalPointerPressedDiagnostics, RoutingStrategies.Tunnel);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -283,6 +296,56 @@ public partial class ClaudeTtyView : UserControl
         }
     }
 
+    /// <summary>
+    /// #58 diagnostic instrumentation: logs the Exclr8 render-state snapshot right before and right after
+    /// a pointer press on the terminal, with <see cref="PointerPressedEventArgs.ClickCount"/> so a
+    /// double-click is visible in the log. The "after" snapshot is captured via a
+    /// <see cref="Dispatcher.UIThread"/> post rather than read synchronously here, so it reflects the state
+    /// once TerminalControl's own (bubble-phase) OnPointerPressed handling — and any layout pass it
+    /// triggers — has actually completed, not just the state at the moment this tunnel handler ran.
+    /// Observe-only: never sets <c>e.Handled</c>, never touches the buffer.
+    /// </summary>
+    private void OnTerminalPointerPressedDiagnostics(object? sender, PointerPressedEventArgs e)
+    {
+        if (_logger is null)
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "TTY-DIAG [pointer] before (clickCount={ClickCount}): {Snapshot}",
+            e.ClickCount, TtyDiagnosticsSnapshot.Capture(Terminal.Buffer));
+
+        Dispatcher.UIThread.Post(() => _logger.LogInformation(
+            "TTY-DIAG [pointer] after (clickCount={ClickCount}): {Snapshot}",
+            e.ClickCount, TtyDiagnosticsSnapshot.Capture(Terminal.Buffer)));
+    }
+
+    /// <summary>
+    /// #58 diagnostic instrumentation: logs the Exclr8 render-state snapshot on a throttled sample of the
+    /// keystrokes the view forwards to the pty (see <see cref="KeyDiagThrottleEvery"/>) — enough samples to
+    /// see the render state jump during a reproduction without flooding the log on a normal typing burst.
+    /// Subscribed alongside (not instead of) <see cref="OnTerminalBytesToPty"/> in <see cref="WireTerminal"/>
+    /// — observe-only, does not participate in writing bytes to the pty.
+    /// </summary>
+    private void OnTerminalInputDiagnostics(object? sender, ReadOnlyMemory<byte> e)
+    {
+        if (_logger is null)
+        {
+            return;
+        }
+
+        _keyDiagCounter++;
+        if (_keyDiagCounter % KeyDiagThrottleEvery != 1)
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "TTY-DIAG [key] input #{Count} ({ByteCount} bytes): {Snapshot}",
+            _keyDiagCounter, e.Length, TtyDiagnosticsSnapshot.Capture(Terminal.Buffer));
+    }
+
     /// <summary>Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (<see cref="OnTerminalBytesToPty"/>).</summary>
     private void _OnVoiceTranscriptReady(string text)
     {
@@ -317,6 +380,10 @@ public partial class ClaudeTtyView : UserControl
         // keystrokes/paste, Output is protocol replies (DSR/DA/DECRQM/OSC-query) the terminal itself
         // generates. Both go to the same place.
         Terminal.Input += OnTerminalBytesToPty;
+        // #58 diagnostics: separate subscriber, observe-only (see OnTerminalInputDiagnostics) — Input only,
+        // not Output, since the goal is to see render state around keys the *user* sends, not protocol
+        // replies the terminal generates on its own.
+        Terminal.Input += OnTerminalInputDiagnostics;
         Terminal.Output += OnTerminalBytesToPty;
         Terminal.Resized += OnTerminalResized;
     }
@@ -427,6 +494,11 @@ public partial class ClaudeTtyView : UserControl
             return;
         }
 
+        // #58 diagnostics: snapshot right before and right after the two-step resize below, so a
+        // reproduction shows exactly what render state ForceRedraw() started from and whether it actually
+        // changed anything.
+        _logger?.LogInformation("TTY-DIAG [redraw] before: {Snapshot}", TtyDiagnosticsSnapshot.Capture(Terminal.Buffer));
+
         try
         {
             // A genuine two-step resize: shrink, let claude react to the SIGWINCH, then restore. No emulator
@@ -440,6 +512,8 @@ public partial class ClaudeTtyView : UserControl
         {
             // The pty may have exited; the output pump already handles that.
         }
+
+        _logger?.LogInformation("TTY-DIAG [redraw] after: {Snapshot}", TtyDiagnosticsSnapshot.Capture(Terminal.Buffer));
     }
 
     private void OnRedrawClick(object? sender, RoutedEventArgs e) => ForceRedraw();
