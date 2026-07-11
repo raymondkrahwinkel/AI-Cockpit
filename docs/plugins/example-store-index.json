@@ -4,8 +4,14 @@
     {
       "id": "github-issues",
       "name": "GitHub Issues",
-      "description": "Browse open GitHub issues across your repos (via the gh CLI) or one repo, and drop a prompt asking the agent to open and review one.",
+      "description": "Browse open GitHub issues across your repos (via the gh CLI) or one repo in a searchable, sortable dialog with a repository filter; click one to drop a prompt asking the agent to open and review it. The prompt template is editable in settings.",
       "author": "Cockpit",
+      "category": "Issue trackers",
+      "icon": "🐛",
+      "homepage": "https://github.com/raymondkrahwinkel/AI-Cockpit/tree/main/docs/plugins",
+      "repository": "https://github.com/raymondkrahwinkel/AI-Cockpit",
+      "featured": true,
+      "published": "2026-07-11",
       "latestVersion": "1.1.0",
       "versions": [
         {
@@ -13,8 +19,8 @@
           "path": "github-issues/github-issues-1.1.0.zip",
           "abstractionsVersion": 1,
           "minHostVersion": "1.0.0",
-          "sha256": "7f1b7a32913aa84adfe25c687c12cd61d1a24ba2ee1d1220ab4ed47351144977",
-          "notes": "gh CLI support, cross-repo issues, searchable/sortable dialog."
+          "sha256": "ff3518e191eb3d3eeb905d8d7657505d4167790852bd6b841530957bbf5b376d",
+          "notes": "gh CLI + cross-repo, searchable/sortable dialog with a repository filter (All + per-repo), per-field settings help tooltips."
         },
         {
           "version": "1.0.0",

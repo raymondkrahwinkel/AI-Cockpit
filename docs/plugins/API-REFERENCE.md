@@ -77,7 +77,9 @@ public interface ICockpitHost
     void AddSideMenuButton(string title, Action onInvoke);
     void AddSideMenuSection(string title, Func<Control> createView);
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
-    void OnSettingsSaved(Action callback); // default no-op
+    void OnSettingsSaved(Action callback);                       // default no-op
+    void AddSessionProvider(SessionProviderRegistration registration); // default no-op
+    Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
 }
 ```
 
@@ -147,6 +149,43 @@ internal sealed class MySideSectionControl : UserControl
         host.OnSettingsSaved(() => _ = ReloadAsync());
     }
 }
+```
+
+### `void AddSessionProvider(SessionProviderRegistration registration)`
+Registers a new **session provider** (#45) — the plugin equivalent of the built-in Claude-CLI/Ollama/LM-Studio
+providers. Once registered, it appears in the New-session/Manage-profiles provider picker, backed by the
+plugin's own driver and config view. See [`SessionProviderRegistration`](#sessionproviderregistration) and the
+[Sessions namespace](#the-sessions-namespace---provider-plugins) below for the full contract.
+- **Parameter** `registration` — the provider's id, display name, driver factory, capabilities and config-view
+  factory.
+- Default no-op, so existing `ICockpitHost` implementations (test fakes, older plugin builds) keep compiling
+  untouched — only the app's own host overrides it.
+```csharp
+host.AddSessionProvider(new SessionProviderRegistration(
+    ProviderId: "my-plugin.my-provider",
+    DisplayName: "My Provider",
+    CreateDriverFactory: _ => new MyPluginSessionDriverFactory(),
+    Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+    CreateConfigView: existingConfigJson => new MyProviderConfigView(existingConfigJson)));
+```
+
+### `Task AddMcpServer(McpServerContribution contribution)`
+Registers (or updates) an HTTP MCP server in the **shared registry** (#60) — e.g. a remote MCP endpoint your
+plugin knows how to build a URL/token for — so both session worlds (the local tool-loop and the Claude
+fan-out) can use its tools without the user adding it by hand in the MCP-servers dialog. See
+[`McpServerContribution`](#mcpservercontribution) below.
+- **Parameter** `contribution` — name, URL, optional bearer token, and scope.
+- **Idempotent upsert-by-name:** calling this again with the same `Name` refreshes the URL/token of an
+  existing entry instead of adding a duplicate. Never force-changes an entry's enabled state or scope — a
+  server the user disabled, rescoped, or deleted from the dialog stays that way.
+- Returns a `Task` because the upsert persists to disk; call it fire-and-forget (`_ = host.AddMcpServer(...)`)
+  from a synchronous callback such as `Initialize` or an `OnSettingsSaved` handler.
+- Default no-op, same compatibility rationale as `AddSessionProvider`.
+```csharp
+_ = host.AddMcpServer(new McpServerContribution(
+    Name: "My Service: Prod",
+    Url: "https://my-service.example.com/mcp",
+    BearerToken: myToken));
 ```
 
 ---
@@ -257,6 +296,240 @@ public sealed record PluginMetadata(string Id, string DisplayName, string Versio
 ```csharp
 public PluginMetadata Metadata { get; } =
     new("github-issues", "GitHub Issues", "1.0.0", "You", "Browse and inject GitHub issues.");
+```
+
+---
+
+## The `Sessions` namespace — provider plugins
+
+Everything under `Cockpit.Plugins.Abstractions.Sessions`, used with `ICockpitHost.AddSessionProvider` (#45) to
+register a plugin as a **new selectable session provider** — the same picker slot as the built-in Claude
+CLI / Ollama / LM Studio providers. Three real plugins in [`plugins-dev/`](../../plugins-dev) exercise this:
+**Gemini/OpenAI Provider** and **GitHub Models** (both a persistent `IChatClient` over an OpenAI-compatible
+endpoint) and **CLI Agent Provider** (a subprocess-per-turn driver around the `codex` CLI).
+
+This is a deliberately **narrow** contract — a trimmed mirror of the host's own internal `ISessionDriver` —
+covering only what a third-party HTTP or subprocess provider can realistically support. There is no
+Claude-CLI-only live model switch, plan mode, thinking-budget control, or always-allow rule persistence; the
+host's own adapter (`PluginSessionDriverAdapter`, internal to the app) wraps your driver to satisfy the real
+`ISessionDriver` contract and no-ops the members this interface has no equivalent for.
+
+### `SessionProviderRegistration`
+
+```csharp
+public sealed record SessionProviderRegistration(
+    string ProviderId,
+    string DisplayName,
+    Func<IServiceProvider, IPluginSessionDriverFactory> CreateDriverFactory,
+    PluginSessionCapabilities Capabilities,
+    Func<string?, IPluginProviderConfigView> CreateConfigView,
+    string DefaultBaseUrl = "");
+```
+
+What you hand to `host.AddSessionProvider(...)` in `Initialize`.
+
+| Field | Meaning |
+|---|---|
+| `ProviderId` | Stable id **namespaced by your plugin** (e.g. `"gemini-provider.gemini"`) so two plugins can never collide. Persisted on a profile — **must not change** once profiles exist under it. |
+| `DisplayName` | Shown in the provider picker, e.g. `"Gemini (OpenAI-compatible)"`. |
+| `CreateDriverFactory` | Builds your `IPluginSessionDriverFactory`, given the host's service provider. Usually `_ => new MyDriverFactory()` — most provider plugins keep no shared state. |
+| `Capabilities` | What your driver supports — see [`PluginSessionCapabilities`](#pluginsessioncapabilities). |
+| `CreateConfigView` | Builds the "add/edit profile" config view; argument is the existing config JSON (edit) or `null` (add). |
+| `DefaultBaseUrl` | Pre-filled default base URL for your config view, when you have one. |
+
+A plugin can register **more than one** provider from a single `Initialize` — the Gemini/OpenAI plugin
+registers `"gemini-provider.gemini"` and `"gemini-provider.openai"` from the same `CreateDriverFactory`
+implementation, differing only in `DefaultBaseUrl`:
+
+```csharp
+public void Initialize(ICockpitHost host)
+{
+    host.AddSessionProvider(new SessionProviderRegistration(
+        ProviderId: "gemini-provider.gemini",
+        DisplayName: "Gemini (OpenAI-compatible)",
+        CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
+        Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+        CreateConfigView: json => new OpenAiCompatProviderConfigView(json, GeminiDefaultBaseUrl),
+        DefaultBaseUrl: GeminiDefaultBaseUrl));
+}
+```
+
+### `IPluginSessionDriverFactory`
+
+```csharp
+public interface IPluginSessionDriverFactory
+{
+    IPluginSessionDriver Create(string configJson);
+}
+```
+
+Creates the driver for one profile. `configJson` is the profile's opaque config string — **your own record's
+shape**, serialized by your `IPluginProviderConfigView.TryGetConfigJson` and deserialized back here; the host
+never inspects it.
+
+### `IPluginSessionDriver`
+
+```csharp
+public interface IPluginSessionDriver : IAsyncDisposable
+{
+    PluginSessionCapabilities Capabilities { get; }
+    string? SessionId { get; }
+    Task StartAsync(string? model = null, CancellationToken cancellationToken = default);
+    Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default);
+    Task InterruptAsync(CancellationToken cancellationToken = default);
+    Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<PluginSessionEvent> Events { get; }
+    Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default); // default no-op
+}
+```
+
+Drives a single, persistent, multi-turn conversation and exposes it as a typed event stream.
+
+| Member | Meaning |
+|---|---|
+| `Capabilities` | What this instance supports (usually mirrors the registration's, but can vary per-config). |
+| `SessionId` | The provider's own session id, once known; `null` before that. |
+| `StartAsync` | Starts the underlying session. Call once before `SendUserMessageAsync`/`Events` produce anything. `model`, when set, selects the model for this session. |
+| `SendUserMessageAsync` | Sends a user message; the session stays open for further turns. |
+| `InterruptAsync` | Interrupts the current in-flight turn, if any. |
+| `RespondToPermissionAsync` | Resolves an outstanding `PluginPermissionRequested` — the operator's allow/deny, correlated on `toolUseId`. Only relevant if `Capabilities.SupportsPermissions`. |
+| `Events` | The live, ordered stream of typed events — see below. |
+| `SetAutoApproveToolsAsync` | Toggles per-tool-call approval prompts on/off. Default no-op — a driver with no tool source of its own has nothing to gate. |
+| `DisposeAsync` *(`IAsyncDisposable`)* | Tears down the subprocess/HTTP client/etc. |
+
+### `PluginSessionCapabilities`
+
+```csharp
+public sealed record PluginSessionCapabilities(bool SupportsTools, bool SupportsPermissions);
+```
+
+So the host's session UI renders or hides controls per provider instead of showing dead ones. Only these two
+flags exist on the plugin-facing surface — there is nothing a plugin driver could back a live model switch,
+plan mode, or thinking-budget control with, so the host always reports those three unsupported for a
+plugin-driven session.
+
+### `IPluginProviderConfigView`
+
+```csharp
+public interface IPluginProviderConfigView
+{
+    Control View { get; }
+    bool TryGetConfigJson(out string configJson);
+}
+```
+
+Your provider's "add/edit profile" settings panel, parallel to `IPluginSettingsView`. Constructed with the
+existing config JSON (edit) or `null` (add) — pre-fill your fields from it.
+
+| Member | Meaning |
+|---|---|
+| `View` | The control hosting your config fields, embedded in the profile editor. |
+| `TryGetConfigJson` | Validates the current field values and serializes them. Return `false` (and no JSON) on validation failure, keeping the editor open. |
+
+```csharp
+internal sealed class MyProviderConfigView : IPluginProviderConfigView
+{
+    private readonly TextBox _apiKey = new();
+    public Control View { get; }
+
+    public MyProviderConfigView(string? existingConfigJson)
+    {
+        if (existingConfigJson is not null)
+        {
+            var existing = JsonSerializer.Deserialize<MyConfig>(existingConfigJson)!;
+            _apiKey.Text = existing.ApiKey;
+        }
+        View = new StackPanel { Children = { new TextBlock { Text = "API key" }, _apiKey } };
+    }
+
+    public bool TryGetConfigJson(out string configJson)
+    {
+        if (string.IsNullOrWhiteSpace(_apiKey.Text)) { configJson = ""; return false; }
+        configJson = JsonSerializer.Serialize(new MyConfig(_apiKey.Text));
+        return true;
+    }
+}
+```
+
+### The event vocabulary — `PluginSessionEvent` and its subtypes
+
+Every event `IPluginSessionDriver.Events` can yield derives from the abstract `PluginSessionEvent`
+(`SessionId` on the base type, so every event carries it once known):
+
+| Type | Fields | Meaning |
+|---|---|---|
+| `PluginSessionInitialized` | `Tools: IReadOnlyList<string>` | Reported once at the start of the stream — the tool names available, if any. |
+| `PluginAssistantTextDelta` | `BlockIndex: int`, `Text: string` | An incremental chunk of assistant text while streaming a turn. |
+| `PluginToolUseRequested` | `ToolUseId`, `ToolName`, `InputJson` | The model requested a tool call. |
+| `PluginToolResult` | `ToolUseId`, `Content`, `IsError: bool` | The result of a previously requested tool call. |
+| `PluginPermissionRequested` | `ToolUseId`, `ToolName`, `InputJson` | The driver is asking the host to allow or deny a tool call (only if `SupportsPermissions`). |
+| `PluginTurnCompleted` | `Subtype`, `Result: string?`, `IsError: bool`, `StopReason: string?` | A turn finished. |
+| `PluginSessionError` | `Message: string` | Something went wrong in the driver itself (request failure, parse failure, ...). |
+
+The host's driver adapter maps each of these to its internal `ClaudeSessionEvent` counterpart, so the rest of
+the app sees one event vocabulary regardless of which driver produced it.
+
+---
+
+## The `Mcp` namespace — MCP server registration
+
+Everything under `Cockpit.Plugins.Abstractions.Mcp`, used with `ICockpitHost.AddMcpServer` (#60) to register
+an **HTTP MCP server** into the shared registry — e.g. the YouTrack plugin registering each configured
+instance's JetBrains remote MCP endpoint so sessions get YouTrack tools without the user adding the server by
+hand.
+
+### `McpServerContribution`
+
+```csharp
+public sealed record McpServerContribution(
+    string Name,
+    string Url,
+    string? BearerToken = null,
+    McpContributionScope Scope = McpContributionScope.All);
+```
+
+| Field | Meaning |
+|---|---|
+| `Name` | Unique display name / registry key, e.g. `"YouTrack: Prod"`. Drives the idempotent upsert-by-name — calling `AddMcpServer` again with the same `Name` refreshes the existing entry's URL/token instead of adding a duplicate. |
+| `Url` | The server's HTTP endpoint, e.g. `https://x.youtrack.cloud/mcp`. |
+| `BearerToken` | Static bearer token sent as `Authorization: Bearer …`, or `null`/empty for no auth. |
+| `Scope` | Which session worlds this server fans out to **on first registration** — see below. |
+
+### `McpContributionScope`
+
+```csharp
+public enum McpContributionScope
+{
+    All,        // every session — both the local-model tool-loop and Claude Code
+    LocalOnly,  // only local models (Ollama/LM Studio); never fanned out to Claude Code
+    ClaudeOnly, // only fanned out to Claude Code; never hosted in the local-model tool-loop
+}
+```
+
+The YouTrack plugin's own registration helper (real code from
+[`plugins-dev/Cockpit.Plugin.YouTrack/YouTrackMcpRegistration.cs`](../../plugins-dev/Cockpit.Plugin.YouTrack/YouTrackMcpRegistration.cs)),
+building one contribution per fully-configured instance and re-registering on every settings save via
+`OnSettingsSaved`:
+
+```csharp
+internal static class YouTrackMcpRegistration
+{
+    public static IReadOnlyList<McpServerContribution> BuildContributions(IReadOnlyList<YouTrackInstance> instances) =>
+        instances
+            .Where(i => !string.IsNullOrWhiteSpace(i.InstanceUrl) && !string.IsNullOrWhiteSpace(i.Token))
+            .Select(i => new McpServerContribution(Name: $"YouTrack: {i.Label}", Url: DeriveMcpEndpoint(i.InstanceUrl), BearerToken: i.Token))
+            .ToList();
+}
+
+// in YouTrackPlugin.Initialize:
+_RegisterMcpServers(host, settings);
+host.OnSettingsSaved(() => _RegisterMcpServers(host, settings));
+
+private static void _RegisterMcpServers(ICockpitHost host, YouTrackSettings settings)
+{
+    foreach (var contribution in YouTrackMcpRegistration.BuildContributions(settings.Instances))
+        _ = host.AddMcpServer(contribution); // fire-and-forget: persists to disk
+}
 ```
 
 ---

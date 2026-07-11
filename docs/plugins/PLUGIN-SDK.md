@@ -85,8 +85,11 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Left-menu button | `host.AddSideMenuButton(title, onInvoke)` | A launcher button in the sidebar; clicking runs your action (usually opening a dialog). |
 | Dialog | `host.ShowDialogAsync(title, () => control)` | A modal dialog over the main window hosting your control. The host provides the **DataGrid** (control + theme) app-wide, so you can use it. |
 | Left-menu section | `host.AddSideMenuSection(title, () => control)` | An inline accordion under the session list — for small, always-visible content. |
+| Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
+| MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Persist settings | `host.Storage` | Per-plugin key/value storage in `cockpit.json`. |
+| Live-apply settings | `host.OnSettingsSaved(callback)` | Re-run a callback after your settings are saved, without needing an app restart. |
 | Register services | `plugin.ConfigureServices(services)` | Add your own services to the host DI container (phase 1). |
 
 ## The contract
@@ -111,6 +114,9 @@ public interface ICockpitHost
     void AddSideMenuButton(string title, Action onInvoke);      // sidebar launcher button
     void AddSideMenuSection(string title, Func<Control> createView); // inline sidebar accordion
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
+    void OnSettingsSaved(Action callback);                      // re-run after your settings are saved
+    void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
+    Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
 }
 
 public interface ICockpitActions
@@ -161,6 +167,76 @@ public sealed class MySettingsControl : UserControl, IPluginSettingsView
 The host calls `Save()` and closes the dialog when it returns true, so every plugin's settings dialog gets
 the same Save/Close behaviour — you don't add your own Save button. A view that applies changes live can
 skip the interface and just gets a Close button.
+
+## Provider plugins — registering a session driver
+
+A plugin can add a whole new **session provider** — the same picker slot as the built-in Claude CLI / Ollama
+/ LM Studio choices — by implementing a small driver and handing it to `host.AddSessionProvider(...)`. Two
+shapes exist in [`plugins-dev/`](../../plugins-dev):
+
+- **Persistent chat client** (Gemini/OpenAI Provider, GitHub Models): one long-lived `IChatClient` per
+  session, talking an OpenAI-compatible endpoint via `Microsoft.Extensions.AI` — the same stack the host uses
+  internally for Ollama/LM Studio.
+- **Subprocess-per-turn** (CLI Agent Provider): shells out to a CLI (`codex exec --json`, resumed for
+  follow-up turns) and maps its JSON-lines output onto the event vocabulary.
+
+The contract, all under `Cockpit.Plugins.Abstractions.Sessions`, is deliberately **narrow** — a trimmed mirror
+of the host's own internal session-driver contract, covering only what a third-party provider can realistically
+support (no live model switch, plan mode, thinking budget, or always-allow persistence; see
+[`PluginSessionCapabilities`](API-REFERENCE.md#pluginsessioncapabilities)). Full member-by-member reference:
+**[API reference → The `Sessions` namespace](API-REFERENCE.md#the-sessions-namespace--provider-plugins)**.
+
+Minimal shape, from the real Gemini/OpenAI provider plugin:
+
+```csharp
+public sealed class MyProviderPlugin : ICockpitPlugin
+{
+    public PluginMetadata Metadata { get; } = new("my-provider", "My Provider", "0.1.0", "You", "...");
+
+    public void ConfigureServices(IServiceCollection services) { } // no shared state — a driver per session
+
+    public void Initialize(ICockpitHost host)
+    {
+        host.AddSessionProvider(new SessionProviderRegistration(
+            ProviderId: "my-provider.my-model",           // namespaced — never rename once profiles use it
+            DisplayName: "My Model",
+            CreateDriverFactory: _ => new MyPluginSessionDriverFactory(),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+            CreateConfigView: existingConfigJson => new MyProviderConfigView(existingConfigJson),
+            DefaultBaseUrl: "https://api.example.com/v1"));
+    }
+
+    public void Dispose() { }
+}
+```
+
+You implement three pieces: `IPluginSessionDriverFactory.Create(configJson)` (deserialize the profile's opaque
+config, build your driver), `IPluginSessionDriver` (start/send/interrupt/events — the actual conversation),
+and `IPluginProviderConfigView` (the add/edit-profile panel that produces that config JSON). A profile created
+against your provider persists `ProviderId` + the config JSON; the host's driver adapter (internal) wraps your
+`IPluginSessionDriver` to satisfy its own full session-driver contract and no-ops whatever your capabilities
+don't support.
+
+## MCP server registration
+
+A plugin that talks to a service with its own remote MCP server (JetBrains YouTrack's is the shipping
+example) can register it into the **shared MCP registry** with `host.AddMcpServer(...)`, so both session
+worlds — the local-model tool-loop and the Claude Code fan-out — pick up its tools without the user adding the
+server by hand in the MCP-servers dialog:
+
+```csharp
+_ = host.AddMcpServer(new McpServerContribution(
+    Name: "My Service: Prod",             // upsert key — re-registering the same Name updates it in place
+    Url: "https://my-service.example.com/mcp",
+    BearerToken: myToken,                 // null/empty for no auth
+    Scope: McpContributionScope.All));    // All / LocalOnly / ClaudeOnly
+```
+
+Call it from `Initialize` (first registration) and again from an `host.OnSettingsSaved(...)` callback whenever
+the underlying URL/token can change — see the YouTrack plugin's `YouTrackMcpRegistration` for the real
+pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-namespace--mcp-server-registration).
+It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
+already changed by hand (enabled/disabled, rescoped, or deleted).
 
 ## The manifest — `plugin.json`
 
@@ -366,7 +442,8 @@ Any of these work — the cockpit auto-detects the shape:
 ### The index — `index.json`
 
 Zip paths are **relative to the index's location**. See
-[example-store-index.json](example-store-index.json).
+[example-store-index.json](example-store-index.json) — a real excerpt from the official store — for a
+complete file using every field below.
 
 ```json
 {
@@ -377,14 +454,28 @@ Zip paths are **relative to the index's location**. See
       "name": "GitHub Issues",
       "description": "One line shown in the catalogue.",
       "author": "You",
-      "latestVersion": "1.0.0",
+      "category": "Issue trackers",
+      "icon": "🐛",
+      "homepage": "https://github.com/you/your-repo/tree/main/docs",
+      "repository": "https://github.com/you/your-repo",
+      "featured": true,
+      "published": "2026-07-11",
+      "latestVersion": "1.1.0",
       "versions": [
+        {
+          "version": "1.1.0",
+          "path": "github-issues/github-issues-1.1.0.zip",
+          "abstractionsVersion": 1,
+          "minHostVersion": "1.0.0",
+          "sha256": "<sha-256 of the zip, hex lowercase — optional but recommended>",
+          "notes": "gh CLI support, cross-repo issues, searchable/sortable dialog."
+        },
         {
           "version": "1.0.0",
           "path": "github-issues/github-issues-1.0.0.zip",
           "abstractionsVersion": 1,
           "minHostVersion": "1.0.0",
-          "sha256": "<sha-256 of the zip, hex lowercase — optional but recommended>",
+          "sha256": "<sha-256 of the 1.0.0 zip>",
           "notes": "Initial release."
         }
       ]
@@ -393,25 +484,73 @@ Zip paths are **relative to the index's location**. See
 }
 ```
 
-`latestVersion` drives update detection (compared against the installed plugin's `version`); the full
-`versions` history lets you keep older zips around. Compute a zip's checksum with
-`(Get-FileHash plugin.zip -Algorithm SHA256).Hash.ToLower()` (PowerShell) or `sha256sum plugin.zip` — a
-mismatch on download is rejected before the zip is ever handed to the installer. A typical repo layout:
+**Top level:**
+
+| Field | Required | Meaning |
+|---|---|---|
+| `name` | yes | The store's display name, shown as the catalogue title in the store dialog. |
+| `plugins` | yes | Array of plugin entries, described below. |
+
+**Per plugin (`plugins[]`):**
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | yes | Stable id — should match the id inside each version's `plugin.json`. |
+| `name` | yes | Display name shown on the catalogue card. |
+| `description` | yes | One-line summary shown on the card and in the detail panel. |
+| `author` | no | Shown on the card/detail panel. |
+| `category` | no | Groups the plugin under a sidebar category in the store dialog (e.g. `"Issue trackers"`, `"AI providers"`). Plugins with no category still show under "All". |
+| `icon` | no | A single emoji shown on the card and as the plugin's icon elsewhere in the UI. |
+| `homepage` | no | Link shown in the detail panel — typically your docs or README section for the plugin. |
+| `repository` | no | Link to the plugin's source repository, shown in the detail panel. |
+| `featured` | no | `true` pins/highlights the card (e.g. in a "Discover" section); default `false`. |
+| `published` | no | ISO date string (`"YYYY-MM-DD"`) of the latest version's publish date; informational, shown in the detail panel. |
+| `latestVersion` | yes | Drives update detection — compared against the installed plugin's `version` to decide whether the store dialog shows "Install" / "Update" / "Installed". |
+| `versions` | yes | Array, newest first, full version history — see below. |
+
+**Per version (`plugins[].versions[]`):**
+
+| Field | Required | Meaning |
+|---|---|---|
+| `version` | yes | This version's version string. |
+| `path` | yes | Zip location, **relative to the index's own location** (e.g. `github-issues/github-issues-1.1.0.zip`). |
+| `abstractionsVersion` | yes | The `AbstractionsContract.Version` major this build targets — checked the same as a manual zip install. |
+| `minHostVersion` | yes | Informational (not currently enforced as a gate, same as the manifest field). |
+| `sha256` | no (recommended) | Hex-lowercase SHA-256 of the zip. A mismatch on download is rejected before the zip is ever handed to the installer. |
+| `notes` | no | Shown as this version's changelog line in the detail panel. |
+
+Compute a zip's checksum with `(Get-FileHash plugin.zip -Algorithm SHA256).Hash.ToLower()` (PowerShell) or
+`sha256sum plugin.zip`. A typical repo layout, one folder per plugin id:
 
 ```
 index.json
 github-issues/github-issues-1.0.0.zip
 github-issues/github-issues-1.1.0.zip
+youtrack/youtrack-1.0.0.zip
+youtrack/youtrack-1.1.0.zip
+youtrack/youtrack-1.2.0.zip
 ```
 
 Note that the catalogue is advertising only: the zip's own `plugin.json` remains the source of truth at
-install time, and consent + hash pinning still apply exactly as for a manual zip install.
+install time, and consent + hash pinning still apply exactly as for a manual zip install. The cockpit's
+plugin-store dialog (categories sidebar, cards, detail panel, search/sort), the pre-seeded default store, and
+the periodic update check all read this same file — see the [README](../../README.md#plugins--plugin-store)
+for how they fit into the app.
+
+### The official store, as a worked reference
+
+**[github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins)**
+is a real store you can use as a template: its `index.json` lists all six `plugins-dev/` plugins with every
+field above filled in, laid out exactly as `<plugin-id>/<plugin-id>-<version>.zip`. Clone its layout for your
+own store, or open a PR against it to list your plugin alongside the official ones.
 
 ## Examples
 
-Three complete, working plugins live under [`plugins-dev/`](../../plugins-dev), each built exactly as
-described above (compile-only shared refs, code-built views, settings persisted via `host.Storage`). Between
-them they exercise every contribution point:
+Six complete, working plugins live under [`plugins-dev/`](../../plugins-dev), each built exactly as described
+above (compile-only shared refs, code-built views, settings persisted via `host.Storage`). Between them they
+exercise every contribution point, both built-in UI ones and the two provider/MCP registration seams:
+
+**UI contribution plugins:**
 
 - **[GitHub Issues](../../plugins-dev/Cockpit.Plugin.GitHubIssues)** — a settings view (GitHub CLI vs.
   single-repo HTTP mode, editable prompt template) plus a left-menu **button** that opens a searchable,
@@ -421,11 +560,28 @@ them they exercise every contribution point:
   pattern, but contributes an inline **side-menu section** (always visible under the session list, showing up
   to 5 open PRs) instead of a launcher button, plus a "view all" dialog. Demonstrates
   `AddSideMenuSection` end-to-end.
-- **[YouTrack](../../plugins-dev/Cockpit.Plugin.YouTrack)** — mirrors the Pull Requests plugin's inline
-  section + dialog, but is **HTTP-only** (a permanent token against a configured instance/project — YouTrack
-  has no local CLI equivalent to `gh`). Good reference for a plugin whose only external dependency is a
-  plain `HttpClient` and settings-stored credentials.
+- **[YouTrack](../../plugins-dev/Cockpit.Plugin.YouTrack)** — a left-menu button + dialog like GitHub Issues,
+  but **HTTP-only** (a permanent token per configured instance — YouTrack has no local CLI equivalent to
+  `gh`), with instance/project/state filters. Also the reference implementation for **MCP server
+  registration**: it registers each fully-configured instance's JetBrains remote MCP endpoint via
+  `host.AddMcpServer(...)` on `Initialize` and again on every settings save (`OnSettingsSaved`), so a session
+  gets YouTrack tools without the user adding the server by hand.
 
-All three ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
-`host.Storage` instead of the DI container), and fall back to `SetClipboardTextAsync` when
-`HasActiveSession` is false.
+**Provider plugins (`host.AddSessionProvider`, #45):**
+
+- **[Gemini / OpenAI Provider](../../plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers **two**
+  providers (Gemini and OpenAI) from one `Initialize`, both backed by the same persistent-`IChatClient` driver
+  factory over an OpenAI-compatible chat-completions endpoint, differing only in default base URL. Chat-only
+  capabilities (no tools/permissions). Experimental (0.x).
+- **[GitHub Models](../../plugins-dev/Cockpit.Plugin.GitHubModelsProvider)** — the same OpenAI-compatible
+  driver against GitHub's own Models endpoint (`models.github.ai/inference`), configured with a GitHub PAT
+  (`models:read` scope) instead of a raw API key. Experimental (0.x).
+- **[CLI Agent Provider](../../plugins-dev/Cockpit.Plugin.CliAgentProvider)** — registers Codex CLI as a
+  provider driven as a **subprocess per turn** (`codex exec --json`, resumed via `codex exec resume
+  <threadId>` for follow-up turns) instead of a persistent chat client — the reference implementation for a
+  non-HTTP driver. `SupportsTools: true`, `SupportsPermissions: false` (no in-band tool-permission channel;
+  the sandbox/approval mode is fixed per profile). Experimental (0.x).
+
+All six ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
+`host.Storage` or is minted fresh per session instead of living in the DI container), and the UI-contribution
+plugins fall back to `SetClipboardTextAsync` when `HasActiveSession` is false.
