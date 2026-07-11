@@ -60,6 +60,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
+    <!-- #45: the plugin-provider driver adapter (PluginSessionDriverAdapter) and registry live here, so
+         Infrastructure needs the shared plugin-contract types (IPluginSessionDriver, SessionProviderRegistration)
+         to translate a plugin's narrow driver into the app's own ISessionDriver. -->
+    <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

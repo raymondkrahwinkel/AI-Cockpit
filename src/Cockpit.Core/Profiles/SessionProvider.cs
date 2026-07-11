@@ -14,4 +14,7 @@ public enum SessionProvider
 
     /// <summary>A local LM Studio server over its OpenAI-compatible <c>/v1</c> endpoint.</summary>
     LmStudio,
+
+    /// <summary>A provider registered by a plugin (#45) — see <see cref="PluginProviderConfig"/>.</summary>
+    Plugin,
 }

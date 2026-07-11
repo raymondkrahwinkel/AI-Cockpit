@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugins.Abstractions;
 
@@ -40,6 +41,17 @@ public interface ICockpitHost
     /// plugin builds) keep compiling untouched — only the app's own host overrides it.
     /// </summary>
     void OnSettingsSaved(Action callback)
+    {
+    }
+
+    /// <summary>
+    /// Registers a new session provider (#45) — the plugin equivalent of the built-in Claude-CLI/Ollama/LM-Studio
+    /// providers: it becomes selectable in the New-session/Manage-profiles provider picker, backed by the
+    /// plugin's own <see cref="IPluginSessionDriver"/> and config view. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host overrides it.
+    /// </summary>
+    void AddSessionProvider(SessionProviderRegistration registration)
     {
     }
 }

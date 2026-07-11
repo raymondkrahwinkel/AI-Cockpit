@@ -1,5 +1,8 @@
 using Avalonia.Controls;
+using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Infrastructure.Claude;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
@@ -38,4 +41,7 @@ internal sealed class CockpitHost(
 
     public void OnSettingsSaved(Action callback) =>
         contributionSink.AddSettingsSavedHandler(pluginId, callback);
+
+    public void AddSessionProvider(SessionProviderRegistration registration) =>
+        services.GetRequiredService<IPluginProviderRegistry>().Register(registration);
 }

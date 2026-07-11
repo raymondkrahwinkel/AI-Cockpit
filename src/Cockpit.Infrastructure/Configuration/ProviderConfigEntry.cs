@@ -19,11 +19,18 @@ internal sealed class ProviderConfigEntry
 
     public string? SystemPrompt { get; set; }
 
+    /// <summary>The registered provider's id, for a plugin-backed profile (#45) — see <see cref="PluginProviderConfig"/>.</summary>
+    public string? PluginProviderId { get; set; }
+
+    /// <summary>The plugin's own config record, serialized as JSON, for a plugin-backed profile (#45).</summary>
+    public string? PluginConfigJson { get; set; }
+
     /// <summary>Maps a domain config to its on-disk form. Returns <see langword="null"/> for the Claude-CLI provider, which carries no config record (the profile's own fields hold its settings).</summary>
     public static ProviderConfigEntry? FromDomain(ProviderConfig? config) => config switch
     {
         OllamaConfig ollama => new() { Provider = SessionProvider.Ollama, BaseUrl = ollama.BaseUrl, Model = ollama.Model, SystemPrompt = ollama.SystemPrompt },
         LmStudioConfig lmStudio => new() { Provider = SessionProvider.LmStudio, BaseUrl = lmStudio.BaseUrl, Model = lmStudio.Model, ApiKey = lmStudio.ApiKey, SystemPrompt = lmStudio.SystemPrompt },
+        PluginProviderConfig plugin => new() { Provider = SessionProvider.Plugin, PluginProviderId = plugin.ProviderId, PluginConfigJson = plugin.ConfigJson },
         _ => null,
     };
 
@@ -31,6 +38,7 @@ internal sealed class ProviderConfigEntry
     {
         SessionProvider.Ollama => new OllamaConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, SystemPrompt),
         SessionProvider.LmStudio => new LmStudioConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, ApiKey, SystemPrompt),
+        SessionProvider.Plugin => new PluginProviderConfig(PluginProviderId ?? string.Empty, PluginConfigJson ?? string.Empty),
         _ => null,
     };
 }
