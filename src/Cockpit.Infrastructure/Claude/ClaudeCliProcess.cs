@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
@@ -66,11 +67,17 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             ? Directory.GetCurrentDirectory()
             : cli.WorkingDirectory;
 
+        var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
         if (profile is not null)
         {
-            // Trust must land before the process starts, or the CLI shows its interactive
-            // trust dialog with nothing able to answer it headlessly.
-            _workspaceTrustWriter.MarkWorkingDirectoryTrusted(profile.ConfigDir, Path.GetFullPath(workingDirectory));
+            // Trust must land before the process starts, or the CLI shows its interactive trust dialog with
+            // nothing able to answer it headlessly. It must land in the .claude.json the CLI actually reads
+            // for this spawn — the profile dir for a non-default profile, the home root for a default-dir
+            // profile (whose CLAUDE_CONFIG_DIR stays unset).
+            _workspaceTrustWriter.MarkWorkingDirectoryTrusted(
+                ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, userHome),
+                Path.GetFullPath(workingDirectory));
         }
 
         var executablePath = profile?.ExecutablePath
@@ -108,9 +115,19 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
         if (profile is not null)
         {
-            // Real user env (HOME/USERPROFILE, PATH, ...) is inherited by default
-            // (UseShellExecute=false); only CLAUDE_CONFIG_DIR is overridden here.
-            startInfo.EnvironmentVariables["CLAUDE_CONFIG_DIR"] = profile.ConfigDir;
+            // Real user env (HOME/USERPROFILE, PATH, ...) is inherited by default (UseShellExecute=false).
+            // A non-default profile dir is exported as CLAUDE_CONFIG_DIR; a default-dir profile clears any
+            // inherited value so the CLI uses its native home-root config/login (setting it to ~/.claude is
+            // not a no-op — see ClaudeConfigDirectory.ResolveSpawnOverride).
+            var configDirOverride = ClaudeConfigDirectory.ResolveSpawnOverride(profile, userHome);
+            if (configDirOverride is not null)
+            {
+                startInfo.EnvironmentVariables[ClaudeConfigDirectory.EnvironmentVariable] = configDirOverride;
+            }
+            else
+            {
+                startInfo.EnvironmentVariables.Remove(ClaudeConfigDirectory.EnvironmentVariable);
+            }
         }
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };

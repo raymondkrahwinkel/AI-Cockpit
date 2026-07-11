@@ -35,14 +35,19 @@ public static class TtyEnvironment
 
     /// <summary>
     /// Builds the environment for the pty child: everything in <paramref name="baseEnvironment"/>
-    /// (the inherited parent environment), then <c>TERM</c>, then — when <paramref name="profile"/>
-    /// is non-null — <c>CLAUDE_CONFIG_DIR</c> so the spawned CLI reads that profile's own
-    /// login/config. Never sets <c>ANTHROPIC_API_KEY</c> (that would switch the CLI to API-key
-    /// billing instead of the subscription route — same rule as the SDK spawn).
+    /// (the inherited parent environment), then <c>TERM</c>, then the profile's <c>CLAUDE_CONFIG_DIR</c>.
+    /// A profile on a non-default directory exports it; a profile pinned to the CLI's default
+    /// (<c>~/.claude</c>) clears any inherited value so the CLI uses its native home-root config/login
+    /// (setting it to the default dir is not a no-op — see
+    /// <see cref="ClaudeConfigDirectory.ResolveSpawnOverride"/>). A profile-less session leaves any
+    /// inherited value untouched, since the transcript tailers resolve the dir through that same variable.
+    /// Never sets <c>ANTHROPIC_API_KEY</c> (that would switch the CLI to API-key billing instead of the
+    /// subscription route — same rule as the SDK spawn).
     /// </summary>
     public static IReadOnlyDictionary<string, string> Build(
         IReadOnlyDictionary<string, string> baseEnvironment,
-        ClaudeProfile? profile)
+        ClaudeProfile? profile,
+        string userProfileDirectory)
     {
         var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in baseEnvironment)
@@ -74,7 +79,15 @@ public static class TtyEnvironment
 
         if (profile is not null)
         {
-            environment["CLAUDE_CONFIG_DIR"] = profile.ConfigDir;
+            var configDirOverride = ClaudeConfigDirectory.ResolveSpawnOverride(profile, userProfileDirectory);
+            if (configDirOverride is not null)
+            {
+                environment[ClaudeConfigDirectory.EnvironmentVariable] = configDirOverride;
+            }
+            else
+            {
+                environment.Remove(ClaudeConfigDirectory.EnvironmentVariable);
+            }
         }
 
         return environment;

@@ -5,9 +5,11 @@ using Cockpit.Core.Abstractions;
 namespace Cockpit.Infrastructure.Claude;
 
 /// <summary>
-/// Before spawning a session, marks a working directory as trusted in a profile's
-/// <c>&lt;ConfigDir&gt;\.claude.json</c> so the CLI does not show its interactive trust
-/// dialog in a headless stream-json process (which has no way to answer it).
+/// Before spawning a session, marks a working directory as trusted in the <c>.claude.json</c> the CLI
+/// will actually read for that spawn so it does not show its interactive trust dialog in a headless
+/// stream-json process (which has no way to answer it). The caller passes the effective config directory
+/// (see <c>ClaudeConfigDirectory.ResolveConfigJsonDirectory</c>) — the profile dir for a non-default
+/// profile, the home root for a default-dir profile whose CLAUDE_CONFIG_DIR stays unset.
 /// </summary>
 /// <remarks>
 /// Synchronous by design: this needs to complete before <see cref="ClaudeCliProcess.Start"/>

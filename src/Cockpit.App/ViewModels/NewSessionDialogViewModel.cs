@@ -95,15 +95,20 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public string LoginStatusLabel => IsSelectedProfileLoggedIn ? "logged in" : "not logged in";
 
-    /// <summary>Guidance shown (in the body) only when the selected Claude profile isn't logged in — a local provider has no login.</summary>
-    public bool ShowLoginHint => IsClaudeProfile && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
+    /// <summary>Guidance shown (in the body) only when a Claude SDK session isn't logged in — a TTY session logs in via its own TUI, and a local provider has no login.</summary>
+    public bool ShowLoginHint => IsClaudeProfile && IsSdk && SelectedProfile is not null && !IsSelectedProfileLoggedIn;
 
     public string LoginStatusBrushKey => IsSelectedProfileLoggedIn
         ? "CockpitStatusDoneBrush"
         : "CockpitStatusWaitingBrush";
 
-    /// <summary>A Claude profile is only startable once logged in (launching unauthenticated would just fail); a local profile has no login, so it starts as soon as it is selected.</summary>
-    public bool CanStart => SelectedProfile is not null && (IsLocalProfile || IsSelectedProfileLoggedIn);
+    /// <summary>
+    /// A selected profile is startable, except a Claude <em>SDK</em> session, which is gated on login: an
+    /// SDK spawn talks to the CLI headlessly and would just fail unauthenticated. A TTY session hosts the
+    /// real interactive TUI, which runs its own <c>/login</c>, so it needs no pre-check; a local profile
+    /// has no login at all.
+    /// </summary>
+    public bool CanStart => SelectedProfile is not null && (IsLocalProfile || IsTty || IsSelectedProfileLoggedIn);
 
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
@@ -187,6 +192,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(HeaderText));
         OnPropertyChanged(nameof(ShowSdkStartHint));
         OnPropertyChanged(nameof(ShowTtyStartHint));
+        // Kind drives the start gate (TTY needs no login) and the login hint (SDK-only), so both re-evaluate.
+        OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(ShowLoginHint));
+        ConfirmCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]

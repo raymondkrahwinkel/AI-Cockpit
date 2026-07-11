@@ -2,6 +2,7 @@ using System.Collections;
 using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Claude;
 using Cockpit.Core.Claude.Tty;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
@@ -45,18 +46,24 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             ? Directory.GetCurrentDirectory()
             : cli.WorkingDirectory;
 
+        var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
         if (profile is not null)
         {
-            // Same rule as SDK mode: trust must land before the process starts, or the TUI blocks
-            // on its interactive trust dialog on first render.
-            _workspaceTrustWriter.MarkWorkingDirectoryTrusted(profile.ConfigDir, Path.GetFullPath(workingDirectory));
+            // Same rule as SDK mode: trust must land before the process starts, or the TUI blocks on its
+            // interactive trust dialog on first render. It must land in the .claude.json the CLI actually
+            // reads for this spawn — the profile dir for a non-default profile, the home root for a
+            // default-dir profile (whose CLAUDE_CONFIG_DIR stays unset).
+            _workspaceTrustWriter.MarkWorkingDirectoryTrusted(
+                ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, userHome),
+                Path.GetFullPath(workingDirectory));
         }
 
         var executablePath = profile?.ExecutablePath
             ?? _executableLocator.FindBundledExecutable()
             ?? cli.ExecutablePath;
 
-        var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile);
+        var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome);
         var arguments = BuildArguments(permissionMode, model, effort);
 
         return _ptyHostFactory.Start(executablePath, arguments, workingDirectory, environment, columns, rows);

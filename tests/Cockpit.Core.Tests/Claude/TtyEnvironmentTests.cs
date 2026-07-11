@@ -6,13 +6,16 @@ namespace Cockpit.Core.Tests.Claude;
 
 /// <summary>
 /// Exercises the pure TTY-mode environment composer: a ConPTY child inherits nothing, so the block
-/// must start from the parent env and add TERM (and CLAUDE_CONFIG_DIR under a profile).
+/// must start from the parent env and add TERM. CLAUDE_CONFIG_DIR is exported only for a profile on a
+/// non-default directory; a default-dir profile clears it so the CLI keeps its native home-root config.
 /// </summary>
 public class TtyEnvironmentTests
 {
+    private const string UserProfileDir = @"C:\Users\raymo";
+
     private static readonly Dictionary<string, string> BaseEnvironment = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["USERPROFILE"] = @"C:\Users\raymo",
+        ["USERPROFILE"] = UserProfileDir,
         ["PATH"] = @"C:\Windows;C:\Windows\System32",
         ["APPDATA"] = @"C:\Users\raymo\AppData\Roaming",
     };
@@ -20,9 +23,9 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_CarriesEveryInheritedVariable()
     {
-        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null);
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null, UserProfileDir);
 
-        environment["USERPROFILE"].Should().Be(@"C:\Users\raymo");
+        environment["USERPROFILE"].Should().Be(UserProfileDir);
         environment["PATH"].Should().Be(@"C:\Windows;C:\Windows\System32");
         environment["APPDATA"].Should().Be(@"C:\Users\raymo\AppData\Roaming");
     }
@@ -30,7 +33,7 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_AlwaysSetsTermToXtermForTheInkTui()
     {
-        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null);
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null, UserProfileDir);
 
         environment["TERM"].Should().Be("xterm-256color");
     }
@@ -40,7 +43,7 @@ public class TtyEnvironmentTests
     {
         var noUtf8 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["LANG"] = "C" };
 
-        var environment = TtyEnvironment.Build(noUtf8, profile: null);
+        var environment = TtyEnvironment.Build(noUtf8, profile: null, UserProfileDir);
 
         environment["LC_ALL"].Should().Be("C.UTF-8");
         environment["LANG"].Should().Be("C.UTF-8");
@@ -49,7 +52,7 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_WhenNoLocaleAtAll_StillForcesUtf8()
     {
-        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null);
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null, UserProfileDir);
 
         environment["LC_ALL"].Should().Be("C.UTF-8");
     }
@@ -62,7 +65,7 @@ public class TtyEnvironmentTests
     {
         var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [key] = value };
 
-        var environment = TtyEnvironment.Build(env, profile: null);
+        var environment = TtyEnvironment.Build(env, profile: null, UserProfileDir);
 
         // The already-working UTF-8 locale is preserved, and no C.UTF-8 fallback was forced over it.
         environment[key].Should().Be(value);
@@ -70,21 +73,58 @@ public class TtyEnvironmentTests
     }
 
     [Fact]
-    public void Build_WithProfile_SetsClaudeConfigDirToTheProfileDirectory()
+    public void Build_WithNonDefaultDirProfile_SetsClaudeConfigDirToTheProfileDirectory()
     {
         var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
 
-        var environment = TtyEnvironment.Build(BaseEnvironment, profile);
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile, UserProfileDir);
 
         environment["CLAUDE_CONFIG_DIR"].Should().Be(@"C:\Users\raymo\.claude-work");
     }
 
     [Fact]
-    public void Build_WithoutProfile_DoesNotSetClaudeConfigDir()
+    public void Build_WithDefaultDirProfile_DoesNotSetClaudeConfigDir_SoTheCliUsesItsNativeHomeRootConfig()
     {
-        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null);
+        var defaultProfile = new ClaudeProfile("default", Path.Combine(UserProfileDir, ".claude"));
+
+        var environment = TtyEnvironment.Build(BaseEnvironment, defaultProfile, UserProfileDir);
 
         environment.ContainsKey("CLAUDE_CONFIG_DIR").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Build_WithDefaultDirProfile_DropsAnInheritedClaudeConfigDir()
+    {
+        var defaultProfile = new ClaudeProfile("default", Path.Combine(UserProfileDir, ".claude"));
+        var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",
+        };
+
+        var environment = TtyEnvironment.Build(baseWithConfigDir, defaultProfile, UserProfileDir);
+
+        environment.ContainsKey("CLAUDE_CONFIG_DIR").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Build_WithoutProfile_DoesNotSetClaudeConfigDir()
+    {
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile: null, UserProfileDir);
+
+        environment.ContainsKey("CLAUDE_CONFIG_DIR").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Build_WithoutProfile_LeavesAnInheritedClaudeConfigDirUntouched_SoTheTailerCanResolveIt()
+    {
+        var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",
+        };
+
+        var environment = TtyEnvironment.Build(baseWithConfigDir, profile: null, UserProfileDir);
+
+        environment["CLAUDE_CONFIG_DIR"].Should().Be(@"C:\some\other");
     }
 
     [Fact]
@@ -92,7 +132,7 @@ public class TtyEnvironmentTests
     {
         var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
 
-        var environment = TtyEnvironment.Build(BaseEnvironment, profile);
+        var environment = TtyEnvironment.Build(BaseEnvironment, profile, UserProfileDir);
 
         environment.ContainsKey("ANTHROPIC_API_KEY").Should().BeFalse();
     }
@@ -109,7 +149,7 @@ public class TtyEnvironmentTests
             ["PATH"] = @"C:\Windows",
         };
 
-        var environment = TtyEnvironment.Build(baseWithMarkers, profile: null);
+        var environment = TtyEnvironment.Build(baseWithMarkers, profile: null, UserProfileDir);
 
         environment.ContainsKey("CLAUDE_CODE_SESSION_ID").Should().BeFalse();
         environment.ContainsKey("CLAUDECODE").Should().BeFalse();
@@ -119,7 +159,7 @@ public class TtyEnvironmentTests
     }
 
     [Fact]
-    public void Build_KeepsClaudeConfigDir_WhichIsNotANestedSessionMarker()
+    public void Build_KeepsANonDefaultConfigDir_OverAnInheritedOne()
     {
         var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
         var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -127,7 +167,7 @@ public class TtyEnvironmentTests
             ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",
         };
 
-        var environment = TtyEnvironment.Build(baseWithConfigDir, profile);
+        var environment = TtyEnvironment.Build(baseWithConfigDir, profile, UserProfileDir);
 
         environment["CLAUDE_CONFIG_DIR"].Should().Be(@"C:\Users\raymo\.claude-work");
     }
@@ -140,7 +180,7 @@ public class TtyEnvironmentTests
             ["term"] = "dumb",
         };
 
-        var environment = TtyEnvironment.Build(baseWithLowerTerm, profile: null);
+        var environment = TtyEnvironment.Build(baseWithLowerTerm, profile: null, UserProfileDir);
 
         environment["TERM"].Should().Be("xterm-256color");
     }

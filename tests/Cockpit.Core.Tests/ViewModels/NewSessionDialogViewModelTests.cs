@@ -52,17 +52,48 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
-    public async Task CanStart_IsFalseWhenTheSelectedProfileIsNotLoggedIn()
+    public async Task CanStart_IsFalseForSdkWhenTheSelectedProfileIsNotLoggedIn()
     {
         var profile = new ClaudeProfile("work", "/home/r/.claude-work");
         var vm = NewVm(out var loginChecker, profile);
         loginChecker.IsLoggedIn(profile).Returns(false);
 
         await vm.LoadAsync();
+        vm.SelectSdkCommand.Execute(null);
 
         vm.IsSelectedProfileLoggedIn.Should().BeFalse();
         vm.CanStart.Should().BeFalse();
         vm.ConfirmCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CanStart_IsTrueForTtyEvenWhenNotLoggedIn_SinceTheTuiRunsItsOwnLogin()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVm(out var loginChecker, profile);
+        loginChecker.IsLoggedIn(profile).Returns(false);
+
+        await vm.LoadAsync(); // the default kind is TTY
+
+        vm.IsTty.Should().BeTrue();
+        vm.IsSelectedProfileLoggedIn.Should().BeFalse();
+        vm.CanStart.Should().BeTrue();
+        vm.ConfirmCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ShowLoginHint_IsShownForSdkButNotForTty_WhichLogsInItself()
+    {
+        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var vm = NewVm(out var loginChecker, profile);
+        loginChecker.IsLoggedIn(profile).Returns(false);
+        await vm.LoadAsync();
+
+        vm.SelectSdkCommand.Execute(null);
+        vm.ShowLoginHint.Should().BeTrue();
+
+        vm.SelectTtyCommand.Execute(null);
+        vm.ShowLoginHint.Should().BeFalse();
     }
 
     [Fact]
