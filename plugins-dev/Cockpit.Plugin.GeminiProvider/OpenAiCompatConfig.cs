@@ -16,4 +16,11 @@ internal sealed record OpenAiCompatConfig(string ApiKey, string Model, string Ba
     /// <c>cockpit.json</c> should not fail to parse over a casing mismatch.
     /// </summary>
     public static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>
+    /// Overrides the record's auto-generated <c>ToString()</c>, which would otherwise print <see cref="ApiKey"/>
+    /// in the clear — anywhere this config lands in a log line or exception message.
+    /// </summary>
+    public override string ToString() =>
+        $"{nameof(OpenAiCompatConfig)} {{ ApiKey = {(string.IsNullOrEmpty(ApiKey) ? "null" : "***")}, Model = {Model}, BaseUrl = {BaseUrl} }}";
 }

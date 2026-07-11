@@ -16,12 +16,15 @@ namespace Cockpit.Infrastructure.Claude;
 /// </summary>
 internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities) : ISessionDriver
 {
+    // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
+    // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
+    // than a flag a plugin could set true with nothing behind it (#45 review finding 3).
     public SessionCapabilities Capabilities { get; } = new(
         SupportsTools: pluginCapabilities.SupportsTools,
         SupportsPermissions: pluginCapabilities.SupportsPermissions,
-        SupportsLiveModelSwitch: pluginCapabilities.SupportsLiveModelSwitch,
-        SupportsPlanMode: pluginCapabilities.SupportsPlanMode,
-        SupportsThinking: pluginCapabilities.SupportsThinking);
+        SupportsLiveModelSwitch: false,
+        SupportsPlanMode: false,
+        SupportsThinking: false);
 
     public string? SessionId => inner.SessionId;
 

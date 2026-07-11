@@ -26,7 +26,7 @@ public class SessionDriverFactoryTests
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini",
             CreateDriverFactory: _ => driverFactory,
-            Capabilities: new PluginSessionCapabilities(true, false, false, false, false),
+            Capabilities: new PluginSessionCapabilities(true, false),
             CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>());
 
         var registry = new PluginProviderRegistry();

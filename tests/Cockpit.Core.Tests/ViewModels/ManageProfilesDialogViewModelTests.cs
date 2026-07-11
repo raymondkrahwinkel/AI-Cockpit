@@ -2,6 +2,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Claude;
 using FluentAssertions;
 using NSubstitute;
 
@@ -83,6 +84,42 @@ public class ManageProfilesDialogViewModelTests
         vm.Profiles.Should().ContainSingle().Which.Label.Should().Be("personal");
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<ClaudeProfile>>(list => list.Count == 1 && list[0].Label == "personal"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// #45 review finding 1: <c>ConfirmRemoveAsync</c> persists every remaining row through <c>ToProfile()</c>
+    /// with no <c>IsValid</c> guard. Before the fix, an orphaned plugin profile (its provider plugin
+    /// removed/disabled/failed to load) had a null <c>PluginConfigView</c>, so <c>ToProfile()</c> returned
+    /// a bare <see cref="ClaudeProfile"/> with no <see cref="ProviderConfig"/> at all — removing some
+    /// *other* profile silently rewrote the orphan row into a broken Claude profile, discarding its
+    /// ProviderId/ConfigJson (and any API key inside). Confirming a removal of an unrelated row must leave
+    /// the orphan's stored config completely untouched.
+    /// </summary>
+    [Fact]
+    public async Task ConfirmRemove_WithAnOrphanedPluginProfileAmongTheRemainingRows_DoesNotCorruptItsProviderConfig()
+    {
+        var orphanConfig = new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"super-secret"}""");
+        var store = Substitute.For<IClaudeProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(
+        [
+            new ClaudeProfile("orphaned-gemini", ConfigDir: "", ProviderConfig: orphanConfig),
+            new ClaudeProfile("personal", "/home/r/.claude-personal"),
+        ]);
+        // An empty registry — the "gemini-provider.gemini" plugin is not registered, exactly the removed/
+        // disabled/failed-to-load state the orphan row is stuck in.
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>(), pluginProviderRegistry: new PluginProviderRegistry());
+        await vm.LoadAsync();
+        vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "personal");
+        vm.RemoveProfileCommand.Execute(null);
+
+        await vm.ConfirmRemoveCommand.ExecuteAsync(null);
+
+        await store.Received(1).SaveAsync(
+            Arg.Is<IReadOnlyList<ClaudeProfile>>(list =>
+                list.Count == 1 &&
+                list[0].Label == "orphaned-gemini" &&
+                list[0].ProviderConfig == orphanConfig),
             Arg.Any<CancellationToken>());
     }
 

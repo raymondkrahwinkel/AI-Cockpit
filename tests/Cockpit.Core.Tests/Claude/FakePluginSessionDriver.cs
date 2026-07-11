@@ -12,7 +12,7 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
 {
     private readonly Channel<PluginSessionEvent> _events = Channel.CreateUnbounded<PluginSessionEvent>();
 
-    public PluginSessionCapabilities Capabilities { get; init; } = new(true, true, false, false, false);
+    public PluginSessionCapabilities Capabilities { get; init; } = new(true, true);
 
     public string? SessionId { get; set; }
 

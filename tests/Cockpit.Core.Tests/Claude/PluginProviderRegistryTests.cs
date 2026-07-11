@@ -61,6 +61,6 @@ public class PluginProviderRegistryTests
         ProviderId: providerId,
         DisplayName: displayName,
         CreateDriverFactory: _ => Substitute.For<IPluginSessionDriverFactory>(),
-        Capabilities: new PluginSessionCapabilities(false, false, false, false, false),
+        Capabilities: new PluginSessionCapabilities(false, false),
         CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>());
 }

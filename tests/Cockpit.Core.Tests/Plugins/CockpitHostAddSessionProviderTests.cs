@@ -31,7 +31,7 @@ public class CockpitHostAddSessionProviderTests
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini",
             CreateDriverFactory: _ => Substitute.For<IPluginSessionDriverFactory>(),
-            Capabilities: new PluginSessionCapabilities(true, false, false, false, false),
+            Capabilities: new PluginSessionCapabilities(true, false),
             CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>());
 
         host.AddSessionProvider(registration);

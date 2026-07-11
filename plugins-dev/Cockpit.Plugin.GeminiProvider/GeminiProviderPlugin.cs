@@ -37,8 +37,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini (OpenAI-compatible)",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(
-                SupportsTools: false, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
             CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, GeminiDefaultBaseUrl),
             DefaultBaseUrl: GeminiDefaultBaseUrl));
 
@@ -46,8 +45,7 @@ public sealed class GeminiProviderPlugin : ICockpitPlugin
             ProviderId: "gemini-provider.openai",
             DisplayName: "OpenAI",
             CreateDriverFactory: _ => new OpenAiCompatPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(
-                SupportsTools: false, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
             CreateConfigView: existingConfigJson => new OpenAiCompatProviderConfigView(existingConfigJson, OpenAiDefaultBaseUrl),
             DefaultBaseUrl: OpenAiDefaultBaseUrl));
     }

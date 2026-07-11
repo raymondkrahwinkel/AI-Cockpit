@@ -86,6 +86,34 @@ public class ClaudeSessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    /// <summary>
+    /// A profile referencing a missing/unresolvable plugin provider (or an invalid persisted ConfigJson)
+    /// makes <c>SessionDriverFactory.Create</c>/<c>OpenAiCompatPluginSessionDriverFactory.Create</c> throw
+    /// loudly by design (#45). Before this fix that call sat outside StartWithProfileAsync's try, so it went
+    /// unhandled and crashed with the panel already added to the sidebar (a zombie panel). It must instead
+    /// degrade to the same failed-launch path a driver.StartAsync failure already takes.
+    /// </summary>
+    [Fact]
+    public async Task StartConfigured_WhenTheDriverFactoryThrows_DegradesToAFailedStatusInsteadOfThrowing()
+    {
+        var factory = Substitute.For<ISessionDriverFactory>();
+        factory.Create(Arg.Any<ClaudeProfile?>())
+            .Returns(_ => throw new InvalidOperationException("No plugin session provider is registered for 'gemini-provider.gemini'."));
+        var vm = new ClaudeSessionViewModel(factory);
+
+        var act = async () => await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        await act.Should().NotThrowAsync();
+        vm.Status.Should().Contain("Failed to start");
+        // The same "leave no phantom lock" cleanup StartConfiguredAsync already runs when the launch fails
+        // in bypass mode (see the test above) only fires when _eventLoopTask stayed null — proving the
+        // failure took the caught path, not an unhandled throw.
+        vm.IsPermissionModeLocked.Should().BeFalse();
+
+        await vm.DisposeAsync();
+    }
+
     [Fact]
     public async Task StartConfigured_InALiveMode_LeavesThePermissionModeUnlocked()
     {

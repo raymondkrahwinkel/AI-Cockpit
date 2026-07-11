@@ -278,8 +278,6 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             return;
         }
 
-        // Now the profile is known, pick the driver for its provider (Claude-CLI vs a local HTTP provider).
-        _session = _driverFactory.Create(profile);
         ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
             ? string.Empty
             : SessionProviderCatalog.Resolve(profile.Provider).Label;
@@ -289,6 +287,14 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
 
         try
         {
+            // Now the profile is known, pick the driver for its provider (Claude-CLI vs a local HTTP
+            // provider vs a plugin-registered one). Inside the try: a profile referencing a missing/unresolvable
+            // plugin provider (or an invalid persisted ConfigJson) throws loudly here (SessionDriverFactory,
+            // OpenAiCompatPluginSessionDriverFactory) — catching it degrades to the existing failed-launch
+            // path (Status set, _eventLoopTask left null) instead of an unhandled throw stranding the panel
+            // that CockpitViewModel already added (#45 review finding 2).
+            _session = _driverFactory.Create(profile);
+
             // The model dropdown lists Claude aliases (opus/sonnet/…), which are meaningless to a local
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".

@@ -143,11 +143,22 @@
 
                     <!-- Plugin-registered provider fields (#45): the plugin's own config view (API key,
                          model, base URL, ...) is embedded here instead of a fixed set of controls, since a
-                         plugin's config shape is opaque to the host. -->
-                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProvider}">
-                        <TextBlock Text="Provider settings" FontSize="11"
+                         plugin's config shape is opaque to the host. When the provider plugin is not
+                         resolvable (removed/disabled/failed to load), the row goes read-only instead of
+                         showing an empty settings region — the profile's stored config is preserved either way. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProviderMissing}">
+                        <TextBlock Text="Provider plugin not installed" FontSize="11" FontWeight="Bold"
+                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                        <TextBlock Text="This profile's provider plugin is missing, disabled, or failed to load. Its settings are kept as-is and cannot be edited here until the plugin is available again."
+                                   FontSize="11" TextWrapping="Wrap"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                        <ContentControl Content="{Binding PluginConfigView.View}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="4" IsVisible="{Binding IsPluginProvider}" IsEnabled="{Binding !IsPluginProviderMissing}">
+                        <TextBlock Text="Provider settings" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                   IsVisible="{Binding !IsPluginProviderMissing}"/>
+                        <ContentControl Content="{Binding PluginConfigView.View}" IsVisible="{Binding !IsPluginProviderMissing}"/>
                     </StackPanel>
 
                     <StackPanel Spacing="4" IsVisible="{Binding IsLocalProvider}">

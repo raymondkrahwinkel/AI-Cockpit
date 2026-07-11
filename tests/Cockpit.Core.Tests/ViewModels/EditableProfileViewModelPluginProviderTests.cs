@@ -51,6 +51,46 @@ public class EditableProfileViewModelPluginProviderTests
         pluginConfig.ConfigJson.Should().Be("""{"ApiKey":"secret","Model":"gemini-2.5-flash"}""");
     }
 
+    /// <summary>
+    /// A stored profile whose provider id resolves to nothing in the registry (the plugin was removed,
+    /// disabled, or failed to load — a normal, lasting state, not a transient error) must not silently drop
+    /// into an empty/broken config: the editor flags it as missing instead of pretending it is editable.
+    /// </summary>
+    [Fact]
+    public void Constructor_WithAnUnregisteredProviderId_MarksTheProfileAsMissingWithNoConfigView()
+    {
+        var registry = new PluginProviderRegistry(); // nothing registered — simulates a removed/disabled plugin
+        var profile = new ClaudeProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"secret"}"""));
+
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, pluginProviderRegistry: registry);
+
+        editable.IsPluginProvider.Should().BeTrue();
+        editable.PluginConfigView.Should().BeNull();
+        editable.IsPluginProviderMissing.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Root-cause regression for the #45 review's "orphan-profile corrupts on save" finding: previously
+    /// <c>_ToProviderConfig()</c> returned <see langword="null"/> whenever <see cref="EditableProfileViewModel.PluginConfigView"/>
+    /// was null, which <c>ToProfile()</c> then collapsed to a bare <see cref="ClaudeProfile"/> with no
+    /// <see cref="ProviderConfig"/> at all — silently discarding the ProviderId and ConfigJson (and any API
+    /// key inside it). It must instead hand back the original config completely unchanged.
+    /// </summary>
+    [Fact]
+    public void ToProfile_WithAnUnregisteredProviderId_PreservesTheOriginalProviderIdAndConfigJsonUnchanged()
+    {
+        var registry = new PluginProviderRegistry();
+        var originalConfig = new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"super-secret","Model":"gemini-2.5-flash"}""");
+        var profile = new ClaudeProfile("gemini", ConfigDir: "", ProviderConfig: originalConfig);
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: false, pluginProviderRegistry: registry);
+
+        var saved = editable.ToProfile();
+
+        saved.ProviderConfig.Should().BeOfType<PluginProviderConfig>();
+        saved.ProviderConfig.Should().Be(originalConfig);
+        saved.Provider.Should().Be(SessionProvider.Plugin);
+    }
+
     [Fact]
     public void IsValid_WhenThePluginConfigViewFailsValidation_IsFalse()
     {
@@ -84,7 +124,7 @@ public class EditableProfileViewModelPluginProviderTests
         ProviderId: providerId,
         DisplayName: displayName,
         CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these view-model tests."),
-        Capabilities: new PluginSessionCapabilities(false, false, false, false, false),
+        Capabilities: new PluginSessionCapabilities(false, false),
         CreateConfigView: _ => configView);
 
     /// <summary>A minimal <see cref="IPluginProviderConfigView"/> test double — <see cref="View"/> is a plain

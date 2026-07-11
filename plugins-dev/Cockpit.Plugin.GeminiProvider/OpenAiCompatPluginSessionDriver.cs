@@ -21,12 +21,7 @@ internal sealed class OpenAiCompatPluginSessionDriver(IChatClient chatClient, st
     private string _model = defaultModel;
     private CancellationTokenSource? _turnCancellation;
 
-    public PluginSessionCapabilities Capabilities { get; } = new(
-        SupportsTools: false,
-        SupportsPermissions: false,
-        SupportsLiveModelSwitch: false,
-        SupportsPlanMode: false,
-        SupportsThinking: false);
+    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: false, SupportsPermissions: false);
 
     public string? SessionId => _sessionId;
 

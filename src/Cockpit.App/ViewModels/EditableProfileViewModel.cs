@@ -79,6 +79,22 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
 
+    /// <summary>
+    /// The profile's original <see cref="PluginProviderConfig"/> when it was loaded for a provider id that
+    /// did not resolve in <see cref="_pluginProviderRegistry"/> (the plugin is removed/disabled/failed to
+    /// load — a normal, lasting state, not a transient error). Carried through <see cref="ToProfile"/>
+    /// unchanged so an orphaned profile never loses its <c>ProviderId</c>/<c>ConfigJson</c> (and therefore
+    /// any API key inside it) just because nothing could build a <see cref="PluginConfigView"/> for it.
+    /// </summary>
+    private readonly PluginProviderConfig? _orphanedPluginConfig;
+
+    /// <summary>
+    /// Whether this row is a plugin-provider profile whose provider plugin is not currently resolvable
+    /// (removed, disabled, or failed to load) — the editor shows a "provider plugin not installed" state
+    /// instead of an empty settings region, and <see cref="ToProfile"/> preserves the original config as-is.
+    /// </summary>
+    public bool IsPluginProviderMissing => IsPluginProvider && PluginConfigView is null;
+
     public IReadOnlyList<SessionProviderOption> Providers { get; }
 
     /// <summary>Models the local server reported on the last refresh, offered as suggestions in the model picker.</summary>
@@ -135,6 +151,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsLocalProvider));
         OnPropertyChanged(nameof(IsLmStudioProvider));
         OnPropertyChanged(nameof(IsPluginProvider));
+        OnPropertyChanged(nameof(IsPluginProviderMissing));
         OnPropertyChanged(nameof(DisplayLabel));
         OnPropertyChanged(nameof(BaseUrlPlaceholder));
 
@@ -155,6 +172,8 @@ public partial class EditableProfileViewModel : ViewModelBase
                 : null;
         }
     }
+
+    partial void OnPluginConfigViewChanged(IPluginProviderConfigView? value) => OnPropertyChanged(nameof(IsPluginProviderMissing));
 
     partial void OnLabelChanged(string value) => OnPropertyChanged(nameof(DisplayLabel));
 
@@ -201,6 +220,13 @@ public partial class EditableProfileViewModel : ViewModelBase
             _selectedProvider = Providers.FirstOrDefault(option => option.Value == SessionProvider.Plugin && option.PluginProviderId == pluginConfig.ProviderId)
                 ?? new SessionProviderOption($"Plugin ({pluginConfig.ProviderId})", SessionProvider.Plugin, pluginConfig.ProviderId);
             _pluginConfigView = pluginProviderRegistry?.Resolve(pluginConfig.ProviderId)?.CreateConfigView(pluginConfig.ConfigJson);
+
+            // The provider plugin is not resolvable (removed/disabled/failed to load) — keep the raw config
+            // so ToProfile can hand it back unchanged instead of collapsing to null (#45 review finding 1).
+            if (_pluginConfigView is null)
+            {
+                _orphanedPluginConfig = pluginConfig;
+            }
         }
         else
         {
@@ -222,9 +248,15 @@ public partial class EditableProfileViewModel : ViewModelBase
         var systemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt.Trim();
         if (SelectedProvider.Value == SessionProvider.Plugin)
         {
-            return PluginConfigView is not null && PluginConfigView.TryGetConfigJson(out var configJson)
-                ? new PluginProviderConfig(SelectedProvider.PluginProviderId ?? string.Empty, configJson)
-                : null;
+            if (PluginConfigView is not null && PluginConfigView.TryGetConfigJson(out var configJson))
+            {
+                return new PluginProviderConfig(SelectedProvider.PluginProviderId ?? string.Empty, configJson);
+            }
+
+            // No config view to serialize (the provider plugin is not resolvable) — hand back the profile's
+            // original config untouched rather than null, so a save/remove of some other row never silently
+            // wipes this orphaned profile's ProviderId/ConfigJson (and any API key inside it).
+            return _orphanedPluginConfig;
         }
 
         return SelectedProvider.Value switch

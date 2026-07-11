@@ -17,13 +17,29 @@ namespace Cockpit.Core.Tests.Claude;
 public class PluginSessionDriverAdapterTests
 {
     [Fact]
-    public void Capabilities_MapsEveryFieldFromThePluginCapabilities()
+    public void Capabilities_MapsSupportsToolsAndSupportsPermissionsFromThePluginCapabilities()
     {
-        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false, true, false, true) };
+        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false) };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
 
         adapter.Capabilities.Should().Be(new SessionCapabilities(
-            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: true, SupportsPlanMode: false, SupportsThinking: true));
+            SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
+    }
+
+    /// <summary>
+    /// Live model switch / plan mode / thinking budget have no member on <see cref="IPluginSessionDriver"/>
+    /// that could back them (#45 review finding 3) — the adapter reports them unsupported unconditionally,
+    /// not merely mirroring whatever a plugin happens to set on its own <see cref="PluginSessionCapabilities"/>.
+    /// </summary>
+    [Fact]
+    public void Capabilities_AlwaysReportsLiveModelSwitchPlanModeAndThinkingAsUnsupported()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        adapter.Capabilities.SupportsLiveModelSwitch.Should().BeFalse();
+        adapter.Capabilities.SupportsPlanMode.Should().BeFalse();
+        adapter.Capabilities.SupportsThinking.Should().BeFalse();
     }
 
     [Fact]
