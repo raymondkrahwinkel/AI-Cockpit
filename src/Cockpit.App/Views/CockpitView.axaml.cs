@@ -37,6 +37,12 @@ public partial class CockpitView : UserControl
         }
 
         _AttachPluginSections();
+        _ApplySidebarWidth();
+
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.PropertyChanged += OnCockpitPropertyChanged;
+        }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -58,8 +64,51 @@ public partial class CockpitView : UserControl
             _observedSideButtons = null;
         }
 
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.PropertyChanged -= OnCockpitPropertyChanged;
+        }
+
         base.OnDetachedFromVisualTree(e);
     }
+
+    // Keeps the column in sync if SidebarWidth changes from elsewhere (e.g. a settings reset) while the
+    // view is open — the splitter drag path below updates the VM straight from the settled column width,
+    // so this only fires for external changes, not its own drag.
+    private void OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CockpitViewModel.SidebarWidth))
+        {
+            _ApplySidebarWidth();
+        }
+    }
+
+    private void _ApplySidebarWidth()
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        _SidebarColumn().Width = new GridLength(cockpit.SidebarWidth);
+    }
+
+    // The GridSplitter already clamps the drag itself (the column's MinWidth/MaxWidth), so the settled
+    // column width is read back and persisted once dragging stops — not on every DragDelta, which would
+    // hammer cockpit.json on every pixel of movement.
+    private async void OnSidebarSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        await cockpit.SetSidebarWidthAsync(_SidebarColumn().Width.Value);
+    }
+
+    // x:Name on a ColumnDefinition doesn't generate a code-behind field (unlike a Control), so it's
+    // reached through the named root Grid instead.
+    private ColumnDefinition _SidebarColumn() => RootGrid.ColumnDefinitions[0];
 
     // Renders the plugin-contributed left-menu buttons and sections (#14) and keeps them in sync: plugins
     // register these during phase-2 init (before this view attaches), and any later addition rebuilds.

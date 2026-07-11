@@ -29,11 +29,25 @@ internal sealed class LayoutSettingsStore : ILayoutSettingsStore, ISingletonServ
     public async Task<LayoutSettings> LoadAsync(CancellationToken cancellationToken = default)
     {
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
-        return configFile?.Layout?.ToDomain() ?? new LayoutSettings();
+        var settings = configFile?.Layout?.ToDomain() ?? new LayoutSettings();
+
+        // Clamp defensively on load too, not just when the splitter drags — a hand-edited cockpit.json
+        // could hold a stale or out-of-range value from before the min/max were introduced.
+        return settings with
+        {
+            SidebarWidth = Math.Clamp(settings.SidebarWidth, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth),
+        };
     }
 
-    public Task SaveAsync(LayoutSettings settings, CancellationToken cancellationToken = default) =>
-        _configFile.UpdateAsync(
-            file => file.Layout = LayoutSettingsEntry.FromDomain(settings),
+    public Task SaveAsync(LayoutSettings settings, CancellationToken cancellationToken = default)
+    {
+        var clamped = settings with
+        {
+            SidebarWidth = Math.Clamp(settings.SidebarWidth, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth),
+        };
+
+        return _configFile.UpdateAsync(
+            file => file.Layout = LayoutSettingsEntry.FromDomain(clamped),
             cancellationToken);
+    }
 }

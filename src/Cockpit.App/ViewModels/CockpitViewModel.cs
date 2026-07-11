@@ -166,6 +166,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _minimizeToTrayOnClose;
 
+    /// <summary>
+    /// Width in pixels of the left sidebar column (#49), dragged via the <c>GridSplitter</c> in
+    /// <c>CockpitView.axaml</c> and persisted so it survives a restart. The splitter's column already
+    /// enforces <see cref="LayoutSettings.MinSidebarWidth"/>/<see cref="LayoutSettings.MaxSidebarWidth"/>
+    /// while dragging; <see cref="LoadLayoutSettingsAsync"/> and <c>LayoutSettingsStore</c> clamp again
+    /// defensively for a value read from a hand-edited <c>cockpit.json</c>.
+    /// </summary>
+    [ObservableProperty]
+    private double _sidebarWidth = LayoutSettings.DefaultSidebarWidth;
+
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
 
@@ -728,6 +738,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SingleSessionLayout = settings.SingleSessionLayout;
         StackSessionsVertically = settings.StackSessionsVertically;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
+        SidebarWidth = settings.SidebarWidth;
     }
 
     /// <summary>Persists the layout settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
@@ -744,8 +755,34 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SingleSessionLayout = SingleSessionLayout,
             StackSessionsVertically = StackSessionsVertically,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+            SidebarWidth = SidebarWidth,
         });
         LayoutSettingsStatus = "✓ Saved";
+    }
+
+    /// <summary>
+    /// Persists the sidebar width alone (#49), called from the view when the <c>GridSplitter</c> drag
+    /// ends — a direct-manipulation UI setting that should save immediately, unlike the Options-dialog
+    /// settings above which wait for the dialog's own Save. Clamped before both the property assignment
+    /// and the save so an out-of-range drag (shouldn't happen given the column's own min/max) can't
+    /// persist.
+    /// </summary>
+    public async Task SetSidebarWidthAsync(double width)
+    {
+        SidebarWidth = Math.Clamp(width, LayoutSettings.MinSidebarWidth, LayoutSettings.MaxSidebarWidth);
+
+        if (_layoutSettingsStore is null)
+        {
+            return;
+        }
+
+        await _layoutSettingsStore.SaveAsync(new LayoutSettings
+        {
+            SingleSessionLayout = SingleSessionLayout,
+            StackSessionsVertically = StackSessionsVertically,
+            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+            SidebarWidth = SidebarWidth,
+        });
     }
 
     private async Task LoadTerminalSettingsAsync()

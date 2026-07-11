@@ -3,6 +3,7 @@
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:conv="using:Cockpit.App.Converters"
              xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:layout="using:Cockpit.Core.Layout"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -26,7 +27,19 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid ColumnDefinitions="180,*">
+    <Grid x:Name="RootGrid">
+        <Grid.ColumnDefinitions>
+            <!-- Width set from CockpitViewModel.SidebarWidth in code-behind (#49) — a GridLength column
+                 can't compiled-bind straight to the VM's double, so CockpitView.axaml.cs applies it on
+                 load/change and reads it back once the GridSplitter drag below ends (via RootGrid, since
+                 x:Name on a ColumnDefinition itself doesn't generate a code-behind field). Min/Max keep
+                 both the drag and a hand-edited persisted value inside a sane range. -->
+            <ColumnDefinition Width="180"
+                               MinWidth="{x:Static layout:LayoutSettings.MinSidebarWidth}"
+                               MaxWidth="{x:Static layout:LayoutSettings.MaxSidebarWidth}"/>
+            <ColumnDefinition Width="4"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor. -->
         <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -163,8 +176,13 @@
             </DockPanel>
         </Border>
 
+        <!-- Sidebar-width splitter (#49): drags SidebarColumn between its min/max, then
+             OnSidebarSplitterDragCompleted reads the settled width back and persists it. -->
+        <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
+                      DragCompleted="OnSidebarSplitterDragCompleted"/>
+
         <!-- Main area: empty-state welcome until a session exists (#31), then the grid/zoom. -->
-        <Grid Grid.Column="1">
+        <Grid Grid.Column="2">
 
             <!-- Empty state: no session opens on startup; one only exists once the operator creates it. -->
             <StackPanel IsVisible="{Binding !HasSessions}" MaxWidth="320"

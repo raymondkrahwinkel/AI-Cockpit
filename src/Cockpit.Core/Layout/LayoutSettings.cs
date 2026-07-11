@@ -15,4 +15,15 @@ public sealed record LayoutSettings
 
     /// <summary>When true, closing the window hides it to the system tray and keeps the app running instead of quitting (#33). Off by default.</summary>
     public bool MinimizeToTrayOnClose { get; init; }
+
+    /// <summary>
+    /// Width in pixels of the left sidebar column (#49), dragged via the <c>GridSplitter</c> between it
+    /// and the session content. Clamped to <see cref="MinSidebarWidth"/>/<see cref="MaxSidebarWidth"/> on
+    /// load and on save. Defaults to the sidebar's original fixed width.
+    /// </summary>
+    public double SidebarWidth { get; init; } = DefaultSidebarWidth;
+
+    public const double DefaultSidebarWidth = 180;
+    public const double MinSidebarWidth = 180;
+    public const double MaxSidebarWidth = 480;
 }

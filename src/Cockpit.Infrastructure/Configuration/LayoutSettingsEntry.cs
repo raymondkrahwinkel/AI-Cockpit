@@ -11,11 +11,14 @@ internal sealed class LayoutSettingsEntry
 
     public bool MinimizeToTrayOnClose { get; set; }
 
+    public double SidebarWidth { get; set; } = LayoutSettings.DefaultSidebarWidth;
+
     public static LayoutSettingsEntry FromDomain(LayoutSettings settings) => new()
     {
         SingleSessionLayout = settings.SingleSessionLayout,
         StackSessionsVertically = settings.StackSessionsVertically,
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose,
+        SidebarWidth = settings.SidebarWidth,
     };
 
     public LayoutSettings ToDomain() => new()
@@ -23,5 +26,6 @@ internal sealed class LayoutSettingsEntry
         SingleSessionLayout = SingleSessionLayout,
         StackSessionsVertically = StackSessionsVertically,
         MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+        SidebarWidth = SidebarWidth,
     };
 }

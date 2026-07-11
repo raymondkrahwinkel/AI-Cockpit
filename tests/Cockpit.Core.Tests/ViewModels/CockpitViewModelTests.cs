@@ -490,6 +490,56 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public void Constructor_DefaultsSidebarWidthBeforeLayoutSettingsLoad()
+    {
+        var vm = NewVm();
+
+        vm.SidebarWidth.Should().Be(LayoutSettings.DefaultSidebarWidth);
+    }
+
+    [Fact]
+    public async Task Constructor_LoadsSidebarWidthFromLayoutSettingsStore()
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings { SidebarWidth = 300 });
+
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+        await Task.Delay(50);
+
+        vm.SidebarWidth.Should().Be(300);
+    }
+
+    [Fact]
+    public async Task SetSidebarWidthAsync_PersistsTheWidthAndUpdatesTheProperty()
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+
+        await vm.SetSidebarWidthAsync(320);
+
+        vm.SidebarWidth.Should().Be(320);
+        await layoutSettingsStore.Received(1).SaveAsync(
+            Arg.Is<LayoutSettings>(s => s.SidebarWidth == 320), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(40, LayoutSettings.MinSidebarWidth)]
+    [InlineData(2000, LayoutSettings.MaxSidebarWidth)]
+    public async Task SetSidebarWidthAsync_ClampsAnOutOfRangeWidth(double requested, double expected)
+    {
+        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        var vm = NewVm(layoutSettingsStore: layoutSettingsStore);
+
+        await vm.SetSidebarWidthAsync(requested);
+
+        vm.SidebarWidth.Should().Be(expected);
+        await layoutSettingsStore.Received(1).SaveAsync(
+            Arg.Is<LayoutSettings>(s => s.SidebarWidth == expected), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Constructor_LoadsTerminalSettingsFromStore()
     {
         var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
@@ -621,7 +671,7 @@ public class CockpitViewModelTests
         return vm;
     }
 
-    private static CockpitViewModel NewVm(ISessionDialogService? dialogService = null, ITerminalSettingsStore? terminalSettingsStore = null)
+    private static CockpitViewModel NewVm(ISessionDialogService? dialogService = null, ITerminalSettingsStore? terminalSettingsStore = null, ILayoutSettingsStore? layoutSettingsStore = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
@@ -634,8 +684,12 @@ public class CockpitViewModelTests
         transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
         sessionBehaviorSettingsStore.LoadAsync().Returns(new SessionBehaviorSettings());
-        var layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
-        layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        if (layoutSettingsStore is null)
+        {
+            layoutSettingsStore = Substitute.For<ILayoutSettingsStore>();
+            layoutSettingsStore.LoadAsync().Returns(new LayoutSettings());
+        }
+
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync().Returns(new VoiceSettings());
         if (terminalSettingsStore is null)

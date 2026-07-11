@@ -32,6 +32,7 @@ public class LayoutSettingsStoreTests : IDisposable
         var settings = await store.LoadAsync();
 
         settings.SingleSessionLayout.Should().BeFalse();
+        settings.SidebarWidth.Should().Be(LayoutSettings.DefaultSidebarWidth);
     }
 
     [Fact]
@@ -39,12 +40,39 @@ public class LayoutSettingsStoreTests : IDisposable
     {
         var store = new LayoutSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, MinimizeToTrayOnClose = true });
+        await store.SaveAsync(new LayoutSettings { SingleSessionLayout = true, StackSessionsVertically = true, MinimizeToTrayOnClose = true, SidebarWidth = 260 });
         var loaded = await store.LoadAsync();
 
         loaded.SingleSessionLayout.Should().BeTrue();
         loaded.StackSessionsVertically.Should().BeTrue();
         loaded.MinimizeToTrayOnClose.Should().BeTrue();
+        loaded.SidebarWidth.Should().Be(260);
+    }
+
+    [Theory]
+    [InlineData(50, LayoutSettings.MinSidebarWidth)]
+    [InlineData(900, LayoutSettings.MaxSidebarWidth)]
+    public async Task SaveAsync_ClampsAnOutOfRangeSidebarWidth(double requested, double expected)
+    {
+        var store = new LayoutSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new LayoutSettings { SidebarWidth = requested });
+        var loaded = await store.LoadAsync();
+
+        loaded.SidebarWidth.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ClampsAStaleOutOfRangeValueFromDisk()
+    {
+        // Simulates a hand-edited (or pre-#49) cockpit.json holding a value outside today's min/max,
+        // written directly rather than through the store — SaveAsync would already clamp it itself.
+        await File.WriteAllTextAsync(_configFilePath, """{ "Layout": { "SidebarWidth": 9001 } }""");
+        var store = new LayoutSettingsStore(_configFilePath);
+
+        var loaded = await store.LoadAsync();
+
+        loaded.SidebarWidth.Should().Be(LayoutSettings.MaxSidebarWidth);
     }
 
     [Fact]
