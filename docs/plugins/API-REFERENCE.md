@@ -400,13 +400,16 @@ Drives a single, persistent, multi-turn conversation and exposes it as a typed e
 ### `PluginSessionCapabilities`
 
 ```csharp
-public sealed record PluginSessionCapabilities(bool SupportsTools, bool SupportsPermissions);
+public sealed record PluginSessionCapabilities(bool SupportsTools, bool SupportsPermissions, bool SupportsVision = false);
 ```
 
-So the host's session UI renders or hides controls per provider instead of showing dead ones. Only these two
-flags exist on the plugin-facing surface — there is nothing a plugin driver could back a live model switch,
-plan mode, or thinking-budget control with, so the host always reports those three unsupported for a
-plugin-driven session.
+So the host's session UI renders or hides controls per provider instead of showing dead ones. `SupportsTools`
+and `SupportsPermissions` gate the tool/approval affordances; `SupportsVision` gates image paste (a session
+whose provider can't accept images shows a notice instead of silently dropping the pasted image). Leave
+`SupportsVision: false` for now — the plugin-facing `IPluginSessionDriver.SendUserMessageAsync` has no images
+parameter yet, so a plugin can't actually back it (setting it true would be an unbackable promise); it becomes
+usable once that lands. There is deliberately nothing here for live model switch, plan mode, or thinking budget
+— a plugin driver couldn't back those, so the host always reports them unsupported for a plugin-driven session.
 
 ### `IPluginProviderConfigView`
 
