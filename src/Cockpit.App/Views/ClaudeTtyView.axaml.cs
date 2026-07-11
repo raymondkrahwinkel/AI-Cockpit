@@ -71,6 +71,11 @@ public partial class ClaudeTtyView : UserControl
         // costs nothing when the render was already fine.
         Terminal.GotFocus += OnTerminalGotFocus;
         PropertyChanged += OnControlPropertyChanged;
+
+        // Scrollback fallback for the alt screen (#56): tunnel so we intercept before TerminalControl's
+        // own OnPointerWheelChanged, which otherwise no-ops the notch whenever the TUI hasn't requested
+        // mouse tracking — see OnTerminalWheel/TtyWheelScrollGate.
+        AddHandler(InputElement.PointerWheelChangedEvent, OnTerminalWheel, RoutingStrategies.Tunnel);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -463,6 +468,43 @@ public partial class ClaudeTtyView : UserControl
             // The pty may have exited between the input event and the write; the output pump will
             // observe the exit and update status.
         }
+    }
+
+    /// <summary>
+    /// Scrollback fallback for the alt screen (#56). Exclr8.Terminal's alternate screen keeps no
+    /// scrollback, so TerminalControl's own wheel handling is a no-op there unless the TUI requested
+    /// mouse tracking — Claude Code's TUI does neither. When <see cref="TtyWheelScrollGate"/> says so,
+    /// this sends an Up/Down arrow-key press to the pty instead (mirrors xterm's alternateScroll) and
+    /// marks the event handled so TerminalControl's own <c>OnPointerWheelChanged</c> does not also run.
+    /// Left alone otherwise: the primary screen's native pixel-scroll scrollback and the alt screen's own
+    /// SGR-mouse-report path (when the TUI did request tracking) both still work exactly as before.
+    /// </summary>
+    private void OnTerminalWheel(object? sender, PointerWheelEventArgs e)
+    {
+        var pty = _pty;
+        if (pty is null)
+        {
+            return;
+        }
+
+        var buffer = Terminal.Buffer;
+        if (!TtyWheelScrollGate.ShouldForwardAsArrowKeys(buffer.IsAltScreen, buffer.MouseMode))
+        {
+            return;
+        }
+
+        try
+        {
+            var bytes = TtyWheelScrollGate.EncodeArrowKey(e.Delta.Y > 0, buffer.ApplicationCursorKeys);
+            pty.InputStream.Write(bytes);
+            pty.InputStream.Flush();
+        }
+        catch (Exception)
+        {
+            // The pty may have exited; the output pump already handles that.
+        }
+
+        e.Handled = true;
     }
 
     private async Task PumpOutputAsync(IConPtyProcess pty, CancellationToken cancellationToken)
