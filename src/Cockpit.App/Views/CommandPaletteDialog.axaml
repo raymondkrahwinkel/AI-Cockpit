@@ -34,13 +34,14 @@
                  ItemsSource="{Binding Visible}" SelectedItem="{Binding Selected}"
                  Background="Transparent" BorderThickness="0">
             <ListBox.Styles>
-                <!-- Recolour the Fluent selection directly on the item's content presenter — the theme
-                     resource-key override was too faint/unreliable, so the selected command reads clearly. -->
+                <!-- Recolour the Fluent selection directly on the item's content presenter (the theme
+                     resource-key override was too faint). Use the subtle hover background — the accent was
+                     too loud — so the selected command reads clearly without shouting. -->
                 <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-                    <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+                    <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
                 </Style>
                 <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-                    <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+                    <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
                 </Style>
                 <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
                     <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
