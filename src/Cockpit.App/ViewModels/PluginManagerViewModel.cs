@@ -70,6 +70,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     /// <summary>Design-time constructor for the previewer.</summary>
     public PluginManagerViewModel()
     {
+        _WatchAvailablePluginsForUpdateGate();
     }
 
     public PluginManagerViewModel(
@@ -96,7 +97,19 @@ public partial class PluginManagerViewModel : ViewModelBase
         _diagnostics = diagnostics;
         _contributionSink = contributionSink;
         _restartService = restartService;
+        _WatchAvailablePluginsForUpdateGate();
     }
+
+    // The "Update all" button binds to HasAvailableUpdates/AvailableUpdateCount, which are computed from
+    // AvailablePlugins. Browsing the stores rebuilds that collection, so the gate has to be re-raised from the
+    // collection itself — notifying only from the install/update paths left the button hidden right after the
+    // store loaded, the one moment there is definitely something to update.
+    private void _WatchAvailablePluginsForUpdateGate() =>
+        AvailablePlugins.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasAvailableUpdates));
+            OnPropertyChanged(nameof(AvailableUpdateCount));
+        };
 
     [RelayCommand(CanExecute = nameof(CanRestart))]
     private void RestartNow() => _restartService?.Restart();
