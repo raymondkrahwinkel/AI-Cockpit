@@ -50,6 +50,9 @@ public sealed class DelegatedTaskRowViewModel
         DelegatedTaskStatus.Queued => "CockpitStatusWaitingBrush",
         DelegatedTaskStatus.Completed => "CockpitStatusDoneBrush",
         DelegatedTaskStatus.Failed => "CockpitStatusErrorBrush",
-        _ => "CockpitStatusWaitingBrush",
+
+        // Stopped is deliberately not the waiting colour: a task you cancelled would otherwise look exactly like
+        // one that is still about to run, which is the confusion the grouping is meant to remove.
+        _ => "CockpitTextFaintBrush",
     };
 }

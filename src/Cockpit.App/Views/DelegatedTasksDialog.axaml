@@ -62,6 +62,10 @@
                                                                        TextTrimming="CharacterEllipsis"/>
                                                         </StackPanel>
                                                         <StackPanel Orientation="Horizontal" Spacing="6" Margin="13,0,0,0">
+                                                            <!-- Spelled out as well as coloured: in the Finished band,
+                                                                 completed, failed and stopped all live together. -->
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                                             <TextBlock Text="{Binding Profile}" FontSize="11"
                                                                        Foreground="{StaticResource CockpitTextFaintBrush}"
                                                                        TextTrimming="CharacterEllipsis"/>
