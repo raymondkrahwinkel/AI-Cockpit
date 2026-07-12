@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Infrastructure.Claude;
 
 namespace Cockpit.App.Services;
@@ -26,19 +27,22 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
+    private readonly IWorkingPathHistoryStore _workingPathStore;
 
     public SessionDialogService(
         IClaudeProfileStore profileStore,
         IClaudeProfileLoginChecker loginChecker,
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
-        IPluginProviderRegistry pluginProviderRegistry)
+        IPluginProviderRegistry pluginProviderRegistry,
+        IWorkingPathHistoryStore workingPathStore)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
         _pluginProviderRegistry = pluginProviderRegistry;
+        _workingPathStore = workingPathStore;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -48,7 +52,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerStore);
+        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerStore, _workingPathStore);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };

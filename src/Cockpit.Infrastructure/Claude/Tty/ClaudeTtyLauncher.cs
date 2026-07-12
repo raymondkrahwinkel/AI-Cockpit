@@ -44,12 +44,16 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         string? model,
         string? effort,
         short columns,
-        short rows)
+        short rows,
+        string? workingDirectory = null)
     {
         var cli = _options.Claude;
-        var workingDirectory = string.IsNullOrWhiteSpace(cli.WorkingDirectory)
-            ? Directory.GetCurrentDirectory()
-            : cli.WorkingDirectory;
+        // Per-session override (New-session dialog) wins over the global option, which wins over the process cwd.
+        var resolvedWorkingDirectory = !string.IsNullOrWhiteSpace(workingDirectory)
+            ? workingDirectory
+            : string.IsNullOrWhiteSpace(cli.WorkingDirectory)
+                ? Directory.GetCurrentDirectory()
+                : cli.WorkingDirectory;
 
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -61,7 +65,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             // default-dir profile (whose CLAUDE_CONFIG_DIR stays unset).
             _workspaceTrustWriter.MarkWorkingDirectoryTrusted(
                 ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, userHome),
-                Path.GetFullPath(workingDirectory));
+                Path.GetFullPath(resolvedWorkingDirectory));
         }
 
         var executablePath = profile?.ExecutablePath
@@ -71,7 +75,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome);
         var arguments = BuildArguments(permissionMode, model, effort, _WriteRegistryMcpConfig());
 
-        return _ptyHostFactory.Start(executablePath, arguments, workingDirectory, environment, columns, rows);
+        return _ptyHostFactory.Start(executablePath, arguments, resolvedWorkingDirectory, environment, columns, rows);
     }
 
     /// <summary>

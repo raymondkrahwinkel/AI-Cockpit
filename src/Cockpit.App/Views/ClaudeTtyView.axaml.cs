@@ -39,6 +39,7 @@ public partial class ClaudeTtyView : UserControl
     private string? _pendingPermissionMode;
     private string? _pendingModel;
     private string? _pendingEffort;
+    private string? _pendingWorkingDirectory;
     private bool _launchPending;
     private bool _wired;
     private int _lastColumns;
@@ -272,13 +273,15 @@ public partial class ClaudeTtyView : UserControl
         ClaudeProfile? profile,
         string? permissionMode,
         string? model,
-        string? effort)
+        string? effort,
+        string? workingDirectory)
     {
         _pendingLauncher = launcher;
         _pendingProfile = profile;
         _pendingPermissionMode = permissionMode;
         _pendingModel = model;
         _pendingEffort = effort;
+        _pendingWorkingDirectory = workingDirectory;
         _launchPending = true;
 
         if (_lastColumns > 0 && _lastRows > 0)
@@ -436,7 +439,8 @@ public partial class ClaudeTtyView : UserControl
                 _pendingModel,
                 _pendingEffort,
                 (short)_lastColumns,
-                (short)_lastRows);
+                (short)_lastRows,
+                _pendingWorkingDirectory);
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;
             _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);

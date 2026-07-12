@@ -23,6 +23,8 @@ public interface IClaudeTtyLauncher
     /// under <paramref name="profile"/> (or the host's own config when null), with
     /// <paramref name="permissionMode"/>/<paramref name="model"/>/<paramref name="effort"/> as its
     /// launch-only start defaults (any of which may be null/blank to omit that flag).
+    /// <paramref name="workingDirectory"/> overrides the global working-directory option for this one
+    /// session (the pty's cwd) when non-blank; null/blank keeps the global default.
     /// </summary>
     IConPtyProcess Launch(
         ClaudeProfile? profile,
@@ -30,5 +32,6 @@ public interface IClaudeTtyLauncher
         string? model,
         string? effort,
         short columns,
-        short rows);
+        short rows,
+        string? workingDirectory = null);
 }

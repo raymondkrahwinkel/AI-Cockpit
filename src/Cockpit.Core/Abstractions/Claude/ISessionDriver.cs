@@ -41,7 +41,7 @@ public interface ISessionDriver : IAsyncDisposable
     /// the shared MCP registry to just those names for this session, on top of the registry's own
     /// enabled/scope filtering; <see langword="null"/> keeps the pre-#44 behaviour of using the full registry.
     /// </summary>
-    Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, CancellationToken cancellationToken = default);
+    Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a user message as a single stream-json line on the CLI's stdin.

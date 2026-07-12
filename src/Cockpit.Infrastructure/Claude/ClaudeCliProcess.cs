@@ -61,12 +61,16 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
     public bool HasExited => _started && (_process?.HasExited ?? true);
 
-    public void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null)
+    public void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null)
     {
         var cli = _options.Claude;
-        var workingDirectory = string.IsNullOrWhiteSpace(cli.WorkingDirectory)
-            ? Directory.GetCurrentDirectory()
-            : cli.WorkingDirectory;
+        // A per-session override (from the New-session dialog) wins over the global option, which in turn wins
+        // over the process cwd.
+        var workingDirectory = !string.IsNullOrWhiteSpace(workingDirectoryOverride)
+            ? workingDirectoryOverride
+            : string.IsNullOrWhiteSpace(cli.WorkingDirectory)
+                ? Directory.GetCurrentDirectory()
+                : cli.WorkingDirectory;
 
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 

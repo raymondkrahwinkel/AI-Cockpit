@@ -3,7 +3,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.WorkingPaths;
 
 namespace Cockpit.App.ViewModels;
 
@@ -27,6 +29,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IClaudeProfileLoginChecker? _loginChecker;
     private readonly IClaudeProfileStore? _profileStore;
     private readonly IMcpServerStore? _mcpServerStore;
+    private readonly IWorkingPathHistoryStore? _workingPathStore;
+    private WorkingPathHistory _history = WorkingPathHistory.Empty;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
     public event Action<NewSessionResult?>? CloseRequested;
@@ -80,6 +84,33 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _sessionName = string.Empty;
 
+    /// <summary>
+    /// Optional per-session working directory (#: project-folder launch): the directory <c>claude</c> is
+    /// started in for this session, overriding the global option. Blank keeps the global default. Pre-fillable
+    /// from <see cref="RecentPaths"/>/<see cref="FavoritePaths"/> so a previously-used folder is one click away.
+    /// </summary>
+    [ObservableProperty]
+    private string _workingDirectory = string.Empty;
+
+    /// <summary>Remembered working directories for the quick-pick — favorites first (★), then recents — so a folder used before is one selection away.</summary>
+    public ObservableCollection<RememberedPathOption> RememberedPaths { get; } = [];
+
+    /// <summary>Bound to the quick-pick ComboBox; selecting an entry fills <see cref="WorkingDirectory"/> and resets to null so it behaves as a picker, not a persistent selection.</summary>
+    [ObservableProperty]
+    private RememberedPathOption? _selectedRememberedPath;
+
+    /// <summary>Whether there is anything to offer in the folder quick-pick.</summary>
+    public bool HasRememberedPaths => RememberedPaths.Count > 0;
+
+    /// <summary>Whether the currently-typed working directory is pinned — drives the ★/☆ toggle.</summary>
+    public bool IsWorkingDirectoryFavorite => _history.IsFavorite(WorkingDirectory);
+
+    /// <summary>Filled ★ when the current folder is a favorite, outline ☆ otherwise — the toggle button's glyph.</summary>
+    public string FavoriteToggleGlyph => IsWorkingDirectoryFavorite ? "★" : "☆";
+
+    /// <summary>Whether the ★ favorite toggle is actionable (there is a path to pin).</summary>
+    public bool CanFavoriteWorkingDirectory => !string.IsNullOrWhiteSpace(WorkingDirectory);
+
     [ObservableProperty]
     private ClaudeProfile? _selectedProfile;
 
@@ -132,11 +163,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null)
+    public NewSessionDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _mcpServerStore = mcpServerStore;
+        _workingPathStore = workingPathStore;
     }
 
     /// <summary>
@@ -170,6 +202,70 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
             OnPropertyChanged(nameof(HasMcpServers));
         }
+
+        if (_workingPathStore is not null)
+        {
+            _history = await _workingPathStore.LoadAsync();
+            _RefreshRememberedPaths();
+        }
+    }
+
+    // Rebuilds the quick-pick from the loaded history — favorites first (deduped against recents), then the
+    // remaining recents — and refreshes the derived flags.
+    private void _RefreshRememberedPaths()
+    {
+        RememberedPaths.Clear();
+        foreach (var path in _history.Favorites)
+        {
+            RememberedPaths.Add(new RememberedPathOption(path, IsFavorite: true));
+        }
+
+        foreach (var path in _history.Recent.Where(path => !_history.IsFavorite(path)))
+        {
+            RememberedPaths.Add(new RememberedPathOption(path, IsFavorite: false));
+        }
+
+        OnPropertyChanged(nameof(HasRememberedPaths));
+        OnPropertyChanged(nameof(IsWorkingDirectoryFavorite));
+        OnPropertyChanged(nameof(FavoriteToggleGlyph));
+    }
+
+    partial void OnWorkingDirectoryChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsWorkingDirectoryFavorite));
+        OnPropertyChanged(nameof(FavoriteToggleGlyph));
+        OnPropertyChanged(nameof(CanFavoriteWorkingDirectory));
+    }
+
+    partial void OnSelectedRememberedPathChanged(RememberedPathOption? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        // Act as a picker, not a persistent selection: fill the field, then clear the selection so the same
+        // entry can be re-picked and the ComboBox shows its placeholder again.
+        WorkingDirectory = value.Path;
+        SelectedRememberedPath = null;
+    }
+
+    /// <summary>Clears the working directory back to the global default for this session.</summary>
+    [RelayCommand]
+    private void ClearWorkingDirectory() => WorkingDirectory = string.Empty;
+
+    /// <summary>Pins or unpins the current working directory as a favorite, persisting immediately.</summary>
+    [RelayCommand]
+    private async Task ToggleWorkingDirectoryFavoriteAsync()
+    {
+        var path = WorkingDirectory.Trim();
+        if (string.IsNullOrEmpty(path) || _workingPathStore is null)
+        {
+            return;
+        }
+
+        _history = await _workingPathStore.SetFavoriteAsync(path, !_history.IsFavorite(path));
+        _RefreshRememberedPaths();
     }
 
     partial void OnSelectedProfileChanged(ClaudeProfile? value)
@@ -245,7 +341,16 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IReadOnlySet<string>? enabledMcpServerNames = HasMcpServers
             ? McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name).ToHashSet()
             : null;
-        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name, enabledMcpServerNames));
+        var workingDirectory = string.IsNullOrWhiteSpace(WorkingDirectory) ? null : WorkingDirectory.Trim();
+
+        // Remember a used directory so next time it is a click away. Fire-and-forget: closing the dialog must
+        // not wait on the small config write, and a persistence hiccup shouldn't block starting the session.
+        if (workingDirectory is not null && _workingPathStore is not null)
+        {
+            _ = _workingPathStore.RecordRecentAsync(workingDirectory);
+        }
+
+        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name, enabledMcpServerNames, workingDirectory));
     }
 
     [RelayCommand]
@@ -253,4 +358,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void ManageProfiles() => ManageProfilesRequested?.Invoke();
+}
+
+/// <summary>One entry in the New-session dialog's working-directory quick-pick: the remembered <see cref="Path"/> and whether it is a pinned favorite (shown with a ★ prefix, and listed first).</summary>
+public sealed record RememberedPathOption(string Path, bool IsFavorite)
+{
+    public string Display => IsFavorite ? $"★ {Path}" : Path;
 }

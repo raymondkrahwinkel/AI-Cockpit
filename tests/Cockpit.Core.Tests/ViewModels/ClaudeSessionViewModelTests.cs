@@ -32,7 +32,7 @@ public class ClaudeSessionViewModelTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, new ModelOption("Haiku", "haiku"), SessionOptionCatalog.DefaultEffort);
 
-        await session.Received(1).StartAsync(Profile, Arg.Any<string?>(), "haiku", Arg.Any<IReadOnlySet<string>?>(), Arg.Any<CancellationToken>());
+        await session.Received(1).StartAsync(Profile, Arg.Any<string?>(), "haiku", Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
     }
@@ -73,7 +73,7 @@ public class ClaudeSessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        session.StartAsync(Arg.Any<ClaudeProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<CancellationToken>())
+        session.StartAsync(Arg.Any<ClaudeProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("bad executable")));
         var vm = new ClaudeSessionViewModel(FactoryFor(session));
 

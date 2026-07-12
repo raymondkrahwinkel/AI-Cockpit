@@ -33,6 +33,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private string? _configuredPermissionMode;
     private string? _configuredModel;
     private string? _configuredEffort;
+    private string? _configuredWorkingDirectory;
     private bool _isLaunchConfigured;
     private bool _launched;
 
@@ -59,7 +60,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private bool _statusTrackingStopped;
 
     /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
-    public event Action<IClaudeTtyLauncher, ClaudeProfile?, string?, string?, string?>? LaunchRequested;
+    public event Action<IClaudeTtyLauncher, ClaudeProfile?, string?, string?, string?, string?>? LaunchRequested;
 
     /// <summary>
     /// Raised once a push-to-talk hold finished transcribing (no cleanup applied — TTY is a raw
@@ -148,9 +149,17 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// inline profile picker. <paramref name="permissionMode"/>/<paramref name="model"/>/
     /// <paramref name="effort"/> are launch-only: the real TUI owns any live switching afterwards.
     /// </summary>
-    public void LaunchConfigured(ClaudeProfile? profile, string? permissionMode, string? model, string? effort)
+    public void LaunchConfigured(ClaudeProfile? profile, string? permissionMode, string? model, string? effort, string? workingDirectory = null)
     {
         _configuredProfile = profile;
+        _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
+        // Show and publish the effective working directory: the per-session override when given, else the
+        // global resolution. Keeps the header and the read/observe surface pointing where the TUI actually runs.
+        if (_configuredWorkingDirectory is not null)
+        {
+            WorkingPath = _configuredWorkingDirectory;
+            WorkingDirectory = _configuredWorkingDirectory;
+        }
         // Read-aloud and status both tail this session's transcript JSONL; a profile-less session still
         // writes one — under the CLI's default config dir — so resolve the effective directory here
         // rather than giving up when there is no profile.
@@ -187,7 +196,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         }
 
         _launched = true;
-        LaunchRequested.Invoke(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort);
+        LaunchRequested.Invoke(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort, _configuredWorkingDirectory);
     }
 
     /// <summary>

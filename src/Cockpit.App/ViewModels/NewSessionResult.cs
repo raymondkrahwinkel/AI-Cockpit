@@ -19,6 +19,12 @@ namespace Cockpit.App.ViewModels;
 /// fan-out (<c>ClaudeCliProcess</c>); the TTY driver does not fan the registry out at all today, so this
 /// has no effect there.
 /// </param>
+/// <param name="WorkingDirectory">
+/// An optional per-session working directory chosen in the dialog (e.g. a project folder), overriding the
+/// global <c>Claude:WorkingDirectory</c> option for this one session — the directory <c>claude</c> is
+/// launched in, for both the SDK process and the TTY pty. <see langword="null"/>/blank keeps the global
+/// default (the configured option, else the app's current directory).
+/// </param>
 public sealed record NewSessionResult(
     SessionKind Kind,
     ClaudeProfile Profile,
@@ -26,4 +32,5 @@ public sealed record NewSessionResult(
     ModelOption Model,
     EffortOption Effort,
     string? SessionName,
-    IReadOnlySet<string>? EnabledMcpServerNames = null);
+    IReadOnlySet<string>? EnabledMcpServerNames = null,
+    string? WorkingDirectory = null);

@@ -65,8 +65,10 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     public IAsyncEnumerable<ClaudeSessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
+        // workingDirectory is unused: a local OpenAI-compatible session talks HTTP to a model server; there is
+        // no spawned process with a cwd to point at a project folder.
         var config = profile?.ProviderConfig
             ?? throw new InvalidOperationException($"{nameof(OpenAiCompatSessionDriver)} requires a profile with an OpenAI-compatible provider config.");
 

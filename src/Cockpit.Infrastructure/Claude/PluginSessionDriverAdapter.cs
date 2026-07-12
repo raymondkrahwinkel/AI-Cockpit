@@ -36,8 +36,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public IAsyncEnumerable<ClaudeSessionEvent> Events => _AdaptEventsAsync();
 
-    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
+        // workingDirectory is unused: a plugin session driver is not a spawned claude process with a cwd — it
+        // runs however the plugin implements it (HTTP, etc.).
         Profile = profile;
         await inner.StartAsync(model, cancellationToken).ConfigureAwait(false);
     }

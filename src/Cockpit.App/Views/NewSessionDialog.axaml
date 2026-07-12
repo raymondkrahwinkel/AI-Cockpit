@@ -81,6 +81,31 @@
                          PlaceholderText="Optional — defaults to Claude N"/>
             </Grid>
 
+            <!-- Optional per-session working directory: launch this session in a project folder instead of the
+                 app directory. Browse picks one; the ★ pins the current one; the picker offers previously-used
+                 folders (favorites first). Blank keeps the global default. -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top">
+                <TextBlock Grid.Column="0" Text="Folder" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding WorkingDirectory}"
+                                 PlaceholderText="Optional — defaults to the app directory"/>
+                        <Button Grid.Column="1" Content="{Binding FavoriteToggleGlyph}" Margin="4,0,0,0"
+                                Command="{Binding ToggleWorkingDirectoryFavoriteCommand}"
+                                IsEnabled="{Binding CanFavoriteWorkingDirectory}"
+                                Foreground="{StaticResource CockpitAccentBrush}"
+                                ToolTip.Tip="Pin this folder as a favorite"/>
+                        <Button Grid.Column="2" Content="Browse…" Margin="4,0,0,0" Click="OnBrowseWorkingDirectory"/>
+                    </Grid>
+                    <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RememberedPaths}"
+                              SelectedItem="{Binding SelectedRememberedPath}"
+                              PlaceholderText="Recent / favorite folders…"
+                              IsVisible="{Binding HasRememberedPaths}"
+                              DisplayMemberBinding="{Binding Display}"/>
+                </StackPanel>
+            </Grid>
+
             <!-- Kind is Claude-only: a local provider runs solely as an SDK session (TTY spawns the claude CLI). -->
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding IsClaudeProfile}">
                 <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"

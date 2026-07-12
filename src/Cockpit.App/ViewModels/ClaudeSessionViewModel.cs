@@ -265,7 +265,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(ClaudeProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null)
+    public async Task StartConfiguredAsync(ClaudeProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null)
     {
         if (_eventLoopTask is not null)
         {
@@ -283,7 +283,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
 
-        await StartWithProfileAsync(profile);
+        await StartWithProfileAsync(profile, workingDirectory);
 
         // StartWithProfileAsync swallows launch failures (it only sets Status); it leaves _eventLoopTask
         // null when the CLI never started. In that case unlock and reset the mode so a failed bypass
@@ -295,7 +295,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         }
     }
 
-    private async Task StartWithProfileAsync(ClaudeProfile? profile)
+    private async Task StartWithProfileAsync(ClaudeProfile? profile, string? workingDirectory = null)
     {
         if (_driverFactory is null)
         {
@@ -305,6 +305,14 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
             ? string.Empty
             : SessionProviderCatalog.Resolve(profile.Provider).Label;
+
+        // A per-session working directory override reflects immediately on the shared base (so the header and
+        // the read/observe surface show where this session runs) even before the CLI's own init event confirms
+        // its cwd; a blank override leaves it to be filled from that init event as before.
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            WorkingDirectory = workingDirectory;
+        }
 
         Status = "Starting...";
         _lifetimeCancellation = new CancellationTokenSource();
@@ -323,7 +331,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, _lifetimeCancellation.Token);
+            await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, _lifetimeCancellation.Token);
             _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
 
             // Capabilities (notably SupportsTools) only settle once the driver has actually started — the

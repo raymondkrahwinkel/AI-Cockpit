@@ -28,17 +28,20 @@ internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
 
     public IReadOnlySet<string>? StartedWithEnabledMcpServerNames { get; private set; }
 
+    public string? StartedWithWorkingDirectoryOverride { get; private set; }
+
     public void Enqueue(string line) => _outputLines.Writer.TryWrite(line);
 
     public void CompleteOutput() => _outputLines.Writer.TryComplete();
 
-    public void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null)
+    public void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null)
     {
         Started = true;
         StartedWithProfile = profile;
         StartedWithPermissionMode = permissionMode;
         StartedWithModel = model;
         StartedWithEnabledMcpServerNames = enabledMcpServerNames;
+        StartedWithWorkingDirectoryOverride = workingDirectoryOverride;
     }
 
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)

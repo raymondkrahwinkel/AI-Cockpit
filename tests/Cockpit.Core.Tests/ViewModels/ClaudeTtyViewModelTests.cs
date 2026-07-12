@@ -25,24 +25,28 @@ public class ClaudeTtyViewModelTests
         string? launchedMode = null;
         string? launchedModel = null;
         string? launchedEffort = null;
+        string? launchedWorkingDirectory = null;
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, profile, mode, model, effort) =>
+        vm.LaunchRequested += (_, profile, mode, model, effort, workingDirectory) =>
         {
             launchedProfile = profile;
             launchedMode = mode;
             launchedModel = model;
             launchedEffort = effort;
+            launchedWorkingDirectory = workingDirectory;
             launchCount++;
         };
 
-        vm.LaunchConfigured(Work, "acceptEdits", "opus", "high");
+        vm.LaunchConfigured(Work, "acceptEdits", "opus", "high", "D:/Projects/demo");
 
         launchCount.Should().Be(1);
         launchedProfile.Should().Be(Work);
         launchedMode.Should().Be("acceptEdits");
         launchedModel.Should().Be("opus");
         launchedEffort.Should().Be("high");
+        launchedWorkingDirectory.Should().Be("D:/Projects/demo");
+        vm.WorkingDirectory.Should().Be("D:/Projects/demo");
         vm.ActiveProfileLabel.Should().Be("work");
         vm.SessionStatus.Should().Be(SessionStatus.Busy);
     }
@@ -54,7 +58,7 @@ public class ClaudeTtyViewModelTests
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");   // configured before any subscriber exists
-        vm.LaunchRequested += (_, _, _, _, _) => launchCount++;
+        vm.LaunchRequested += (_, _, _, _, _, _) => launchCount++;
         launchCount.Should().Be(0);           // nothing raised yet — no subscriber at configure time
 
         vm.TryRaiseLaunch();                  // the view calls this once it has subscribed
@@ -67,7 +71,7 @@ public class ClaudeTtyViewModelTests
     {
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, _, _, _, _) => launchCount++;
+        vm.LaunchRequested += (_, _, _, _, _, _) => launchCount++;
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.TryRaiseLaunch();
@@ -81,7 +85,7 @@ public class ClaudeTtyViewModelTests
     {
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, _, _, _, _) => launchCount++;
+        vm.LaunchRequested += (_, _, _, _, _, _) => launchCount++;
 
         vm.TryRaiseLaunch();
 
