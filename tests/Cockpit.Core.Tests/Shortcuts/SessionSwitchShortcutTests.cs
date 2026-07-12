@@ -1,3 +1,4 @@
+using System.Linq;
 using Cockpit.Core.Shortcuts;
 using FluentAssertions;
 
@@ -25,15 +26,26 @@ public class SessionSwitchShortcutTests
     }
 
     [Fact]
-    public void StaysActiveInTerminal_HoldsForTheSessionSwitchOnly()
+    public void StaysActiveInTerminal_HoldsForTheSessionManagementActions()
     {
+        // The session-management shortcuts fire over a focused terminal (Raymond's call): switch, plus
+        // create and duplicate a session — the actions you reach for while driving a running TUI.
         ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.PreviousSession).Should().BeTrue();
         ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NextSession).Should().BeTrue();
+        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NewSession).Should().BeTrue();
+        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.DuplicateSession).Should().BeTrue();
 
-        // Everything else must stand down over the terminal, or a plain gesture would be typed into the TUI.
+        // The dialog-opening actions still stand down over the terminal, so a single-key shell binding reaches
+        // the shell rather than being swallowed.
+        var staysActive = new[]
+        {
+            ShortcutAction.PreviousSession, ShortcutAction.NextSession,
+            ShortcutAction.NewSession, ShortcutAction.DuplicateSession,
+        };
+
         foreach (var descriptor in ShortcutCatalog.All)
         {
-            if (descriptor.Action is ShortcutAction.PreviousSession or ShortcutAction.NextSession)
+            if (staysActive.Contains(descriptor.Action))
             {
                 continue;
             }

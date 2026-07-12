@@ -1,7 +1,10 @@
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -37,6 +40,10 @@ public partial class CockpitView : UserControl
             root.AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Tunnel);
         }
 
+        // Clicking anywhere in a pane selects that session (accent border) and focuses its terminal.
+        // Tunnelling so the selection lands before a focused terminal or the reorder grip consumes the press.
+        SessionGrid?.AddHandler(PointerPressedEvent, OnSessionPanePressed, RoutingStrategies.Tunnel);
+
         _AttachPluginSections();
         _ApplySidebarWidth();
 
@@ -52,6 +59,8 @@ public partial class CockpitView : UserControl
         {
             root.RemoveHandler(KeyDownEvent, OnRootKeyDown);
         }
+
+        SessionGrid?.RemoveHandler(PointerPressedEvent, OnSessionPanePressed);
 
         if (_observedSideSections is not null)
         {
@@ -81,6 +90,12 @@ public partial class CockpitView : UserControl
         if (e.PropertyName == nameof(CockpitViewModel.SidebarWidth))
         {
             _ApplySidebarWidth();
+        }
+        else if (e.PropertyName == nameof(CockpitViewModel.SelectedSession))
+        {
+            // Any selection change — the sidebar-switch shortcut, a sidebar click, or a pane click — moves
+            // keyboard focus onto the newly active session's terminal so typing lands there straight away.
+            _FocusSelectedSessionTerminal();
         }
     }
 
@@ -309,6 +324,213 @@ public partial class CockpitView : UserControl
         if (sender is Control { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
         {
             invoke(cockpit, session);
+        }
+    }
+
+    // --- Drag-to-reorder grid panes (#54 follow-up) ----------------------------------------------------
+    // The pane is "picked up" (dimmed + follows the pointer via a render transform, which leaves its layout
+    // slot untouched) while an accent outline highlights the cell it will drop into. Nothing moves until
+    // release — live-swapping mid-drag felt clunky. Reordering goes through the panel's cell list, never the
+    // bound collection (moving a session there rebuilds its pane → a pty-less black terminal). The grid is
+    // 2-D, so the pane follows the pointer on both axes and drops into whichever cell the pointer is over.
+    private SessionPanelViewModel? _draggingPane;
+    private SessionTilePanel? _dragPanel;
+    private Control? _dragContainer;
+    private Point _dragPointerStart;
+    private int _dragTarget = -1;
+
+    private void OnPaneDragHandlePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { DataContext: SessionPanelViewModel session } handle
+            || !e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed
+            || handle.GetVisualAncestors().OfType<SessionTilePanel>().FirstOrDefault() is not { } panel)
+        {
+            return;
+        }
+
+        _draggingPane = session;
+        _dragPanel = panel;
+        _dragContainer = _PaneContainer(panel, session);
+        _dragPointerStart = e.GetPosition(panel);
+        _dragTarget = -1;
+
+        if (_dragContainer is not null)
+        {
+            _dragContainer.ZIndex = 50;
+            _dragContainer.Opacity = 0.75;
+            _dragContainer.RenderTransform = new TranslateTransform();
+        }
+
+        e.Pointer.Capture(handle);
+        e.Handled = true;
+    }
+
+    private void OnPaneDragHandleMoved(object? sender, PointerEventArgs e)
+    {
+        if (_draggingPane is null
+            || _dragPanel is not { } panel
+            || sender is not Control handle
+            || !ReferenceEquals(e.Pointer.Captured, handle))
+        {
+            return;
+        }
+
+        var position = e.GetPosition(panel);
+
+        // Lift: follow the pointer on both axes. RenderTransform doesn't affect the pane's layout slot, so
+        // the other panes stay put and the panel's cell hit-test reads stable bounds.
+        if (_dragContainer?.RenderTransform is TranslateTransform lift)
+        {
+            lift.X = position.X - _dragPointerStart.X;
+            lift.Y = position.Y - _dragPointerStart.Y;
+        }
+
+        _dragTarget = panel.CellIndexAt(position);
+        _ShowDropIndicator(panel, panel.CellRect(_dragTarget));
+        e.Handled = true;
+    }
+
+    private void OnPaneDragHandleReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_draggingPane is null)
+        {
+            return;
+        }
+
+        var panel = _dragPanel;
+        var dragged = _draggingPane;
+        var container = _dragContainer;
+        var target = _dragTarget;
+
+        if (container is not null)
+        {
+            container.ZIndex = 0;
+            container.Opacity = 1;
+            container.RenderTransform = null;
+        }
+
+        if (DropIndicator is not null)
+        {
+            DropIndicator.IsVisible = false;
+        }
+
+        _draggingPane = null;
+        _dragPanel = null;
+        _dragContainer = null;
+        _dragTarget = -1;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+
+        if (panel is not null && target >= 0)
+        {
+            panel.PlacePane(dragged, target);
+        }
+    }
+
+    private static Control? _PaneContainer(SessionTilePanel panel, SessionPanelViewModel session)
+    {
+        foreach (var child in panel.Children)
+        {
+            if (ReferenceEquals(child.DataContext, session))
+            {
+                return child;
+            }
+        }
+
+        return null;
+    }
+
+    // Outlines the target cell (translated from panel space into the overlay's own parent coordinates), or
+    // hides the indicator when there's nowhere to drop.
+    private void _ShowDropIndicator(SessionTilePanel panel, Rect cell)
+    {
+        if (DropIndicator is null)
+        {
+            return;
+        }
+
+        if (cell.Width <= 0 || cell.Height <= 0 || DropIndicator.GetVisualParent() is not { } overlayParent)
+        {
+            DropIndicator.IsVisible = false;
+            return;
+        }
+
+        if (panel.TranslatePoint(cell.Position, overlayParent) is { } topLeft)
+        {
+            DropIndicator.Width = cell.Width;
+            DropIndicator.Height = cell.Height;
+            DropIndicator.RenderTransform = new TranslateTransform(topLeft.X, topLeft.Y);
+            DropIndicator.IsVisible = true;
+        }
+    }
+
+    // Pressing anywhere in a pane makes that session the active one and (unless the press was on an
+    // interactive control like a header button or the rename box) puts keyboard focus on its terminal, so a
+    // click-then-type lands in the session you just clicked. Not marked handled — the terminal/button still
+    // gets the press.
+    private void OnSessionPanePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || _PaneContainerFromSource(e.Source) is not { DataContext: SessionPanelViewModel session } container)
+        {
+            return;
+        }
+
+        cockpit.SelectSessionCommand.Execute(session);
+
+        if (e.Source is not (Button or ToggleButton or TextBox))
+        {
+            _FocusTerminalIn(container);
+        }
+    }
+
+    // Puts keyboard focus on the currently selected session's terminal, once layout has settled (a newly
+    // revealed pane in single/zoom mode isn't realised until then).
+    private void _FocusSelectedSessionTerminal()
+    {
+        if (DataContext is not CockpitViewModel cockpit || cockpit.SelectedSession is not { } session)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (SessionGrid?.GetVisualDescendants().OfType<SessionTilePanel>().FirstOrDefault() is not { } panel)
+            {
+                return;
+            }
+
+            foreach (var child in panel.Children)
+            {
+                if (ReferenceEquals(child.DataContext, session))
+                {
+                    _FocusTerminalIn(child);
+                    return;
+                }
+            }
+        });
+    }
+
+    // Walks up from the clicked element to the pane container — the child sitting directly in the tile panel.
+    private static Control? _PaneContainerFromSource(object? source)
+    {
+        for (var visual = source as Visual; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is Control control && control.GetVisualParent() is SessionTilePanel)
+            {
+                return control;
+            }
+        }
+
+        return null;
+    }
+
+    private static void _FocusTerminalIn(Control container)
+    {
+        foreach (var terminal in container.GetVisualDescendants().OfType<TerminalControl>())
+        {
+            terminal.Focus();
+            return;
         }
     }
 

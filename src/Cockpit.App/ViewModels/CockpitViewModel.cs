@@ -219,6 +219,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _stackSessionsVertically;
 
+    /// <summary>
+    /// True whenever the multi-pane grid is showing (two or more sessions, not the single-pane/zoom layout):
+    /// every pane then carries the drag-reorder grip, and the column/row gutters between them are resizable.
+    /// Covers the vertical column, the side-by-side row, and the 2×2 alike — they're one draggable grid.
+    /// </summary>
+    public bool StackSessionsInStack => !ShowSinglePane && Sessions.Count >= 2;
+
     /// <summary>When true, closing the window hides it to the system tray and keeps the app running (#33). Read by MainWindow on close.</summary>
     [ObservableProperty]
     private bool _minimizeToTrayOnClose;
@@ -353,6 +360,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Pushes the vertical-stack layout signal to every open TTY session as it changes (#54), so a switch to/from stacked-vertically re-docks each panel's header live, the same as flipping the terminal font settings.</summary>
     partial void OnStackSessionsVerticallyChanged(bool value)
     {
+        OnPropertyChanged(nameof(StackSessionsInStack));
         foreach (var session in Sessions)
         {
             if (session is ClaudeTtyViewModel tty)
@@ -368,6 +376,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     partial void OnIsZoomedChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowSinglePane));
+        OnPropertyChanged(nameof(StackSessionsInStack));
         RefreshPaneVisibility();
     }
 
@@ -375,6 +384,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         OnPropertyChanged(nameof(ShowSinglePane));
         OnPropertyChanged(nameof(ShowZoomButton));
+        OnPropertyChanged(nameof(StackSessionsInStack));
         RefreshPaneVisibility();
     }
 
@@ -653,6 +663,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(HasSessions));
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
+            OnPropertyChanged(nameof(StackSessionsInStack));
             RefreshPaneVisibility();
         };
         _ = LoadNotificationSettingsAsync();
@@ -803,6 +814,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Runs the command behind an app-action shortcut. Commands are the same ones the main menu binds to.
     private void _InvokeAppAction(ShortcutAction action)
     {
+        // Duplicate takes the active session as its parameter, unlike the parameterless app commands below.
+        if (action == ShortcutAction.DuplicateSession)
+        {
+            if (SelectedSession is { } session && DuplicateSessionCommand.CanExecute(session))
+            {
+                DuplicateSessionCommand.Execute(session);
+            }
+
+            return;
+        }
+
         System.Windows.Input.ICommand? command = action switch
         {
             ShortcutAction.NewSession => NewSessionCommand,

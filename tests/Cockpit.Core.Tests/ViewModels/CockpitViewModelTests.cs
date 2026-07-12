@@ -741,21 +741,27 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public void ActiveShortcuts_KeepTheSessionSwitchLiveOverTheTerminal_ButNotTheOtherActions()
+    public void ActiveShortcuts_KeepTheSessionManagementActionsLiveOverTheTerminal_ButNotTheDialogOpeners()
     {
         var vm = NewVm();
 
         var previousSession = vm.ActiveShortcuts.Single(binding => binding.Label == "Previous session");
         var nextSession = vm.ActiveShortcuts.Single(binding => binding.Label == "Next session");
         var newSession = vm.ActiveShortcuts.Single(binding => binding.Label == "New session");
+        var duplicateSession = vm.ActiveShortcuts.Single(binding => binding.Label == "Duplicate active session");
+        var manageProfiles = vm.ActiveShortcuts.Single(binding => binding.Label == "Manage profiles");
 
         previousSession.Gesture.Should().Be("Ctrl+Up");
         previousSession.ActiveInTerminal.Should().BeTrue();
         nextSession.Gesture.Should().Be("Ctrl+Down");
         nextSession.ActiveInTerminal.Should().BeTrue();
 
-        // A plain Ctrl+N must reach the TUI as a keystroke, so it stays gated while the terminal has focus.
-        newSession.ActiveInTerminal.Should().BeFalse();
+        // Session-management actions fire over a focused terminal (Raymond's call).
+        newSession.ActiveInTerminal.Should().BeTrue();
+        duplicateSession.ActiveInTerminal.Should().BeTrue();
+
+        // A dialog-opener on a single-key shell gesture (Ctrl+R) stays gated so it reaches the shell.
+        manageProfiles.ActiveInTerminal.Should().BeFalse();
     }
 
     [Fact]

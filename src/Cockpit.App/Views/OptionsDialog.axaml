@@ -86,7 +86,7 @@
                         <CheckBox Content="Stack sessions vertically (one column)"
                                   IsChecked="{Binding StackSessionsVertically}"
                                   IsEnabled="{Binding !SingleSessionLayout}"/>
-                        <TextBlock Text="In the grid, place sessions one above the other instead of side by side. No effect when showing one session at a time."
+                        <TextBlock Text="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <CheckBox Content="Minimize to tray when closing the window"
                                   IsChecked="{Binding MinimizeToTrayOnClose}"/>

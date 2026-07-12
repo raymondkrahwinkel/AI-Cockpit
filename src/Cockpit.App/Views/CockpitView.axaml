@@ -239,7 +239,11 @@
                      the width. Keeping one set of views means a session's view (and its TTY pty) is built
                      once and merely hidden when deselected — not rebuilt by a separate single-pane control
                      on every switch, which stranded a relaunched TTY on "Launching TUI...". -->
-                <ItemsControl ItemsSource="{Binding Sessions}">
+                <!-- The session grid plus, on top, a hit-transparent accent outline that marks the cell a
+                     dragged pane will drop into (#54 follow-up). Both share the same Grid cell so the
+                     code-behind can place the outline in the grid's coordinate space. -->
+                <Grid>
+                <ItemsControl x:Name="SessionGrid" ItemsSource="{Binding Sessions}">
                     <!-- The panel measures its direct children (the generated item containers), so pane
                          visibility must gate the CONTAINER, not a Border inside the template — otherwise a
                          collapsed panel still claims a tile. -->
@@ -262,13 +266,38 @@
                                     Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
-                                <!-- ContentControl + ViewLocator picks SessionView (SDK) or
-                                     ClaudeTtyView (TTY) from the panel view model's type. -->
-                                <ContentControl Content="{Binding}"/>
+                                <DockPanel>
+                                    <!-- Drag-reorder grip (#54 follow-up): a grab bar above each pane, shown only when
+                                         the draggable multi-pane grid is on. Dragging it picks the pane up and drops it
+                                         into any cell; the gutters between panes are separately draggable to resize
+                                         (handled by SessionTilePanel). Collapsed in single/zoom = no dead control. -->
+                                    <Border x:Name="PaneDragHandle" DockPanel.Dock="Top" Height="14" Margin="0,0,0,2"
+                                            Background="{StaticResource CockpitSecondaryBgBrush}"
+                                            CornerRadius="{StaticResource CockpitControlRadius}"
+                                            Cursor="SizeAll" ToolTip.Tip="Drag to move this pane"
+                                            IsVisible="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StackSessionsInStack}"
+                                            PointerPressed="OnPaneDragHandlePressed"
+                                            PointerMoved="OnPaneDragHandleMoved"
+                                            PointerReleased="OnPaneDragHandleReleased">
+                                        <TextBlock Text="⣿⣿⣿" FontSize="9" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    </Border>
+                                    <!-- ContentControl + ViewLocator picks SessionView (SDK) or
+                                         ClaudeTtyView (TTY) from the panel view model's type. -->
+                                    <ContentControl Content="{Binding}"/>
+                                </DockPanel>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <!-- Drop-target cell outline: sized/positioned from the panel's cell rect in code-behind
+                     while a pane is dragged; hit-transparent so it never blocks the drag. -->
+                <Border x:Name="DropIndicator" IsVisible="False" IsHitTestVisible="False" ZIndex="100"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Background="Transparent" BorderThickness="2"
+                        BorderBrush="{StaticResource CockpitAccentBrush}"
+                        CornerRadius="{StaticResource CockpitPanelRadius}"/>
+                </Grid>
             </DockPanel>
 
             <!-- Plugin-failure banner (#14): the app kept running; details live in the Plugin store → Installed. -->

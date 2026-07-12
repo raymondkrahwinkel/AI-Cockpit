@@ -14,6 +14,7 @@ public static class ShortcutCatalog
     public static IReadOnlyList<ShortcutDescriptor> All { get; } =
     [
         new(ShortcutAction.NewSession, "New session", "Ctrl+N"),
+        new(ShortcutAction.DuplicateSession, "Duplicate active session", "Ctrl+D"),
         new(ShortcutAction.ManageProfiles, "Manage profiles", "Ctrl+R"),
         new(ShortcutAction.McpServers, "MCP servers", "Ctrl+M"),
         new(ShortcutAction.PluginStore, "Plugin store", "Ctrl+P"),
@@ -27,12 +28,17 @@ public static class ShortcutCatalog
     ];
 
     /// <summary>
-    /// The session-switch actions, which stay live while the operator types in the embedded terminal — switching
-    /// away from a running TUI is exactly when you need them. They remain gated in a text box, where an arrow
-    /// gesture is caret navigation.
+    /// The session-management actions that stay live while the operator types in the embedded terminal —
+    /// switching, creating, and duplicating sessions are exactly what you reach for while driving a running TUI
+    /// (Raymond's call). They remain gated in a text box (where an arrow gesture is caret navigation), while the
+    /// dialog-opening actions stay gated over the terminal so single-key shell bindings (Ctrl+R reverse-search,
+    /// …) reach the shell. Note: with Ctrl+N/Ctrl+D active here, they shadow the shell's next-history/EOF.
     /// </summary>
     public static bool StaysActiveInTerminal(ShortcutAction action) =>
-        action is ShortcutAction.PreviousSession or ShortcutAction.NextSession;
+        action is ShortcutAction.PreviousSession
+            or ShortcutAction.NextSession
+            or ShortcutAction.NewSession
+            or ShortcutAction.DuplicateSession;
 
     public static string DefaultGesture(ShortcutAction action) =>
         All.First(descriptor => descriptor.Action == action).DefaultGesture;
