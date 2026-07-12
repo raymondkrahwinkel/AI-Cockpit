@@ -188,7 +188,34 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             },
         };
         button.Click += async (_, _) => await _InjectAsync(pullRequest);
+
+        // Right-click menu: the normal left-click action (add the review prompt), plus opening the PR in the
+        // browser — the two things you most want to do with a PR from here.
+        var addToPrompt = new MenuItem { Header = "Add to prompt" };
+        addToPrompt.Click += async (_, _) => await _InjectAsync(pullRequest);
+        var openInBrowser = new MenuItem { Header = "Open in browser" };
+        openInBrowser.Click += (_, _) => _OpenInBrowser(pullRequest.Url);
+        button.ContextMenu = new ContextMenu { ItemsSource = new[] { addToPrompt, openInBrowser } };
+
         return button;
+    }
+
+    private void _OpenInBrowser(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            _status.Text = $"Opened PR in the browser.";
+        }
+        catch (Exception exception)
+        {
+            _status.Text = $"Could not open the browser: {exception.Message}";
+        }
     }
 
     private async Task _InjectAsync(GitHubPullRequest pullRequest)
