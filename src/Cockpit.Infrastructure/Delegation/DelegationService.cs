@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
@@ -31,13 +32,15 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
     private readonly ISessionProfileStore _profileStore;
     private readonly ISessionManager _sessionManager;
+    private readonly IMcpServerStore _mcpServerStore;
     private readonly List<DelegatedTaskEntry> _tasks = [];
     private readonly Lock _tasksLock = new();
 
-    public DelegationService(ISessionProfileStore profileStore, ISessionManager sessionManager)
+    public DelegationService(ISessionProfileStore profileStore, ISessionManager sessionManager, IMcpServerStore mcpServerStore)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
+        _mcpServerStore = mcpServerStore;
     }
 
     /// <summary>Raised whenever a task is added or changes state, so a UI view can follow along without polling.</summary>
@@ -210,7 +213,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 entry.Profile,
                 entry.Profile.DelegationPolicy.PermissionCeiling,
                 model: null,
-                enabledMcpServerNames: null,
+                enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
                 workingDirectory: entry.WorkingDirectory);
 
             entry.Status = DelegatedTaskStatus.Running;
@@ -225,6 +228,28 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             entry.Finish(DelegatedTaskStatus.Failed, result: null, error: ex.Message);
             TasksChanged?.Invoke();
         }
+    }
+
+    /// <summary>
+    /// The MCP servers a delegated session gets: everything the operator enabled — a sub-agent still needs its
+    /// files, its shell, its git — minus the orchestrator itself, unless the profile explicitly allows delegating
+    /// further. Withholding the tools is the second lock on the recursion guard: even if the depth check in
+    /// <see cref="_Guard"/> were wrong, a sub-agent with no delegate_task tool cannot start a chain.
+    /// </summary>
+    private async Task<IReadOnlySet<string>> _ToolsForAsync(SessionProfile profile)
+    {
+        var registry = await _mcpServerStore.LoadAsync();
+        var names = registry
+            .Where(server => server.Enabled)
+            .Select(server => server.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!profile.DelegationPolicy.MayDelegateFurther)
+        {
+            names.Remove(OrchestratorMcpServer.ServerName);
+        }
+
+        return names;
     }
 
     private void _OnTaskEvent(DelegatedTaskEntry entry, SessionEvent evt)

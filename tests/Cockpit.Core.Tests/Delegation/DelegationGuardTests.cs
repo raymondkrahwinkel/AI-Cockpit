@@ -2,6 +2,8 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
+using Cockpit.Core.Mcp;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
@@ -153,6 +155,55 @@ public class DelegationGuardTests
     }
 
     [Fact]
+    public async Task ADelegatedSession_KeepsItsOwnTools_ButNotTheOrchestrator()
+    {
+        // A sub-agent still needs its files, its shell, its git — withholding those would make delegation
+        // useless. What it does not get is the orchestrator itself, so it cannot hand work on and start a chain.
+        // This is the second lock on the recursion guard: no delegate_task tool, no chain, even if the depth
+        // check were wrong.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var driverFactory = Substitute.For<ISessionDriverFactory>();
+        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var service = _Service(driverFactory, _Registry(), _Target("local"));
+
+        await service.DelegateAsync(new DelegationRequest("local", "work"));
+
+        await driver.Received(1).StartAsync(
+            Arg.Any<SessionProfile?>(),
+            Arg.Any<string?>(),
+            Arg.Any<string?>(),
+            Arg.Is<IReadOnlySet<string>?>(servers =>
+                servers!.Contains("filesystem") && !servers.Contains("cockpit-orchestrator")),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ADelegatedSession_GetsTheOrchestrator_WhenItsProfileMayDelegateFurther()
+    {
+        // The escape hatch is explicit and per profile: turn it on and that profile's tasks can delegate on.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var driverFactory = Substitute.For<ISessionDriverFactory>();
+        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var service = _Service(
+            driverFactory,
+            _Registry(),
+            _Target("local", policy => policy with { MayDelegateFurther = true }));
+
+        await service.DelegateAsync(new DelegationRequest("local", "work"));
+
+        await driver.Received(1).StartAsync(
+            Arg.Any<SessionProfile?>(),
+            Arg.Any<string?>(),
+            Arg.Any<string?>(),
+            Arg.Is<IReadOnlySet<string>?>(servers => servers!.Contains("cockpit-orchestrator")),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AFailingStart_MarksTheTaskFailed_RatherThanLeavingItQueuedForever()
     {
         var driverFactory = Substitute.For<ISessionDriverFactory>();
@@ -185,11 +236,31 @@ public class DelegationGuardTests
         return _Service(driverFactory, profiles);
     }
 
-    private static DelegationService _Service(ISessionDriverFactory driverFactory, params SessionProfile[] profiles)
+    private static DelegationService _Service(ISessionDriverFactory driverFactory, params SessionProfile[] profiles) =>
+        _Service(driverFactory, _Registry(), profiles);
+
+    private static DelegationService _Service(
+        ISessionDriverFactory driverFactory,
+        IMcpServerStore mcpServerStore,
+        params SessionProfile[] profiles)
     {
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles);
-        return new DelegationService(profileStore, new SessionManager(driverFactory));
+        return new DelegationService(profileStore, new SessionManager(driverFactory), mcpServerStore);
+    }
+
+    // The MCP registry as the operator configured it: their own servers, plus the orchestrator they switched on
+    // for their main session.
+    private static IMcpServerStore _Registry(params McpServerConfig[] servers)
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(servers.Length > 0
+            ? servers
+            : [
+                new McpServerConfig { Name = "filesystem", Enabled = true },
+                new McpServerConfig { Name = "cockpit-orchestrator", Enabled = true },
+            ]);
+        return store;
     }
 
     private static async IAsyncEnumerable<Cockpit.Core.Sessions.SessionEvent> _EmptyStream()

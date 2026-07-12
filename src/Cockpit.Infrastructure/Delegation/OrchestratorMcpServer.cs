@@ -7,6 +7,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -26,13 +28,15 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
     public const string ServerName = "cockpit-orchestrator";
 
     private readonly IDelegationService _delegation;
+    private readonly IMcpServerStore _mcpServerStore;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OrchestratorMcpServer> _logger;
     private WebApplication? _app;
 
-    public OrchestratorMcpServer(IDelegationService delegation, ILoggerFactory loggerFactory)
+    public OrchestratorMcpServer(IDelegationService delegation, IMcpServerStore mcpServerStore, ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
+        _mcpServerStore = mcpServerStore;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<OrchestratorMcpServer>();
     }
@@ -67,7 +71,52 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
             ?? throw new InvalidOperationException("The orchestrator MCP server bound no address.");
 
         OrchestratorMcpUrl = $"{boundUrl.TrimEnd('/')}/mcp";
+        await _PublishToRegistryAsync(OrchestratorMcpUrl, cancellationToken);
         _logger.LogInformation("Orchestrator MCP server listening at {McpUrl}", OrchestratorMcpUrl);
+    }
+
+    /// <summary>
+    /// Publishes the server into the shared MCP registry, the same way a plugin publishes one. That makes
+    /// delegation an ordinary MCP server you can see in Options and tick per session — which is exactly the
+    /// opt-in the design asks for on the calling side, without a second, parallel mechanism.
+    /// </summary>
+    /// <remarks>
+    /// Registered <b>disabled</b>: handing a session the ability to spawn work under other profiles is a decision
+    /// the operator makes, never a default. The URL is rewritten on every start, since the port is OS-assigned.
+    /// </remarks>
+    private async Task _PublishToRegistryAsync(string url, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var servers = (await _mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false)).ToList();
+            var existing = servers.FindIndex(server => string.Equals(server.Name, ServerName, StringComparison.Ordinal));
+
+            if (existing < 0)
+            {
+                servers.Add(new McpServerConfig
+                {
+                    Name = ServerName,
+                    Transport = McpTransport.Http,
+                    // All sessions, not Claude-only: a local model orchestrating cheap sub-tasks is exactly the
+                    // kind of thing this is for, and the tool loop speaks the same HTTP MCP.
+                    Scope = McpServerScope.All,
+                    Url = url,
+                    Enabled = false,
+                });
+            }
+            else
+            {
+                // Keep whatever the operator chose about enabling it; only the address moves.
+                servers[existing] = servers[existing] with { Url = url, Transport = McpTransport.Http, Scope = McpServerScope.All };
+            }
+
+            await _mcpServerStore.SaveAsync(servers, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // The cockpit still runs without delegation; a failure here must not stop the app from starting.
+            _logger.LogWarning(ex, "Could not publish the orchestrator MCP server into the registry.");
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
