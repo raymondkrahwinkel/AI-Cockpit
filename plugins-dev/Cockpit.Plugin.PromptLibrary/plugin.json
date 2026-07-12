@@ -1,7 +1,7 @@
 {
   "id": "prompt-library",
   "name": "Prompt Library",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "entryAssembly": "Cockpit.Plugin.PromptLibrary.dll",
   "entryType": "Cockpit.Plugin.PromptLibrary.PromptLibraryPlugin",
   "abstractionsVersion": 1,

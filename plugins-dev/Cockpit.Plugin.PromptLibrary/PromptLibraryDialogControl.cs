@@ -59,7 +59,7 @@ internal sealed class PromptLibraryDialogControl : UserControl
         var newButton = new Button { Content = "＋ New", HorizontalAlignment = HorizontalAlignment.Stretch };
         newButton.Click += (_, _) => _NewTemplate();
         var deleteButton = new Button { Content = "Delete", HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(6, 0, 0, 0) };
-        deleteButton.Click += (_, _) => _DeleteSelected();
+        deleteButton.Click += async (_, _) => await _DeleteSelectedAsync();
         var listButtons = new Grid { ColumnDefinitions = new ColumnDefinitions("*,*"), Margin = new Thickness(0, 6, 0, 0) };
         Grid.SetColumn(newButton, 0);
         Grid.SetColumn(deleteButton, 1);
@@ -294,9 +294,16 @@ internal sealed class PromptLibraryDialogControl : UserControl
         _status.Text = "New template — edit and Save.";
     }
 
-    private void _DeleteSelected()
+    private async Task _DeleteSelectedAsync()
     {
         if (_selectedId is null)
+        {
+            return;
+        }
+
+        var template = _all.FirstOrDefault(t => t.Id == _selectedId);
+        var name = string.IsNullOrWhiteSpace(template?.Name) ? "this template" : $"'{template!.Name}'";
+        if (!await _actions.ConfirmAsync("Delete template", $"Delete {name}? This can't be undone.", "Delete"))
         {
             return;
         }
