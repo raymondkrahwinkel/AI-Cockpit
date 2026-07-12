@@ -13,14 +13,14 @@ namespace Cockpit.Plugin.PromptLibrary;
 /// </summary>
 internal static class PromptListSelectionStyle
 {
-    private static readonly IBrush Selected = new SolidColorBrush(Color.Parse("#E2795A"));
-    private static readonly IBrush Hover = new SolidColorBrush(Color.Parse("#2A2E37"));
+    // The subtle hover/selection background — a soft grey, not the loud accent, matching the command palette.
+    private static readonly IBrush Highlight = new SolidColorBrush(Color.Parse("#2A2E37"));
 
     public static void Apply(ListBox list)
     {
-        list.Styles.Add(_ItemBackground(selected: true, hover: true, Selected));
-        list.Styles.Add(_ItemBackground(selected: true, hover: false, Selected));
-        list.Styles.Add(_ItemBackground(selected: false, hover: true, Hover));
+        list.Styles.Add(_ItemBackground(selected: true, hover: true, Highlight));
+        list.Styles.Add(_ItemBackground(selected: true, hover: false, Highlight));
+        list.Styles.Add(_ItemBackground(selected: false, hover: true, Highlight));
     }
 
     // A style setting the background of a ListBoxItem's PART_ContentPresenter in the given state.

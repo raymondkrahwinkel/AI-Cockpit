@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.PromptLibrary;
@@ -108,8 +109,10 @@ internal sealed class PromptQuickPickControl : UserControl
 
         AttachedToVisualTree += (_, _) =>
         {
-            _search.Focus();
             _ApplyThemeBrushes();
+            // Focus after the dialog window has settled — focusing during attach doesn't stick when the palette
+            // is opened from the keyboard shortcut, so the search box wouldn't be ready to type into.
+            Dispatcher.UIThread.Post(() => _search.Focus(), DispatcherPriority.Loaded);
         };
     }
 
