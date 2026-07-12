@@ -201,7 +201,7 @@ public sealed class MyProviderPlugin : ICockpitPlugin
             ProviderId: "my-provider.my-model",           // namespaced — never rename once profiles use it
             DisplayName: "My Model",
             CreateDriverFactory: _ => new MyPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false, SupportsVision: false), // SupportsVision stays false until the driver can carry images (see API reference)
             CreateConfigView: existingConfigJson => new MyProviderConfigView(existingConfigJson),
             DefaultBaseUrl: "https://api.example.com/v1"));
     }
