@@ -210,4 +210,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         viewModel.CloseRequested += dialog.Close;
         await dialog.ShowDialog(owner);
     }
+
+    public async Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        var viewModel = new CommandPaletteDialogViewModel(commands);
+        var dialog = new CommandPaletteDialog { DataContext = viewModel };
+        await dialog.ShowDialog(owner);
+
+        // Run the chosen command after the palette has closed, so a command that opens another dialog isn't
+        // stacked underneath it.
+        viewModel.Chosen?.Invoke();
+    }
 }

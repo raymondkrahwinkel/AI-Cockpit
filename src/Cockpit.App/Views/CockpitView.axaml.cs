@@ -245,13 +245,21 @@ public partial class CockpitView : UserControl
     private bool _TryHandleShortcut(CockpitViewModel cockpit, KeyEventArgs e)
     {
         var shortcuts = cockpit.ActiveShortcuts;
-        if (shortcuts.Count == 0 || _IsTypingSurfaceFocused())
+        if (shortcuts.Count == 0)
         {
             return false;
         }
 
+        // While typing (text field or terminal) only an "always active" binding — the command palette — fires,
+        // so an ordinary shortcut never hijacks a keystroke but the palette stays reachable from anywhere.
+        var typing = _IsTypingSurfaceFocused();
         foreach (var binding in shortcuts)
         {
+            if (typing && !binding.AlwaysActive)
+            {
+                continue;
+            }
+
             if (_TryParseGesture(binding.Gesture) is { } gesture && gesture.Matches(e))
             {
                 binding.Invoke();

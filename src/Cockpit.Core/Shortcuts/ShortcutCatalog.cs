@@ -21,6 +21,7 @@ public static class ShortcutCatalog
         new(ShortcutAction.About, "About", ""),
         new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+B"),
         new(ShortcutAction.SearchTranscripts, "Search transcripts", "Ctrl+F"),
+        new(ShortcutAction.CommandPalette, "Command palette", "Ctrl+K"),
     ];
 
     public static string DefaultGesture(ShortcutAction action) =>

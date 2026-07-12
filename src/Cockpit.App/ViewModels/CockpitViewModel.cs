@@ -829,7 +829,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var gesture = _shortcutSettings.GestureFor(descriptor.Action);
             if (!string.IsNullOrWhiteSpace(gesture))
             {
-                bindings.Add(new ShortcutBinding(gesture, descriptor.Label, () => _InvokeAppAction(descriptor.Action)));
+                // The command palette is the one shortcut that must open even while typing in a session/terminal.
+                var alwaysActive = descriptor.Action == ShortcutAction.CommandPalette;
+                bindings.Add(new ShortcutBinding(gesture, descriptor.Label, () => _InvokeAppAction(descriptor.Action), alwaysActive));
             }
         }
 
@@ -858,6 +860,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.About => AboutCommand,
             ShortcutAction.ToggleZoom => ToggleZoomCommand,
             ShortcutAction.SearchTranscripts => SearchTranscriptsCommand,
+            ShortcutAction.CommandPalette => ShowCommandPaletteCommand,
             _ => null,
         };
 
@@ -1328,6 +1331,52 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _dialogService.ShowTranscriptSearchDialogAsync();
     }
+
+    /// <summary>Opens the command palette (#: command palette): a searchable list of every app action and plugin command with its shortcut.</summary>
+    [RelayCommand]
+    private async Task ShowCommandPaletteAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowCommandPaletteDialogAsync(_BuildPaletteCommands());
+    }
+
+    // Every command the palette can run: the built-in app actions (except the palette itself) and every
+    // plugin-contributed command, each with its shortcut shown. Plugins appear here just by registering a
+    // shortcut — one with no gesture is a palette-only command.
+    private IReadOnlyList<PaletteCommand> _BuildPaletteCommands()
+    {
+        var commands = new List<PaletteCommand>();
+        foreach (var descriptor in ShortcutCatalog.All)
+        {
+            if (descriptor.Action == ShortcutAction.CommandPalette)
+            {
+                continue;
+            }
+
+            commands.Add(new PaletteCommand(
+                descriptor.Label,
+                _PrettifyGesture(_shortcutSettings.GestureFor(descriptor.Action)),
+                () => _InvokeAppAction(descriptor.Action)));
+        }
+
+        foreach (var shortcut in PluginShortcuts)
+        {
+            commands.Add(new PaletteCommand(
+                shortcut.Title,
+                _PrettifyGesture(_shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture)),
+                shortcut.OnInvoke));
+        }
+
+        return commands;
+    }
+
+    // "Ctrl+Shift+P" -> "Ctrl + Shift + P" for the palette's shortcut column; blank stays blank.
+    private static string _PrettifyGesture(string gesture) =>
+        string.IsNullOrWhiteSpace(gesture) ? string.Empty : gesture.Replace("+", " + ");
 
     /// <summary>
     /// Persists every options section in one go — the Options dialog's single footer Save (#13)

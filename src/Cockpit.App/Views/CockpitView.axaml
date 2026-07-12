@@ -79,7 +79,11 @@
                     <Button Content="Search transcripts" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding SearchTranscriptsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Search the text of all your past sessions (Shift+F)"/>
+                            ToolTip.Tip="Search the text of all your past sessions (Ctrl+F)"/>
+                    <Button Content="⌘ Command palette" HorizontalAlignment="Stretch" Classes="Subtle"
+                            Command="{Binding ShowCommandPaletteCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Run any app or plugin command by name (Ctrl+K)"/>
                     <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding OptionsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"

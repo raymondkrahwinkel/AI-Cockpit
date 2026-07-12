@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.CommandPaletteDialog"
+        x:DataType="vm:CommandPaletteDialogViewModel"
+        Title="Command palette"
+        Width="640" Height="460" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:CommandPaletteDialogViewModel/>
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*" Margin="10">
+        <TextBox x:Name="QueryBox" Grid.Row="0" Text="{Binding Query}"
+                 PlaceholderText="Type a command…  ↑/↓ to move, Enter to run, Esc to close"
+                 KeyDown="OnQueryKeyDown"/>
+
+        <ListBox x:Name="CommandList" Grid.Row="1" Margin="0,8,0,0"
+                 ItemsSource="{Binding Visible}" SelectedItem="{Binding Selected}"
+                 Background="Transparent" BorderThickness="0"
+                 DoubleTapped="OnItemActivated">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:PaletteCommand">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding Title}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding GestureDisplay}" VerticalAlignment="Center"
+                                   FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</Window>
