@@ -7,9 +7,21 @@ namespace Cockpit.App.ViewModels;
 /// state derived by comparing the store's latest version against what is installed. Carries the resolved
 /// index URL and the latest version entry so the manager can download and install it.
 /// </summary>
-public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string indexUrl, string? installedVersion)
+public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string indexUrl, string? installedVersion, bool isEnabled = false, bool hasSettings = false)
 {
     public PluginStoreEntry Entry => entry;
+
+    /// <summary>Whether the installed plugin is currently enabled (false when not installed) — drives the card's enable/disable toggle.</summary>
+    public bool IsEnabled => isEnabled;
+
+    /// <summary>Whether the installed plugin registered a settings view — gates the card's ⚙ gear.</summary>
+    public bool HasSettings => hasSettings;
+
+    /// <summary>Power glyph for the card's enable/disable toggle: filled when enabled, hollow when disabled.</summary>
+    public string ToggleGlyph => isEnabled ? "⏼" : "⭘";
+
+    /// <summary>Hover text for the enable/disable toggle.</summary>
+    public string ToggleTooltip => isEnabled ? "Disable this plugin (takes effect after restart)" : "Enable this plugin (takes effect after restart)";
 
     public string IndexUrl => indexUrl;
 

@@ -50,11 +50,23 @@
                 <TextBlock Text="Free" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
             </StackPanel>
 
-            <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
-                <Button Grid.Column="0" Content="Details" Classes="Subtle Compact" HorizontalAlignment="Left"
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,2,0,0">
+                <!-- For an installed plugin: a gear to its settings and a power toggle to enable/disable it,
+                     right on the card (in addition to the Installed management view). -->
+                <Button Grid.Column="0" Content="⚙" Classes="Subtle Compact" Padding="6,2"
+                        IsVisible="{Binding HasSettings}"
+                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.OpenStorePluginSettingsCommand}"
+                        CommandParameter="{Binding}"
+                        ToolTip.Tip="Plugin settings"/>
+                <Button Grid.Column="1" Content="{Binding ToggleGlyph}" Classes="Subtle Compact" Padding="6,2" Margin="4,0,0,0"
+                        IsVisible="{Binding IsInstalled}"
+                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.ToggleStorePluginCommand}"
+                        CommandParameter="{Binding}"
+                        ToolTip.Tip="{Binding ToggleTooltip}"/>
+                <Button Grid.Column="2" Content="Details" Classes="Subtle Compact" HorizontalAlignment="Left" Margin="4,0,0,0"
                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).ShowDetailsCommand}"
                         CommandParameter="{Binding}"/>
-                <Button Grid.Column="1" Content="{Binding PrimaryActionLabel}" Classes="Compact"
+                <Button Grid.Column="3" Content="{Binding PrimaryActionLabel}" Classes="Compact"
                         IsEnabled="{Binding CanTakePrimaryAction}"
                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.InstallFromStoreCommand}"
                         CommandParameter="{Binding}"/>

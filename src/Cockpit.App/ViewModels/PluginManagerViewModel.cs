@@ -299,10 +299,13 @@ public partial class PluginManagerViewModel : ViewModelBase
                         continue;
                     }
 
-                    var installedVersion = Plugins
-                        .FirstOrDefault(row => row.FolderId == PluginFolderName.Normalize(entry.Id))?
-                        .Discovered.Manifest.Version;
-                    AvailablePlugins.Add(new StorePluginRowViewModel(entry, fetch.IndexUrl, installedVersion));
+                    var installedRow = Plugins.FirstOrDefault(row => row.FolderId == PluginFolderName.Normalize(entry.Id));
+                    AvailablePlugins.Add(new StorePluginRowViewModel(
+                        entry,
+                        fetch.IndexUrl,
+                        installedRow?.Discovered.Manifest.Version,
+                        isEnabled: installedRow?.CanDisable ?? false,
+                        hasSettings: installedRow?.HasSettings ?? false));
                 }
             }
 
@@ -392,12 +395,70 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    // Download + install one store row's latest version, reporting through StatusMessage. No IsBusy/browse of
-    // its own so it composes into both the single-row install and the batch "Update all". Returns whether the
-    // install succeeded.
-    private async Task<bool> _DownloadAndInstallRowAsync(StorePluginRowViewModel row)
+    /// <summary>Opens the settings of the installed plugin behind a store row (the card's ⚙). No-op when it isn't installed or has no settings.</summary>
+    [RelayCommand]
+    private async Task OpenStorePluginSettingsAsync(StorePluginRowViewModel row)
     {
-        if (row.LatestVersionEntry is not { } version)
+        if (_InstalledRowFor(row) is { HasSettings: true } installed)
+        {
+            await OpenPluginSettingsAsync(installed);
+        }
+    }
+
+    /// <summary>Enables or disables the installed plugin behind a store row (the card's power toggle), then refreshes the catalogue so the toggle reflects the new state.</summary>
+    [RelayCommand]
+    private async Task ToggleStorePluginAsync(StorePluginRowViewModel row)
+    {
+        if (_InstalledRowFor(row) is not { } installed)
+        {
+            return;
+        }
+
+        if (installed.CanDisable)
+        {
+            await DisablePluginAsync(installed);
+        }
+        else
+        {
+            await EnablePluginAsync(installed);
+        }
+
+        var message = StatusMessage;
+        await BrowseStoresAsync();
+        StatusMessage = message;
+    }
+
+    /// <summary>Installs a specific advertised version of a plugin (the detail panel's per-version Install), so a newer install can be rolled back to an older one.</summary>
+    public async Task InstallStoreVersionAsync(StorePluginRowViewModel row, PluginStoreVersion version)
+    {
+        if (_storeClient is null || _installer is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            await _DownloadAndInstallRowAsync(row, version);
+            var message = StatusMessage;
+            await BrowseStoresAsync();
+            StatusMessage = message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private PluginRowViewModel? _InstalledRowFor(StorePluginRowViewModel row) =>
+        Plugins.FirstOrDefault(installed => installed.FolderId == PluginFolderName.Normalize(row.Id));
+
+    // Download + install one store row's version — its advertised latest, or an explicit one for a rollback.
+    // Reports through StatusMessage. No IsBusy/browse of its own so it composes into the single-row install, the
+    // batch "Update all" and the per-version install. Returns whether the install succeeded.
+    private async Task<bool> _DownloadAndInstallRowAsync(StorePluginRowViewModel row, PluginStoreVersion? explicitVersion = null)
+    {
+        if ((explicitVersion ?? row.LatestVersionEntry) is not { } version)
         {
             StatusMessage = $"'{row.Name}' has no downloadable version in the store.";
             return false;

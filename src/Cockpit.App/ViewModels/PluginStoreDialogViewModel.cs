@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 
@@ -156,6 +157,16 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     [RelayCommand]
     private void CloseDetails() => SelectedPlugin = null;
+
+    /// <summary>Installs a specific version of the plugin shown in the detail panel — a rollback to an older build, or a re-install of the current one.</summary>
+    [RelayCommand]
+    private async Task InstallVersionAsync(PluginStoreVersion? version)
+    {
+        if (version is not null && SelectedPlugin is { } row)
+        {
+            await Manager.InstallStoreVersionAsync(row, version);
+        }
+    }
 
     [RelayCommand]
     private void ToggleManageStores() => IsManageStoresOpen = !IsManageStoresOpen;
