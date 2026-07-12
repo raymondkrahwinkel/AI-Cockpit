@@ -1,6 +1,6 @@
 # AI-Cockpit
 
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![License: Apache 2.0 + Commons Clause](https://img.shields.io/badge/License-Apache_2.0_%2B_Commons_Clause-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Avalonia](https://img.shields.io/badge/Avalonia-12-8B44AC.svg)](https://avaloniaui.net/)
 
@@ -213,4 +213,6 @@ Contributions are welcome, but the bar is high for a one-person project. **Read
 
 ## Licence
 
-AI-Cockpit is licensed under the **GNU Affero General Public License v3.0** — see [`LICENSE`](LICENSE).
+AI-Cockpit is licensed under the **Apache License 2.0 with the Commons Clause** — you may use, modify and self-host it, but you may not sell it — see [`LICENSE`](LICENSE). Copyright © 2026 Raymond Krahwinkel / Krahwinkel-IT.
+
+The plugin SDK — the `Cockpit.Plugins.Abstractions` project — is licensed separately under the **MIT License** with no Commons Clause, so anyone may build, distribute and sell plugins that depend on it. See [`src/Cockpit.Plugins.Abstractions/LICENSE`](src/Cockpit.Plugins.Abstractions/LICENSE).
