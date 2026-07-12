@@ -1,0 +1,11 @@
+{
+  "id": "git-status",
+  "name": "Git status",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.GitStatus.dll",
+  "entryType": "Cockpit.Plugin.GitStatus.GitStatusPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "Shows the git status of your configured repositories in one place — branch, uncommitted changes and unpushed/behind commits — in a sortable dialog, and drops a status summary into the active session on click. Manage the repository list in settings.",
+  "author": "Cockpit"
+}

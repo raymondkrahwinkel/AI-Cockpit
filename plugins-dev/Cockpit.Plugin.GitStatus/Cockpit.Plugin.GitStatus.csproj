@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Git status plugin (#14 / idea #1): the branch / uncommitted / unpushed / ahead-behind status of your
+       configured repositories in one place, click to drop a status summary into the active session. Built
+       OUTSIDE the main solution (plugins-dev/) like the other example plugins; package bin/<config>/net10.0
+       into a .zip and install it via the Plugin store. EnableDynamicLoading emits the .deps.json the host's
+       AssemblyDependencyResolver needs. Shared assemblies (Cockpit.Plugins.Abstractions, Avalonia, the
+       DataGrid, the DI abstractions) are compile-only (Private=false / ExcludeAssets=runtime) so the host's
+       copies load and shared types keep one identity — the plugin folder ships only its own DLL + plugin.json. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The host provides the DataGrid (control + app-wide theme), so reference it compile-only. -->
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
