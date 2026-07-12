@@ -98,7 +98,21 @@ sealed class Program
                 return;
             }
 
-            Screenshotter.Run(args[screenshotIndex + 1]);
+            // Optional "--size WxH" so a docs render can use a window big enough to show a session's
+            // transcript, and "--scene <name>" to render a dialog instead of the main window.
+            var sceneIndex = Array.IndexOf(args, "--scene");
+            var scene = sceneIndex >= 0 && sceneIndex + 1 < args.Length ? args[sceneIndex + 1] : null;
+
+            var sizeIndex = Array.IndexOf(args, "--size");
+            if (sizeIndex >= 0 && sizeIndex + 1 < args.Length &&
+                args[sizeIndex + 1].Split('x') is [var rawWidth, var rawHeight] &&
+                int.TryParse(rawWidth, out var width) && int.TryParse(rawHeight, out var height))
+            {
+                Screenshotter.Run(args[screenshotIndex + 1], width, height, scene);
+                return;
+            }
+
+            Screenshotter.Run(args[screenshotIndex + 1], scene: scene);
             return;
         }
 
