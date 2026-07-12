@@ -298,27 +298,21 @@
 
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
 
-                        <TextBlock Text="Versions" FontWeight="SemiBold"/>
-                        <TextBlock Text="Install any version — pick an older one to roll back if a new one misbehaves."
+                        <TextBlock Text="Version" FontWeight="SemiBold"/>
+                        <TextBlock Text="Pick a version — an older one to roll back if a new one misbehaves, or the current one to reinstall."
                                    FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                        <ItemsControl ItemsSource="{Binding Entry.Versions}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="core:PluginStoreVersion">
-                                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="{Binding Version, StringFormat='v{0}'}" FontWeight="SemiBold" FontSize="12"/>
-                                            <TextBlock Text="{Binding Notes}" FontSize="11" TextWrapping="Wrap"
-                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                       IsVisible="{Binding Notes, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                        </StackPanel>
-                                        <Button Grid.Column="1" Content="Install" Classes="Compact Subtle" VerticalAlignment="Top"
-                                                Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).InstallVersionCommand}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip.Tip="Install this specific version"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                            <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
+                                      ItemsSource="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).SelectedPluginVersions}"
+                                      SelectedItem="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).SelectedVersion}"
+                                      DisplayMemberBinding="{Binding Display}"/>
+                            <Button Grid.Column="1" Content="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).InstallVersionLabel}"
+                                    Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).InstallSelectedVersionCommand}"
+                                    ToolTip.Tip="Install the selected version"/>
+                        </Grid>
+                        <TextBlock Text="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).SelectedVersionNotes}"
+                                   FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   IsVisible="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).HasSelectedVersionNotes}"/>
 
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
 

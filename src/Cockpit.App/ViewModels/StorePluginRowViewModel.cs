@@ -39,6 +39,9 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
 
     public bool IsInstalled => installedVersion is not null;
 
+    /// <summary>The installed version string (without the "v" prefix), or null when not installed — used to mark the current version in the version picker.</summary>
+    public string? InstalledVersion => installedVersion;
+
     public bool UpdateAvailable => installedVersion is not null && PluginVersion.IsNewer(entry.LatestVersion, installedVersion);
 
     /// <summary>Offer Install only when it is not already installed.</summary>

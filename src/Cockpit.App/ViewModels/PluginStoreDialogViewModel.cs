@@ -158,13 +158,51 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     [RelayCommand]
     private void CloseDetails() => SelectedPlugin = null;
 
-    /// <summary>Installs a specific version of the plugin shown in the detail panel — a rollback to an older build, or a re-install of the current one.</summary>
-    [RelayCommand]
-    private async Task InstallVersionAsync(PluginStoreVersion? version)
+    // Cached (not recomputed per get) so the ComboBox's items are stable instances — the SelectedVersion we set
+    // is one of these exact instances, so the dropdown shows it selected.
+    private IReadOnlyList<StoreVersionOption> _selectedPluginVersions = [];
+
+    /// <summary>The versions of the plugin shown in the detail panel, for the version-picker dropdown (the installed one is marked).</summary>
+    public IReadOnlyList<StoreVersionOption> SelectedPluginVersions => _selectedPluginVersions;
+
+    /// <summary>The version chosen in the picker dropdown; defaults to the installed version (or the latest when not installed).</summary>
+    [ObservableProperty]
+    private StoreVersionOption? _selectedVersion;
+
+    /// <summary>"Reinstall" when the picked version is the one already installed, else "Install" — so re-installing the current version reads correctly instead of a plain "Install".</summary>
+    public string InstallVersionLabel => SelectedVersion?.IsInstalled == true ? "Reinstall" : "Install";
+
+    /// <summary>Release notes of the picked version, shown under the dropdown.</summary>
+    public string? SelectedVersionNotes => SelectedVersion?.Version.Notes;
+
+    public bool HasSelectedVersionNotes => !string.IsNullOrWhiteSpace(SelectedVersionNotes);
+
+    partial void OnSelectedPluginChanged(StorePluginRowViewModel? value)
     {
-        if (version is not null && SelectedPlugin is { } row)
+        _selectedPluginVersions = value?.Entry.Versions?
+            .Select(version => new StoreVersionOption(version, string.Equals(version.Version, value.InstalledVersion, StringComparison.Ordinal)))
+            .ToList() ?? [];
+        OnPropertyChanged(nameof(SelectedPluginVersions));
+
+        // Default the picker to the installed version (so "Reinstall" is the obvious action), else the latest.
+        SelectedVersion = _selectedPluginVersions.FirstOrDefault(option => option.IsInstalled)
+                          ?? _selectedPluginVersions.FirstOrDefault();
+    }
+
+    partial void OnSelectedVersionChanged(StoreVersionOption? value)
+    {
+        OnPropertyChanged(nameof(InstallVersionLabel));
+        OnPropertyChanged(nameof(SelectedVersionNotes));
+        OnPropertyChanged(nameof(HasSelectedVersionNotes));
+    }
+
+    /// <summary>Installs the version picked in the detail panel — a rollback to an older build, a re-install of the current one, or an upgrade.</summary>
+    [RelayCommand]
+    private async Task InstallSelectedVersionAsync()
+    {
+        if (SelectedVersion is { } option && SelectedPlugin is { } row)
         {
-            await Manager.InstallStoreVersionAsync(row, version);
+            await Manager.InstallStoreVersionAsync(row, option.Version);
         }
     }
 
