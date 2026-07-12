@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Transcripts;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Infrastructure.Claude;
 
@@ -28,6 +29,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
+    private readonly ITranscriptSearchService _transcriptSearchService;
 
     public SessionDialogService(
         IClaudeProfileStore profileStore,
@@ -35,7 +37,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
         IPluginProviderRegistry pluginProviderRegistry,
-        IWorkingPathHistoryStore workingPathStore)
+        IWorkingPathHistoryStore workingPathStore,
+        ITranscriptSearchService transcriptSearchService)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
@@ -43,6 +46,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _mcpServerStore = mcpServerStore;
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
+        _transcriptSearchService = transcriptSearchService;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -191,6 +195,19 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
         var dialog = new AboutDialog { DataContext = info };
+        await dialog.ShowDialog(owner);
+    }
+
+    public async Task ShowTranscriptSearchDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        var viewModel = new TranscriptSearchDialogViewModel(_transcriptSearchService);
+        var dialog = new TranscriptSearchDialog { DataContext = viewModel };
+        viewModel.CloseRequested += dialog.Close;
         await dialog.ShowDialog(owner);
     }
 }

@@ -847,6 +847,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.Options => OptionsCommand,
             ShortcutAction.About => AboutCommand,
             ShortcutAction.ToggleZoom => ToggleZoomCommand,
+            ShortcutAction.SearchTranscripts => SearchTranscriptsCommand,
             _ => null,
         };
 
@@ -1304,6 +1305,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _dialogService.ShowAboutDialogAsync();
+    }
+
+    /// <summary>Opens the transcript-search dialog (#9): search your past sessions' text.</summary>
+    [RelayCommand]
+    private async Task SearchTranscriptsAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowTranscriptSearchDialogAsync();
     }
 
     /// <summary>

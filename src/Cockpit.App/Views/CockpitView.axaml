@@ -76,6 +76,10 @@
                             Command="{Binding Plugins.OpenStoreDialogCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Browse, install, update and manage plugins — all in one place"/>
+                    <Button Content="Search transcripts" HorizontalAlignment="Stretch" Classes="Subtle"
+                            Command="{Binding SearchTranscriptsCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Search the text of all your past sessions (Shift+F)"/>
                     <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding OptionsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"

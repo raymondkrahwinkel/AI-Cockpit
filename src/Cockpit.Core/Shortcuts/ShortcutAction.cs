@@ -13,4 +13,5 @@ public enum ShortcutAction
     Options,
     About,
     ToggleZoom,
+    SearchTranscripts,
 }

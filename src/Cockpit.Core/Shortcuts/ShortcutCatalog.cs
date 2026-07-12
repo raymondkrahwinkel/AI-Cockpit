@@ -20,6 +20,7 @@ public static class ShortcutCatalog
         new(ShortcutAction.Options, "Options", "Shift+O"),
         new(ShortcutAction.About, "About", ""),
         new(ShortcutAction.ToggleZoom, "Toggle zoom", "Shift+Z"),
+        new(ShortcutAction.SearchTranscripts, "Search transcripts", "Shift+F"),
     ];
 
     public static string DefaultGesture(ShortcutAction action) =>

@@ -48,4 +48,7 @@ public interface ISessionDialogService
 
     /// <summary>Shows the About dialog (#46) over the main window: app name, version, description and links.</summary>
     Task ShowAboutDialogAsync();
+
+    /// <summary>Shows the transcript-search dialog (#9): search your past sessions' text and jump to a match.</summary>
+    Task ShowTranscriptSearchDialogAsync();
 }
