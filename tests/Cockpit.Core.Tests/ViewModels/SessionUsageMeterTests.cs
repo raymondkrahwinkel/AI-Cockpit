@@ -1,5 +1,5 @@
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Claude;
+using Cockpit.Core.Sessions;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.ViewModels;

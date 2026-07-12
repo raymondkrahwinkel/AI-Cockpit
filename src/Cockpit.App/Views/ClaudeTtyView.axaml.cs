@@ -13,7 +13,7 @@ using Avalonia.Layout;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Exclr8.Terminal;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,7 +35,7 @@ public partial class ClaudeTtyView : UserControl
     private CancellationTokenSource? _outputCancellation;
     private ClaudeTtyViewModel? _viewModel;
     private IClaudeTtyLauncher? _pendingLauncher;
-    private ClaudeProfile? _pendingProfile;
+    private SessionProfile? _pendingProfile;
     private string? _pendingPermissionMode;
     private string? _pendingModel;
     private string? _pendingEffort;
@@ -146,7 +146,7 @@ public partial class ClaudeTtyView : UserControl
 
 
     /// <summary>
-    /// KeyDown for the push-to-talk hotkey — see the equivalent handler on <c>ClaudeSessionView</c> for
+    /// KeyDown for the push-to-talk hotkey — see the equivalent handler on <c>SessionView</c> for
     /// the guard reasoning. No-ops when global push-to-talk is active (see
     /// <see cref="PushToTalkKeyGate"/>) so the global coordinator's hold does not fire twice.
     /// </summary>
@@ -270,7 +270,7 @@ public partial class ClaudeTtyView : UserControl
     /// </summary>
     private void OnLaunchRequested(
         IClaudeTtyLauncher launcher,
-        ClaudeProfile? profile,
+        SessionProfile? profile,
         string? permissionMode,
         string? model,
         string? effort,

@@ -1,4 +1,4 @@
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Configuration;
 

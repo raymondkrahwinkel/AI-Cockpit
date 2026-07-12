@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Cockpit.Core.Configuration;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Claude;
 

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Core.Tests.Claude;

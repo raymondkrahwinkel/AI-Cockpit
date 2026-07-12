@@ -2,9 +2,9 @@ using Avalonia.Threading;
 using Microsoft.Extensions.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Claude;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Voice;
@@ -28,7 +28,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 {
     private readonly IClaudeTtyLauncher? _launcher;
     private readonly ISessionTranscriptReader? _transcriptReader;
-    private ClaudeProfile? _configuredProfile;
+    private SessionProfile? _configuredProfile;
     private string? _effectiveConfigDir;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
@@ -60,7 +60,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private bool _statusTrackingStopped;
 
     /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
-    public event Action<IClaudeTtyLauncher, ClaudeProfile?, string?, string?, string?, string?>? LaunchRequested;
+    public event Action<IClaudeTtyLauncher, SessionProfile?, string?, string?, string?, string?>? LaunchRequested;
 
     /// <summary>
     /// Raised once a push-to-talk hold finished transcribing (no cleanup applied — TTY is a raw
@@ -149,7 +149,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// inline profile picker. <paramref name="permissionMode"/>/<paramref name="model"/>/
     /// <paramref name="effort"/> are launch-only: the real TUI owns any live switching afterwards.
     /// </summary>
-    public void LaunchConfigured(ClaudeProfile? profile, string? permissionMode, string? model, string? effort, string? workingDirectory = null)
+    public void LaunchConfigured(SessionProfile? profile, string? permissionMode, string? model, string? effort, string? workingDirectory = null)
     {
         _configuredProfile = profile;
         _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
@@ -224,7 +224,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         _ = _TailTranscriptForReadAloudAsync(_effectiveConfigDir, _transcriptBaseline, _transcriptTailCancellation.Token);
     }
 
-    /// <summary>Consumes the transcript tailer and enqueues each assistant turn's prose for TTS — mirrors <c>ClaudeSessionViewModel._EnqueueTurnProseForReadAloud</c>, just fed by the tailer instead of the SDK event stream.</summary>
+    /// <summary>Consumes the transcript tailer and enqueues each assistant turn's prose for TTS — mirrors <c>SessionViewModel._EnqueueTurnProseForReadAloud</c>, just fed by the tailer instead of the SDK event stream.</summary>
     private async Task _TailTranscriptForReadAloudAsync(string configDir, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
     {
         if (_transcriptReader is null)

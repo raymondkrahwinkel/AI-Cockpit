@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 
 /// <summary>
 /// <see cref="IPluginSessionDriver"/> for the Codex CLI provider, driven as a subprocess spawned fresh for
-/// every turn (#45 fase B1) — the plugin-local mirror of <c>Cockpit.Infrastructure.Claude.ClaudeCliSession</c>,
+/// every turn (#45 fase B1) — the plugin-local mirror of <c>Cockpit.Infrastructure.Sessions.ClaudeCliSession</c>,
 /// adapted for Codex's proces-per-turn headless mode instead of Claude's single persistent process.
 /// </summary>
 /// <remarks>

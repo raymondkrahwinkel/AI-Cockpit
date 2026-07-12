@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;

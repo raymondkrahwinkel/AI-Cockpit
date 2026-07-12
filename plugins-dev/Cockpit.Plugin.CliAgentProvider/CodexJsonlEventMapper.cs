@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// <summary>
 /// Parses a single JSONL stdout line from <c>codex exec --json</c> into zero-or-more typed
 /// <see cref="PluginSessionEvent"/>s (#45 fase B1) — the plugin-local, pure-function mirror of
-/// <c>Cockpit.Infrastructure.Claude.ClaudeStreamJsonParser</c>, this plugin's only CLI-<em>specific</em> logic.
+/// <c>Cockpit.Infrastructure.Sessions.ClaudeStreamJsonParser</c>, this plugin's only CLI-<em>specific</em> logic.
 /// </summary>
 /// <remarks>
 /// B2 caveat (design doc §2.3/§4): the exact <c>item.*</c> field names/shapes below (<c>item_type</c>,

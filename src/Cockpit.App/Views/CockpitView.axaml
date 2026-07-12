@@ -141,7 +141,7 @@
                                                                ToolTip.Tip="Needs attention"/>
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <!-- Mirrors the session-header provider pill (ClaudeSessionView.axaml) so a local
+                                                    <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local
                                                          (Ollama/LM Studio) session is identifiable from the sidebar too, not just once
                                                          opened; hidden for Claude-CLI sessions, which leave ProviderBadge empty (#26). -->
                                                     <Border Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -254,7 +254,7 @@
                                     Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
-                                <!-- ContentControl + ViewLocator picks ClaudeSessionView (SDK) or
+                                <!-- ContentControl + ViewLocator picks SessionView (SDK) or
                                      ClaudeTtyView (TTY) from the panel view model's type. -->
                                 <ContentControl Content="{Binding}"/>
                             </Border>

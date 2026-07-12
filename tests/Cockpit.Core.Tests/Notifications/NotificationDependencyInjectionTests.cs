@@ -23,8 +23,8 @@ public class NotificationDependencyInjectionTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
 
-        services.AddTransient<Func<ClaudeSessionViewModel>>(
-            provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());
+        services.AddTransient<Func<SessionViewModel>>(
+            provider => () => provider.GetRequiredService<SessionViewModel>());
         services.AddTransient<Func<ClaudeTtyViewModel>>(
             provider => () => provider.GetRequiredService<ClaudeTtyViewModel>());
 
@@ -46,7 +46,7 @@ public class NotificationDependencyInjectionTests
     [Fact]
     public async Task Container_ResolvesTheCockpitViewModel_WithNotificationDependencies()
     {
-        // Async disposal: a resolved ClaudeSessionViewModel is IAsyncDisposable-only, so the provider
+        // Async disposal: a resolved SessionViewModel is IAsyncDisposable-only, so the provider
         // must be torn down with DisposeAsync.
         await using var provider = BuildProvider();
 

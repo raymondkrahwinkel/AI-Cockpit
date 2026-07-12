@@ -145,7 +145,7 @@ public class CockpitViewModelTests
         var dialogService = Substitute.For<ISessionDialogService>();
         dialogService.ShowNewSessionDialogAsync().Returns(new NewSessionResult(
             SessionKind.Sdk,
-            new ClaudeProfile("default", @"C:\fake\.claude"),
+            new SessionProfile("default", @"C:\fake\.claude"),
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
@@ -457,7 +457,7 @@ public class CockpitViewModelTests
         terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
 
         var vm = new CockpitViewModel(
-            () => new ClaudeSessionViewModel(),
+            () => new SessionViewModel(),
             () => new ClaudeTtyViewModel(),
             DefaultDialogService(),
             Substitute.For<IAudioCaptureService>(),
@@ -788,7 +788,7 @@ public class CockpitViewModelTests
         }
 
         return new CockpitViewModel(
-            () => new ClaudeSessionViewModel(),
+            () => new SessionViewModel(),
             () => new ClaudeTtyViewModel(),
             dialogService ?? DefaultDialogService(),
             captureService,
@@ -812,7 +812,7 @@ public class CockpitViewModelTests
 
     private static NewSessionResult NewSessionResultFor(SessionKind kind) => new(
         kind,
-        new ClaudeProfile("default", @"C:\fake\.claude"),
+        new SessionProfile("default", @"C:\fake\.claude"),
         SessionOptionCatalog.DefaultPermissionMode,
         SessionOptionCatalog.DefaultModel,
         SessionOptionCatalog.DefaultEffort, null);

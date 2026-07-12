@@ -3,12 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Infrastructure.Claude;
-using Cockpit.Infrastructure.Claude.Permissions;
-using Cockpit.Infrastructure.Claude.Tty;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Permissions;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.Voice.GlobalHotkey;
 

@@ -12,7 +12,7 @@ namespace Cockpit.Infrastructure.Configuration;
 /// </summary>
 internal sealed class CockpitConfigFile
 {
-    public List<ClaudeProfileEntry> Profiles { get; set; } = [];
+    public List<SessionProfileEntry> Profiles { get; set; } = [];
 
     public NotificationSettingsEntry? Notifications { get; set; }
 

@@ -1,13 +1,13 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// A mutable, editable view over an immutable <see cref="ClaudeProfile"/> for the Manage-profiles
+/// A mutable, editable view over an immutable <see cref="SessionProfile"/> for the Manage-profiles
 /// dialog: the record's fields as editable properties plus its <see cref="ProfileDefaults"/> as three
 /// selected options, and the provider (#26). The provider can only be chosen while adding a profile
 /// (<see cref="CanChooseProvider"/>) — it is fixed afterwards so credentials/config never go inconsistent.
@@ -189,7 +189,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <param name="providers">The full provider picker (#45) — built-ins plus any plugin-registered providers; falls back to <see cref="SessionProviderCatalog.Providers"/> (built-ins only) when not supplied.</param>
     /// <param name="pluginProviderRegistry">Resolves a plugin provider's config view, for a <see cref="PluginProviderConfig"/> profile or when the operator picks a plugin provider while adding one; <see langword="null"/> when the caller does not care about plugin providers (design-time preview, most existing tests).</param>
     public EditableProfileViewModel(
-        ClaudeProfile profile,
+        SessionProfile profile,
         bool isLoggedIn,
         bool canChooseProvider = false,
         IReadOnlyList<SessionProviderOption>? providers = null,
@@ -235,7 +235,7 @@ public partial class EditableProfileViewModel : ViewModelBase
     }
 
     /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
-    public ClaudeProfile ToProfile() => new(
+    public SessionProfile ToProfile() => new(
         Label.Trim(),
         ConfigDir.Trim(),
         string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim(),

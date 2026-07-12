@@ -2,7 +2,7 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 
 /// <summary>
 /// Drives a single, persistent, multi-turn conversation with a plugin-registered provider and exposes it as
-/// a typed event stream (#45) — the narrow, plugin-facing analogue of <c>Cockpit.Core.Abstractions.Claude.ISessionDriver</c>.
+/// a typed event stream (#45) — the narrow, plugin-facing analogue of <c>Cockpit.Core.Abstractions.Sessions.ISessionDriver</c>.
 /// Deliberately trimmed to what a third-party HTTP provider can support: no Claude-CLI-only live controls
 /// (permission-mode/model/thinking-budget switch, always-allow rule persistence). The host's driver adapter
 /// wraps an implementation of this interface to satisfy the real <c>ISessionDriver</c> contract, no-opping

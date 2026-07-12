@@ -16,10 +16,10 @@ internal sealed class TranscriptSearchService : ITranscriptSearchService, ISingl
 {
     private const int MaxHitsPerFile = 20;
 
-    private readonly IClaudeProfileStore? _profileStore;
+    private readonly ISessionProfileStore? _profileStore;
     private readonly IReadOnlyList<string>? _projectRootsOverride;
 
-    public TranscriptSearchService(IClaudeProfileStore profileStore)
+    public TranscriptSearchService(ISessionProfileStore profileStore)
     {
         _profileStore = profileStore;
     }

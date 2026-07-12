@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
@@ -33,7 +33,7 @@ public class SessionDriverFactoryTests
         registry.Register(registration);
         var services = new ServiceCollection().BuildServiceProvider();
         var factory = new SessionDriverFactory(services, registry);
-        var profile = new ClaudeProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", """{"apiKey":"secret"}"""));
+        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", """{"apiKey":"secret"}"""));
 
         var driver = factory.Create(profile);
 
@@ -47,7 +47,7 @@ public class SessionDriverFactoryTests
     {
         var services = new ServiceCollection().BuildServiceProvider();
         var factory = new SessionDriverFactory(services, new PluginProviderRegistry());
-        var profile = new ClaudeProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("unknown-provider", "{}"));
+        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("unknown-provider", "{}"));
 
         var act = () => factory.Create(profile);
 
@@ -62,7 +62,7 @@ public class SessionDriverFactoryTests
         // Constructing a profile whose Provider reports Plugin without a matching config record should not
         // normally happen (ProviderConfig.Provider always agrees), but the factory must still fail loudly
         // rather than silently misbehave if it ever does — proven via a minimal ProviderConfig subclass.
-        var profile = new ClaudeProfile("broken", ConfigDir: "", ProviderConfig: new _MismatchedProviderConfig());
+        var profile = new SessionProfile("broken", ConfigDir: "", ProviderConfig: new _MismatchedProviderConfig());
 
         var act = () => factory.Create(profile);
 

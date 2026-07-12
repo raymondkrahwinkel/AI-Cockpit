@@ -7,7 +7,7 @@ namespace Cockpit.Infrastructure.SessionSwitching;
 
 /// <summary>
 /// Persists <see cref="SessionSwitchSettings"/> under the <c>sessionSwitching</c> section of
-/// <c>cockpit.json</c> (same file/pattern as <c>ClaudeProfileStore</c> and
+/// <c>cockpit.json</c> (same file/pattern as <c>SessionProfileStore</c> and
 /// <c>NotificationSettingsStore</c>). Reads-modifies-writes the whole file via
 /// <see cref="CockpitConfigFileAccess"/> so it leaves the <c>profiles</c>, <c>notifications</c> and
 /// <c>permissionRules</c> sections untouched. When no settings were ever saved,

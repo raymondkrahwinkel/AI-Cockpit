@@ -18,7 +18,7 @@ public static class ProfileSelector
     /// there is more than one, it is moved to the front of <see cref="ProfileSelectionOutcome.Candidates"/>
     /// as the suggested default — the caller still asks, per the UX rule for >1 profile.
     /// </param>
-    public static ProfileSelectionOutcome Select(IReadOnlyList<ClaudeProfileStatus> statuses, string? lastUsedLabel = null)
+    public static ProfileSelectionOutcome Select(IReadOnlyList<SessionProfileStatus> statuses, string? lastUsedLabel = null)
     {
         var loggedIn = statuses.Where(s => s.IsLoggedIn).Select(s => s.Profile).ToList();
 

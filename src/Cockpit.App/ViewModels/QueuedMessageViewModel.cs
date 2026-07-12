@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.Core.Claude;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 

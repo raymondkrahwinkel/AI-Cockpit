@@ -1,8 +1,8 @@
 using Microsoft.Extensions.AI;
-using Cockpit.Core.Abstractions.Claude;
-using Cockpit.Core.Claude;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Mcp;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +17,7 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class OpenAiCompatSessionDriverTests
 {
-    private static readonly ClaudeProfile LocalProfile =
+    private static readonly SessionProfile LocalProfile =
         new("local", ConfigDir: "", ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
 
     [Fact]
@@ -77,7 +77,7 @@ public class OpenAiCompatSessionDriverTests
                 Arg.Do<IEnumerable<ChatMessage>>(messages => captured = messages.ToList()), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(_Stream("ok"));
         var driver = _CreateDriver(chatClient);
-        var profile = new ClaudeProfile("local", string.Empty,
+        var profile = new SessionProfile("local", string.Empty,
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1", "You are a pirate."));
 
         await driver.StartAsync(profile);
@@ -121,7 +121,7 @@ public class OpenAiCompatSessionDriverTests
         driver.Capabilities.SupportsTools.Should().BeTrue();
         await driver.SendUserMessageAsync("use the tool");
 
-        var events = new List<ClaudeSessionEvent>();
+        var events = new List<SessionEvent>();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await foreach (var evt in driver.Events.WithCancellation(cts.Token))
         {
@@ -209,12 +209,12 @@ public class OpenAiCompatSessionDriverTests
 #pragma warning restore CS0162
     }
 
-    private static Task<List<ClaudeSessionEvent>> _CollectUntilTurnCompletedAsync(ISessionDriver driver) =>
+    private static Task<List<SessionEvent>> _CollectUntilTurnCompletedAsync(ISessionDriver driver) =>
         _CollectUntilAsync(driver, evt => evt is TurnCompleted);
 
-    private static async Task<List<ClaudeSessionEvent>> _CollectUntilAsync(ISessionDriver driver, Func<ClaudeSessionEvent, bool> until)
+    private static async Task<List<SessionEvent>> _CollectUntilAsync(ISessionDriver driver, Func<SessionEvent, bool> until)
     {
-        var events = new List<ClaudeSessionEvent>();
+        var events = new List<SessionEvent>();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await foreach (var evt in driver.Events.WithCancellation(cts.Token))
         {

@@ -33,9 +33,9 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// Multi-instance cockpit shell: owns the collection of running <see cref="ClaudeSessionViewModel"/>
+/// Multi-instance cockpit shell: owns the collection of running <see cref="SessionViewModel"/>
 /// panels, which one is selected, and the grid/zoom view mode. Reuses the existing
-/// <see cref="ClaudeSessionViewModel"/>/<c>ClaudeSessionView</c> per panel — this view model only
+/// <see cref="SessionViewModel"/>/<c>SessionView</c> per panel — this view model only
 /// adds the manager layer around it. See <c>Memory/Cockpit/Plan.md</c> §Vision-uitbreiding + §UX-eisen.
 /// </summary>
 /// <remarks>
@@ -49,7 +49,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 {
     private static readonly Core.Audio.AudioFormat AudioFormat = new();
 
-    private readonly Func<ClaudeSessionViewModel>? _sessionFactory;
+    private readonly Func<SessionViewModel>? _sessionFactory;
     private readonly Func<ClaudeTtyViewModel>? _ttySessionFactory;
     private readonly ISessionDialogService? _dialogService;
     private readonly IAudioCaptureService? _captureService;
@@ -574,7 +574,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Modifier = SelectedSessionSwitchModifier.Value,
     };
 
-    /// <summary>Keeps each session's <see cref="ClaudeSessionViewModel.IsSelected"/> in sync with the active selection.</summary>
+    /// <summary>Keeps each session's <see cref="SessionViewModel.IsSelected"/> in sync with the active selection.</summary>
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
     {
         if (oldValue is not null)
@@ -606,13 +606,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context —
-    // seeds three sample sessions with different statuses/profiles so the render shows the overview
-    // + grid without a real DI-backed session behind each one.
+    // seeds three sample sessions across different providers and statuses so the render shows the
+    // overview + grid without a real DI-backed session behind each one.
     public CockpitViewModel()
     {
-        var waiting = new ClaudeSessionViewModel { Title = "Claude 1", ActiveProfileLabel = "work", SessionStatus = SessionStatus.NeedsAttention };
-        var busy = new ClaudeSessionViewModel { Title = "Claude 2", ActiveProfileLabel = "private", SessionStatus = SessionStatus.Busy };
-        var tty = new ClaudeTtyViewModel { Title = "Claude 3", ActiveProfileLabel = "work (TTY)", SessionStatus = SessionStatus.Busy };
+        var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
+        var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
+        var tty = new ClaudeTtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
 
         Sessions.Add(waiting);
         Sessions.Add(busy);
@@ -623,7 +623,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     public CockpitViewModel(
-        Func<ClaudeSessionViewModel> sessionFactory,
+        Func<SessionViewModel> sessionFactory,
         Func<ClaudeTtyViewModel> ttySessionFactory,
         ISessionDialogService dialogService,
         IAudioCaptureService captureService,

@@ -9,7 +9,7 @@ namespace Cockpit.App.Converters;
 
 /// <summary>
 /// Resolves a theme brush resource key (e.g. <c>"CockpitStatusBusyBrush"</c>, as produced by
-/// <see cref="ViewModels.ClaudeSessionViewModel.SessionStatusBrushKey"/>) to the actual
+/// <see cref="ViewModels.SessionViewModel.SessionStatusBrushKey"/>) to the actual
 /// <see cref="IBrush"/> from <see cref="Application.Resources"/>, so the sidebar/grid status dot
 /// can bind directly to a view-model string without a codebehind lookup.
 /// </summary>

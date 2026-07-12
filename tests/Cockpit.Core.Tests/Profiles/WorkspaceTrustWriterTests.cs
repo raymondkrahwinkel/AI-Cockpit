@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 using FluentAssertions;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Profiles;
 

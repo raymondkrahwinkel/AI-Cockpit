@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Profiles;
 using FluentAssertions;
@@ -18,7 +18,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class TtyReadAloudTests
 {
-    private static readonly ClaudeProfile Work = new("work", "/config/work");
+    private static readonly SessionProfile Work = new("work", "/config/work");
 
     [Fact]
     public void ReadResponsesAloud_Off_NeverStartsTailingOrEnqueuesAnything()

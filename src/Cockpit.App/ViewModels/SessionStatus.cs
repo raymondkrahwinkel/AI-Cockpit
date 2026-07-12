@@ -1,7 +1,7 @@
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// Coarse-grained lifecycle/attention state for a single <see cref="ClaudeSessionViewModel"/>,
+/// Coarse-grained lifecycle/attention state for a single <see cref="SessionViewModel"/>,
 /// derived from the session events it already receives. Drives the sidebar status-dot and the
 /// "needs attention" affordance — see <c>Memory/Cockpit/Plan.md</c> §UX-eisen.
 /// </summary>

@@ -1,9 +1,9 @@
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.SessionSwitching;
-using Cockpit.Infrastructure.Claude;
-using Cockpit.Infrastructure.Claude.Permissions;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Permissions;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.SessionSwitching;
 using FluentAssertions;
@@ -70,8 +70,8 @@ public class SessionSwitchSettingsStoreTests : IDisposable
     {
         // All stores write the same file; saving the session-switch section must not wipe the
         // profiles, notifications or permission rules that the sibling stores wrote before it.
-        var profileStore = new ClaudeProfileStore(_configFilePath);
-        var profiles = new List<ClaudeProfile> { new("work", @"C:\Users\raymo\.claude-work") };
+        var profileStore = new SessionProfileStore(_configFilePath);
+        var profiles = new List<SessionProfile> { new("work", @"C:\Users\raymo\.claude-work") };
         await profileStore.SaveAsync(profiles);
 
         var notificationStore = new NotificationSettingsStore(_configFilePath);

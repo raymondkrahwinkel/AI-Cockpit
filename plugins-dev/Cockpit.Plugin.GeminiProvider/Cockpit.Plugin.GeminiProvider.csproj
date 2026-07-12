@@ -2,7 +2,7 @@
 
   <!-- Provider plugin (#45, fase A worked example): registers Gemini and OpenAI as selectable session
        providers, both talking over an OpenAI-Chat-Completions-compatible HTTP endpoint via
-       Microsoft.Extensions.AI's IChatClient — the exact stack Cockpit.Infrastructure.Claude.OpenAiCompatSessionDriver
+       Microsoft.Extensions.AI's IChatClient — the exact stack Cockpit.Infrastructure.Sessions.OpenAiCompatSessionDriver
        already runs for Ollama/LM Studio, just registered through the new plugin-provider seam instead of a
        built-in enum case. Built OUTSIDE the main solution (plugins-dev/) so the app build stays clean;
        package its bin/<config>/net10.0 output into a .zip and install it via Options -> Plugins.

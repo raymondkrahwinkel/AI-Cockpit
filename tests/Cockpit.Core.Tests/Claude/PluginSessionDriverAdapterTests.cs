@@ -1,7 +1,7 @@
-using Cockpit.Core.Claude;
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 
@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.Claude;
 /// <summary>
 /// <see cref="PluginSessionDriverAdapter"/> (#45): wraps a <see cref="FakePluginSessionDriver"/> and proves
 /// it satisfies <c>ISessionDriver</c> by forwarding every real member and mapping each
-/// <see cref="PluginSessionEvent"/> subtype to its <see cref="ClaudeSessionEvent"/> counterpart. The
+/// <see cref="PluginSessionEvent"/> subtype to its <see cref="SessionEvent"/> counterpart. The
 /// Claude-CLI-only live-control members (permission mode / model / thinking budget) have no equivalent on
 /// the narrow interface and must be safe no-ops rather than throwing.
 /// </summary>
@@ -71,7 +71,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
-        var profile = new ClaudeProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", "{}"));
+        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", "{}"));
 
         await adapter.StartAsync(profile, model: "gemini-2.5-flash");
 
@@ -165,7 +165,7 @@ public class PluginSessionDriverAdapterTests
     [Theory]
     [MemberData(nameof(_EventMappings))]
     public async Task Events_MapsEachPluginEventSubtype_ToItsClaudeSessionEventCounterpart(
-        PluginSessionEvent pluginEvent, Func<ClaudeSessionEvent, bool> isExpectedMapping)
+        PluginSessionEvent pluginEvent, Func<SessionEvent, bool> isExpectedMapping)
     {
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
@@ -173,13 +173,13 @@ public class PluginSessionDriverAdapterTests
         inner.Emit(pluginEvent);
         inner.Complete();
 
-        var mapped = new List<ClaudeSessionEvent>();
+        var mapped = new List<SessionEvent>();
         await foreach (var evt in adapter.Events)
         {
             mapped.Add(evt);
         }
 
-        mapped.Should().ContainSingle().Which.Should().Match(evt => isExpectedMapping((ClaudeSessionEvent)evt));
+        mapped.Should().ContainSingle().Which.Should().Match(evt => isExpectedMapping((SessionEvent)evt));
     }
 
     public static IEnumerable<object[]> _EventMappings()
@@ -187,37 +187,37 @@ public class PluginSessionDriverAdapterTests
         yield return
         [
             new PluginSessionInitialized { SessionId = "s1", Tools = ["read_file"] },
-            (Func<ClaudeSessionEvent, bool>)(evt => evt is SessionInitialized init && init.SessionId == "s1" && init.Tools.Single() == "read_file"),
+            (Func<SessionEvent, bool>)(evt => evt is SessionInitialized init && init.SessionId == "s1" && init.Tools.Single() == "read_file"),
         ];
         yield return
         [
             new PluginAssistantTextDelta { SessionId = "s1", BlockIndex = 2, Text = "hi" },
-            (Func<ClaudeSessionEvent, bool>)(evt => evt is AssistantTextDelta delta && delta.BlockIndex == 2 && delta.Text == "hi"),
+            (Func<SessionEvent, bool>)(evt => evt is AssistantTextDelta delta && delta.BlockIndex == 2 && delta.Text == "hi"),
         ];
         yield return
         [
             new PluginToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "read_file", InputJson = "{}" },
-            (Func<ClaudeSessionEvent, bool>)(evt => evt is ToolUseRequested tool && tool.ToolUseId == "t1" && tool.ToolName == "read_file"),
+            (Func<SessionEvent, bool>)(evt => evt is ToolUseRequested tool && tool.ToolUseId == "t1" && tool.ToolName == "read_file"),
         ];
         yield return
         [
             new PluginToolResult { SessionId = "s1", ToolUseId = "t1", Content = "ok", IsError = false },
-            (Func<ClaudeSessionEvent, bool>)(evt => evt is ToolResult result && result.Content == "ok" && !result.IsError),
+            (Func<SessionEvent, bool>)(evt => evt is ToolResult result && result.Content == "ok" && !result.IsError),
         ];
         yield return
         [
             new PluginPermissionRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "read_file", InputJson = "{}" },
-            (Func<ClaudeSessionEvent, bool>)(evt => evt is PermissionRequested permission && permission.ToolUseId == "t1"),
+            (Func<SessionEvent, bool>)(evt => evt is PermissionRequested permission && permission.ToolUseId == "t1"),
         ];
         yield return
         [
             new PluginTurnCompleted { SessionId = "s1", Subtype = "success", Result = "done", IsError = false, StopReason = null },
-            (Func<ClaudeSessionEvent, bool>)(evt => evt is TurnCompleted turn && turn.Subtype == "success" && turn.Result == "done" && !turn.IsError),
+            (Func<SessionEvent, bool>)(evt => evt is TurnCompleted turn && turn.Subtype == "success" && turn.Result == "done" && !turn.IsError),
         ];
         yield return
         [
             new PluginSessionError { SessionId = "s1", Message = "boom" },
-            (Func<ClaudeSessionEvent, bool>)(evt => evt is SessionError error && error.Message == "boom"),
+            (Func<SessionEvent, bool>)(evt => evt is SessionError error && error.Message == "boom"),
         ];
     }
 }

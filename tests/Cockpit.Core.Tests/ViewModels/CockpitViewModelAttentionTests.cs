@@ -91,13 +91,13 @@ public class CockpitViewModelAttentionTests
         var dialogService = Substitute.For<ISessionDialogService>();
         dialogService.ShowNewSessionDialogAsync().Returns(new NewSessionResult(
             SessionKind.Sdk,
-            new ClaudeProfile("default", @"C:\fake\.claude"),
+            new SessionProfile("default", @"C:\fake\.claude"),
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort, null));
 
         return new CockpitViewModel(
-            () => new ClaudeSessionViewModel(),
+            () => new SessionViewModel(),
             () => new ClaudeTtyViewModel(),
             dialogService,
             Substitute.For<IAudioCaptureService>(),

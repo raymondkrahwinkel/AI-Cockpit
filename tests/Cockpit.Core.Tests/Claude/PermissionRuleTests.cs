@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Sessions.Permissions;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Claude;

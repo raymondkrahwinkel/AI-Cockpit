@@ -1,5 +1,5 @@
 using System.Net;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 

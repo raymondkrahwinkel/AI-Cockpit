@@ -18,7 +18,7 @@ public static class ProfileDisplay
     }
 
     /// <summary>The model of a profile's local provider, or <see langword="null"/> for a Claude profile.</summary>
-    public static string? ModelOf(ClaudeProfile profile) => profile.ProviderConfig switch
+    public static string? ModelOf(SessionProfile profile) => profile.ProviderConfig switch
     {
         OllamaConfig ollama => ollama.Model,
         LmStudioConfig lmStudio => lmStudio.Model,

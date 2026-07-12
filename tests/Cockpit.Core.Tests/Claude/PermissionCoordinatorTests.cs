@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.Core.Claude.Permissions;
-using Cockpit.Infrastructure.Claude.Permissions;
+using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Sessions.Permissions;
 
 namespace Cockpit.Core.Tests.Claude;
 

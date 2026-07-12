@@ -1,8 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -86,7 +86,7 @@ public class ClaudeCliSessionPermissionTests
         process.CompleteOutput();
         var store = new InMemoryPermissionRuleStore("work", PermissionRule.ForWildcard("Bash"));
         var session = new ClaudeCliSession(process, coordinator, store, NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new ClaudeProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
         await DrainEventsAsync(session);
 
         var registration = coordinator.Registered.Should().ContainSingle(r => r.ToolUseId == "toolu_reg").Subject;
@@ -103,7 +103,7 @@ public class ClaudeCliSessionPermissionTests
         var process = new FakeClaudeCliProcess();
         var store = new InMemoryPermissionRuleStore();
         await using var session = new ClaudeCliSession(process, coordinator, store, NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new ClaudeProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
 
         await session.AllowPermissionAlwaysAsync("toolu_x", "Bash", """{"command":"ls"}""", PermissionRuleScope.Wildcard);
 
@@ -118,7 +118,7 @@ public class ClaudeCliSessionPermissionTests
         var process = new FakeClaudeCliProcess();
         var store = new InMemoryPermissionRuleStore();
         await using var session = new ClaudeCliSession(process, coordinator, store, NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new ClaudeProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
 
         await session.AllowPermissionAlwaysAsync("toolu_y", "Bash", """{"command":"dotnet build"}""", PermissionRuleScope.Exact);
 
@@ -136,7 +136,7 @@ public class ClaudeCliSessionPermissionTests
         process.Enqueue("""{"type":"assistant","session_id":"S1","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_next","name":"Bash","input":{"command":"ls"}}]}}""");
         process.CompleteOutput();
         await using var session = new ClaudeCliSession(process, coordinator, new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new ClaudeProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
 
         await session.AllowPermissionAlwaysAsync("toolu_first", "Bash", """{"command":"ls"}""", PermissionRuleScope.Wildcard);
         await DrainEventsAsync(session);
@@ -159,8 +159,8 @@ public class ClaudeCliSessionPermissionTests
         var events = await CollectEventsAsync(session);
 
         // Bypass runs every tool ungated, so surfacing an allow/deny prompt would be a dead control.
-        events.Should().NotContain(e => e is Core.Claude.PermissionRequested);
-        events.Should().Contain(e => e is Core.Claude.ToolUseRequested);
+        events.Should().NotContain(e => e is Core.Sessions.PermissionRequested);
+        events.Should().Contain(e => e is Core.Sessions.ToolUseRequested);
         coordinator.Registered.Should().BeEmpty();
 
         await session.DisposeAsync();
@@ -178,7 +178,7 @@ public class ClaudeCliSessionPermissionTests
 
         var events = await CollectEventsAsync(session);
 
-        events.Should().Contain(e => e is Core.Claude.PermissionRequested);
+        events.Should().Contain(e => e is Core.Sessions.PermissionRequested);
 
         await session.DisposeAsync();
     }
@@ -190,9 +190,9 @@ public class ClaudeCliSessionPermissionTests
         }
     }
 
-    private static async Task<List<Core.Claude.ClaudeSessionEvent>> CollectEventsAsync(ClaudeCliSession session)
+    private static async Task<List<Core.Sessions.SessionEvent>> CollectEventsAsync(ClaudeCliSession session)
     {
-        var events = new List<Core.Claude.ClaudeSessionEvent>();
+        var events = new List<Core.Sessions.SessionEvent>();
         await foreach (var evt in session.Events)
         {
             events.Add(evt);

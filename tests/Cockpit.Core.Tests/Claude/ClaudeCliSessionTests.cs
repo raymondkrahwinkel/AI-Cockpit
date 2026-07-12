@@ -2,9 +2,9 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Cockpit.Core.Claude;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -41,7 +41,7 @@ public class ClaudeCliSessionTests
     {
         var process = new FakeClaudeCliProcess();
         await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
-        var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
 
         await session.StartAsync(profile);
 
@@ -482,9 +482,9 @@ public class ClaudeCliSessionTests
         yield break;
     }
 
-    private static async Task<List<ClaudeSessionEvent>> CollectEventsAsync(Cockpit.Core.Abstractions.Claude.ISessionDriver session)
+    private static async Task<List<SessionEvent>> CollectEventsAsync(Cockpit.Core.Abstractions.Sessions.ISessionDriver session)
     {
-        var events = new List<ClaudeSessionEvent>();
+        var events = new List<SessionEvent>();
         await foreach (var evt in session.Events)
         {
             events.Add(evt);

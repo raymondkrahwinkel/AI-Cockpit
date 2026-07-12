@@ -27,7 +27,7 @@ namespace Cockpit.App.ViewModels;
 /// </param>
 public sealed record NewSessionResult(
     SessionKind Kind,
-    ClaudeProfile Profile,
+    SessionProfile Profile,
     PermissionModeOption Mode,
     ModelOption Model,
     EffortOption Effort,

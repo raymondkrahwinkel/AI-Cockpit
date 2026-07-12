@@ -58,7 +58,7 @@
                     <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                               HorizontalAlignment="Stretch">
                         <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="profiles:ClaudeProfile">
+                            <DataTemplate x:DataType="profiles:SessionProfile">
                                 <TextBlock Text="{Binding ., Converter={x:Static conv:ProfileDisplayConverter.Instance}}"/>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>

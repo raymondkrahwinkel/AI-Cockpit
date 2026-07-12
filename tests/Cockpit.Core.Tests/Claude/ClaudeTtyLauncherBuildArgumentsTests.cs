@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Cockpit.Infrastructure.Claude.Tty;
+using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Claude;
 

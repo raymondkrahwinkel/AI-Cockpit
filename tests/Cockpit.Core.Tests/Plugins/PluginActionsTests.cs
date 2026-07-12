@@ -16,7 +16,7 @@ public class PluginActionsTests
         var cockpit = new CockpitViewModel();
         var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>());
 
-        cockpit.SelectedSession = new ClaudeSessionViewModel();
+        cockpit.SelectedSession = new SessionViewModel();
         actions.HasActiveSession.Should().BeTrue();
 
         cockpit.SelectedSession = null;
@@ -27,7 +27,7 @@ public class PluginActionsTests
     public async Task InjectIntoActiveSessionAsync_AppendsToTheSdkSessionsInput()
     {
         var cockpit = new CockpitViewModel();
-        var session = new ClaudeSessionViewModel();
+        var session = new SessionViewModel();
         cockpit.SelectedSession = session;
         var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>());
 

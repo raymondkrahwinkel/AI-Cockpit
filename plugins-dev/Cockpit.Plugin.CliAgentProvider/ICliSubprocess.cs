@@ -2,7 +2,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 
 /// <summary>
 /// Thin seam over a spawned CLI-agent child process (#45 fase B1) — the plugin-local mirror of
-/// <c>Cockpit.Infrastructure.Claude.IClaudeCliProcess</c>, adapted for a proces-per-turn agent CLI (Codex)
+/// <c>Cockpit.Infrastructure.Sessions.IClaudeCliProcess</c>, adapted for a proces-per-turn agent CLI (Codex)
 /// instead of Claude's single persistent process: <see cref="ReadStderrLinesAsync"/> is new here because
 /// Codex writes turn progress to stderr, and a full, undrained stderr pipe would deadlock the child (see the
 /// design doc §4 "stderr-deadlock" caveat) — Claude's driver never needed to read its own stderr at all.

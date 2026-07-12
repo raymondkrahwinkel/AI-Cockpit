@@ -25,8 +25,8 @@ public class VoicePushToTalkCoordinatorDependencyInjectionTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
 
-        services.AddTransient<Func<ClaudeSessionViewModel>>(
-            provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());
+        services.AddTransient<Func<SessionViewModel>>(
+            provider => () => provider.GetRequiredService<SessionViewModel>());
         services.AddTransient<Func<ClaudeTtyViewModel>>(
             provider => () => provider.GetRequiredService<ClaudeTtyViewModel>());
 

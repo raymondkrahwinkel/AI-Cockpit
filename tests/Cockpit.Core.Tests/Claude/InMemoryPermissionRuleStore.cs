@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using Cockpit.Core.Abstractions.Claude;
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Core.Tests.Claude;
 
