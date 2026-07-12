@@ -38,6 +38,11 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     public ObservableCollection<StorePluginRowViewModel> AvailablePlugins { get; } = [];
 
+    // Plugins updated this session, keyed by plugin id → the version just staged. An update is only swapped live
+    // on restart, so the live manifest still reports the old version; treating the staged version as installed
+    // keeps a just-updated plugin from lingering in "Available updates" until the restart.
+    private readonly Dictionary<string, string> _pendingUpdateVersions = new(StringComparer.OrdinalIgnoreCase);
+
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
@@ -300,10 +305,15 @@ public partial class PluginManagerViewModel : ViewModelBase
                     }
 
                     var installedRow = Plugins.FirstOrDefault(row => row.FolderId == PluginFolderName.Normalize(entry.Id));
+                    // A staged update reports its new version even before the restart, so it drops out of the
+                    // updates list once updated instead of lingering.
+                    var installedVersion = _pendingUpdateVersions.TryGetValue(entry.Id, out var pending)
+                        ? pending
+                        : installedRow?.Discovered.Manifest.Version;
                     AvailablePlugins.Add(new StorePluginRowViewModel(
                         entry,
                         fetch.IndexUrl,
-                        installedRow?.Discovered.Manifest.Version,
+                        installedVersion,
                         isEnabled: installedRow?.CanDisable ?? false,
                         hasSettings: installedRow?.HasSettings ?? false));
                 }
@@ -476,6 +486,14 @@ public partial class PluginManagerViewModel : ViewModelBase
         {
             var result = await _installer!.InstallFromZipAsync(download.ZipPath, AbstractionsContract.Version);
             await _AfterInstallAsync(result, $"'{row.Name}' installed. Restart the cockpit to activate it.");
+
+            // An update of an already-installed plugin is staged (live only after restart), so remember the
+            // version it now effectively is, so the store stops offering the same update until the restart.
+            if (result.IsSuccess && row.IsInstalled)
+            {
+                _pendingUpdateVersions[row.Id] = version.Version;
+            }
+
             return result.IsSuccess;
         }
         finally
