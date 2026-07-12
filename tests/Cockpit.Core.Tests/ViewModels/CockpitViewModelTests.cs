@@ -3,7 +3,6 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
-using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
@@ -11,7 +10,6 @@ using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
@@ -426,25 +424,10 @@ public class CockpitViewModelTests
     }
 
     [Fact]
-    public void CurrentSessionSwitchSettings_ReflectsTheLiveEnableAndModifierEdits()
-    {
-        var vm = NewVm();
-
-        vm.SessionSwitchEnabled = false;
-        vm.SelectedSessionSwitchModifier =
-            vm.SessionSwitchModifiers.Single(option => option.Value == SessionSwitchModifier.CtrlAlt);
-
-        vm.CurrentSessionSwitchSettings.IsEnabled.Should().BeFalse();
-        vm.CurrentSessionSwitchSettings.Modifier.Should().Be(SessionSwitchModifier.CtrlAlt);
-    }
-
-    [Fact]
     public async Task SaveAllSettingsCommand_PersistsEverySectionAndReportsEachAsSaved()
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
-        var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
-        sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
         var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
         transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
@@ -464,7 +447,6 @@ public class CockpitViewModelTests
             Substitute.For<IAudioPlaybackService>(),
             Substitute.For<IAttentionNotifier>(),
             notificationSettingsStore,
-            sessionSwitchSettingsStore,
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
@@ -474,7 +456,6 @@ public class CockpitViewModelTests
         await vm.SaveAllSettingsCommand.ExecuteAsync(null);
 
         await notificationSettingsStore.Received(1).SaveAsync(Arg.Any<NotificationSettings>(), Arg.Any<CancellationToken>());
-        await sessionSwitchSettingsStore.Received(1).SaveAsync(Arg.Any<SessionSwitchSettings>(), Arg.Any<CancellationToken>());
         await transcriptDisplaySettingsStore.Received(1).SaveAsync(Arg.Any<TranscriptDisplaySettings>(), Arg.Any<CancellationToken>());
         await sessionBehaviorSettingsStore.Received(1).SaveAsync(Arg.Any<SessionBehaviorSettings>(), Arg.Any<CancellationToken>());
         await layoutSettingsStore.Received(1).SaveAsync(Arg.Any<LayoutSettings>(), Arg.Any<CancellationToken>());
@@ -482,7 +463,6 @@ public class CockpitViewModelTests
         await terminalSettingsStore.Received(1).SaveAsync(Arg.Any<TerminalSettings>(), Arg.Any<CancellationToken>());
 
         vm.NotificationSettingsStatus.Should().Be("✓ Saved");
-        vm.SessionSwitchSettingsStatus.Should().Be("✓ Saved");
         vm.TranscriptDisplaySettingsStatus.Should().Be("✓ Saved");
         vm.SessionBehaviorSettingsStatus.Should().Be("✓ Saved");
         vm.LayoutSettingsStatus.Should().Be("✓ Saved");
@@ -760,6 +740,42 @@ public class CockpitViewModelTests
             PluginStoreFilter.UpdatesAvailable);
     }
 
+    [Fact]
+    public void ActiveShortcuts_KeepTheSessionSwitchLiveOverTheTerminal_ButNotTheOtherActions()
+    {
+        var vm = NewVm();
+
+        var previousSession = vm.ActiveShortcuts.Single(binding => binding.Label == "Previous session");
+        var nextSession = vm.ActiveShortcuts.Single(binding => binding.Label == "Next session");
+        var newSession = vm.ActiveShortcuts.Single(binding => binding.Label == "New session");
+
+        previousSession.Gesture.Should().Be("Ctrl+Up");
+        previousSession.ActiveInTerminal.Should().BeTrue();
+        nextSession.Gesture.Should().Be("Ctrl+Down");
+        nextSession.ActiveInTerminal.Should().BeTrue();
+
+        // A plain Ctrl+N must reach the TUI as a keystroke, so it stays gated while the terminal has focus.
+        newSession.ActiveInTerminal.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SelectNextSessionCommand_MovesTheSelectionAndWraps()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        vm.SelectSessionCommand.Execute(vm.Sessions[0]);
+
+        vm.SelectNextSessionCommand.Execute(null);
+        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+
+        vm.SelectNextSessionCommand.Execute(null);
+        vm.SelectedSession.Should().Be(vm.Sessions[0]);
+
+        vm.SelectPreviousSessionCommand.Execute(null);
+        vm.SelectedSession.Should().Be(vm.Sessions[1]);
+    }
+
     private static CockpitViewModel NewVm(ISessionDialogService? dialogService = null, ITerminalSettingsStore? terminalSettingsStore = null, ILayoutSettingsStore? layoutSettingsStore = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
@@ -767,8 +783,6 @@ public class CockpitViewModelTests
         var attentionNotifier = Substitute.For<IAttentionNotifier>();
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
-        var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
-        sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
         var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
         transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
@@ -795,7 +809,6 @@ public class CockpitViewModelTests
             playbackService,
             attentionNotifier,
             notificationSettingsStore,
-            sessionSwitchSettingsStore,
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,

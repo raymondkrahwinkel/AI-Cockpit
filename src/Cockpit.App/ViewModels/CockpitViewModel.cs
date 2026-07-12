@@ -13,7 +13,6 @@ using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.SessionBehavior;
-using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.Shortcuts;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
@@ -23,7 +22,6 @@ using Cockpit.Core.Audio;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
-using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.Shortcuts;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
@@ -56,7 +54,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
     private readonly INotificationSettingsStore? _notificationSettingsStore;
-    private readonly ISessionSwitchSettingsStore? _sessionSwitchSettingsStore;
     private readonly IShortcutSettingsStore? _shortcutSettingsStore;
     private ShortcutSettings _shortcutSettings = ShortcutSettings.Default;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
@@ -404,18 +401,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _allSettingsStatus = string.Empty;
 
-    /// <summary>Master switch for the arrow-key session switch (Ctrl+Arrow by default).</summary>
-    [ObservableProperty]
-    private bool _sessionSwitchEnabled = true;
-
-    /// <summary>The modifier that arms the arrow-key session switch. See <see cref="SessionSwitchModifier"/>.</summary>
-    [ObservableProperty]
-    private SessionSwitchModifierOption _selectedSessionSwitchModifier =
-        new("Ctrl", SessionSwitchModifier.Ctrl);
-
-    [ObservableProperty]
-    private string _sessionSwitchSettingsStatus = string.Empty;
-
     [ObservableProperty]
     private string _shortcutSettingsStatus = string.Empty;
 
@@ -556,24 +541,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Selectable modifiers for the session-switch gesture (bound by the Options flyout combo box).</summary>
-    public IReadOnlyList<SessionSwitchModifierOption> SessionSwitchModifiers { get; } =
-    [
-        new("Ctrl", SessionSwitchModifier.Ctrl),
-        new("Ctrl + Alt", SessionSwitchModifier.CtrlAlt),
-        new("Alt", SessionSwitchModifier.Alt),
-    ];
-
-    /// <summary>
-    /// The current switch settings as the view needs them for its KeyDown gate: whether the gesture is
-    /// enabled and which modifier arms it. Reflects the live (possibly unsaved) Options-flyout edits.
-    /// </summary>
-    public SessionSwitchSettings CurrentSessionSwitchSettings => new()
-    {
-        IsEnabled = SessionSwitchEnabled,
-        Modifier = SelectedSessionSwitchModifier.Value,
-    };
-
     /// <summary>Keeps each session's <see cref="SessionViewModel.IsSelected"/> in sync with the active selection.</summary>
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
     {
@@ -620,6 +587,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionCounter = Sessions.Count;
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
+
+        // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
+        // that normally builds them never runs, and the tab would render empty in the previewer/screenshotter.
+        _RebuildShortcutRows();
     }
 
     public CockpitViewModel(
@@ -630,7 +601,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAudioPlaybackService playbackService,
         IAttentionNotifier attentionNotifier,
         INotificationSettingsStore notificationSettingsStore,
-        ISessionSwitchSettingsStore sessionSwitchSettingsStore,
         ITranscriptDisplaySettingsStore transcriptDisplaySettingsStore,
         ISessionBehaviorSettingsStore sessionBehaviorSettingsStore,
         ILayoutSettingsStore layoutSettingsStore,
@@ -665,7 +635,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _playbackService = playbackService;
         _attentionNotifier = attentionNotifier;
         _notificationSettingsStore = notificationSettingsStore;
-        _sessionSwitchSettingsStore = sessionSwitchSettingsStore;
         _transcriptDisplaySettingsStore = transcriptDisplaySettingsStore;
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
         _layoutSettingsStore = layoutSettingsStore;
@@ -681,7 +650,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             RefreshPaneVisibility();
         };
         _ = LoadNotificationSettingsAsync();
-        _ = LoadSessionSwitchSettingsAsync();
         _ = LoadTranscriptDisplaySettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
         _ = LoadLayoutSettingsAsync();
@@ -734,32 +702,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _notificationSettingsStore.SaveAsync(settings);
         NotificationSettingsStatus = "✓ Saved";
-    }
-
-    private async Task LoadSessionSwitchSettingsAsync()
-    {
-        if (_sessionSwitchSettingsStore is null)
-        {
-            return;
-        }
-
-        var settings = await _sessionSwitchSettingsStore.LoadAsync();
-        SessionSwitchEnabled = settings.IsEnabled;
-        SelectedSessionSwitchModifier = SessionSwitchModifiers.FirstOrDefault(option => option.Value == settings.Modifier)
-                                        ?? SessionSwitchModifiers[0];
-    }
-
-    /// <summary>Persists the session-switch settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
-    [RelayCommand]
-    private async Task SaveSessionSwitchSettingsAsync()
-    {
-        if (_sessionSwitchSettingsStore is null)
-        {
-            return;
-        }
-
-        await _sessionSwitchSettingsStore.SaveAsync(CurrentSessionSwitchSettings);
-        SessionSwitchSettingsStatus = "✓ Saved";
     }
 
     private async Task LoadShortcutSettingsAsync()
@@ -831,7 +773,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 // The command palette is the one shortcut that must open even while typing in a session/terminal.
                 var alwaysActive = descriptor.Action == ShortcutAction.CommandPalette;
-                bindings.Add(new ShortcutBinding(gesture, descriptor.Label, () => _InvokeAppAction(descriptor.Action), alwaysActive));
+                bindings.Add(new ShortcutBinding(
+                    gesture,
+                    descriptor.Label,
+                    () => _InvokeAppAction(descriptor.Action),
+                    alwaysActive,
+                    ShortcutCatalog.StaysActiveInTerminal(descriptor.Action)));
             }
         }
 
@@ -861,6 +808,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.ToggleZoom => ToggleZoomCommand,
             ShortcutAction.SearchTranscripts => SearchTranscriptsCommand,
             ShortcutAction.CommandPalette => ShowCommandPaletteCommand,
+            ShortcutAction.PreviousSession => SelectPreviousSessionCommand,
+            ShortcutAction.NextSession => SelectNextSessionCommand,
             _ => null,
         };
 
@@ -1386,7 +1335,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private async Task SaveAllSettingsAsync()
     {
         await SaveNotificationSettingsCommand.ExecuteAsync(null);
-        await SaveSessionSwitchSettingsCommand.ExecuteAsync(null);
         await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
@@ -1481,14 +1429,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>
     /// Moves the selection to the previous session in <see cref="Sessions"/>, wrapping from the first
     /// to the last. No-op when there are no sessions; selects the only session when there is exactly
-    /// one. Drives the Ctrl+Left/Ctrl+Up keyboard switch — the modifier/enable gate lives in the view.
+    /// one. Bound to the configurable <see cref="ShortcutAction.PreviousSession"/> shortcut (Ctrl+Up by default).
     /// </summary>
+    [RelayCommand]
     public void SelectPreviousSession() => _StepSelection(-1);
 
     /// <summary>
     /// Moves the selection to the next session in <see cref="Sessions"/>, wrapping from the last to
-    /// the first. No-op when there are no sessions. Drives the Ctrl+Right/Ctrl+Down keyboard switch.
+    /// the first. No-op when there are no sessions. Bound to the configurable
+    /// <see cref="ShortcutAction.NextSession"/> shortcut (Ctrl+Down by default).
     /// </summary>
+    [RelayCommand]
     public void SelectNextSession() => _StepSelection(1);
 
     private void _StepSelection(int direction)

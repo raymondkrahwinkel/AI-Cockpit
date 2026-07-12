@@ -23,6 +23,8 @@ internal static class Screenshotter
         Window window = scene switch
         {
             "about" => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
+            "options" => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
+            "shortcuts" => _OptionsOnTab("Shortcuts"),
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
 
@@ -46,6 +48,22 @@ internal static class Screenshotter
 
         frame.Save(outputPngPath);
         window.Close();
+    }
+
+    // Renders the Options dialog with one of its tabs selected, so a tab other than the first one can be
+    // verified without a display.
+    private static OptionsDialog _OptionsOnTab(string header)
+    {
+        var dialog = new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() };
+        var tabs = dialog.FindControl<TabControl>("Tabs")
+            ?? throw new InvalidOperationException("The Options dialog has no 'Tabs' TabControl to select on.");
+
+        tabs.SelectedItem = tabs.Items
+            .OfType<TabItem>()
+            .FirstOrDefault(tab => string.Equals(tab.Header as string, header, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException($"The Options dialog has no '{header}' tab.");
+
+        return dialog;
     }
 
     private static AppBuilder BuildHeadlessAvaloniaApp()

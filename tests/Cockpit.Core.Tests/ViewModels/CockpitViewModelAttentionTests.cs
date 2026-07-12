@@ -2,7 +2,6 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Notifications;
-using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.SessionBehavior;
@@ -10,7 +9,6 @@ using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
@@ -76,8 +74,6 @@ public class CockpitViewModelAttentionTests
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
-        var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
-        sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
         var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
         transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
@@ -104,7 +100,6 @@ public class CockpitViewModelAttentionTests
             Substitute.For<IAudioPlaybackService>(),
             _attentionNotifier,
             notificationSettingsStore,
-            sessionSwitchSettingsStore,
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
