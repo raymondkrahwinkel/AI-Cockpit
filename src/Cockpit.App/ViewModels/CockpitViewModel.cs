@@ -97,6 +97,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The "Plugins" Options tab (#14): install/enable/disable/remove installed plugins. Loaded when the Options dialog opens.</summary>
     public PluginManagerViewModel Plugins { get; }
 
+    /// <summary>The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.</summary>
+    public DelegatedTasksViewModel DelegatedTasks { get; }
+
     /// <summary>Owns the live toast collection (#61); <see cref="Toasts"/> below is what <c>CockpitView.axaml</c>'s overlay actually binds to.</summary>
     public ToastHostViewModel ToastHost { get; } = new();
 
@@ -587,6 +590,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _sessionCounter = Sessions.Count;
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
+        DelegatedTasks = new DelegatedTasksViewModel();
 
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
         // that normally builds them never runs, and the tab would render empty in the previewer/screenshotter.
@@ -615,8 +619,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null,
         IAppRestartService? appRestartService = null,
-        IShortcutSettingsStore? shortcutSettingsStore = null)
+        IShortcutSettingsStore? shortcutSettingsStore = null,
+        DelegatedTasksViewModel? delegatedTasks = null)
     {
+        DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _audioDeviceProvider = audioDeviceProvider;
         _pluginDiagnostics = pluginDiagnostics;
         _shortcutSettingsStore = shortcutSettingsStore;
@@ -1267,6 +1273,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _dialogService.ShowAboutDialogAsync();
+    }
+
+    /// <summary>
+    /// Opens the delegated-tasks view (#67): the work other sessions handed to a profile. Those tasks run as
+    /// sessions with no tab of their own, so this is where they stay visible — and stoppable.
+    /// </summary>
+    [RelayCommand]
+    private async Task ShowDelegatedTasksAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowDelegatedTasksDialogAsync();
     }
 
     /// <summary>Opens the transcript-search dialog (#9): search your past sessions' text.</summary>

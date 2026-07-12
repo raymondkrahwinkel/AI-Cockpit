@@ -1,0 +1,112 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:views="using:Cockpit.App.Views"
+        xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.DelegatedTasksDialog"
+        x:DataType="vm:DelegatedTasksViewModel"
+        Title="Delegated tasks"
+        Width="820" Height="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:DelegatedTasksViewModel/>
+    </Design.DataContext>
+
+    <DockPanel Margin="16">
+
+        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
+            <TextBlock Text="Delegated tasks" FontWeight="SemiBold" FontSize="14"/>
+            <TextBlock Text="Work a session handed to another profile. Each one runs as its own session — you can read what it produced and stop it at any point."
+                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+            <Button Grid.Column="0" Content="↻ Refresh" Classes="Subtle Compact"
+                    HorizontalAlignment="Left" Command="{Binding RefreshCommand}"/>
+            <Button Grid.Column="1" Content="Close" Click="OnClose"/>
+        </Grid>
+
+        <Grid ColumnDefinitions="300,*">
+
+            <!-- Grouped by what the work is doing — Running, Queued, Finished — because that is the question an
+                 operator actually has; in a flat list a queued task and a finished one look alike. -->
+            <Border Grid.Column="0" BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPanelRadius}" Padding="4">
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Groups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DelegatedTaskGroupViewModel">
+                                <StackPanel Margin="0,2,0,8">
+                                    <TextBlock Text="{Binding Header}" FontSize="10" FontWeight="SemiBold"
+                                               Margin="8,4,0,4"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+                                    <ItemsControl ItemsSource="{Binding Tasks}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:DelegatedTaskRowViewModel">
+                                                <Border Padding="8,6" Margin="2,1" CornerRadius="{StaticResource CockpitControlRadius}"
+                                                        Background="{StaticResource CockpitSecondaryBgBrush}"
+                                                        PointerPressed="OnTaskPressed">
+                                                    <StackPanel Spacing="3">
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <!-- A dot in the status colour: at a glance you see which
+                                                                 tasks still need something and which are done. -->
+                                                            <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                                                     Fill="{Binding StatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                        </StackPanel>
+                                                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="13,0,0,0">
+                                                            <!-- Spelled out as well as coloured: in the Finished band,
+                                                                 completed, failed and stopped all live together. -->
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                            <TextBlock Text="{Binding Profile}" FontSize="11"
+                                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                                       TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding TurnsText}" FontSize="11"
+                                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                            <TextBlock Text="{Binding StartedText}" FontSize="11"
+                                                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <DockPanel Grid.Column="1" Margin="12,0,0,0">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding SelectedTask.Title}" FontWeight="SemiBold" FontSize="12"
+                               VerticalAlignment="Center"/>
+                    <!-- Stop is offered only while the task can still be stopped; a finished task shows no
+                         button rather than one that does nothing. -->
+                    <Button Content="Stop" Classes="Compact"
+                            Command="{Binding StopCommand}" CommandParameter="{Binding SelectedTask}"
+                            IsVisible="{Binding SelectedTask.CanStop, FallbackValue=False}"
+                            ToolTip.Tip="Stops the delegated task and tears its session down."/>
+                </StackPanel>
+
+                <!-- What the sub-agent produced, rendered as markdown through the cockpit's own renderer — a
+                     delegated coding task answers with code blocks, and those were unreadable as flat text. -->
+                <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12">
+                    <ScrollViewer>
+                        <views:MarkdownView Markdown="{Binding SelectedTaskOutput}" HorizontalAlignment="Stretch"/>
+                    </ScrollViewer>
+                </Border>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

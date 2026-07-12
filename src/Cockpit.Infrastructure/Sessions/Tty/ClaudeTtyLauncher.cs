@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Configuration;
@@ -73,7 +74,8 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             ?? cli.ExecutablePath;
 
         var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome);
-        var arguments = BuildArguments(permissionMode, model, effort, _WriteRegistryMcpConfig());
+        var mcpConfigPath = _WriteRegistryMcpConfig();
+        var arguments = BuildArguments(permissionMode, model, effort, mcpConfigPath, _CanDelegate());
 
         return _ptyHostFactory.Start(executablePath, arguments, resolvedWorkingDirectory, environment, columns, rows);
     }
@@ -85,6 +87,21 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     /// (matching <see cref="Launch"/>'s synchronous spawn path) and best-effort: any failure just launches the
     /// session without the shared servers rather than blocking it.
     /// </summary>
+    /// <summary>True when the operator enabled the orchestrator (#67), so this TUI session may hand work to another profile.</summary>
+    private bool _CanDelegate()
+    {
+        try
+        {
+            var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            return registry.Any(server =>
+                server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private string? _WriteRegistryMcpConfig()
     {
         try
@@ -115,7 +132,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     /// session and does not persist a transcript under that id) — the cockpit instead locates the live
     /// transcript as the new file that appears after launch (see <c>ISessionTranscriptReader</c>).
     /// </summary>
-    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort, string? mcpConfigPath = null)
+    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort, string? mcpConfigPath = null, bool canDelegate = false)
     {
         var arguments = new List<string>();
 
@@ -152,6 +169,14 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         {
             arguments.Add("--mcp-config");
             arguments.Add(mcpConfigPath);
+        }
+
+        // Same nudge the SDK spawn gets (#67): the orchestrator's tools are only reached for if the model knows
+        // when they are worth reaching for.
+        if (canDelegate)
+        {
+            arguments.Add("--append-system-prompt");
+            arguments.Add(DelegationSystemPrompt.Default);
         }
 
         return arguments;

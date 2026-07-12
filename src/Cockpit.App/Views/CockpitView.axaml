@@ -80,6 +80,14 @@
                             Command="{Binding SearchTranscriptsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Search the text of all your past sessions (Ctrl+F)"/>
+                    <!-- Delegated work runs as sessions without a tab, so this is where it stays visible (#67).
+                         Hidden until something has actually been delegated, rather than sitting there dead. -->
+                    <Button HorizontalAlignment="Stretch" Classes="Subtle"
+                            Command="{Binding ShowDelegatedTasksCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            IsVisible="{Binding DelegatedTasks.Tasks.Count}"
+                            Content="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks ({0} active)'}"
+                            ToolTip.Tip="Work other sessions handed to a profile — read what they produced, or stop them"/>
                     <Button Content="⌘ Command palette" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding ShowCommandPaletteCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"

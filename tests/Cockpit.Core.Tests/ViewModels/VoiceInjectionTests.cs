@@ -1,5 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using FluentAssertions;
@@ -26,7 +27,7 @@ public class VoiceInjectionTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9" });
 
-        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore)
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore)
         {
             InputText = "before ",
         };
@@ -91,7 +92,7 @@ public class VoiceInjectionTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = false });
 
-        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore);
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore);
         await _WaitForVoiceSettingsToLoadAsync(() => !vm.VoiceEnabled);
 
         vm.BeginVoiceHold().Should().BeFalse();

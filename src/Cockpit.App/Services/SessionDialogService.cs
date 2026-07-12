@@ -30,6 +30,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly ITranscriptSearchService _transcriptSearchService;
+    private readonly DelegatedTasksViewModel _delegatedTasks;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -38,8 +39,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IMcpServerStore mcpServerStore,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
-        ITranscriptSearchService transcriptSearchService)
+        ITranscriptSearchService transcriptSearchService,
+        DelegatedTasksViewModel delegatedTasks)
     {
+        _delegatedTasks = delegatedTasks;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _modelCatalog = modelCatalog;
@@ -184,6 +187,18 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var dialog = new PluginConsentDialog { DataContext = info };
         return await dialog.ShowDialog<bool>(owner);
+    }
+
+    public async Task ShowDelegatedTasksDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        // The shared view model, so the dialog lists the same tasks the orchestrator tools act on.
+        var dialog = new DelegatedTasksDialog { DataContext = _delegatedTasks };
+        await dialog.ShowDialog(owner);
     }
 
     public async Task ShowAboutDialogAsync()

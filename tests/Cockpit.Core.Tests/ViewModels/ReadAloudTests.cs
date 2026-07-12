@@ -1,5 +1,6 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Voice;
@@ -19,7 +20,7 @@ public class ReadAloudTests
     public void TurnCompleted_ReadAloudOff_NeverEnqueuesAnything()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = false,
         };
@@ -37,7 +38,7 @@ public class ReadAloudTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { TtsVoiceId = "nl_NL-ronnie-medium" });
         var vm = new SessionViewModel(
-            Substitute.For<ISessionDriverFactory>(), voiceSettingsStore: voiceSettingsStore, voicePlaybackQueue: voicePlaybackQueue)
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voiceSettingsStore: voiceSettingsStore, voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = true,
         };
@@ -54,7 +55,7 @@ public class ReadAloudTests
     public void TurnCompleted_NoAssistantTextThisTurn_EnqueuesNothing_EvenWithReadAloudOn()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = true,
         };
@@ -68,7 +69,7 @@ public class ReadAloudTests
     public void ReadAloudCommand_OnAssistantRow_Enqueues_EvenWhenTheSessionToggleIsOff()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = false,
         };
@@ -85,7 +86,7 @@ public class ReadAloudTests
     public void ReadAloudCommand_OnANonAssistantRow_DoesNothing()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue);
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue);
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "not an assistant reply");
 
         vm.ReadAloudCommand.Execute(entry);
@@ -108,7 +109,7 @@ public class ReadAloudTests
         cleanupService.NaturalizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("[[en]]Here is the answer. [[nl]]Dit is het antwoord.");
         var vm = new SessionViewModel(
-            Substitute.For<ISessionDriverFactory>(),
+            new SessionManager(Substitute.For<ISessionDriverFactory>()),
             voiceSettingsStore: voiceSettingsStore,
             voicePlaybackQueue: voicePlaybackQueue,
             cleanupService: cleanupService)
@@ -137,7 +138,7 @@ public class ReadAloudTests
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new SessionViewModel(
-            Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
         await _WaitUntilAsync(() => vm.VoiceEnabled);
 
         vm.BeginVoiceHold().Should().BeTrue();

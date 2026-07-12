@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -27,7 +28,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, new ModelOption("Haiku", "haiku"), SessionOptionCatalog.DefaultEffort);
@@ -42,7 +43,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, new EffortOption("High", "high", 24_000));
@@ -57,7 +58,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -75,7 +76,7 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         session.StartAsync(Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("bad executable")));
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -99,7 +100,7 @@ public class SessionViewModelTests
         var factory = Substitute.For<ISessionDriverFactory>();
         factory.Create(Arg.Any<SessionProfile?>())
             .Returns(_ => throw new InvalidOperationException("No plugin session provider is registered for 'gemini-provider.gemini'."));
-        var vm = new SessionViewModel(factory);
+        var vm = new SessionViewModel(new SessionManager(factory));
 
         var act = async () => await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("bypassPermissions"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -119,7 +120,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.ResolvePermissionMode("plan"), SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -140,7 +141,7 @@ public class SessionViewModelTests
         var localProfile = new SessionProfile("ollama", ConfigDir: "",
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"),
             Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -161,7 +162,7 @@ public class SessionViewModelTests
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
         var localProfile = new SessionProfile("ollama", ConfigDir: "",
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -184,7 +185,7 @@ public class SessionViewModelTests
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
         session.Capabilities.Returns(SessionCapabilities.ClaudeCli);
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -209,7 +210,7 @@ public class SessionViewModelTests
             SupportsVision: false));
         var localProfile = new SessionProfile("ollama", ConfigDir: "",
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -236,7 +237,7 @@ public class SessionViewModelTests
             SupportsVision: false));
         var localProfile = new SessionProfile("ollama", ConfigDir: "",
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
 
@@ -259,7 +260,7 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         var localProfile = new SessionProfile("ollama", ConfigDir: "",
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -275,7 +276,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -546,7 +547,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session)) { InputText = "hello" };
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session))) { InputText = "hello" };
 
         await vm.SendCommand.ExecuteAsync(null);
 
@@ -745,7 +746,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         session.ClearReceivedCalls();
@@ -762,7 +763,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         vm.SelectedEffort = new EffortOption("High", "high", 24_000);
 
@@ -811,7 +812,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        return new SessionViewModel(FactoryFor(session));
+        return new SessionViewModel(new SessionManager(FactoryFor(session)));
     }
 
     /// <summary>A started session (its event loop is live), so send-path tests exercise sending after start rather than the not-started guard (#16).</summary>
@@ -827,7 +828,7 @@ public class SessionViewModelTests
         voiceSettings.LoadAsync(Arg.Any<CancellationToken>()).Returns(
             new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
 
-        var vm = new SessionViewModel(FactoryFor(session), voice, voiceSettings);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)), voice, voiceSettings);
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         for (var i = 0; i < 50 && !vm.AutoSubmitAfterVoice; i++)
@@ -849,7 +850,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var vm = new SessionViewModel(FactoryFor(session));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
         return (vm, session);

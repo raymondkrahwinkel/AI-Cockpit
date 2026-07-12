@@ -2,6 +2,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
@@ -144,7 +145,7 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore);
+        return new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePushToTalk, voiceSettingsStore);
     }
 
     private static SessionPanelViewModel _CreateTtySession(IVoicePushToTalkService voicePushToTalk)
