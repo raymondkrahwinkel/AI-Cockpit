@@ -54,4 +54,7 @@ public interface ISessionDialogService
 
     /// <summary>Shows the command palette (#: command palette) over the given commands; runs the chosen one after the palette closes.</summary>
     Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands);
+
+    /// <summary>Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.</summary>
+    Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
 }

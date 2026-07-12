@@ -1,5 +1,6 @@
 using Avalonia.Input.Platform;
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using FluentAssertions;
 using NSubstitute;
@@ -13,7 +14,7 @@ public class PluginActionsTests
     public void HasActiveSession_ReflectsTheSelectedSession()
     {
         var cockpit = new CockpitViewModel();
-        var actions = new PluginActions(cockpit, () => null);
+        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>());
 
         cockpit.SelectedSession = new ClaudeSessionViewModel();
         actions.HasActiveSession.Should().BeTrue();
@@ -28,7 +29,7 @@ public class PluginActionsTests
         var cockpit = new CockpitViewModel();
         var session = new ClaudeSessionViewModel();
         cockpit.SelectedSession = session;
-        var actions = new PluginActions(cockpit, () => null);
+        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>());
 
         await actions.InjectIntoActiveSessionAsync("issue #42: fix the thing");
 
@@ -39,7 +40,7 @@ public class PluginActionsTests
     public async Task InjectIntoActiveSessionAsync_NoActiveSession_DoesNotThrow()
     {
         var cockpit = new CockpitViewModel { SelectedSession = null };
-        var actions = new PluginActions(cockpit, () => null);
+        var actions = new PluginActions(cockpit, () => null, Substitute.For<ISessionDialogService>());
 
         var act = () => actions.InjectIntoActiveSessionAsync("x");
 
@@ -52,7 +53,7 @@ public class PluginActionsTests
         // Avalonia 12's IClipboard.SetTextAsync is an extension over SetDataAsync(DataTransfer), so assert
         // a clipboard write happened rather than binding to the exact member the extension calls.
         var clipboard = Substitute.For<IClipboard>();
-        var actions = new PluginActions(new CockpitViewModel(), () => clipboard);
+        var actions = new PluginActions(new CockpitViewModel(), () => clipboard, Substitute.For<ISessionDialogService>());
 
         await actions.SetClipboardTextAsync("copied");
 
@@ -62,7 +63,7 @@ public class PluginActionsTests
     [Fact]
     public async Task SetClipboardTextAsync_NoClipboard_DoesNotThrow()
     {
-        var actions = new PluginActions(new CockpitViewModel(), () => null);
+        var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>());
 
         var act = () => actions.SetClipboardTextAsync("x");
 

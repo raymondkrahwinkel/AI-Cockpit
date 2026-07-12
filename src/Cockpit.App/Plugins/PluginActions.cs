@@ -1,4 +1,5 @@
 using Avalonia.Input.Platform;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Plugins.Abstractions;
 
@@ -6,12 +7,16 @@ namespace Cockpit.App.Plugins;
 
 /// <summary>
 /// <see cref="ICockpitActions"/> a plugin uses to act on the cockpit: inject text into the selected
-/// session (reusing the session's own per-kind input seam) and put text on the clipboard. The clipboard
-/// is resolved lazily via a factory so this has no hard dependency on a window being up.
+/// session (reusing the session's own per-kind input seam), put text on the clipboard, and ask the operator
+/// to confirm a destructive action. The clipboard is resolved lazily via a factory so this has no hard
+/// dependency on a window being up.
 /// </summary>
-public sealed class PluginActions(CockpitViewModel cockpit, Func<IClipboard?> clipboardFactory) : ICockpitActions
+public sealed class PluginActions(CockpitViewModel cockpit, Func<IClipboard?> clipboardFactory, ISessionDialogService dialogService) : ICockpitActions
 {
     public bool HasActiveSession => cockpit.SelectedSession is not null;
+
+    public Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") =>
+        dialogService.ShowConfirmationDialogAsync(title, message, confirmLabel);
 
     public Task InjectIntoActiveSessionAsync(string text)
     {

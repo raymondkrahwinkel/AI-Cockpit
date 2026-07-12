@@ -233,6 +233,15 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
+        if (_dialogService is not null &&
+            !await _dialogService.ShowConfirmationDialogAsync(
+                "Remove plugin",
+                $"Remove '{row.DisplayName}'? It will be uninstalled on the next restart. You can install it again from the store.",
+                "Remove"))
+        {
+            return;
+        }
+
         await _installer.MarkForRemovalAsync(row.FolderId);
         await _registrationStore.RemoveAsync(row.FolderId);
         await LoadAsync();
@@ -265,6 +274,15 @@ public partial class PluginManagerViewModel : ViewModelBase
     private async Task RemoveStoreAsync(string storeUrl)
     {
         if (_storeConfigStore is null)
+        {
+            return;
+        }
+
+        if (_dialogService is not null &&
+            !await _dialogService.ShowConfirmationDialogAsync(
+                "Remove store",
+                $"Remove the plugin store '{storeUrl}'? Its plugins will no longer appear in the catalogue. Already-installed plugins stay installed.",
+                "Remove"))
         {
             return;
         }

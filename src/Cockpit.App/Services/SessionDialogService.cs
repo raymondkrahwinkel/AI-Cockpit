@@ -226,4 +226,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // stacked underneath it.
         viewModel.Chosen?.Invoke();
     }
+
+    public async Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove")
+    {
+        // Owner is the topmost window so the confirm sits over whatever dialog triggered it (e.g. the store).
+        if (_ActiveOwnerWindow() is not { } owner)
+        {
+            return false;
+        }
+
+        var dialog = new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(title, message, confirmLabel) };
+        return await dialog.ShowDialog<bool>(owner);
+    }
 }

@@ -88,7 +88,8 @@ public partial class App : Application
         var dialogHost = Program.Services.GetRequiredService<IPluginDialogHost>();
         var actions = new PluginActions(
             cockpit,
-            () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard);
+            () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard,
+            Program.Services.GetRequiredService<ISessionDialogService>());
 
         // One shared read/observe surface across all plugins, mirroring the single shared actions surface.
         var sessionObserver = new PluginSessionObserver(cockpit);
