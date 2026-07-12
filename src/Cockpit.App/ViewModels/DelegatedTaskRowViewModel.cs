@@ -36,4 +36,20 @@ public sealed class DelegatedTaskRowViewModel
     public bool CanStop => IsActive;
 
     public string StartedText => StartedAt is { } startedAt ? startedAt.ToLocalTime().ToString("HH:mm") : "—";
+
+    /// <summary>How many turns the delegated session has completed — a follow-up shows up here as the count going up.</summary>
+    public string TurnsText => TurnCount == 1 ? "1 turn" : $"{TurnCount} turns";
+
+    /// <summary>
+    /// The dot beside the task, in the same colours the session sidebar uses: working, waiting, done, or wrong.
+    /// Keyed rather than a brush so the view model stays free of Avalonia types, like the profile rows do.
+    /// </summary>
+    public string StatusBrushKey => Status switch
+    {
+        DelegatedTaskStatus.Running => "CockpitStatusBusyBrush",
+        DelegatedTaskStatus.Queued => "CockpitStatusWaitingBrush",
+        DelegatedTaskStatus.Completed => "CockpitStatusDoneBrush",
+        DelegatedTaskStatus.Failed => "CockpitStatusErrorBrush",
+        _ => "CockpitStatusWaitingBrush",
+    };
 }

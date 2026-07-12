@@ -23,7 +23,8 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
         // and the Stop button — without a live engine behind it.
         Tasks.Add(new DelegatedTaskRowViewModel(_Sample("summarise the changelog", DelegatedTaskStatus.Running)));
         Tasks.Add(new DelegatedTaskRowViewModel(_Sample("rename the config keys", DelegatedTaskStatus.Completed, "Renamed 14 keys across 6 files.")));
-        _designOutput = "· Read(CHANGELOG.md)\n· Grep(\"## \")\nThe changelog covers 1.4 through 1.7: mostly plugin-store work, the voice suite, and the TTY renderer.";
+        _designOutput = "Here is the merged function:\n\n```python\ndef merge_intervals(intervals):\n    intervals.sort()\n    return intervals\n```\n\nIt sorts by start and folds overlapping ranges.";
+        _RebuildGroups();
         SelectedTask = Tasks[0];
     }
 
@@ -41,6 +42,12 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
     }
 
     public ObservableCollection<DelegatedTaskRowViewModel> Tasks { get; } = [];
+
+    /// <summary>
+    /// The tasks grouped by what they are doing — waiting for a slot, working, finished — so the list reads as a
+    /// picture of the work rather than one flat pile where a queued task looks the same as a finished one.
+    /// </summary>
+    public ObservableCollection<DelegatedTaskGroupViewModel> Groups { get; } = [];
 
     /// <summary>True while any delegated task is running or waiting for a slot — drives the "N background task(s)" hint.</summary>
     public bool HasActiveTasks => Tasks.Any(task => task.IsActive);
@@ -74,6 +81,8 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
             Tasks.Add(new DelegatedTaskRowViewModel(task));
         }
 
+        _RebuildGroups();
+
         SelectedTask = Tasks.FirstOrDefault(task => task.TaskId == selectedId) ?? Tasks.FirstOrDefault();
         OnPropertyChanged(nameof(HasActiveTasks));
         OnPropertyChanged(nameof(ActiveTaskCount));
@@ -91,6 +100,15 @@ public sealed partial class DelegatedTasksViewModel : ObservableObject, ISinglet
 
         await _delegation.StopAsync(task.TaskId);
         Refresh();
+    }
+
+    private void _RebuildGroups()
+    {
+        Groups.Clear();
+        foreach (var group in DelegatedTaskGroupViewModel.From(Tasks).Where(group => group.HasTasks))
+        {
+            Groups.Add(group);
+        }
     }
 
     private string _BuildOutput(string taskId)
