@@ -39,6 +39,9 @@ internal sealed class CockpitHost(
     public void AddSideMenuButton(string title, Action onInvoke) =>
         contributionSink.AddPluginSideButton(title, onInvoke);
 
+    public void AddShortcut(PluginShortcut shortcut) =>
+        contributionSink.AddPluginShortcut(shortcut);
+
     public void AddSideMenuSection(string title, Func<Control> createView) =>
         contributionSink.AddPluginSideSection(title, createView);
 

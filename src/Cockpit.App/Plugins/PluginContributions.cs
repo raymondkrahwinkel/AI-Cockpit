@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.Plugins;
 
@@ -19,6 +20,9 @@ public interface IPluginContributionSink
     void AddPluginSideSection(string title, Func<Control> createView);
 
     void AddPluginSideButton(string title, Action onInvoke);
+
+    /// <summary>Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.</summary>
+    void AddPluginShortcut(PluginShortcut shortcut);
 
     void AddPluginSettings(string pluginId, Func<Control> createView);
 

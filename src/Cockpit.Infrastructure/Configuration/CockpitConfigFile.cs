@@ -51,4 +51,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Remembered working directories (recent + favorites) offered in the New-session dialog; owned by the working-path history store.</summary>
     public WorkingPathHistoryEntry? WorkingPaths { get; set; }
+
+    /// <summary>Keyboard shortcuts for the app actions (new session, options, …); owned by the shortcut settings store.</summary>
+    public ShortcutSettingsEntry? Shortcuts { get; set; }
 }

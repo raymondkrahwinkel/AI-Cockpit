@@ -6,9 +6,11 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.SessionSwitching;
+using Exclr8.Terminal;
 
 namespace Cockpit.App.Views;
 
@@ -174,6 +176,14 @@ public partial class CockpitView : UserControl
             return;
         }
 
+        // App-action / plugin shortcuts first (Shift+N = new session, etc.). They never fire while the operator
+        // is typing into a text field or the terminal, so a shortcut never hijacks a keystroke.
+        if (_TryHandleShortcut(cockpit, e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         var settings = cockpit.CurrentSessionSwitchSettings;
         if (!settings.IsEnabled)
         {
@@ -229,6 +239,68 @@ public partial class CockpitView : UserControl
     // guarded: the tunnelling handler catches the switch before the terminal and marks it handled.
     private bool _IsFocusInTextBox() =>
         TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
+
+    // Matches the pressed key against the configured app-action and plugin shortcuts. Unlike the session
+    // switch, this guards the terminal too — a plain Shift+N must type an 'N' into the TUI, not open a session.
+    private bool _TryHandleShortcut(CockpitViewModel cockpit, KeyEventArgs e)
+    {
+        var shortcuts = cockpit.ActiveShortcuts;
+        if (shortcuts.Count == 0 || _IsTypingSurfaceFocused())
+        {
+            return false;
+        }
+
+        foreach (var binding in shortcuts)
+        {
+            if (_TryParseGesture(binding.Gesture) is { } gesture && gesture.Matches(e))
+            {
+                binding.Invoke();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // KeyGesture.Parse throws on an invalid/blank gesture string (a half-typed one in Options); treat any
+    // unparseable gesture as "no match" rather than letting it crash the key handler.
+    private static KeyGesture? _TryParseGesture(string? gesture)
+    {
+        if (string.IsNullOrWhiteSpace(gesture))
+        {
+            return null;
+        }
+
+        try
+        {
+            return KeyGesture.Parse(gesture);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // A shortcut must never hijack a keystroke while the operator is typing: true when focus is in a TextBox
+    // or anywhere inside the Exclr8 terminal (focus can land on the control or a descendant).
+    private bool _IsTypingSurfaceFocused()
+    {
+        var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+        if (focused is TextBox)
+        {
+            return true;
+        }
+
+        for (var visual = focused as Visual; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is TerminalControl)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>Sidebar item click → select that session. Plain event handler (not a command) since the
     /// clicked session is the DataContext of the <see cref="Border"/> raising the event, not the item passed

@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.SessionSwitching;
+using Cockpit.Core.Abstractions.Shortcuts;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
@@ -23,6 +24,8 @@ using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.SessionSwitching;
+using Cockpit.Core.Shortcuts;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
@@ -55,6 +58,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAttentionNotifier? _attentionNotifier;
     private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly ISessionSwitchSettingsStore? _sessionSwitchSettingsStore;
+    private readonly IShortcutSettingsStore? _shortcutSettingsStore;
+    private ShortcutSettings _shortcutSettings = ShortcutSettings.Default;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
@@ -77,6 +82,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Left-menu launcher buttons contributed by plugins (#14); clicking one runs the plugin's action (typically opening a dialog).</summary>
     public ObservableCollection<PluginSideButton> PluginSideButtons { get; } = [];
+
+    /// <summary>Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.</summary>
+    public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
+
+    /// <summary>The currently-active shortcuts (app actions + plugin shortcuts) the view matches key presses against. Rebuilt when settings or plugin shortcuts change.</summary>
+    public IReadOnlyList<ShortcutBinding> ActiveShortcuts { get; private set; } = [];
+
+    /// <summary>Rows for the Options → Shortcuts tab: the editable app-action gestures, then the read-only plugin-contributed ones.</summary>
+    public ObservableCollection<ShortcutRowViewModel> ShortcutRows { get; } = [];
 
     /// <summary>Per-plugin settings views (#14) keyed by plugin folder id, opened from the gear in the plugin manager.</summary>
     public Dictionary<string, Func<Control>> PluginSettings { get; } = [];
@@ -122,6 +136,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     void IPluginContributionSink.AddPluginSideButton(string title, Action onInvoke) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(title, onInvoke)));
+
+    void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
+        _OnUiThread(() => PluginShortcuts.Add(shortcut));
 
     void IPluginContributionSink.AddPluginSettings(string pluginId, Func<Control> createView) =>
         _OnUiThread(() => PluginSettings[pluginId] = createView);
@@ -400,6 +417,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _sessionSwitchSettingsStatus = string.Empty;
 
+    [ObservableProperty]
+    private string _shortcutSettingsStatus = string.Empty;
+
     /// <summary>When true, every transcript row shows its arrival timestamp (T7). Applied to all open sessions.</summary>
     [ObservableProperty]
     private bool _showTimestamps;
@@ -625,10 +645,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IPluginDialogHost? pluginDialogHost = null,
         PluginDiagnostics? pluginDiagnostics = null,
         IAudioDeviceProvider? audioDeviceProvider = null,
-        IAppRestartService? appRestartService = null)
+        IAppRestartService? appRestartService = null,
+        IShortcutSettingsStore? shortcutSettingsStore = null)
     {
         _audioDeviceProvider = audioDeviceProvider;
         _pluginDiagnostics = pluginDiagnostics;
+        _shortcutSettingsStore = shortcutSettingsStore;
         // The full plugin manager needs its store/installer/bootstrap, store dependencies, the dialog host
         // and the diagnostics; when they are absent (unit tests that don't exercise plugins) the design-time
         // manager is used, so the tab is inert.
@@ -666,6 +688,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadLayoutSettingsAsync();
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
+        _ = LoadShortcutSettingsAsync();
+
+        // Plugin shortcuts arrive as plugins initialize; each changes the active bindings and the Options list.
+        PluginShortcuts.CollectionChanged += (_, _) =>
+        {
+            _RebuildActiveShortcuts();
+            _RebuildShortcutRows();
+        };
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -731,6 +761,99 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _sessionSwitchSettingsStore.SaveAsync(CurrentSessionSwitchSettings);
         SessionSwitchSettingsStatus = "✓ Saved";
+    }
+
+    private async Task LoadShortcutSettingsAsync()
+    {
+        if (_shortcutSettingsStore is not null)
+        {
+            _shortcutSettings = await _shortcutSettingsStore.LoadAsync();
+        }
+
+        _RebuildShortcutRows();
+        _RebuildActiveShortcuts();
+    }
+
+    /// <summary>Persists the keyboard shortcuts edited in the Options → Shortcuts tab to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveShortcutSettingsAsync()
+    {
+        // Fold the editable rows back into the settings, then re-arm the live bindings so a change takes effect
+        // immediately without a restart.
+        var settings = _shortcutSettings;
+        foreach (var row in ShortcutRows.Where(row => row is { IsEditable: true, Action: not null }))
+        {
+            settings = settings.With(row.Action!.Value, row.Gesture);
+        }
+
+        _shortcutSettings = settings;
+        _RebuildActiveShortcuts();
+
+        if (_shortcutSettingsStore is not null)
+        {
+            await _shortcutSettingsStore.SaveAsync(settings);
+        }
+
+        ShortcutSettingsStatus = "✓ Saved";
+    }
+
+    // The Options list: one editable row per app action (label + configured gesture), then a read-only row per
+    // plugin-contributed shortcut so the operator can see what plugins bound.
+    private void _RebuildShortcutRows()
+    {
+        ShortcutRows.Clear();
+        foreach (var descriptor in ShortcutCatalog.All)
+        {
+            ShortcutRows.Add(new ShortcutRowViewModel(descriptor.Label, descriptor.Action, _shortcutSettings.GestureFor(descriptor.Action)));
+        }
+
+        foreach (var shortcut in PluginShortcuts)
+        {
+            ShortcutRows.Add(new ShortcutRowViewModel($"{shortcut.Title} (plugin)", shortcut.DefaultGesture));
+        }
+    }
+
+    // The live dispatch table the view matches against: every bound app action (blank = unbound, skipped) plus
+    // every plugin shortcut, each paired with the action to run.
+    private void _RebuildActiveShortcuts()
+    {
+        var bindings = new List<ShortcutBinding>();
+        foreach (var descriptor in ShortcutCatalog.All)
+        {
+            var gesture = _shortcutSettings.GestureFor(descriptor.Action);
+            if (!string.IsNullOrWhiteSpace(gesture))
+            {
+                bindings.Add(new ShortcutBinding(gesture, descriptor.Label, () => _InvokeAppAction(descriptor.Action)));
+            }
+        }
+
+        foreach (var shortcut in PluginShortcuts.Where(shortcut => !string.IsNullOrWhiteSpace(shortcut.DefaultGesture)))
+        {
+            bindings.Add(new ShortcutBinding(shortcut.DefaultGesture, shortcut.Title, shortcut.OnInvoke));
+        }
+
+        ActiveShortcuts = bindings;
+    }
+
+    // Runs the command behind an app-action shortcut. Commands are the same ones the main menu binds to.
+    private void _InvokeAppAction(ShortcutAction action)
+    {
+        System.Windows.Input.ICommand? command = action switch
+        {
+            ShortcutAction.NewSession => NewSessionCommand,
+            ShortcutAction.ManageProfiles => ManageProfilesCommand,
+            ShortcutAction.McpServers => OpenMcpServersCommand,
+            ShortcutAction.PluginStore => Plugins.OpenStoreDialogCommand,
+            ShortcutAction.Options => OptionsCommand,
+            ShortcutAction.About => AboutCommand,
+            ShortcutAction.ToggleZoom => ToggleZoomCommand,
+            _ => null,
+        };
+
+        if (command?.CanExecute(null) == true)
+        {
+            command.Execute(null);
+        }
     }
 
     private async Task LoadTranscriptDisplaySettingsAsync()
@@ -1197,6 +1320,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
         await SaveTerminalSettingsCommand.ExecuteAsync(null);
+        await SaveShortcutSettingsCommand.ExecuteAsync(null);
         AllSettingsStatus = "✓ Saved";
     }
 

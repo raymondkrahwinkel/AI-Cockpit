@@ -81,4 +81,15 @@ public interface ICockpitHost
     /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host supplies a live one.
     /// </summary>
     ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
+
+    /// <summary>
+    /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds
+    /// <see cref="PluginShortcut.DefaultGesture"/> and runs <see cref="PluginShortcut.OnInvoke"/> when it is
+    /// pressed, shown alongside the built-in shortcuts in Options. Only fires when the operator is not typing
+    /// into a text field or the terminal. Default no-op so existing <see cref="ICockpitHost"/> implementations
+    /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void AddShortcut(PluginShortcut shortcut)
+    {
+    }
 }

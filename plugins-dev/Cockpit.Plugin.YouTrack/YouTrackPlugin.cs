@@ -19,9 +19,9 @@ public sealed class YouTrackPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.3.0",
+        Version: "1.4.0",
         Author: "Cockpit",
-        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools.");
+        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -32,9 +32,13 @@ public sealed class YouTrackPlugin : ICockpitPlugin
         var settings = new YouTrackSettings(host.Storage);
 
         host.AddSettings(() => new YouTrackSettingsControl(settings));
-        host.AddSideMenuButton(
-            "YouTrack",
-            () => _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host.Actions), 1040, 700));
+
+        void OpenIssues() =>
+            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host.Actions), 1040, 700);
+
+        host.AddSideMenuButton("YouTrack", OpenIssues);
+        // Same action on a keyboard shortcut (#: shortcuts) — the SDK's AddShortcut, shown in Options → Shortcuts.
+        host.AddShortcut(new PluginShortcut("youtrack.open", "YouTrack issues", "Shift+Y", OpenIssues));
 
         _RegisterMcpServers(host, settings);
         host.OnSettingsSaved(() => _RegisterMcpServers(host, settings));
