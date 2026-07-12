@@ -27,7 +27,7 @@ namespace Cockpit.App.ViewModels;
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IClaudeProfileLoginChecker? _loginChecker;
-    private readonly IClaudeProfileStore? _profileStore;
+    private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerStore? _mcpServerStore;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
@@ -62,7 +62,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>The TTY "start defaults only" hint, shown only for a Claude TTY session.</summary>
     public bool ShowTtyStartHint => IsTty && IsClaudeProfile;
 
-    public ObservableCollection<ClaudeProfile> Profiles { get; } = [];
+    public ObservableCollection<SessionProfile> Profiles { get; } = [];
 
     /// <summary>
     /// The shared registry's enabled MCP servers (#44), each with its own checkbox so the operator can opt
@@ -80,7 +80,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
-    /// <summary>Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "Claude N".</summary>
+    /// <summary>Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "&lt;profile&gt; - N".</summary>
     [ObservableProperty]
     private string _sessionName = string.Empty;
 
@@ -112,7 +112,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public bool CanFavoriteWorkingDirectory => !string.IsNullOrWhiteSpace(WorkingDirectory);
 
     [ObservableProperty]
-    private ClaudeProfile? _selectedProfile;
+    private SessionProfile? _selectedProfile;
 
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
@@ -157,13 +157,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
     {
-        var personal = new ClaudeProfile("personal", "~/.claude-personal", Purpose: "private");
+        var personal = new SessionProfile("personal", "~/.claude-personal", Purpose: "private");
         Profiles.Add(personal);
         SelectedProfile = personal;
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(IClaudeProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null)
+    public NewSessionDialogViewModel(ISessionProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null)
     {
         _profileStore = profileStore;
         _loginChecker = loginChecker;
@@ -268,7 +268,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _RefreshRememberedPaths();
     }
 
-    partial void OnSelectedProfileChanged(ClaudeProfile? value)
+    partial void OnSelectedProfileChanged(SessionProfile? value)
     {
         // A local provider has no Claude login concept — treat it as "logged in" so login gating never blocks it.
         var isClaudeProfile = value?.Provider is null or SessionProvider.ClaudeCli;

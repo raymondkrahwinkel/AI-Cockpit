@@ -48,6 +48,38 @@ public class PluginStoreDialogViewModelTests
     }
 
     [Fact]
+    public void FillingTheCatalogue_RaisesTheUpdateAllGate_SoTheButtonAppearsWhenTheStoreLoads()
+    {
+        // The values themselves are computed, so reading them is never wrong — the bug was that nothing told
+        // the binding to re-read them. Browsing the stores rebuilds AvailablePlugins, and the change used to be
+        // announced only from the install/update paths, leaving "Update all" hidden right after the store
+        // loaded: exactly when the sidebar already said "Available updates (n)". So assert the notification.
+        var manager = new PluginManagerViewModel();
+        var raised = new List<string?>();
+        manager.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        manager.AvailablePlugins.Add(_Row("a", "Alpha", installedVersion: "1.0.0", latestVersion: "2.0.0"));
+
+        raised.Should().Contain(nameof(PluginManagerViewModel.HasAvailableUpdates))
+            .And.Contain(nameof(PluginManagerViewModel.AvailableUpdateCount));
+        manager.HasAvailableUpdates.Should().BeTrue();
+        manager.AvailableUpdateCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void ClearingTheCatalogue_RaisesTheUpdateAllGate_SoTheButtonHidesAgain()
+    {
+        var manager = _ManagerWith(_Row("a", "Alpha", installedVersion: "1.0.0", latestVersion: "2.0.0"));
+        var raised = new List<string?>();
+        manager.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        manager.AvailablePlugins.Clear();
+
+        raised.Should().Contain(nameof(PluginManagerViewModel.HasAvailableUpdates));
+        manager.HasAvailableUpdates.Should().BeFalse();
+    }
+
+    [Fact]
     public void Constructor_BuildsSidebarWithDiscoverAllCategoriesInstalledAndUpdates_AndSelectsDiscover()
     {
         var manager = _ManagerWith(

@@ -1,6 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Claude;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
@@ -8,14 +8,14 @@ namespace Cockpit.App.ViewModels;
 /// <summary>
 /// The surface every cockpit session panel shares regardless of mode (SDK chat or TTY terminal):
 /// the sidebar/overview title, selection, coarse status, and profile label, plus disposal. Lets
-/// <see cref="CockpitViewModel"/> manage a mixed collection of <see cref="ClaudeSessionViewModel"/>
+/// <see cref="CockpitViewModel"/> manage a mixed collection of <see cref="SessionViewModel"/>
 /// (SDK) and <see cref="ClaudeTtyViewModel"/> (TTY) panels through one type.
 /// </summary>
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {
-    /// <summary>Display title for this session's sidebar/grid panel, e.g. "Claude 1". Set by <see cref="CockpitViewModel"/>.</summary>
+    /// <summary>Display title for this session's sidebar/grid panel, e.g. "Session 1". Set by <see cref="CockpitViewModel"/>.</summary>
     [ObservableProperty]
-    private string _title = "Claude";
+    private string _title = "Session";
 
     /// <summary>True while the sidebar row is showing its inline rename text box (context-menu → Rename).</summary>
     [ObservableProperty]

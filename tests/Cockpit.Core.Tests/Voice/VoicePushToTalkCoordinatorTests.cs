@@ -1,18 +1,16 @@
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.SessionBehavior;
-using Cockpit.Core.Abstractions.SessionSwitching;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
-using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
@@ -146,7 +144,7 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new ClaudeSessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore);
+        return new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore);
     }
 
     private static SessionPanelViewModel _CreateTtySession(IVoicePushToTalkService voicePushToTalk)
@@ -175,8 +173,6 @@ public class VoicePushToTalkCoordinatorTests
         var attentionNotifier = Substitute.For<IAttentionNotifier>();
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
-        var sessionSwitchSettingsStore = Substitute.For<ISessionSwitchSettingsStore>();
-        sessionSwitchSettingsStore.LoadAsync().Returns(new SessionSwitchSettings());
         var transcriptDisplaySettingsStore = Substitute.For<ITranscriptDisplaySettingsStore>();
         transcriptDisplaySettingsStore.LoadAsync().Returns(new TranscriptDisplaySettings());
         var sessionBehaviorSettingsStore = Substitute.For<ISessionBehaviorSettingsStore>();
@@ -188,14 +184,13 @@ public class VoicePushToTalkCoordinatorTests
         var terminalSettingsStore = Substitute.For<ITerminalSettingsStore>();
         terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
         return new CockpitViewModel(
-            () => new ClaudeSessionViewModel(),
+            () => new SessionViewModel(),
             () => new ClaudeTtyViewModel(),
             Substitute.For<ISessionDialogService>(),
             captureService,
             playbackService,
             attentionNotifier,
             notificationSettingsStore,
-            sessionSwitchSettingsStore,
             transcriptDisplaySettingsStore,
             sessionBehaviorSettingsStore,
             layoutSettingsStore,

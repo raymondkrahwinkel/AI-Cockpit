@@ -1,5 +1,5 @@
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using FluentAssertions;
 using NSubstitute;
@@ -16,12 +16,12 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class ClaudeTtyViewModelTests
 {
-    private static readonly ClaudeProfile Work = new("work", @"C:\Users\raymo\.claude-work");
+    private static readonly SessionProfile Work = new("work", @"C:\Users\raymo\.claude-work");
 
     [Fact]
     public void LaunchConfigured_WhenAlreadySubscribed_RaisesLaunchWithTheProfileAndOptions()
     {
-        ClaudeProfile? launchedProfile = null;
+        SessionProfile? launchedProfile = null;
         string? launchedMode = null;
         string? launchedModel = null;
         string? launchedEffort = null;

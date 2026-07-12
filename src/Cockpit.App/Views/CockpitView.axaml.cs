@@ -9,7 +9,6 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
-using Cockpit.Core.SessionSwitching;
 using Exclr8.Terminal;
 
 namespace Cockpit.App.Views;
@@ -28,11 +27,11 @@ public partial class CockpitView : UserControl
     {
         base.OnAttachedToVisualTree(e);
 
-        // Handle the switch gesture on the top-level (window) so it fires regardless of which panel
-        // has focus. We tunnel (preview) so the gesture is seen before a focused TTY terminal swallows
-        // the keystroke into the pty; a focus guard still bails for a TextBox so its Ctrl+Left/Right
-        // word-navigation stays intact. In TTY the switch wins and is marked handled, so it does not
-        // also reach claude — pick a different switch modifier (Options) to keep Ctrl+Arrow for the TUI.
+        // Handle shortcuts on the top-level (window) so they fire regardless of which panel has focus. We
+        // tunnel (preview) so a gesture is seen before a focused TTY terminal swallows the keystroke into the
+        // pty; the per-binding gate below still stands down inside a TextBox, so its Ctrl+Left/Right
+        // word-navigation stays intact. A session switch that fires over the TTY is marked handled, so it does
+        // not also reach claude — rebind it in Options → Shortcuts to keep that gesture for the TUI.
         if (e.RootVisual is InputElement root)
         {
             root.AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Tunnel);
@@ -176,72 +175,16 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        // App-action / plugin shortcuts first (Shift+N = new session, etc.). They never fire while the operator
-        // is typing into a text field or the terminal, so a shortcut never hijacks a keystroke.
+        // Every keyboard shortcut — app actions, the session switch, and the plugin-contributed ones — is
+        // dispatched from the one configurable table (Options → Shortcuts), so there is a single place that
+        // decides what a key press does.
         if (_TryHandleShortcut(cockpit, e))
         {
             e.Handled = true;
-            return;
         }
-
-        var settings = cockpit.CurrentSessionSwitchSettings;
-        if (!settings.IsEnabled)
-        {
-            return;
-        }
-
-        if (_TryGetSwitchDirection(e.Key) is not { } direction)
-        {
-            return;
-        }
-
-        if (e.KeyModifiers != _RequiredModifiers(settings.Modifier))
-        {
-            return;
-        }
-
-        // Focus-conflict guard: never steal the gesture while the user is typing in a TextBox, where
-        // Ctrl+Left/Right is word-navigation. The TTY terminal is intentionally NOT guarded — the session
-        // switch should work there too (the tunnelling above marks it handled so claude never sees it).
-        if (_IsFocusInTextBox())
-        {
-            return;
-        }
-
-        if (direction < 0)
-        {
-            cockpit.SelectPreviousSession();
-        }
-        else
-        {
-            cockpit.SelectNextSession();
-        }
-
-        e.Handled = true;
     }
 
-    /// <summary>Left/Up = previous (-1), Right/Down = next (+1); any other key = not a switch gesture.</summary>
-    private static int? _TryGetSwitchDirection(Key key) => key switch
-    {
-        Key.Left or Key.Up => -1,
-        Key.Right or Key.Down => 1,
-        _ => null,
-    };
-
-    private static KeyModifiers _RequiredModifiers(SessionSwitchModifier modifier) => modifier switch
-    {
-        SessionSwitchModifier.CtrlAlt => KeyModifiers.Control | KeyModifiers.Alt,
-        SessionSwitchModifier.Alt => KeyModifiers.Alt,
-        _ => KeyModifiers.Control,
-    };
-
-    // Only a TextBox guards the gesture (Ctrl+Left/Right = word-nav there). The TTY terminal is not
-    // guarded: the tunnelling handler catches the switch before the terminal and marks it handled.
-    private bool _IsFocusInTextBox() =>
-        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
-
-    // Matches the pressed key against the configured app-action and plugin shortcuts. Unlike the session
-    // switch, this guards the terminal too — a plain Shift+N must type an 'N' into the TUI, not open a session.
+    // Matches the pressed key against the configured app-action and plugin shortcuts.
     private bool _TryHandleShortcut(CockpitViewModel cockpit, KeyEventArgs e)
     {
         var shortcuts = cockpit.ActiveShortcuts;
@@ -253,8 +196,11 @@ public partial class CockpitView : UserControl
         // While typing (text field or terminal), most bindings stay gated so they never hijack a keystroke.
         // A binding still fires if it is "always active" (the command palette) or its gesture uses two or more
         // modifiers (e.g. Ctrl+Shift+P) — those are commands, not something you type, and are never a lone
-        // readline/shell key like Ctrl+R, so intercepting them over the terminal is safe.
-        var typing = _IsTypingSurfaceFocused();
+        // readline/shell key like Ctrl+R, so intercepting them over the terminal is safe. The session-switch
+        // bindings sit in between: live over the terminal (the tunnelling handler marks them handled, so claude
+        // never sees them), but not in a text box, where the arrow keys are caret navigation.
+        var inTextBox = _IsTextBoxFocused();
+        var inTerminal = _IsTerminalFocused();
         foreach (var binding in shortcuts)
         {
             if (_TryParseGesture(binding.Gesture) is not { } gesture)
@@ -262,7 +208,7 @@ public partial class CockpitView : UserControl
                 continue;
             }
 
-            if (typing && !binding.AlwaysActive && !_HasMultipleModifiers(gesture))
+            if (!_IsBindingLive(binding, gesture, inTextBox, inTerminal))
             {
                 continue;
             }
@@ -275,6 +221,21 @@ public partial class CockpitView : UserControl
         }
 
         return false;
+    }
+
+    private static bool _IsBindingLive(ShortcutBinding binding, KeyGesture gesture, bool inTextBox, bool inTerminal)
+    {
+        if (binding.AlwaysActive || _HasMultipleModifiers(gesture))
+        {
+            return true;
+        }
+
+        if (inTextBox)
+        {
+            return false;
+        }
+
+        return !inTerminal || binding.ActiveInTerminal;
     }
 
     private static bool _HasMultipleModifiers(KeyGesture gesture) =>
@@ -301,14 +262,14 @@ public partial class CockpitView : UserControl
 
     // A shortcut must never hijack a keystroke while the operator is typing: true when focus is in a TextBox
     // or anywhere inside the Exclr8 terminal (focus can land on the control or a descendant).
-    private bool _IsTypingSurfaceFocused()
+    private bool _IsTypingSurfaceFocused() => _IsTextBoxFocused() || _IsTerminalFocused();
+
+    private bool _IsTextBoxFocused() =>
+        TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
+
+    private bool _IsTerminalFocused()
     {
         var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
-        if (focused is TextBox)
-        {
-            return true;
-        }
-
         for (var visual = focused as Visual; visual is not null; visual = visual.GetVisualParent())
         {
             if (visual is TerminalControl)

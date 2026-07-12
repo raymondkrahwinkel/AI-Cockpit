@@ -7,7 +7,7 @@ namespace Cockpit.Infrastructure.Notifications;
 
 /// <summary>
 /// Persists <see cref="NotificationSettings"/> under the <c>notifications</c> section of
-/// <c>cockpit.json</c> (same file/pattern as <c>ClaudeProfileStore</c>). Reads-modifies-writes the
+/// <c>cockpit.json</c> (same file/pattern as <c>SessionProfileStore</c>). Reads-modifies-writes the
 /// whole file via <see cref="CockpitConfigFileAccess"/> so it leaves the <c>profiles</c> section
 /// untouched. When no settings were ever saved, <see cref="LoadAsync"/> returns the defaults.
 /// </summary>

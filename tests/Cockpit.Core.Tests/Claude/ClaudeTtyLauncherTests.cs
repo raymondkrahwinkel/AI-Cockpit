@@ -1,13 +1,13 @@
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using FluentAssertions;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
-using Cockpit.Infrastructure.Claude.Tty;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -48,7 +48,7 @@ public class ClaudeTtyLauncherTests : IDisposable
             new WorkspaceTrustWriter(),
             ptyHostFactory,
             _emptyMcpStore);
-        var profile = new ClaudeProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
+        var profile = new SessionProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
 
         var pty = launcher.Launch(
             profile, permissionMode: "default", model: "sonnet", effort: "medium", columns: 120, rows: 40);
@@ -79,7 +79,7 @@ public class ClaudeTtyLauncherTests : IDisposable
             new WorkspaceTrustWriter(),
             ptyHostFactory,
             _emptyMcpStore);
-        var profile = new ClaudeProfile("Personal", _configDir);
+        var profile = new SessionProfile("Personal", _configDir);
 
         launcher.Launch(profile, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
 
@@ -130,7 +130,7 @@ public class ClaudeTtyLauncherTests : IDisposable
             new WorkspaceTrustWriter(),
             ptyHostFactory,
             _emptyMcpStore);
-        var profile = new ClaudeProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
+        var profile = new SessionProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
 
         launcher.Launch(profile, permissionMode: "acceptEdits", model: "opus", effort: "xhigh", columns: 100, rows: 30);
 

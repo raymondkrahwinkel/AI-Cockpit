@@ -6,7 +6,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 
 /// <summary>
 /// Real <see cref="ICliSubprocess"/> backed by <see cref="System.Diagnostics.Process"/> (#45 fase B1) —
-/// mirrors <c>Cockpit.Infrastructure.Claude.ClaudeCliProcess</c>'s spawn/UTF-8/dispose discipline exactly
+/// mirrors <c>Cockpit.Infrastructure.Sessions.ClaudeCliProcess</c>'s spawn/UTF-8/dispose discipline exactly
 /// (that class is the blueprint; this plugin cannot reference it — see the design doc §2.0), adapted for a
 /// one-shot proces-per-turn spawn instead of a long-lived one.
 /// </summary>

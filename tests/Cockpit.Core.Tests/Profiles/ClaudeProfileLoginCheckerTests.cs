@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Profiles;
 
@@ -24,7 +24,7 @@ public class ClaudeProfileLoginCheckerTests : IDisposable
         File.WriteAllText(Path.Combine(_tempDir, ".credentials.json"), "{}");
         var checker = new ClaudeProfileLoginChecker();
 
-        var result = checker.IsLoggedIn(new ClaudeProfile("default", _tempDir));
+        var result = checker.IsLoggedIn(new SessionProfile("default", _tempDir));
 
         result.Should().BeTrue();
     }
@@ -34,7 +34,7 @@ public class ClaudeProfileLoginCheckerTests : IDisposable
     {
         var checker = new ClaudeProfileLoginChecker();
 
-        var result = checker.IsLoggedIn(new ClaudeProfile("default", _tempDir));
+        var result = checker.IsLoggedIn(new SessionProfile("default", _tempDir));
 
         result.Should().BeFalse();
     }

@@ -20,4 +20,4 @@ public enum ProfileSelectionKind
 /// Result of <see cref="ProfileSelector.Select"/>: either a single profile to use silently,
 /// a set of candidates to choose from, or a signal that no profile can be used yet.
 /// </summary>
-public sealed record ProfileSelectionOutcome(ProfileSelectionKind Kind, ClaudeProfile? SingleProfile, IReadOnlyList<ClaudeProfile> Candidates);
+public sealed record ProfileSelectionOutcome(ProfileSelectionKind Kind, SessionProfile? SingleProfile, IReadOnlyList<SessionProfile> Candidates);

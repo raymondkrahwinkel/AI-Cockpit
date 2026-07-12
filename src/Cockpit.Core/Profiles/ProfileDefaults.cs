@@ -1,11 +1,11 @@
 namespace Cockpit.Core.Profiles;
 
 /// <summary>
-/// The start defaults a <see cref="ClaudeProfile"/> pre-selects for a new session: the permission
+/// The start defaults a <see cref="SessionProfile"/> pre-selects for a new session: the permission
 /// mode, model and effort the New-session dialog opens with. Values are the CLI/control identifiers
 /// (e.g. <c>default</c>/<c>bypassPermissions</c>, <c>sonnet</c>, <c>medium</c>) — not display labels —
 /// so they can be handed straight to a session start. A <see langword="null"/>
-/// <see cref="ClaudeProfile.Defaults"/> falls back to the app defaults.
+/// <see cref="SessionProfile.Defaults"/> falls back to the app defaults.
 /// </summary>
 /// <param name="AutoApproveTools">
 /// Whether a local tool session (a driver with <c>SupportsTools</c> but not <c>SupportsPermissions</c> —

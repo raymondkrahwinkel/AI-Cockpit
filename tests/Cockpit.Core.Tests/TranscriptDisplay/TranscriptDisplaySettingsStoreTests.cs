@@ -1,8 +1,8 @@
-using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Infrastructure.Notifications;
+using Cockpit.Infrastructure.Shortcuts;
 using Cockpit.Core.Notifications;
-using Cockpit.Infrastructure.SessionSwitching;
+using Cockpit.Core.Shortcuts;
 using Cockpit.Infrastructure.TranscriptDisplay;
 using FluentAssertions;
 
@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.TranscriptDisplay;
 
 /// <summary>
 /// Load/save round-trip for the transcript-display section of <c>cockpit.json</c>, plus the invariant
-/// that saving it leaves the sibling sections (notifications, session switching) intact — all stores
+/// that saving it leaves the sibling sections (notifications, shortcuts) intact — all stores
 /// share the one file.
 /// </summary>
 public class TranscriptDisplaySettingsStoreTests : IDisposable
@@ -52,19 +52,18 @@ public class TranscriptDisplaySettingsStoreTests : IDisposable
         var notificationStore = new NotificationSettingsStore(_configFilePath);
         await notificationStore.SaveAsync(new NotificationSettings { WebhookUrl = "https://example/webhook" });
 
-        var switchStore = new SessionSwitchSettingsStore(_configFilePath);
-        await switchStore.SaveAsync(new SessionSwitchSettings { IsEnabled = false, Modifier = SessionSwitchModifier.Alt });
+        var shortcutStore = new ShortcutSettingsStore(_configFilePath);
+        await shortcutStore.SaveAsync(ShortcutSettings.Default.With(ShortcutAction.NextSession, "Alt+Down"));
 
         var displayStore = new TranscriptDisplaySettingsStore(_configFilePath);
         await displayStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = true });
 
         var reloadedNotifications = await notificationStore.LoadAsync();
-        var reloadedSwitch = await switchStore.LoadAsync();
+        var reloadedShortcuts = await shortcutStore.LoadAsync();
         var reloadedDisplay = await displayStore.LoadAsync();
 
         reloadedNotifications.WebhookUrl.Should().Be("https://example/webhook");
-        reloadedSwitch.IsEnabled.Should().BeFalse();
-        reloadedSwitch.Modifier.Should().Be(SessionSwitchModifier.Alt);
+        reloadedShortcuts.GestureFor(ShortcutAction.NextSession).Should().Be("Alt+Down");
         reloadedDisplay.ShowTimestamps.Should().BeTrue();
     }
 

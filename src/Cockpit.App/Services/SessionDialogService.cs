@@ -7,12 +7,12 @@ using Avalonia.Platform.Storage;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Transcripts;
 using Cockpit.Core.Abstractions.WorkingPaths;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -23,7 +23,7 @@ namespace Cockpit.App.Services;
 /// </summary>
 public sealed class SessionDialogService : ISessionDialogService, ISingletonService
 {
-    private readonly IClaudeProfileStore _profileStore;
+    private readonly ISessionProfileStore _profileStore;
     private readonly IClaudeProfileLoginChecker _loginChecker;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
@@ -32,7 +32,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly ITranscriptSearchService _transcriptSearchService;
 
     public SessionDialogService(
-        IClaudeProfileStore profileStore,
+        ISessionProfileStore profileStore,
         IClaudeProfileLoginChecker loginChecker,
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,

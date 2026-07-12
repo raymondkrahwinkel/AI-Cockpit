@@ -22,7 +22,17 @@ public static class ShortcutCatalog
         new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+B"),
         new(ShortcutAction.SearchTranscripts, "Search transcripts", "Ctrl+F"),
         new(ShortcutAction.CommandPalette, "Command palette", "Ctrl+K"),
+        new(ShortcutAction.PreviousSession, "Previous session", "Ctrl+Up"),
+        new(ShortcutAction.NextSession, "Next session", "Ctrl+Down"),
     ];
+
+    /// <summary>
+    /// The session-switch actions, which stay live while the operator types in the embedded terminal — switching
+    /// away from a running TUI is exactly when you need them. They remain gated in a text box, where an arrow
+    /// gesture is caret navigation.
+    /// </summary>
+    public static bool StaysActiveInTerminal(ShortcutAction action) =>
+        action is ShortcutAction.PreviousSession or ShortcutAction.NextSession;
 
     public static string DefaultGesture(ShortcutAction action) =>
         All.First(descriptor => descriptor.Action == action).DefaultGesture;

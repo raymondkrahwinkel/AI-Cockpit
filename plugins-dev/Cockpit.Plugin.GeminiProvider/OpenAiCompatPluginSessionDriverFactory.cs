@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.GeminiProvider;
 /// the profile's opaque config JSON into an <see cref="OpenAiCompatConfig"/> and builds an
 /// <see cref="IChatClient"/> against its base URL via the OpenAI SDK with a custom
 /// <see cref="OpenAIClientOptions.Endpoint"/> — the same construction
-/// <c>Cockpit.Infrastructure.Claude.OpenAiCompatChatClientFactory</c> uses for Ollama/LM Studio.
+/// <c>Cockpit.Infrastructure.Sessions.OpenAiCompatChatClientFactory</c> uses for Ollama/LM Studio.
 /// </summary>
 internal sealed class OpenAiCompatPluginSessionDriverFactory : IPluginSessionDriverFactory
 {

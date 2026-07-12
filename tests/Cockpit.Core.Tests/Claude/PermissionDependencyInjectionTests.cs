@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
 using Cockpit.Core;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
 using FluentAssertions;
 
@@ -23,8 +23,8 @@ public class PermissionDependencyInjectionTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
 
-        services.AddTransient<Func<ClaudeSessionViewModel>>(
-            provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());
+        services.AddTransient<Func<SessionViewModel>>(
+            provider => () => provider.GetRequiredService<SessionViewModel>());
         services.AddTransient<Func<ClaudeTtyViewModel>>(
             provider => () => provider.GetRequiredService<ClaudeTtyViewModel>());
 

@@ -1,8 +1,8 @@
-using Cockpit.Core.Claude.Permissions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
-using Cockpit.Infrastructure.Claude.Permissions;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Permissions;
 using Cockpit.Infrastructure.Notifications;
 using FluentAssertions;
 
@@ -94,8 +94,8 @@ public class PermissionRuleStoreTests : IDisposable
     [Fact]
     public async Task AddAsync_LeavesTheProfilesAndNotificationsSectionsIntact()
     {
-        var profileStore = new ClaudeProfileStore(_configFilePath);
-        await profileStore.SaveAsync([new ClaudeProfile("work", @"C:\Users\raymo\.claude-work")]);
+        var profileStore = new SessionProfileStore(_configFilePath);
+        await profileStore.SaveAsync([new SessionProfile("work", @"C:\Users\raymo\.claude-work")]);
         var notificationStore = new NotificationSettingsStore(_configFilePath);
         await notificationStore.SaveAsync(new NotificationSettings { WebhookUrl = "https://example/webhook" });
 

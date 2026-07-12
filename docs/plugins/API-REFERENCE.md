@@ -469,7 +469,7 @@ Every event `IPluginSessionDriver.Events` can yield derives from the abstract `P
 | `PluginTurnCompleted` | `Subtype`, `Result: string?`, `IsError: bool`, `StopReason: string?` | A turn finished. |
 | `PluginSessionError` | `Message: string` | Something went wrong in the driver itself (request failure, parse failure, ...). |
 
-The host's driver adapter maps each of these to its internal `ClaudeSessionEvent` counterpart, so the rest of
+The host's driver adapter maps each of these to its internal `SessionEvent` counterpart, so the rest of
 the app sees one event vocabulary regardless of which driver produced it.
 
 ---

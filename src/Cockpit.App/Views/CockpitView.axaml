@@ -67,7 +67,7 @@
                     <Button Content="Profiles" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding ManageProfilesCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Add, edit or remove Claude profiles"/>
+                            ToolTip.Tip="Add, edit or remove session profiles"/>
                     <Button Content="MCP servers" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding OpenMcpServersCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
@@ -141,7 +141,7 @@
                                                                ToolTip.Tip="Needs attention"/>
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <!-- Mirrors the session-header provider pill (ClaudeSessionView.axaml) so a local
+                                                    <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local
                                                          (Ollama/LM Studio) session is identifiable from the sidebar too, not just once
                                                          opened; hidden for Claude-CLI sessions, which leave ProviderBadge empty (#26). -->
                                                     <Border Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -208,7 +208,7 @@
                 </Border>
                 <TextBlock Text="No sessions yet" FontSize="16" FontWeight="SemiBold"
                            HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                <TextBlock Text="Start a Claude session to begin. You pick the profile and its defaults up front."
+                <TextBlock Text="Start a session to begin. You pick the profile — and with it the provider — and its defaults up front."
                            TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
                 <Button Content="+ New session" Command="{Binding NewSessionCommand}"
@@ -254,7 +254,7 @@
                                     Classes.attention="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                     Classes.active="{Binding IsSelected}"
                                     CornerRadius="{StaticResource CockpitPanelRadius}">
-                                <!-- ContentControl + ViewLocator picks ClaudeSessionView (SDK) or
+                                <!-- ContentControl + ViewLocator picks SessionView (SDK) or
                                      ClaudeTtyView (TTY) from the panel view model's type. -->
                                 <ContentControl Content="{Binding}"/>
                             </Border>

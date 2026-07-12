@@ -13,8 +13,11 @@
 
     <Design.DataContext>
         <vm:AboutInfo AppName="AI-Cockpit" VersionText="1.0.0"
-                      Description="A multi-session cockpit for driving Claude Code side by side."
+                      Description="Run several AI coding sessions side by side — each in its own profile, with its own provider, permissions and transcript."
+                      Providers="Claude Code · Ollama · LM Studio · plus any provider a plugin adds (Gemini, OpenAI, GitHub Models, Codex CLI)."
+                      LicenseText="Apache 2.0 with the Commons Clause · © 2026 Raymond Krahwinkel / Krahwinkel-IT"
                       GitHubUrl="https://github.com/raymondkrahwinkel/AI-Cockpit"
+                      IssuesUrl="https://github.com/raymondkrahwinkel/AI-Cockpit/issues"
                       PluginStoreUrl="https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins"/>
     </Design.DataContext>
 
@@ -39,14 +42,29 @@
 
         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
 
+        <StackPanel Spacing="3">
+            <TextBlock Text="Providers" FontSize="11" FontWeight="SemiBold"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+            <TextBlock Text="{Binding Providers}" TextWrapping="Wrap" FontSize="12"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+        </StackPanel>
+
+        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
         <StackPanel Spacing="6">
             <Button Content="GitHub repository" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
                     Foreground="{StaticResource CockpitAccentBrush}"
                     Click="OnOpenGitHub" ToolTip.Tip="{Binding GitHubUrl}"/>
+            <Button Content="Report an issue" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
+                    Foreground="{StaticResource CockpitAccentBrush}"
+                    Click="OnOpenIssues" ToolTip.Tip="{Binding IssuesUrl}"/>
             <Button Content="Plugin store" Classes="Subtle" HorizontalAlignment="Left" Padding="0"
                     Foreground="{StaticResource CockpitAccentBrush}"
                     Click="OnOpenPluginStore" ToolTip.Tip="{Binding PluginStoreUrl}"/>
         </StackPanel>
+
+        <TextBlock Text="{Binding LicenseText}" TextWrapping="Wrap" FontSize="11"
+                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
 
         <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
             <Button Grid.Column="1" Content="Close" Click="OnClose"/>

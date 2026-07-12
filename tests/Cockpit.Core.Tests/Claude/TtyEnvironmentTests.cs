@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Cockpit.Core.Claude.Tty;
+using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -75,7 +75,7 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_WithNonDefaultDirProfile_SetsClaudeConfigDirToTheProfileDirectory()
     {
-        var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
 
         var environment = TtyEnvironment.Build(BaseEnvironment, profile, UserProfileDir);
 
@@ -85,7 +85,7 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_WithDefaultDirProfile_DoesNotSetClaudeConfigDir_SoTheCliUsesItsNativeHomeRootConfig()
     {
-        var defaultProfile = new ClaudeProfile("default", Path.Combine(UserProfileDir, ".claude"));
+        var defaultProfile = new SessionProfile("default", Path.Combine(UserProfileDir, ".claude"));
 
         var environment = TtyEnvironment.Build(BaseEnvironment, defaultProfile, UserProfileDir);
 
@@ -95,7 +95,7 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_WithDefaultDirProfile_DropsAnInheritedClaudeConfigDir()
     {
-        var defaultProfile = new ClaudeProfile("default", Path.Combine(UserProfileDir, ".claude"));
+        var defaultProfile = new SessionProfile("default", Path.Combine(UserProfileDir, ".claude"));
         var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",
@@ -130,7 +130,7 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_NeverSetsAnthropicApiKey_KeepingTheSubscriptionRoute()
     {
-        var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
 
         var environment = TtyEnvironment.Build(BaseEnvironment, profile, UserProfileDir);
 
@@ -161,7 +161,7 @@ public class TtyEnvironmentTests
     [Fact]
     public void Build_KeepsANonDefaultConfigDir_OverAnInheritedOne()
     {
-        var profile = new ClaudeProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
         var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",

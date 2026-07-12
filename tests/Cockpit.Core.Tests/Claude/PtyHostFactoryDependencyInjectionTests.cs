@@ -3,9 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Infrastructure;
-using Cockpit.Infrastructure.Claude.Tty;
+using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -28,8 +28,8 @@ public class PtyHostFactoryDependencyInjectionTests
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
             typeof(CockpitViewModel).Assembly);
 
-        services.AddTransient<Func<ClaudeSessionViewModel>>(
-            provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());
+        services.AddTransient<Func<SessionViewModel>>(
+            provider => () => provider.GetRequiredService<SessionViewModel>());
         services.AddTransient<Func<ClaudeTtyViewModel>>(
             provider => () => provider.GetRequiredService<ClaudeTtyViewModel>());
 

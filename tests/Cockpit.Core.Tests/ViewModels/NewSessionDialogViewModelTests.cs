@@ -18,8 +18,8 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task LoadAsync_PopulatesProfilesAndSelectsTheFirst()
     {
-        var work = new ClaudeProfile("work", "/home/r/.claude-work");
-        var personal = new ClaudeProfile("personal", "/home/r/.claude-personal");
+        var work = new SessionProfile("work", "/home/r/.claude-work");
+        var personal = new SessionProfile("personal", "/home/r/.claude-personal");
         var vm = NewVm(out _, work, personal);
 
         await vm.LoadAsync();
@@ -31,7 +31,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task SelectingProfile_LoadsItsSavedDefaults()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work",
+        var profile = new SessionProfile("work", "/home/r/.claude-work",
             Defaults: new ProfileDefaults("bypassPermissions", "opus", "high"));
         var vm = NewVm(out _, profile);
         await vm.LoadAsync();
@@ -44,7 +44,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task SelectingProfileWithoutDefaults_FallsBackToTheAppDefaults()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVm(out _, profile);
         await vm.LoadAsync();
 
@@ -56,7 +56,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task CanStart_IsFalseForSdkWhenTheSelectedProfileIsNotLoggedIn()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVm(out var loginChecker, profile);
         loginChecker.IsLoggedIn(profile).Returns(false);
 
@@ -71,7 +71,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task CanStart_IsTrueForTtyEvenWhenNotLoggedIn_SinceTheTuiRunsItsOwnLogin()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVm(out var loginChecker, profile);
         loginChecker.IsLoggedIn(profile).Returns(false);
 
@@ -86,7 +86,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task ShowLoginHint_IsShownForSdkButNotForTty_WhichLogsInItself()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVm(out var loginChecker, profile);
         loginChecker.IsLoggedIn(profile).Returns(false);
         await vm.LoadAsync();
@@ -101,7 +101,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task SelectingLocalProfile_IsStartableWithoutLogin_AndHidesClaudeOptions()
     {
-        var local = new ClaudeProfile("ollama", string.Empty,
+        var local = new SessionProfile("ollama", string.Empty,
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = NewVm(out var loginChecker, local);
         loginChecker.IsLoggedIn(local).Returns(false); // a local provider has no login
@@ -116,7 +116,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task SelectingLocalProfile_ForcesSdkKind()
     {
-        var local = new ClaudeProfile("ollama", string.Empty,
+        var local = new SessionProfile("ollama", string.Empty,
             ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = NewVm(out _, local);
         vm.SelectTtyCommand.Execute(null);
@@ -129,7 +129,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task Confirm_RaisesCloseWithTheChosenProfileAndOptions()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVm(out var loginChecker, profile);
         loginChecker.IsLoggedIn(profile).Returns(true);
         await vm.LoadAsync();
@@ -151,7 +151,7 @@ public class NewSessionDialogViewModelTests
     public void Cancel_RaisesCloseWithNull()
     {
         var vm = NewVm(out _);
-        NewSessionResult? result = new(SessionKind.Sdk, new ClaudeProfile("x", "y"), SessionOptionCatalog.DefaultPermissionMode,
+        NewSessionResult? result = new(SessionKind.Sdk, new SessionProfile("x", "y"), SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort, null);
         var closed = false;
         vm.CloseRequested += r => { result = r; closed = true; };
@@ -203,7 +203,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task Confirm_CarriesTheSelectedKind()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVm(out var loginChecker, profile);
         loginChecker.IsLoggedIn(profile).Returns(true);
         await vm.LoadAsync();
@@ -229,7 +229,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task LoadAsync_PopulatesTheMcpChecklist_AllCheckedByDefault()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVmWithMcp(out _, [profile],
             new McpServerConfig { Name = "server-a" },
             new McpServerConfig { Name = "server-b" });
@@ -244,7 +244,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task LoadAsync_ExcludesDisabledRegistryServers_FromTheChecklist()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVmWithMcp(out _, [profile],
             new McpServerConfig { Name = "on" },
             new McpServerConfig { Name = "off", Enabled = false });
@@ -257,7 +257,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task LoadAsync_WithNoRegistryServers_HasMcpServersIsFalse()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVmWithMcp(out _, [profile]);
 
         await vm.LoadAsync();
@@ -269,7 +269,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task Confirm_WithAnUncheckedMcpServer_ExcludesItFromTheResult()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVmWithMcp(out var loginChecker, [profile],
             new McpServerConfig { Name = "server-a" },
             new McpServerConfig { Name = "server-b" });
@@ -289,7 +289,7 @@ public class NewSessionDialogViewModelTests
     [Fact]
     public async Task Confirm_WithNoRegistryServers_CarriesANullMcpSelection()
     {
-        var profile = new ClaudeProfile("work", "/home/r/.claude-work");
+        var profile = new SessionProfile("work", "/home/r/.claude-work");
         var vm = NewVmWithMcp(out var loginChecker, [profile]);
         loginChecker.IsLoggedIn(profile).Returns(true);
         await vm.LoadAsync();
@@ -302,9 +302,9 @@ public class NewSessionDialogViewModelTests
         result!.EnabledMcpServerNames.Should().BeNull();
     }
 
-    private static NewSessionDialogViewModel NewVm(out IClaudeProfileLoginChecker loginChecker, params ClaudeProfile[] profiles)
+    private static NewSessionDialogViewModel NewVm(out IClaudeProfileLoginChecker loginChecker, params SessionProfile[] profiles)
     {
-        var store = Substitute.For<IClaudeProfileStore>();
+        var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
         loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
         foreach (var profile in profiles)
@@ -317,10 +317,10 @@ public class NewSessionDialogViewModelTests
 
     private static NewSessionDialogViewModel NewVmWithMcp(
         out IClaudeProfileLoginChecker loginChecker,
-        ClaudeProfile[] profiles,
+        SessionProfile[] profiles,
         params McpServerConfig[] registry)
     {
-        var store = Substitute.For<IClaudeProfileStore>();
+        var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
         loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
         foreach (var profile in profiles)

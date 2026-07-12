@@ -1,22 +1,22 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
 /// Backs the Manage-profiles dialog (#12/#17): list the profiles, edit each one's label, config
 /// directory (shown so it is clear where its login lives), executable, purpose and start defaults, and
-/// add/remove entries. Save persists the whole edited list through <see cref="IClaudeProfileStore"/>;
+/// add/remove entries. Save persists the whole edited list through <see cref="ISessionProfileStore"/>;
 /// the view closes via <see cref="CloseRequested"/>.
 /// </summary>
 public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
-    private readonly IClaudeProfileStore? _profileStore;
+    private readonly ISessionProfileStore? _profileStore;
     private readonly IClaudeProfileLoginChecker? _loginChecker;
     private readonly IModelCatalog? _modelCatalog;
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
@@ -46,13 +46,13 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 
         // Design-time preview: one editable profile so the dialog renders in the previewer.
         var sample = new EditableProfileViewModel(
-            new ClaudeProfile("personal", "~/.claude-personal", Purpose: "private"), isLoggedIn: true);
+            new SessionProfile("personal", "~/.claude-personal", Purpose: "private"), isLoggedIn: true);
         Profiles.Add(sample);
         SelectedProfile = sample;
     }
 
     public ManageProfilesDialogViewModel(
-        IClaudeProfileStore profileStore,
+        ISessionProfileStore profileStore,
         IClaudeProfileLoginChecker loginChecker,
         IModelCatalog? modelCatalog = null,
         IPluginProviderRegistry? pluginProviderRegistry = null)
@@ -128,7 +128,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     {
         // A freshly added profile may pick its provider (#26); an existing one is fixed.
         var added = new EditableProfileViewModel(
-            new ClaudeProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
+            new SessionProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
         Profiles.Add(added);
         SelectedProfile = added;
     }

@@ -70,11 +70,11 @@ sealed class Program
 
         services.AddSingleton(pluginManager);
 
-        // Factory delegate so CockpitViewModel can mint a new ClaudeSessionViewModel (and,
+        // Factory delegate so CockpitViewModel can mint a new SessionViewModel (and,
         // transitively, its own ISessionDriver/CLI process) per "New session" click without
         // holding an injected IServiceProvider itself (service-locator anti-pattern — Code.md §2).
-        services.AddTransient<Func<ClaudeSessionViewModel>>(
-            provider => () => provider.GetRequiredService<ClaudeSessionViewModel>());
+        services.AddTransient<Func<SessionViewModel>>(
+            provider => () => provider.GetRequiredService<SessionViewModel>());
 
         // Same factory pattern for the TTY-mode panel (#9 experiment).
         services.AddTransient<Func<ClaudeTtyViewModel>>(
@@ -98,7 +98,21 @@ sealed class Program
                 return;
             }
 
-            Screenshotter.Run(args[screenshotIndex + 1]);
+            // Optional "--size WxH" so a docs render can use a window big enough to show a session's
+            // transcript, and "--scene <name>" to render a dialog instead of the main window.
+            var sceneIndex = Array.IndexOf(args, "--scene");
+            var scene = sceneIndex >= 0 && sceneIndex + 1 < args.Length ? args[sceneIndex + 1] : null;
+
+            var sizeIndex = Array.IndexOf(args, "--size");
+            if (sizeIndex >= 0 && sizeIndex + 1 < args.Length &&
+                args[sizeIndex + 1].Split('x') is [var rawWidth, var rawHeight] &&
+                int.TryParse(rawWidth, out var width) && int.TryParse(rawHeight, out var height))
+            {
+                Screenshotter.Run(args[screenshotIndex + 1], width, height, scene);
+                return;
+            }
+
+            Screenshotter.Run(args[screenshotIndex + 1], scene: scene);
             return;
         }
 
@@ -186,7 +200,7 @@ sealed class Program
         var markers = new List<string>();
         foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
         {
-            if (entry.Key is string key && Cockpit.Core.Claude.Tty.TtyEnvironment.IsHostTerminalIdentityMarker(key))
+            if (entry.Key is string key && Cockpit.Core.Sessions.Tty.TtyEnvironment.IsHostTerminalIdentityMarker(key))
             {
                 markers.Add(key);
             }
@@ -201,9 +215,9 @@ sealed class Program
         // drawing every line underlined; normalise anything that is not already the generic value.
         var term = Environment.GetEnvironmentVariable("TERM");
         if (!string.IsNullOrEmpty(term)
-            && !string.Equals(term, Cockpit.Core.Claude.Tty.TtyEnvironment.TermValue, StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(term, Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue, StringComparison.OrdinalIgnoreCase))
         {
-            AssignEnvironment("TERM", Cockpit.Core.Claude.Tty.TtyEnvironment.TermValue);
+            AssignEnvironment("TERM", Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue);
         }
     }
 

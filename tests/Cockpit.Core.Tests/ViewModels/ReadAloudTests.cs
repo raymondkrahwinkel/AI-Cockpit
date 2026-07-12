@@ -1,7 +1,7 @@
 using Cockpit.App.ViewModels;
-using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Claude;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Voice;
 using FluentAssertions;
 using NSubstitute;
@@ -9,8 +9,8 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
-/// Read-aloud (#35): the per-session <see cref="ClaudeSessionViewModel.ReadResponsesAloud"/> toggle
-/// gates the turn-completion trigger, the per-row <see cref="ClaudeSessionViewModel.ReadAloudCommand"/>
+/// Read-aloud (#35): the per-session <see cref="SessionViewModel.ReadResponsesAloud"/> toggle
+/// gates the turn-completion trigger, the per-row <see cref="SessionViewModel.ReadAloudCommand"/>
 /// works regardless of that toggle, and a push-to-talk hold interrupts whatever is queued/playing.
 /// </summary>
 public class ReadAloudTests
@@ -19,7 +19,7 @@ public class ReadAloudTests
     public void TurnCompleted_ReadAloudOff_NeverEnqueuesAnything()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeSessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
+        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = false,
         };
@@ -36,7 +36,7 @@ public class ReadAloudTests
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { TtsVoiceId = "nl_NL-ronnie-medium" });
-        var vm = new ClaudeSessionViewModel(
+        var vm = new SessionViewModel(
             Substitute.For<ISessionDriverFactory>(), voiceSettingsStore: voiceSettingsStore, voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = true,
@@ -54,7 +54,7 @@ public class ReadAloudTests
     public void TurnCompleted_NoAssistantTextThisTurn_EnqueuesNothing_EvenWithReadAloudOn()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeSessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
+        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = true,
         };
@@ -68,7 +68,7 @@ public class ReadAloudTests
     public void ReadAloudCommand_OnAssistantRow_Enqueues_EvenWhenTheSessionToggleIsOff()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeSessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
+        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue)
         {
             ReadResponsesAloud = false,
         };
@@ -85,7 +85,7 @@ public class ReadAloudTests
     public void ReadAloudCommand_OnANonAssistantRow_DoesNothing()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeSessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue);
+        var vm = new SessionViewModel(Substitute.For<ISessionDriverFactory>(), voicePlaybackQueue: voicePlaybackQueue);
         var entry = new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "not an assistant reply");
 
         vm.ReadAloudCommand.Execute(entry);
@@ -107,7 +107,7 @@ public class ReadAloudTests
         var cleanupService = Substitute.For<ITranscriptCleanupService>();
         cleanupService.NaturalizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("[[en]]Here is the answer. [[nl]]Dit is het antwoord.");
-        var vm = new ClaudeSessionViewModel(
+        var vm = new SessionViewModel(
             Substitute.For<ISessionDriverFactory>(),
             voiceSettingsStore: voiceSettingsStore,
             voicePlaybackQueue: voicePlaybackQueue,
@@ -136,7 +136,7 @@ public class ReadAloudTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeSessionViewModel(
+        var vm = new SessionViewModel(
             Substitute.For<ISessionDriverFactory>(), voicePushToTalk, voiceSettingsStore, voicePlaybackQueue);
         await _WaitUntilAsync(() => vm.VoiceEnabled);
 

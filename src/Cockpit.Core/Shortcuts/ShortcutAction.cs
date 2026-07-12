@@ -15,4 +15,6 @@ public enum ShortcutAction
     ToggleZoom,
     SearchTranscripts,
     CommandPalette,
+    PreviousSession,
+    NextSession,
 }

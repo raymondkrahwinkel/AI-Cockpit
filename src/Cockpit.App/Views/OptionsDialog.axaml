@@ -70,22 +70,6 @@
             <TabItem Header="Sessions">
                 <ScrollViewer>
                     <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Session switching" FontWeight="SemiBold"/>
-                        <CheckBox Content="Switch sessions with modifier + arrows"
-                                  IsChecked="{Binding SessionSwitchEnabled}"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Modifier"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding SessionSwitchModifiers}"
-                                      SelectedItem="{Binding SelectedSessionSwitchModifier}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
-                        </StackPanel>
-                        <TextBlock Text="Left/Up = previous, Right/Down = next. Word navigation in text fields stays intact."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
                         <TextBlock Text="Session behaviour" FontWeight="SemiBold"/>
                         <CheckBox Content="Close a session when you type &quot;exit&quot;"
                                   IsChecked="{Binding AutoCloseOnExit}"/>
@@ -283,7 +267,7 @@
                 <ScrollViewer>
                     <StackPanel Spacing="8" Margin="16">
                         <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold"/>
-                        <TextBlock Text="Click a shortcut and press the keys you want (Esc cancels, ✕ clears). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke."
+                        <TextBlock Text="Click a shortcut and press the keys you want (Esc cancels, ✕ clears; clearing it unbinds the shortcut). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke — except the session switch, which stays live over the terminal so you can always switch away."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                         <ItemsControl ItemsSource="{Binding ShortcutRows}">

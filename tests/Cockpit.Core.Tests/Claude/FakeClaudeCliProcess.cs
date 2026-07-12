@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Claude;
 
@@ -20,7 +20,7 @@ internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
 
     public bool HasExited { get; private set; }
 
-    public ClaudeProfile? StartedWithProfile { get; private set; }
+    public SessionProfile? StartedWithProfile { get; private set; }
 
     public string? StartedWithPermissionMode { get; private set; }
 
@@ -34,7 +34,7 @@ internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
 
     public void CompleteOutput() => _outputLines.Writer.TryComplete();
 
-    public void Start(ClaudeProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null)
+    public void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null)
     {
         Started = true;
         StartedWithProfile = profile;

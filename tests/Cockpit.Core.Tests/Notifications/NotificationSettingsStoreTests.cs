@@ -1,6 +1,6 @@
 using Cockpit.Core.Notifications;
 using Cockpit.Core.Profiles;
-using Cockpit.Infrastructure.Claude;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Notifications;
 using FluentAssertions;
 
@@ -57,9 +57,9 @@ public class NotificationSettingsStoreTests : IDisposable
     public async Task SaveAsync_LeavesTheProfilesSectionIntact()
     {
         // Both stores write the same file; saving notifications must not wipe the profiles a
-        // previously-saved ClaudeProfileStore wrote, and vice versa.
-        var profileStore = new ClaudeProfileStore(_configFilePath);
-        var profiles = new List<ClaudeProfile> { new("work", @"C:\Users\raymo\.claude-work") };
+        // previously-saved SessionProfileStore wrote, and vice versa.
+        var profileStore = new SessionProfileStore(_configFilePath);
+        var profiles = new List<SessionProfile> { new("work", @"C:\Users\raymo\.claude-work") };
         await profileStore.SaveAsync(profiles);
 
         var notificationStore = new NotificationSettingsStore(_configFilePath);

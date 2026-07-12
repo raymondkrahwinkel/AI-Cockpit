@@ -17,19 +17,35 @@ public class AboutInfoTests
 
         info.AppName.Should().Be("AI-Cockpit");
         info.GitHubUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit");
+        info.IssuesUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit/issues");
         info.PluginStoreUrl.Should().Be("https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins");
         info.Description.Should().NotBeNullOrWhiteSpace();
+        info.LicenseText.Should().Contain("Commons Clause");
     }
 
     [Fact]
-    public void FromAssembly_UsesTheInformationalVersionWhenPresent()
+    public void FromAssembly_ListsEveryBuiltInProvider_SoTheAppDoesNotReadAsClaudeOnly()
+    {
+        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
+
+        info.Providers.Should().Contain("Claude Code")
+            .And.Contain("Ollama")
+            .And.Contain("LM Studio");
+    }
+
+    [Fact]
+    public void FromAssembly_UsesTheInformationalVersion_WithoutItsBuildMetadata()
     {
         var assembly = Assembly.GetExecutingAssembly();
-        var expected = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                        ?? assembly.GetName().Version?.ToString();
+        var informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var expected = informational is null
+            ? assembly.GetName().Version?.ToString()
+            : informational.Split('+')[0];
 
         var info = AboutInfo.FromAssembly(assembly);
 
+        // The SDK appends "+<full git sha>", which overflows the dialog's version line.
         info.VersionText.Should().Be(expected);
+        info.VersionText.Should().NotContain("+");
     }
 }

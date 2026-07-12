@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.GitHubModelsProvider;
 /// the profile's opaque config JSON into an <see cref="OpenAiCompatConfig"/> and builds an
 /// <see cref="IChatClient"/> against its base URL via the OpenAI SDK with a custom
 /// <see cref="OpenAIClientOptions.Endpoint"/> — the same construction
-/// <c>Cockpit.Infrastructure.Claude.OpenAiCompatChatClientFactory</c> uses for Ollama/LM Studio, and the
+/// <c>Cockpit.Infrastructure.Sessions.OpenAiCompatChatClientFactory</c> uses for Ollama/LM Studio, and the
 /// Gemini/OpenAI provider plugin uses for its own providers. The API key here is a GitHub PAT, passed as the
 /// bearer credential exactly like a vendor API key would be.
 /// </summary>
