@@ -350,25 +350,29 @@
          fills with the cockpit accent, an unselected one lifts to a quiet panel fill on hover. The
          TabItem template is replaced wholesale so the Fluent selected-underline is gone entirely — the
          accent fill is the state signal, so it stays obvious regardless of text-colour inheritance. -->
+    <!-- Bootstrap-style nav-tabs (Options dialog): an inactive tab is flat text; the selected tab is a
+         top-rounded "card" outlined on top+left+right with an open bottom, so it reads as connected to the
+         content below it. The TabControl body sits on the dialog's panel background (transparent), so the
+         selected tab's matching fill + open-bottom border merge into the content like Bootstrap's .active. -->
     <Style Selector="TabControl">
-        <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>
-        <Setter Property="Padding" Value="8,10,8,0"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Padding" Value="10,10,10,0"/>
     </Style>
     <Style Selector="TabItem">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
-        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="1,1,1,0"/>
         <Setter Property="FontSize" Value="13"/>
-        <Setter Property="Padding" Value="13,6"/>
-        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Margin" Value="0,0,2,0"/>
         <Setter Property="MinHeight" Value="0"/>
         <Setter Property="Template">
             <ControlTemplate>
                 <Border Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="{StaticResource CockpitControlRadius}"
+                        CornerRadius="6,6,0,0"
                         Padding="{TemplateBinding Padding}">
                     <ContentPresenter Content="{TemplateBinding Header}"
                                       ContentTemplate="{TemplateBinding HeaderTemplate}"
@@ -384,14 +388,10 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
     <Style Selector="TabItem:selected">
-        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
-    </Style>
-    <Style Selector="TabItem:selected:pointerover">
-        <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
 
 </Styles>

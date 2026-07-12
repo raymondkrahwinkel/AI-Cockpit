@@ -14,19 +14,16 @@
 
     <DockPanel Margin="16">
 
-        <!-- Compact session header (#54 look&feel): a title line, then ONE tight row with the TTY tag
-             (hover = render diagnostics), status, profile, the working directory (ellipsised, full path on
-             hover) and the read-aloud/redraw controls — down from the old three-row badge+status stack.
-             HeaderPanel + StatusRow keep their names: the code-behind's _ApplyHeaderLayout flips their
-             Dock/Orientation between the normal (top, horizontal) and stacked-vertical (left, vertical)
-             layouts. -->
-        <TextBlock DockPanel.Dock="Top" Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
-                   Margin="2,0,0,4"/>
-
+        <!-- Compact one-row session header: the session data (TTY tag with render diagnostics on hover,
+             status, profile, working directory, read-aloud/redraw) is left-aligned; the session title is
+             docked right. Always top-docked, including the stacked-vertical grid layout (#54). -->
         <Border x:Name="HeaderPanel" DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
-            <StackPanel x:Name="StatusRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
+                           VerticalAlignment="Center" Margin="8,0,2,0"/>
+                <StackPanel x:Name="StatusRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Border Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
                         CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1"
                         ToolTip.Tip="{Binding Diagnostics}">
@@ -49,7 +46,8 @@
                               ToolTip.Tip="Read each assistant reply aloud by tailing the session transcript (voice model downloads on first use)"/>
                 <Button Content="Redraw" Click="OnRedrawClick" Classes="Compact" VerticalAlignment="Center"
                         ToolTip.Tip="Force the terminal to repaint from scratch — recovers the TUI if a resize/focus change left it misaligned or stacked at the top"/>
-            </StackPanel>
+                </StackPanel>
+            </DockPanel>
         </Border>
 
         <!-- The terminal surface: Exclr8.Terminal, a pure Avalonia terminal-emulator renderer with no
