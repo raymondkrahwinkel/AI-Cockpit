@@ -337,16 +337,47 @@
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
     </Style>
 
-    <!-- TabControl / TabItem: flat, quiet, accent underline for the selected tab -->
+    <!-- TabControl / TabItem: a compact segmented "pill" bar instead of Avalonia's default underlined
+         text tabs (Options dialog). Each tab is a rounded chip on the dark tab strip; the selected one
+         fills with the cockpit accent, an unselected one lifts to a quiet panel fill on hover. The
+         TabItem template is replaced wholesale so the Fluent selected-underline is gone entirely — the
+         accent fill is the state signal, so it stays obvious regardless of text-colour inheritance. -->
     <Style Selector="TabControl">
         <Setter Property="Background" Value="{StaticResource CockpitWindowBgBrush}"/>
+        <Setter Property="Padding" Value="8,10,8,0"/>
     </Style>
     <Style Selector="TabItem">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
-        <Setter Property="Padding" Value="14,8"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        CornerRadius="{StaticResource CockpitControlRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <ContentPresenter Content="{TemplateBinding Header}"
+                                      ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="TabItem:pointerover">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
     <Style Selector="TabItem:selected">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TabItem:selected:pointerover">
+        <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
 
 </Styles>
