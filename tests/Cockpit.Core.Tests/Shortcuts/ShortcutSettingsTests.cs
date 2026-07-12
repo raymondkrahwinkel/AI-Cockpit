@@ -11,8 +11,8 @@ namespace Cockpit.Core.Tests.Shortcuts;
 public class ShortcutSettingsTests
 {
     [Fact]
-    public void Default_BindsNewSessionToShiftN()
-        => ShortcutSettings.Default.GestureFor(ShortcutAction.NewSession).Should().Be("Shift+N");
+    public void Default_BindsNewSessionToCtrlN()
+        => ShortcutSettings.Default.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+N");
 
     [Fact]
     public void With_RebindsOneActionAndLeavesOthers()
@@ -20,7 +20,7 @@ public class ShortcutSettingsTests
         var settings = ShortcutSettings.Default.With(ShortcutAction.Options, "Ctrl+Shift+O");
 
         settings.GestureFor(ShortcutAction.Options).Should().Be("Ctrl+Shift+O");
-        settings.GestureFor(ShortcutAction.NewSession).Should().Be("Shift+N");
+        settings.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+N");
     }
 
     [Fact]
@@ -34,9 +34,18 @@ public class ShortcutSettingsTests
     [Fact]
     public void GestureFor_FallsBackToCatalogDefaultWhenUnset()
     {
-        var settings = new ShortcutSettings(new Dictionary<ShortcutAction, string>());
+        var settings = new ShortcutSettings(new Dictionary<ShortcutAction, string>(), new Dictionary<string, string>());
 
         settings.GestureFor(ShortcutAction.PluginStore).Should().Be(ShortcutCatalog.DefaultGesture(ShortcutAction.PluginStore));
+    }
+
+    [Fact]
+    public void WithPlugin_OverridesAPluginShortcutGesture_AndFallsBackToTheDefaultOtherwise()
+    {
+        var settings = ShortcutSettings.Default.WithPlugin("youtrack.open", "Ctrl+Y");
+
+        settings.GestureForPlugin("youtrack.open", "Shift+Y").Should().Be("Ctrl+Y");
+        settings.GestureForPlugin("other.id", "Shift+Z").Should().Be("Shift+Z");
     }
 
     [Fact]

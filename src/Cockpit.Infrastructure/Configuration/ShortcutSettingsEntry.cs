@@ -11,9 +11,13 @@ internal sealed class ShortcutSettingsEntry
 {
     public Dictionary<string, string> Gestures { get; set; } = [];
 
+    /// <summary>Per-plugin-shortcut gesture overrides, keyed by the plugin's shortcut id.</summary>
+    public Dictionary<string, string> PluginGestures { get; set; } = [];
+
     public static ShortcutSettingsEntry FromDomain(ShortcutSettings settings) => new()
     {
         Gestures = settings.Gestures.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value),
+        PluginGestures = new Dictionary<string, string>(settings.PluginGestures),
     };
 
     public ShortcutSettings ToDomain()
@@ -33,6 +37,6 @@ internal sealed class ShortcutSettingsEntry
             map.TryAdd(descriptor.Action, descriptor.DefaultGesture);
         }
 
-        return new ShortcutSettings(map);
+        return new ShortcutSettings(map, new Dictionary<string, string>(PluginGestures));
     }
 }

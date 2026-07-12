@@ -781,9 +781,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Fold the editable rows back into the settings, then re-arm the live bindings so a change takes effect
         // immediately without a restart.
         var settings = _shortcutSettings;
-        foreach (var row in ShortcutRows.Where(row => row is { IsEditable: true, Action: not null }))
+        foreach (var row in ShortcutRows)
         {
-            settings = settings.With(row.Action!.Value, row.Gesture);
+            settings = row.Action is { } action
+                ? settings.With(action, row.Gesture)
+                : row.PluginShortcutId is { } id
+                    ? settings.WithPlugin(id, row.Gesture)
+                    : settings;
         }
 
         _shortcutSettings = settings;
@@ -809,7 +813,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         foreach (var shortcut in PluginShortcuts)
         {
-            ShortcutRows.Add(new ShortcutRowViewModel($"{shortcut.Title} (plugin)", shortcut.DefaultGesture));
+            ShortcutRows.Add(new ShortcutRowViewModel(
+                $"{shortcut.Title} (plugin)",
+                shortcut.Id,
+                _shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture)));
         }
     }
 
@@ -827,9 +834,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             }
         }
 
-        foreach (var shortcut in PluginShortcuts.Where(shortcut => !string.IsNullOrWhiteSpace(shortcut.DefaultGesture)))
+        foreach (var shortcut in PluginShortcuts)
         {
-            bindings.Add(new ShortcutBinding(shortcut.DefaultGesture, shortcut.Title, shortcut.OnInvoke));
+            var gesture = _shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture);
+            if (!string.IsNullOrWhiteSpace(gesture))
+            {
+                bindings.Add(new ShortcutBinding(gesture, shortcut.Title, shortcut.OnInvoke));
+            }
         }
 
         ActiveShortcuts = bindings;

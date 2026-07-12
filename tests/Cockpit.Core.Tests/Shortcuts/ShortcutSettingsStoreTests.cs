@@ -29,7 +29,7 @@ public class ShortcutSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.NewSession).Should().Be("Shift+N");
+        settings.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+N");
     }
 
     [Fact]
@@ -48,15 +48,25 @@ public class ShortcutSettingsStoreTests : IDisposable
     {
         // Persist only one action, as an older/partial file would.
         var store = new ShortcutSettingsStore(_configFilePath);
-        await store.SaveAsync(new ShortcutSettings(new Dictionary<ShortcutAction, string>
-        {
-            [ShortcutAction.NewSession] = "Ctrl+N",
-        }));
+        await store.SaveAsync(new ShortcutSettings(
+            new Dictionary<ShortcutAction, string> { [ShortcutAction.NewSession] = "Ctrl+Alt+N" },
+            new Dictionary<string, string>()));
 
         var loaded = await store.LoadAsync();
 
-        loaded.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+N");
+        loaded.GestureFor(ShortcutAction.NewSession).Should().Be("Ctrl+Alt+N");
         loaded.GestureFor(ShortcutAction.ToggleZoom).Should().Be(ShortcutCatalog.DefaultGesture(ShortcutAction.ToggleZoom));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RoundTripsAPluginGestureOverride()
+    {
+        var store = new ShortcutSettingsStore(_configFilePath);
+
+        await store.SaveAsync(ShortcutSettings.Default.WithPlugin("youtrack.open", "Ctrl+Y"));
+        var loaded = await store.LoadAsync();
+
+        loaded.GestureForPlugin("youtrack.open", "Shift+Y").Should().Be("Ctrl+Y");
     }
 
     [Fact]

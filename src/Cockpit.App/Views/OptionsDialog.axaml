@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:controls="using:Cockpit.App.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -282,24 +283,22 @@
                 <ScrollViewer>
                     <StackPanel Spacing="8" Margin="16">
                         <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold"/>
-                        <TextBlock Text="Type a gesture like &quot;Shift+N&quot;, &quot;Ctrl+Shift+P&quot; or leave blank to unbind. Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke."
+                        <TextBlock Text="Click a shortcut and press the keys you want (Esc cancels, ✕ clears). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                         <ItemsControl ItemsSource="{Binding ShortcutRows}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ShortcutRowViewModel">
-                                    <Grid ColumnDefinitions="*,180" Margin="0,3">
+                                    <Grid ColumnDefinitions="*,200" Margin="0,3">
                                         <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                        <TextBox Grid.Column="1" Text="{Binding Gesture}" IsEnabled="{Binding IsEditable}"
-                                                 FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
-                                                 PlaceholderText="unbound"/>
+                                        <controls:ShortcutCaptureControl Grid.Column="1" Gesture="{Binding Gesture, Mode=TwoWay}"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Text="Plugin-contributed shortcuts are shown read-only."
+                        <TextBlock Text="Plugin-contributed shortcuts (marked &quot;plugin&quot;) can be changed here too."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ScrollViewer>
