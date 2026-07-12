@@ -54,4 +54,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Keyboard shortcuts for the app actions (new session, options, …); owned by the shortcut settings store.</summary>
     public ShortcutSettingsEntry? Shortcuts { get; set; }
+
+    /// <summary>The main window's last position/size/maximized state; owned by the window-bounds store.</summary>
+    public WindowBoundsEntry? WindowBounds { get; set; }
 }

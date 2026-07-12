@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:conv="using:Cockpit.App.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
@@ -44,7 +45,8 @@
                             Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.OpenStorePluginSettingsCommand}"
                             CommandParameter="{Binding}"
                             ToolTip.Tip="Plugin settings"/>
-                    <Button Content="{Binding ToggleGlyph}" Classes="Subtle Compact" Padding="6,2" FontSize="12"
+                    <Button Content="{Binding ToggleGlyph}" Classes="Subtle Compact" Padding="6,2" FontSize="13"
+                            Foreground="{Binding ToggleBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                             IsVisible="{Binding IsInstalled}"
                             Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.ToggleStorePluginCommand}"
                             CommandParameter="{Binding}"

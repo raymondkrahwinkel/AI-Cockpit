@@ -17,11 +17,14 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
     /// <summary>Whether the installed plugin registered a settings view — gates the card's ⚙ gear.</summary>
     public bool HasSettings => hasSettings;
 
-    /// <summary>Power glyph for the card's enable/disable toggle: filled when enabled, hollow when disabled.</summary>
-    public string ToggleGlyph => isEnabled ? "⏼" : "⭘";
+    /// <summary>Power symbol for the card's enable/disable toggle — colour (via <see cref="ToggleBrushKey"/>) carries the on/off state.</summary>
+    public string ToggleGlyph => "⏻";
+
+    /// <summary>Theme brush key for the toggle glyph: green when enabled, faint when disabled — resolved in the view by the status-brush converter.</summary>
+    public string ToggleBrushKey => isEnabled ? "CockpitStatusDoneBrush" : "CockpitTextFaintBrush";
 
     /// <summary>Hover text for the enable/disable toggle.</summary>
-    public string ToggleTooltip => isEnabled ? "Disable this plugin (takes effect after restart)" : "Enable this plugin (takes effect after restart)";
+    public string ToggleTooltip => isEnabled ? "Enabled — click to disable (takes effect after restart)" : "Disabled — click to enable (takes effect after restart)";
 
     public string IndexUrl => indexUrl;
 
