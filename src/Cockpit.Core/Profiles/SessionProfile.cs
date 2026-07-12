@@ -34,8 +34,12 @@ public sealed record SessionProfile(
     string? ExecutablePath = null,
     string? Purpose = null,
     ProfileDefaults? Defaults = null,
-    ProviderConfig? ProviderConfig = null)
+    ProviderConfig? ProviderConfig = null,
+    DelegationPolicy? Delegation = null)
 {
+    /// <summary>What this profile allows when another session delegates work to it (#67); no policy means it is not a target.</summary>
+    public DelegationPolicy DelegationPolicy => Delegation ?? DelegationPolicy.None;
+
     /// <summary>Which backend drives this profile — <see cref="SessionProvider.ClaudeCli"/> when no <see cref="ProviderConfig"/> is set.</summary>
     public SessionProvider Provider => ProviderConfig?.Provider ?? SessionProvider.ClaudeCli;
 }
