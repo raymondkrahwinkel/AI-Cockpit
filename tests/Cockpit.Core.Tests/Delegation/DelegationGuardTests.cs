@@ -204,6 +204,62 @@ public class DelegationGuardTests
     }
 
     [Fact]
+    public async Task SendFollowUp_ReachesATaskThatHasAlreadyAnswered()
+    {
+        // A task that answered is Completed but its session is deliberately kept alive, so a follow-up must land
+        // on it. This was broken: "finished" was read as "cannot take another turn", the message was dropped, and
+        // the caller got a response that looked like success — so it waited for a turn that was never coming.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_StreamCompletingATurn());
+        var driverFactory = Substitute.For<ISessionDriverFactory>();
+        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var service = _Service(driverFactory, _Registry(), _Target("local"));
+
+        var task = await service.DelegateAsync(new DelegationRequest("local", "first turn"));
+        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.Status == DelegatedTaskStatus.Completed);
+
+        // The whole point is the follow-up landing on an *answered* task, so assert that state before sending —
+        // without this the test passes against the bug simply because the turn had not completed yet.
+        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Completed);
+
+        await service.SendFollowUpAsync(task.TaskId, "and now the tests");
+
+        await driver.Received(1).SendUserMessageAsync("and now the tests", Arg.Any<IReadOnlyList<Cockpit.Core.Sessions.ImageAttachment>?>(), Arg.Any<CancellationToken>());
+        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Running);
+    }
+
+    [Fact]
+    public async Task SendFollowUp_ToATaskWhoseSessionIsGone_IsRefusedLoudly()
+    {
+        // The other half: never a quiet "ok" for a follow-up that cannot land.
+        var service = _ServiceWith(_Target("local"));
+        var task = await service.DelegateAsync(new DelegationRequest("local", "work"));
+        await service.StopAsync(task.TaskId);
+
+        var followUp = async () => await service.SendFollowUpAsync(task.TaskId, "more please");
+
+        await followUp.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*no live session*");
+    }
+
+    private static async Task _WaitUntilAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; attempt < 50 && !condition(); attempt++)
+        {
+            await Task.Delay(10);
+        }
+    }
+
+    private static async IAsyncEnumerable<Cockpit.Core.Sessions.SessionEvent> _StreamCompletingATurn()
+    {
+        yield return new Cockpit.Core.Sessions.AssistantTextCompleted { SessionId = "s1", Text = "here you go" };
+        yield return new Cockpit.Core.Sessions.TurnCompleted { SessionId = "s1", Subtype = "success", Result = null, IsError = false };
+
+        // The session stays open after the turn, exactly as a real driver's stream does while it waits for the
+        // next message — if this completed, the runtime would look dead and the follow-up would have nowhere to go.
+        await Task.Delay(Timeout.Infinite, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task AFailingStart_MarksTheTaskFailed_RatherThanLeavingItQueuedForever()
     {
         var driverFactory = Substitute.For<ISessionDriverFactory>();

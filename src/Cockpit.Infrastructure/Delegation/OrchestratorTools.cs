@@ -108,16 +108,22 @@ internal sealed class OrchestratorTools
     }
 
     [McpServerTool(Name = "send_followup")]
-    [Description("Sends another turn to a delegated task that has already answered, continuing the same session.")]
+    [Description("Sends another turn to a delegated task, continuing the same session — including one that has already answered. Poll get_task_status afterwards: the new turn is done when TurnCount has gone up.")]
     public async Task<string> SendFollowUpAsync(
         [Description("The task id returned by delegate_task.")] string task_id,
         [Description("The follow-up message.")] string text,
         CancellationToken cancellationToken)
     {
-        var task = await _delegation.SendFollowUpAsync(task_id, text, cancellationToken);
-        return task is null
-            ? JsonSerializer.Serialize(new { error = $"No task '{task_id}'." }, SerializerOptions)
-            : JsonSerializer.Serialize(task, SerializerOptions);
+        try
+        {
+            var task = await _delegation.SendFollowUpAsync(task_id, text, cancellationToken);
+            return JsonSerializer.Serialize(task, SerializerOptions);
+        }
+        catch (DelegationRejectedException ex)
+        {
+            // Never a quiet "ok": a caller told the follow-up landed would wait for a turn that is not coming.
+            return JsonSerializer.Serialize(new { rejected = true, reason = ex.Message }, SerializerOptions);
+        }
     }
 
     [McpServerTool(Name = "stop_task")]

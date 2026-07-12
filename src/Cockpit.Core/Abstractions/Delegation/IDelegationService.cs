@@ -44,8 +44,12 @@ public interface IDelegationService
     /// </summary>
     (IReadOnlyList<SessionEvent> Events, int NextCursor, bool Done) GetOutput(string taskId, int cursor = 0);
 
-    /// <summary>Continues a running task with another turn, where the provider supports it.</summary>
-    Task<DelegatedTaskView?> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Continues a task with another turn on the same session. A task that has answered is Completed but still
+    /// alive, so it can take a follow-up; one whose session is gone is refused with a reason rather than silently
+    /// accepted — a follow-up that quietly does nothing leaves the caller waiting for a turn that never comes.
+    /// </summary>
+    Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default);
 
     /// <summary>Stops the task and its session. Safe to call on an unknown or already-finished task.</summary>
     Task<DelegatedTaskView?> StopAsync(string taskId);

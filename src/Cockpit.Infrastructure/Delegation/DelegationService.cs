@@ -121,12 +121,22 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         return (events, nextCursor, entry.IsFinished);
     }
 
-    public async Task<DelegatedTaskView?> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Continues a task with another turn. A task that has answered is <em>Completed</em>, not gone: its session
+    /// is deliberately kept alive so the caller can follow up — so "finished" must not be read as "cannot take
+    /// another turn". A task whose session really is gone (stopped, or never started) is refused loudly rather
+    /// than accepted into the void, since a follow-up that silently does nothing is worse than an error: the
+    /// caller waits for a turn that will never come.
+    /// </summary>
+    public async Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default)
     {
-        var entry = _Find(taskId);
-        if (entry?.Runtime is null || entry.IsFinished)
+        var entry = _Find(taskId)
+            ?? throw new DelegationRejectedException($"No task '{taskId}'.");
+
+        if (entry.Runtime is not { IsRunning: true })
         {
-            return entry?.ToView();
+            throw new DelegationRejectedException(
+                $"Task '{taskId}' has no live session to continue (it is {entry.Status}). Delegate a new task instead.");
         }
 
         entry.Status = DelegatedTaskStatus.Running;
@@ -205,6 +215,14 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         {
             var runtime = _sessionManager.Create(entry.Profile);
             entry.Attach(runtime);
+
+            // Mark it running *before* the pump can deliver anything. A fast session can complete its turn while
+            // this method is still unwinding, and setting Running afterwards would overwrite the Completed the
+            // event handler had already recorded — leaving a finished task reported as still working.
+            entry.Status = DelegatedTaskStatus.Running;
+            entry.StartedAt = DateTimeOffset.Now;
+            TasksChanged?.Invoke();
+
             runtime.EventAppended += evt => _OnTaskEvent(entry, evt);
 
             // A delegated session has no human to answer a permission prompt, so it runs under the profile's
@@ -215,10 +233,6 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 model: null,
                 enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
                 workingDirectory: entry.WorkingDirectory);
-
-            entry.Status = DelegatedTaskStatus.Running;
-            entry.StartedAt = DateTimeOffset.Now;
-            TasksChanged?.Invoke();
 
             await runtime.SendUserMessageAsync(entry.Prompt);
         }
