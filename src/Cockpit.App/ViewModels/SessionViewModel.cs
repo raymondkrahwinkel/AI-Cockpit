@@ -320,7 +320,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // local (OpenAI-compatible) driver's SupportsTools flips true only after its MCP tool session
             // connects during StartAsync — so read them here rather than right after Create(), which would
             // always see the driver's pre-start (all-false) defaults.
-            Capabilities = runtime.Capabilities;
+            // The runtime only knows them once its driver is up, which it now is.
+            if (runtime.Capabilities is { } capabilities)
+            {
+                Capabilities = capabilities;
+            }
+
             OnPropertyChanged(nameof(CanPasteImages));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
             // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
