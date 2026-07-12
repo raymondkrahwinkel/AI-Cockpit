@@ -51,7 +51,9 @@ internal sealed class PromptQuickPickControl : UserControl
             VerticalContentAlignment = VerticalAlignment.Center,
         };
         _search.TextChanged += (_, _) => _ApplyFilter();
-        _search.AddHandler(KeyDownEvent, _OnSearchKeyDown, RoutingStrategies.Tunnel);
+        // Tunnel on the control root (an ancestor of the TextBox), so the arrow keys are caught before the
+        // TextBox's own handling consumes Up/Down — a handler on the TextBox itself loses to its class handler.
+        AddHandler(KeyDownEvent, _OnSearchKeyDown, RoutingStrategies.Tunnel);
 
         _icon = new TextBlock
         {
