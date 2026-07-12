@@ -1400,7 +1400,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         _sessionCounter++;
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
-        // shows which profile each session runs under rather than a bare "Claude N".
+        // shows which profile — and therefore which provider — each session runs under.
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
         // Start the session on the current transcript-display preference; OnShowTimestampsChanged keeps
         // it live afterwards (T7).

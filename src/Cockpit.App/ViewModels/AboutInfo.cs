@@ -18,7 +18,7 @@ public sealed record AboutInfo(string AppName, string VersionText, string Descri
     public static AboutInfo FromAssembly(Assembly assembly) => new(
         "AI-Cockpit",
         _VersionText(assembly),
-        "A multi-session cockpit for driving Claude Code — and local Ollama/LM Studio models — side by side.",
+        "Run several AI coding sessions side by side — Claude Code, local Ollama/LM Studio models, or a provider added by a plugin.",
         DefaultGitHubUrl,
         DefaultPluginStoreUrl);
 

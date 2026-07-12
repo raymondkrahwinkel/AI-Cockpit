@@ -67,7 +67,7 @@
                     <Button Content="Profiles" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding ManageProfilesCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Add, edit or remove Claude profiles"/>
+                            ToolTip.Tip="Add, edit or remove session profiles"/>
                     <Button Content="MCP servers" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding OpenMcpServersCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
@@ -208,7 +208,7 @@
                 </Border>
                 <TextBlock Text="No sessions yet" FontSize="16" FontWeight="SemiBold"
                            HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                <TextBlock Text="Start a Claude session to begin. You pick the profile and its defaults up front."
+                <TextBlock Text="Start a session to begin. You pick the profile — and with it the provider — and its defaults up front."
                            TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
                 <Button Content="+ New session" Command="{Binding NewSessionCommand}"

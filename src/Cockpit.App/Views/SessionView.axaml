@@ -14,7 +14,7 @@
 
     <DockPanel Margin="12">
 
-        <!-- Session name above the panel (L5): the dialog's optional name, else "Claude N". -->
+        <!-- Session name above the panel (L5): the dialog's optional name, else "Session N". -->
         <TextBlock DockPanel.Dock="Top" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
                    Margin="2,0,0,6"/>
 
@@ -168,7 +168,7 @@
             <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"
                     Classes="Accent" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
             <TextBox x:Name="InputBox" Text="{Binding InputText}"
-                     PlaceholderText="Message Claude...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
+                     PlaceholderText="Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
         </DockPanel>
 

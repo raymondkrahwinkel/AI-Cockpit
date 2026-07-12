@@ -13,7 +13,7 @@
 
     <Design.DataContext>
         <vm:AboutInfo AppName="AI-Cockpit" VersionText="1.0.0"
-                      Description="A multi-session cockpit for driving Claude Code side by side."
+                      Description="Run several AI coding sessions side by side — Claude Code, local models, or a plugin provider."
                       GitHubUrl="https://github.com/raymondkrahwinkel/AI-Cockpit"
                       PluginStoreUrl="https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins"/>
     </Design.DataContext>

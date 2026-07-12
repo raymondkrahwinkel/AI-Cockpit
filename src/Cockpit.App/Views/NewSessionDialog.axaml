@@ -78,7 +78,7 @@
                 <TextBlock Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 <TextBox Grid.Column="1" Text="{Binding SessionName}"
-                         PlaceholderText="Optional — defaults to Claude N"/>
+                         PlaceholderText="Optional — defaults to the profile name"/>
             </Grid>
 
             <!-- Optional per-session working directory: launch this session in a project folder instead of the

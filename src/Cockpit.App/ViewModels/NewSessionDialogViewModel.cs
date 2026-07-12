@@ -80,7 +80,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
-    /// <summary>Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "Claude N".</summary>
+    /// <summary>Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "&lt;profile&gt; - N".</summary>
     [ObservableProperty]
     private string _sessionName = string.Empty;
 

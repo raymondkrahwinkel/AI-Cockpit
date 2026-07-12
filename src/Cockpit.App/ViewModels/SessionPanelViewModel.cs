@@ -13,9 +13,9 @@ namespace Cockpit.App.ViewModels;
 /// </summary>
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {
-    /// <summary>Display title for this session's sidebar/grid panel, e.g. "Claude 1". Set by <see cref="CockpitViewModel"/>.</summary>
+    /// <summary>Display title for this session's sidebar/grid panel, e.g. "Session 1". Set by <see cref="CockpitViewModel"/>.</summary>
     [ObservableProperty]
-    private string _title = "Claude";
+    private string _title = "Session";
 
     /// <summary>True while the sidebar row is showing its inline rename text box (context-menu → Rename).</summary>
     [ObservableProperty]
