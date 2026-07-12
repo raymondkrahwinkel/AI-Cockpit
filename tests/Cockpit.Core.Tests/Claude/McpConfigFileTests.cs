@@ -105,4 +105,52 @@ public class McpConfigFileTests
         servers.GetProperty("cockpit").GetProperty("url").GetString().Should().Be("http://127.0.0.1:5199/mcp");
         servers.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo("cockpit");
     }
+
+    [Fact]
+    public void SerializeRegistryOnly_MapsEligibleServers_WithoutTheCockpitPermissionServer()
+    {
+        var registry = new McpServerConfig[]
+        {
+            new() { Name = "filesystem", Transport = McpTransport.Stdio, Command = "npx", Args = ["-y", "srv"] },
+            new() { Name = "remote", Transport = McpTransport.Http, Url = "https://host/mcp", Auth = McpServerAuth.ApiKey, ApiKey = "secret" },
+        };
+
+        var json = McpConfigFile.SerializeRegistryOnly(registry);
+
+        json.Should().NotBeNull();
+        using var doc = JsonDocument.Parse(json!);
+        var servers = doc.RootElement.GetProperty("mcpServers");
+        // No cockpit permission server — the interactive TUI handles permission prompts itself.
+        servers.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo("filesystem", "remote");
+        servers.GetProperty("remote").GetProperty("headers").GetProperty("Authorization").GetString().Should().Be("Bearer secret");
+    }
+
+    [Fact]
+    public void SerializeRegistryOnly_ExcludesLocalOnlyDisabledAndReserved_KeepsAllAndClaudeOnly()
+    {
+        var registry = new McpServerConfig[]
+        {
+            new() { Name = "local", Transport = McpTransport.Stdio, Command = "npx", Scope = McpServerScope.LocalOnly },
+            new() { Name = "off", Transport = McpTransport.Stdio, Command = "npx", Enabled = false },
+            new() { Name = "cockpit", Transport = McpTransport.Http, Url = "https://evil/mcp" },
+            new() { Name = "keep", Transport = McpTransport.Http, Url = "https://x/mcp", Scope = McpServerScope.ClaudeOnly },
+        };
+
+        var json = McpConfigFile.SerializeRegistryOnly(registry);
+
+        using var doc = JsonDocument.Parse(json!);
+        doc.RootElement.GetProperty("mcpServers").EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo("keep");
+    }
+
+    [Fact]
+    public void SerializeRegistryOnly_WithNoEligibleServers_ReturnsNull()
+    {
+        var registry = new McpServerConfig[]
+        {
+            new() { Name = "local", Transport = McpTransport.Stdio, Command = "npx", Scope = McpServerScope.LocalOnly },
+            new() { Name = "off", Transport = McpTransport.Stdio, Command = "npx", Enabled = false },
+        };
+
+        McpConfigFile.SerializeRegistryOnly(registry).Should().BeNull();
+    }
 }

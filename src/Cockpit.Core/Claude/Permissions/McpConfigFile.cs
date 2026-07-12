@@ -62,6 +62,37 @@ public static class McpConfigFile
         return new JsonObject { ["mcpServers"] = servers }.ToJsonString();
     }
 
+    /// <summary>
+    /// Serializes an mcp-config body of <em>only</em> the enabled, Claude-eligible registry servers — with no
+    /// cockpit permission server. For the interactive TTY spawn (#9), which handles permission prompts in the
+    /// TUI itself (so it needs no <c>--permission-prompt-tool</c>) but should still see the shared registry's
+    /// servers (#26). Returns <see langword="null"/> when no registry server is eligible, so the caller can skip
+    /// <c>--mcp-config</c> entirely instead of passing an empty set (and, without <c>--strict-mcp-config</c>,
+    /// leave the CLI's own user/project MCP config untouched).
+    /// </summary>
+    public static string? SerializeRegistryOnly(IEnumerable<McpServerConfig> registryServers)
+    {
+        var servers = new JsonObject();
+        foreach (var server in registryServers)
+        {
+            // Same exclusions as the fan-out above: disabled, the reserved permission-server key, and
+            // local-model-only servers (Claude Code has its own file/shell/web tools, so those are noise).
+            if (!server.Enabled
+                || server.Scope == McpServerScope.LocalOnly
+                || string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (_ToConfigEntry(server) is { } entry)
+            {
+                servers[server.Name] = entry;
+            }
+        }
+
+        return servers.Count == 0 ? null : new JsonObject { ["mcpServers"] = servers }.ToJsonString();
+    }
+
     // Maps one registry server to the CLI's mcpServers entry. Stdio → command/args; HTTP → type/url with an
     // Authorization header for a static API key. OAuth-protected HTTP servers carry only their url — the
     // static config can't hold a token, so the CLI must negotiate auth itself (headless spawns can't, so

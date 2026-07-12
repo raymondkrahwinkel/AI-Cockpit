@@ -2,7 +2,9 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using FluentAssertions;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Configuration;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Claude;
 using Cockpit.Infrastructure.Claude.Tty;
@@ -19,6 +21,16 @@ namespace Cockpit.Core.Tests.Claude;
 public class ClaudeTtyLauncherTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-tty-launcher-tests-").FullName;
+    private readonly IMcpServerStore _emptyMcpStore = CreateEmptyMcpStore();
+
+    // An empty shared registry, so _WriteRegistryMcpConfig produces no --mcp-config and the argument
+    // assertions below stay about the start-default flags only.
+    private static IMcpServerStore CreateEmptyMcpStore()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync().Returns(Task.FromResult<IReadOnlyList<McpServerConfig>>([]));
+        return store;
+    }
 
     [Fact]
     public void Launch_WithAProfile_PassesTheProfileConfigDirAndTermToThePtyHostFactory()
@@ -34,7 +46,8 @@ public class ClaudeTtyLauncherTests : IDisposable
             Options.Create(new CockpitOptions()),
             executableLocator,
             new WorkspaceTrustWriter(),
-            ptyHostFactory);
+            ptyHostFactory,
+            _emptyMcpStore);
         var profile = new ClaudeProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
 
         var pty = launcher.Launch(
@@ -64,7 +77,8 @@ public class ClaudeTtyLauncherTests : IDisposable
             Options.Create(new CockpitOptions { Claude = new ClaudeCliOptions { WorkingDirectory = Directory.GetCurrentDirectory() } }),
             executableLocator,
             new WorkspaceTrustWriter(),
-            ptyHostFactory);
+            ptyHostFactory,
+            _emptyMcpStore);
         var profile = new ClaudeProfile("Personal", _configDir);
 
         launcher.Launch(profile, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
@@ -87,7 +101,8 @@ public class ClaudeTtyLauncherTests : IDisposable
             Options.Create(new CockpitOptions()),
             executableLocator,
             new WorkspaceTrustWriter(),
-            ptyHostFactory);
+            ptyHostFactory,
+            _emptyMcpStore);
 
         launcher.Launch(profile: null, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
 
@@ -113,7 +128,8 @@ public class ClaudeTtyLauncherTests : IDisposable
             Options.Create(new CockpitOptions()),
             executableLocator,
             new WorkspaceTrustWriter(),
-            ptyHostFactory);
+            ptyHostFactory,
+            _emptyMcpStore);
         var profile = new ClaudeProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
 
         launcher.Launch(profile, permissionMode: "acceptEdits", model: "opus", effort: "xhigh", columns: 100, rows: 30);
@@ -143,7 +159,8 @@ public class ClaudeTtyLauncherTests : IDisposable
             Options.Create(new CockpitOptions()),
             executableLocator,
             new WorkspaceTrustWriter(),
-            ptyHostFactory);
+            ptyHostFactory,
+            _emptyMcpStore);
 
         launcher.Launch(profile: null, permissionMode: null, model: null, effort: null, columns: 80, rows: 24);
 

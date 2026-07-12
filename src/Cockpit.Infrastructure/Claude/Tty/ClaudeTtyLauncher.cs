@@ -2,7 +2,9 @@ using System.Collections;
 using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Claude;
+using Cockpit.Core.Claude.Permissions;
 using Cockpit.Core.Claude.Tty;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
@@ -20,17 +22,20 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     private readonly IClaudeExecutableLocator _executableLocator;
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
     private readonly IPtyHostFactory _ptyHostFactory;
+    private readonly IMcpServerStore _mcpServerStore;
 
     public ClaudeTtyLauncher(
         IOptions<CockpitOptions> options,
         IClaudeExecutableLocator executableLocator,
         WorkspaceTrustWriter workspaceTrustWriter,
-        IPtyHostFactory ptyHostFactory)
+        IPtyHostFactory ptyHostFactory,
+        IMcpServerStore mcpServerStore)
     {
         _options = options.Value;
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
         _ptyHostFactory = ptyHostFactory;
+        _mcpServerStore = mcpServerStore;
     }
 
     public IConPtyProcess Launch(
@@ -64,9 +69,37 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             ?? cli.ExecutablePath;
 
         var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome);
-        var arguments = BuildArguments(permissionMode, model, effort);
+        var arguments = BuildArguments(permissionMode, model, effort, _WriteRegistryMcpConfig());
 
         return _ptyHostFactory.Start(executablePath, arguments, workingDirectory, environment, columns, rows);
+    }
+
+    /// <summary>
+    /// Fans the shared MCP registry (#26) into the interactive TUI by writing a registry-only
+    /// <c>--mcp-config</c> file (no cockpit permission server — the TUI prompts for permission itself) and
+    /// returning its path, or <see langword="null"/> when the registry has no Claude-eligible server. Sync
+    /// (matching <see cref="Launch"/>'s synchronous spawn path) and best-effort: any failure just launches the
+    /// session without the shared servers rather than blocking it.
+    /// </summary>
+    private string? _WriteRegistryMcpConfig()
+    {
+        try
+        {
+            var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            var json = McpConfigFile.SerializeRegistryOnly(registry);
+            if (json is null)
+            {
+                return null;
+            }
+
+            var path = Path.Combine(Path.GetTempPath(), $"cockpit-tty-mcp-{Guid.NewGuid():N}.json");
+            File.WriteAllText(path, json);
+            return path;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -78,7 +111,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     /// session and does not persist a transcript under that id) — the cockpit instead locates the live
     /// transcript as the new file that appears after launch (see <c>ISessionTranscriptReader</c>).
     /// </summary>
-    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort)
+    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort, string? mcpConfigPath = null)
     {
         var arguments = new List<string>();
 
@@ -105,6 +138,16 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         {
             arguments.Add("--effort");
             arguments.Add(effort);
+        }
+
+        // Fan the shared MCP registry (#26) into the interactive TUI. Deliberately without --strict-mcp-config:
+        // --mcp-config adds the cockpit-configured servers on top of the CLI's own user/project config, so the
+        // TTY session gains the registry's servers without losing the user's own .mcp.json (strict would
+        // replace them). No permission server here — the TUI handles permission prompts itself.
+        if (!string.IsNullOrWhiteSpace(mcpConfigPath))
+        {
+            arguments.Add("--mcp-config");
+            arguments.Add(mcpConfigPath);
         }
 
         return arguments;
