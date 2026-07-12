@@ -250,17 +250,24 @@ public partial class CockpitView : UserControl
             return false;
         }
 
-        // While typing (text field or terminal) only an "always active" binding — the command palette — fires,
-        // so an ordinary shortcut never hijacks a keystroke but the palette stays reachable from anywhere.
+        // While typing (text field or terminal), most bindings stay gated so they never hijack a keystroke.
+        // A binding still fires if it is "always active" (the command palette) or its gesture uses two or more
+        // modifiers (e.g. Ctrl+Shift+P) — those are commands, not something you type, and are never a lone
+        // readline/shell key like Ctrl+R, so intercepting them over the terminal is safe.
         var typing = _IsTypingSurfaceFocused();
         foreach (var binding in shortcuts)
         {
-            if (typing && !binding.AlwaysActive)
+            if (_TryParseGesture(binding.Gesture) is not { } gesture)
             {
                 continue;
             }
 
-            if (_TryParseGesture(binding.Gesture) is { } gesture && gesture.Matches(e))
+            if (typing && !binding.AlwaysActive && !_HasMultipleModifiers(gesture))
+            {
+                continue;
+            }
+
+            if (gesture.Matches(e))
             {
                 binding.Invoke();
                 return true;
@@ -269,6 +276,9 @@ public partial class CockpitView : UserControl
 
         return false;
     }
+
+    private static bool _HasMultipleModifiers(KeyGesture gesture) =>
+        System.Numerics.BitOperations.PopCount((uint)gesture.KeyModifiers) >= 2;
 
     // KeyGesture.Parse throws on an invalid/blank gesture string (a half-typed one in Options); treat any
     // unparseable gesture as "no match" rather than letting it crash the key handler.
