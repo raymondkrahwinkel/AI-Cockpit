@@ -30,7 +30,8 @@ public class TtyTranscriptStatusTests
     [InlineData("max_tokens")]
     public void ClassifyLine_AssistantWithATerminalStopReason_IsCompleted(string stopReason)
     {
-        TtyTranscriptStatus.ClassifyLine($$"""{"type":"assistant","message":{"role":"assistant","stop_reason":"{{stopReason}}"}}""").Should().Be(false);
+        var line = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"stop_reason\":\"" + stopReason + "\"}}";
+        TtyTranscriptStatus.ClassifyLine(line).Should().Be(false);
     }
 
     [Theory]

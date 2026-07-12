@@ -67,6 +67,15 @@
                     <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center" FontSize="11"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <!-- Token/cost meter (#8): the session's running token and cost total, folded from each
+                         completed turn's result usage. Hidden until anything has accrued. -->
+                    <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                            CornerRadius="3" Padding="5,1" VerticalAlignment="Center"
+                            IsVisible="{Binding HasUsage}"
+                            ToolTip.Tip="{Binding UsageTooltip}">
+                        <TextBlock Text="{Binding UsageSummary}" FontSize="10"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    </Border>
                 </StackPanel>
             </StackPanel>
         </Border>

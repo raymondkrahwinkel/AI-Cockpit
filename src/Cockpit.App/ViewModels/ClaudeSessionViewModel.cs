@@ -144,6 +144,21 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
     /// <summary>True once at least one turn has finished, so an idle session reads as Done rather than Idle — independent of whether a (success) turn added a transcript row (T4).</summary>
     private bool _hasCompletedATurn;
 
+    /// <summary>Running token/cost total for the session (#8), folded from each completed turn's result usage.</summary>
+    private readonly SessionUsageMeter _usage = new();
+
+    /// <summary>True once any usage/cost has accrued, so the meter shows only when there is something to show.</summary>
+    [ObservableProperty]
+    private bool _hasUsage;
+
+    /// <summary>Compact token/cost meter shown next to the status, e.g. "45.2k tok · $0.0123" (#8).</summary>
+    [ObservableProperty]
+    private string _usageSummary = string.Empty;
+
+    /// <summary>Per-bucket usage breakdown for the meter's hover text (#8).</summary>
+    [ObservableProperty]
+    private string _usageTooltip = string.Empty;
+
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
     // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
@@ -857,6 +872,7 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                 _currentAssistantEntry = null;
                 _hasCompletedATurn = true;
                 IsBusy = false;
+                _AccumulateUsage(turn);
                 _RecomputeStatus();
                 // "exit" turn finished → ask the cockpit to close this session (T10). Skip draining the
                 // queue: the session is going away, so anything still queued is moot.
@@ -914,6 +930,17 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
             (false, true) => SessionStatus.Busy,
             (false, false) => _hasCompletedATurn ? SessionStatus.Done : SessionStatus.Idle,
         };
+    }
+
+    // Fold this turn's reported usage/cost into the running session meter (#8) and refresh the bound
+    // meter text. A turn whose result carried no usage (e.g. an error) contributes nothing but is still
+    // counted, so the meter simply stays as it was when there is nothing new to add.
+    private void _AccumulateUsage(TurnCompleted turn)
+    {
+        _usage.Add(turn.Usage, turn.TotalCostUsd);
+        HasUsage = _usage.HasData;
+        UsageSummary = _usage.Summary;
+        UsageTooltip = _usage.Tooltip;
     }
 
     /// <summary>
