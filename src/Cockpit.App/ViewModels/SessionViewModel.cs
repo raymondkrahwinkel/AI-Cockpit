@@ -23,13 +23,12 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 {
-    private readonly ISessionDriverFactory? _driverFactory;
+    private readonly ISessionManager? _sessionManager;
 
-    // Created from the factory once the profile (and therefore the provider) is known, in
-    // StartWithProfileAsync — not injected up front, since the driver type depends on the chosen profile.
-    private ISessionDriver? _session;
-    private CancellationTokenSource? _lifetimeCancellation;
-    private Task? _eventLoopTask;
+    // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
+    // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
+    // StartWithProfileAsync. The manager owns it and is the one place it gets stopped.
+    private ISessionRuntime? _runtime;
 
     /// <summary>The per-session MCP-server selection (#44) from the New-session dialog, set just before <see cref="StartWithProfileAsync"/> reads it in <see cref="StartConfiguredAsync"/>.</summary>
     private IReadOnlySet<string>? _enabledMcpServerNames;
@@ -218,13 +217,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     }
 
     public SessionViewModel(
-        ISessionDriverFactory driverFactory,
+        ISessionManager sessionManager,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptCleanupService? cleanupService = null)
     {
-        _driverFactory = driverFactory;
+        _sessionManager = sessionManager;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
     }
@@ -251,7 +250,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null)
     {
-        if (_eventLoopTask is not null)
+        if (_runtime is not null)
         {
             return;
         }
@@ -269,10 +268,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         await StartWithProfileAsync(profile, workingDirectory);
 
-        // StartWithProfileAsync swallows launch failures (it only sets Status); it leaves _eventLoopTask
-        // null when the CLI never started. In that case unlock and reset the mode so a failed bypass
-        // launch doesn't strand the panel on a phantom, disabled "Bypass permissions" with no session.
-        if (_eventLoopTask is null)
+        // StartWithProfileAsync swallows launch failures (it only sets Status); the runtime is left un-started
+        // when the CLI never came up. In that case unlock and reset the mode so a failed bypass launch doesn't
+        // strand the panel on a phantom, disabled "Bypass permissions" with no session.
+        if (_runtime is not { IsRunning: true })
         {
             IsPermissionModeLocked = false;
             SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
@@ -281,7 +280,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task StartWithProfileAsync(SessionProfile? profile, string? workingDirectory = null)
     {
-        if (_driverFactory is null)
+        if (_sessionManager is null)
         {
             return;
         }
@@ -299,30 +298,29 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         Status = "Starting...";
-        _lifetimeCancellation = new CancellationTokenSource();
 
         try
         {
-            // Now the profile is known, pick the driver for its provider (Claude-CLI vs a local HTTP
-            // provider vs a plugin-registered one). Inside the try: a profile referencing a missing/unresolvable
-            // plugin provider (or an invalid persisted ConfigJson) throws loudly here (SessionDriverFactory,
-            // OpenAiCompatPluginSessionDriverFactory) — catching it degrades to the existing failed-launch
-            // path (Status set, _eventLoopTask left null) instead of an unhandled throw stranding the panel
-            // that CockpitViewModel already added (#45 review finding 2).
-            _session = _driverFactory.Create(profile);
+            // The runtime owns the driver and the event pump (#68); this panel subscribes to its events and
+            // marshals them onto the UI thread itself. Inside the try: a profile referencing a missing or
+            // unresolvable plugin provider (or an invalid persisted ConfigJson) throws during the runtime's
+            // start — catching it degrades to the existing failed-launch path (Status set, no running runtime)
+            // instead of an unhandled throw stranding the panel that CockpitViewModel already added.
+            var runtime = _sessionManager.Create(profile);
+            runtime.EventAppended += _OnSessionEvent;
+            _runtime = runtime;
 
             // The model dropdown lists Claude aliases (opus/sonnet/…), which are meaningless to a local
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            await _session.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, _lifetimeCancellation.Token);
-            _eventLoopTask = ConsumeEventsAsync(_lifetimeCancellation.Token);
+            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory);
 
             // Capabilities (notably SupportsTools) only settle once the driver has actually started — the
             // local (OpenAI-compatible) driver's SupportsTools flips true only after its MCP tool session
             // connects during StartAsync — so read them here rather than right after Create(), which would
             // always see the driver's pre-start (all-false) defaults.
-            Capabilities = _session.Capabilities;
+            Capabilities = runtime.Capabilities;
             OnPropertyChanged(nameof(CanPasteImages));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
             // gets the "Allow all tools" convenience toggle; Claude uses its own permission mode dropdown.
@@ -335,13 +333,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // finished starting: assigning the property below only calls the driver (through
             // OnAutoApproveToolsChanged) when the value actually changes, i.e. exactly the freshly-seeded
             // case — the pre-set case needs its own explicit re-apply just after, since any hook call at
-            // flip-time hit a session that didn't exist yet (_session is only assigned earlier in this call).
+            // flip-time hit a session that wasn't running yet.
             var wasAlreadyOn = AutoApproveTools;
             AutoApproveTools = AutoApproveTools || (isLocalToolSession && profile?.Defaults?.AutoApproveTools == true);
 
             if (AutoApproveTools && wasAlreadyOn)
             {
-                await _session.SetAutoApproveToolsAsync(true, _lifetimeCancellation.Token);
+                await runtime.SetAutoApproveToolsAsync(true);
             }
 
             ActiveProfileLabel = profile?.Label;
@@ -363,13 +361,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Live-toggles auto-approval of tool calls on the running session's driver (local sessions).</summary>
     partial void OnAutoApproveToolsChanged(bool value)
     {
-        _ = _session?.SetAutoApproveToolsAsync(value);
+        _ = _runtime?.SetAutoApproveToolsAsync(value);
     }
 
     /// <summary>Live-switches the running session's permission mode. No-op before the session has started.</summary>
     partial void OnSelectedPermissionModeChanged(PermissionModeOption value)
     {
-        if (_session is null || _eventLoopTask is null)
+        if (_runtime is not { IsRunning: true })
         {
             return;
         }
@@ -380,7 +378,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Live-switches the running session's model. No-op before the session has started.</summary>
     partial void OnSelectedModelChanged(ModelOption value)
     {
-        if (_session is null || _eventLoopTask is null)
+        if (_runtime is not { IsRunning: true })
         {
             return;
         }
@@ -391,7 +389,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Live-switches the running session's thinking budget. No-op before the session has started.</summary>
     partial void OnSelectedEffortChanged(EffortOption value)
     {
-        if (_session is null || _eventLoopTask is null)
+        if (_runtime is not { IsRunning: true })
         {
             return;
         }
@@ -402,14 +400,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [RelayCommand]
     private async Task StopAsync()
     {
-        if (_session is null || _eventLoopTask is null)
+        if (_runtime is not { IsRunning: true })
         {
             return;
         }
 
         try
         {
-            await _session.InterruptAsync();
+            await _runtime.InterruptAsync();
             Status = "Interrupted.";
         }
         catch (Exception ex)
@@ -420,14 +418,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task _SetPermissionModeSafeAsync(string mode)
     {
-        if (_session is null)
+        if (_runtime is null)
         {
             return;
         }
 
         try
         {
-            await _session.SetPermissionModeAsync(mode);
+            await _runtime.SetPermissionModeAsync(mode);
         }
         catch (Exception ex)
         {
@@ -437,14 +435,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task _SetModelSafeAsync(string model)
     {
-        if (_session is null)
+        if (_runtime is null)
         {
             return;
         }
 
         try
         {
-            await _session.SetModelAsync(model);
+            await _runtime.SetModelAsync(model);
         }
         catch (Exception ex)
         {
@@ -454,14 +452,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task _SetMaxThinkingTokensSafeAsync(int maxThinkingTokens)
     {
-        if (_session is null)
+        if (_runtime is null)
         {
             return;
         }
 
         try
         {
-            await _session.SetMaxThinkingTokensAsync(maxThinkingTokens);
+            await _runtime.SetMaxThinkingTokensAsync(maxThinkingTokens);
         }
         catch (Exception ex)
         {
@@ -523,7 +521,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // message and keep the typed text rather than clearing it into a raw error. The driver itself is
         // only created once the session starts (#26), so a null session means "not started" too. Queued
         // dispatch never lands here: a queue only exists once a turn was in flight, i.e. after a start.
-        if (_session is null || _eventLoopTask is null)
+        if (_runtime is not { IsRunning: true })
         {
             Transcript.Add(new TranscriptEntryViewModel(
                 TranscriptEntryKind.Error, "The session has not started yet — nothing was sent."));
@@ -578,7 +576,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Sends a message to the session now, echoing it into the transcript and marking the turn busy.</summary>
     private async Task _DispatchMessageAsync(string text, IReadOnlyList<Core.Sessions.ImageAttachment> images)
     {
-        if (_session is null)
+        if (_runtime is null)
         {
             return;
         }
@@ -606,7 +604,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
         try
         {
-            await _session.SendUserMessageAsync(text, images);
+            await _runtime.SendUserMessageAsync(text, images);
         }
         catch (Exception ex)
         {
@@ -662,19 +660,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     private async Task RespondToPermissionAsync(TranscriptEntryViewModel entry, bool allow)
     {
-        if (_session is null || entry.ToolUseId is null)
+        if (_runtime is null || entry.ToolUseId is null)
         {
             return;
         }
 
         entry.PermissionDecision = allow ? "Allowed" : "Denied";
         entry.IsPendingPermission = false;
-        await _session.RespondToPermissionAsync(entry.ToolUseId, allow);
+        await _runtime.RespondToPermissionAsync(entry.ToolUseId, allow);
     }
 
     private async Task AllowAlwaysAsync(TranscriptEntryViewModel entry, PermissionRuleScope scope)
     {
-        if (_session is null || entry.ToolUseId is null || entry.ToolName is null)
+        if (_runtime is null || entry.ToolUseId is null || entry.ToolName is null)
         {
             return;
         }
@@ -684,7 +682,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : $"Always allowed (exact: {entry.ToolName})";
         entry.IsPendingPermission = false;
 
-        await _session.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
+        await _runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
 
     /// <summary>Extracts read-aloud sentences from the just-finished turn's assistant prose and enqueues them (#35). No-op when the turn produced no assistant text.</summary>
@@ -711,27 +709,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ = EnqueueReadAloudAsync(entry.Text, TtsVoiceId);
     }
 
-    private async Task ConsumeEventsAsync(CancellationToken cancellationToken)
-    {
-        if (_session is null)
-        {
-            return;
-        }
+    // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI
+    // thread is this panel's job, because it is the consumer that touches UI — a headless consumer of the same
+    // runtime marshals nothing.
+    private void _OnSessionEvent(SessionEvent evt) => Dispatcher.UIThread.Post(() => Apply(evt));
 
-        try
-        {
-            await foreach (var evt in _session.Events.WithCancellation(cancellationToken))
-            {
-                await Dispatcher.UIThread.InvokeAsync(() => Apply(evt));
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected on shutdown.
-        }
-    }
-
-    /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="ConsumeEventsAsync"/>.</summary>
+    /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="_OnSessionEvent"/>.</summary>
     internal void Apply(SessionEvent evt)
     {
         // "Thinking…" tracks the model working with no visible output yet. Any assistant output, a tool
@@ -965,36 +948,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     protected override async ValueTask DisposeCoreAsync()
     {
-        _lifetimeCancellation?.Cancel();
-
-        // Dispose the session (kill the CLI process) first: that closes its stdout so the event loop
-        // unwinds on its own, and — critically on app shutdown — it kills the child claude even if the
-        // UI dispatcher is already gone and the loop's final dispatch can't complete, which is what
-        // kept the child (and its MCP permission-server connection) alive and hung the process (#32).
-        if (_session is not null)
+        if (_runtime is null)
         {
-            await _session.DisposeAsync();
+            return;
         }
 
-        if (_eventLoopTask is not null)
-        {
-            try
-            {
-                // The child is already dead here; a bounded wait keeps a stuck final UI dispatch from
-                // blocking shutdown forever.
-                await _eventLoopTask.WaitAsync(TimeSpan.FromSeconds(2));
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected: cancelling the lifetime token ends the event loop.
-            }
-            catch (TimeoutException)
-            {
-                // The dispatcher is gone and the loop can't finish; the child is already killed, so
-                // dropping the wait is safe.
-            }
-        }
+        // Stop through the manager, which owns the runtime: the same path an orchestrator's stop_task (#67)
+        // takes, so a session ends in one state however it was closed. Unsubscribing first means the teardown
+        // cannot post another event at a panel that is going away — and since the pump no longer marshals to
+        // the UI thread, killing the child no longer depends on the dispatcher still being alive, which is
+        // what used to hang shutdown with a live child claude (#32).
+        _runtime.EventAppended -= _OnSessionEvent;
+        var runtime = _runtime;
+        _runtime = null;
 
-        _lifetimeCancellation?.Dispose();
+        if (_sessionManager is not null)
+        {
+            await _sessionManager.StopAsync(runtime.Id);
+        }
+        else
+        {
+            await runtime.DisposeAsync();
+        }
     }
 }
