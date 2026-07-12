@@ -32,6 +32,11 @@ namespace Cockpit.Core.Profiles;
 /// Whether a task running on this profile may itself delegate. Default <see langword="false"/>: without it, a
 /// sub-agent handed the orchestrator tools could delegate in a loop.
 /// </param>
+/// <param name="TimeoutMinutes">
+/// How long a task may run on this profile before the cockpit stops it. A delegated session has nobody watching
+/// it, so a model that loops, waits on something that never comes, or simply grinds on would otherwise hold a
+/// slot — and burn a provider's usage — indefinitely. 0 means no limit.
+/// </param>
 /// <param name="AllowedTaskTypes">The task categories this profile accepts; empty accepts any.</param>
 /// <param name="Purpose">Free text telling a calling agent what this profile is good for.</param>
 /// <param name="Tags">Capability tags (<c>code</c>, <c>summarize</c>, <c>cheap</c>, <c>local</c>, …) for selection.</param>
@@ -41,12 +46,16 @@ public sealed record DelegationPolicy(
     IReadOnlyList<string>? AllowedWorkingDirs = null,
     string PermissionCeiling = DelegationPolicy.DefaultPermissionCeiling,
     bool MayDelegateFurther = false,
+    int TimeoutMinutes = DelegationPolicy.DefaultTimeoutMinutes,
     IReadOnlyList<string>? AllowedTaskTypes = null,
     string? Purpose = null,
     IReadOnlyList<string>? Tags = null)
 {
     /// <summary>Delegated tasks run under this mode unless the profile allows a more permissive one.</summary>
     public const string DefaultPermissionCeiling = "acceptEdits";
+
+    /// <summary>Long enough for real work, short enough that a stuck task does not hold a slot all afternoon.</summary>
+    public const int DefaultTimeoutMinutes = 15;
 
     /// <summary>A profile with no policy of its own: not a delegation target.</summary>
     public static DelegationPolicy None { get; } = new();

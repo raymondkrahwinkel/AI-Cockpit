@@ -61,6 +61,10 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private bool _mayDelegateFurther;
 
+    /// <summary>How long a delegated task may run here before the cockpit stops it — nobody is watching a delegated session, so a model that loops would otherwise hold the slot forever. 0 = no limit.</summary>
+    [ObservableProperty]
+    private int _delegationTimeoutMinutes;
+
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;
 
@@ -230,6 +234,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _allowedTaskTypes = delegation.AllowedTaskTypes is { Count: > 0 } types ? string.Join(", ", types) : string.Empty;
         _maxConcurrentTasks = delegation.MaxConcurrent;
         _mayDelegateFurther = delegation.MayDelegateFurther;
+        _delegationTimeoutMinutes = delegation.TimeoutMinutes;
 
         _canChooseProvider = canChooseProvider;
         _isLoggedIn = isLoggedIn;
@@ -291,6 +296,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             AllowedWorkingDirs: null,
             PermissionCeiling: DelegationPolicy.DefaultPermissionCeiling,
             MayDelegateFurther: MayDelegateFurther,
+            TimeoutMinutes: Math.Max(0, DelegationTimeoutMinutes),
             AllowedTaskTypes: taskTypes.Count > 0 ? taskTypes : null,
             Purpose: string.IsNullOrWhiteSpace(DelegationPurpose) ? null : DelegationPurpose.Trim(),
             Tags: null);

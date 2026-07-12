@@ -34,6 +34,9 @@ internal sealed class DelegatedTaskEntry
 
     public ISessionRuntime? Runtime { get; private set; }
 
+    /// <summary>Fires when the task outlives what its profile allows; cancelled the moment the task ends, so a finished task is never stopped after the fact.</summary>
+    public CancellationTokenSource? TimeoutCancellation { get; set; }
+
     public DelegatedTaskStatus Status { get; set; } = DelegatedTaskStatus.Queued;
 
     public DateTimeOffset CreatedAt { get; } = DateTimeOffset.Now;
@@ -58,6 +61,11 @@ internal sealed class DelegatedTaskEntry
     /// </summary>
     public void Finish(DelegatedTaskStatus status, string? result, string? error, bool keepSessionAlive = false)
     {
+        // The task is done, so its timeout must not fire later and stop a session that answered long ago.
+        TimeoutCancellation?.Cancel();
+        TimeoutCancellation?.Dispose();
+        TimeoutCancellation = null;
+
         Status = status;
         Result = result ?? Result;
         Error = error;

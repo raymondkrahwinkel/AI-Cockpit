@@ -214,6 +214,17 @@
                                                ToolTip.Tip="How many delegated tasks may run on this profile at the same time — keeps a burst of sub-tasks from eating this provider's usage (or the GPU, for a local model)"/>
                             </StackPanel>
 
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Stop a task after" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <NumericUpDown Value="{Binding DelegationTimeoutMinutes}" Minimum="0" Maximum="240"
+                                               Increment="1" FormatString="0" Width="110"
+                                               HorizontalContentAlignment="Center"
+                                               ToolTip.Tip="Minutes a delegated task may run here before the cockpit stops it. Nobody is watching a delegated session, so a model that loops or waits on something that never comes would otherwise hold this profile's slot indefinitely. 0 = no limit."/>
+                                <TextBlock Text="minutes (0 = no limit)" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            </StackPanel>
+
                             <CheckBox Content="Tasks on this profile may delegate further"
                                       IsChecked="{Binding MayDelegateFurther}"
                                       ToolTip.Tip="Off by default: without this, a delegated task cannot hand work on again, so a chain of agents cannot start"/>
