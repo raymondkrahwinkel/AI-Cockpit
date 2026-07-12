@@ -23,6 +23,14 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Cockpit is a GUI app, but when it is launched from a terminal (e.g. Ghostty) it inherits that
+        // terminal's self-identification — TERM_PROGRAM=ghostty, GHOSTTY_*, TERM=xterm-ghostty. The SvcSystems
+        // (XTerm.NET) renderer picks that up through the Avalonia/Skia text stack and draws every line
+        // underlined; a desktop launch has none of these set, so it does not. Strip the host-terminal identity
+        // from this process's own environment before Avalonia starts — the same markers TtyEnvironment already
+        // scrubs for the claude pty (#58), so the pty inherits a clean environment too.
+        ScrubHostTerminalIdentity();
+
         var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "logs", "cockpit.log");
         var services = new ServiceCollection();
@@ -162,6 +170,65 @@ sealed class Program
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int unsetenv(string name);
+
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int setenv(string name, string value, int overwrite);
+
+    // Removes the host terminal's self-identification from this process's own environment (see the call in
+    // Main). Reuses the same marker set TtyEnvironment scrubs for the claude pty (#58): TERM_PROGRAM(_VERSION)
+    // covers every terminal that sets it, plus the GHOSTTY_* vars, and TERM is normalised to a generic
+    // terminfo name whatever terminal launched us — so the render is deterministic and terminal-independent.
+    // COLORTERM is deliberately left untouched — it is a generic truecolor-support signal, not a terminal id.
+    private static void ScrubHostTerminalIdentity()
+    {
+        var markers = new List<string>();
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            if (entry.Key is string key && Cockpit.Core.Claude.Tty.TtyEnvironment.IsHostTerminalIdentityMarker(key))
+            {
+                markers.Add(key);
+            }
+        }
+
+        foreach (var key in markers)
+        {
+            RemoveFromEnvironment(key);
+        }
+
+        // A terminal-specific TERM (e.g. xterm-ghostty) is what the SvcSystems/Skia render stack keys off,
+        // drawing every line underlined; normalise anything that is not already the generic value.
+        var term = Environment.GetEnvironmentVariable("TERM");
+        if (!string.IsNullOrEmpty(term)
+            && !string.Equals(term, Cockpit.Core.Claude.Tty.TtyEnvironment.TermValue, StringComparison.OrdinalIgnoreCase))
+        {
+            AssignEnvironment("TERM", Cockpit.Core.Claude.Tty.TtyEnvironment.TermValue);
+        }
+    }
+
+    // Environment.SetEnvironmentVariable updates .NET's managed copy but does not reliably remove the variable
+    // from the native (libc) environment that Skia and other native libraries read via getenv — so on Unix we
+    // also call unsetenv/setenv directly. Without this the scrub has no effect on the render and the host
+    // terminal's identity still leaks through (the underline bug when Cockpit is launched from Ghostty).
+    private static void RemoveFromEnvironment(string key)
+    {
+        Environment.SetEnvironmentVariable(key, null);
+        if (!OperatingSystem.IsWindows())
+        {
+            unsetenv(key);
+        }
+    }
+
+    private static void AssignEnvironment(string key, string value)
+    {
+        Environment.SetEnvironmentVariable(key, value);
+        if (!OperatingSystem.IsWindows())
+        {
+            setenv(key, value, 1);
+        }
+    }
+
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
