@@ -348,14 +348,18 @@
     </Style>
     <Style Selector="TabItem">
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
-        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="FontSize" Value="13"/>
-        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Padding" Value="13,6"/>
         <Setter Property="Margin" Value="0,0,6,0"/>
         <Setter Property="MinHeight" Value="0"/>
         <Setter Property="Template">
             <ControlTemplate>
                 <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
                         CornerRadius="{StaticResource CockpitControlRadius}"
                         Padding="{TemplateBinding Padding}">
                     <ContentPresenter Content="{TemplateBinding Header}"
@@ -368,16 +372,18 @@
         </Setter>
     </Style>
     <Style Selector="TabItem:pointerover">
-        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
     </Style>
     <Style Selector="TabItem:selected">
         <Setter Property="Background" Value="{StaticResource CockpitAccentBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style Selector="TabItem:selected:pointerover">
         <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
 
 </Styles>
