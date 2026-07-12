@@ -161,6 +161,14 @@
     <Style Selector="ToggleButton:checked:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitAccentHoverBrush}"/>
     </Style>
+    <!-- Compact toggle: same dense footprint as Button.Compact, so a toggle sitting in a compact control
+         row (e.g. the TTY header's Read aloud beside Redraw) lines up at the same height. -->
+    <Style Selector="ToggleButton.Compact">
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="MinHeight" Value="28"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
 
     <!-- ComboBox: flat, hairline, compact -->
     <Style Selector="ComboBox">

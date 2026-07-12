@@ -1,9 +1,11 @@
 using Avalonia.Threading;
+using Microsoft.Extensions.Options;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Claude;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Claude;
+using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Voice;
 
@@ -71,6 +73,10 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     [ObservableProperty]
     private string _diagnostics = string.Empty;
 
+    /// <summary>The working directory the <c>claude</c> TUI runs in (the configured <c>Claude:WorkingDirectory</c>, else the process cwd — same resolution as <c>ClaudeTtyLauncher</c>), shown compactly in the header so it is clear which project a session is operating on.</summary>
+    [ObservableProperty]
+    private string _workingPath = string.Empty;
+
     /// <summary>
     /// Global TTY terminal font family (#40), mirrored from <c>CockpitViewModel.TerminalFontFamily</c> at
     /// session creation and pushed live on every settings change (see
@@ -108,11 +114,21 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ISessionTranscriptReader? transcriptReader = null,
-        ITranscriptCleanupService? cleanupService = null)
+        ITranscriptCleanupService? cleanupService = null,
+        IOptions<CockpitOptions>? options = null)
     {
         _launcher = launcher;
         _transcriptReader = transcriptReader;
+        WorkingPath = ResolveWorkingPath(options);
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
+    }
+
+    // The effective TTY working directory — the configured Claude:WorkingDirectory when set, else the process
+    // cwd. Mirrors ClaudeTtyLauncher's own resolution so the header shows exactly where the TUI runs.
+    private static string ResolveWorkingPath(IOptions<CockpitOptions>? options)
+    {
+        var configured = options?.Value.Claude.WorkingDirectory;
+        return string.IsNullOrWhiteSpace(configured) ? Directory.GetCurrentDirectory() : configured;
     }
 
     /// <summary>Raw bytes, no cleanup — the terminal has no input box to proofread in, so the transcript goes straight to the pty like a typed keystroke.</summary>
