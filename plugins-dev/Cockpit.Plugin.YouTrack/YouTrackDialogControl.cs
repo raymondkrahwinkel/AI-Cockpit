@@ -26,6 +26,9 @@ internal sealed class YouTrackDialogControl : UserControl
     private const string AllOption = "All";
     private const int MaxResults = 100;
 
+    // The project-filter's "every project" entry: a null Tag omits the server-side project: clause (#48).
+    private static readonly YouTrackProjectOption AllProjectOption = new(null, AllOption);
+
     private readonly YouTrackSettings _settings;
     private readonly ICockpitActions _actions;
     private readonly YouTrackClient _client = new();
@@ -69,9 +72,9 @@ internal sealed class YouTrackDialogControl : UserControl
 
         _projectFilter = new ComboBox
         {
-            ItemsSource = new List<string> { AllOption },
+            ItemsSource = new List<YouTrackProjectOption> { AllProjectOption },
             SelectedIndex = 0,
-            Width = 160,
+            Width = 220,
             Margin = new Thickness(0, 0, 8, 0),
         };
         _projectFilter.SelectionChanged += async (_, _) => await _OnProjectChangedAsync();
@@ -250,14 +253,19 @@ internal sealed class YouTrackDialogControl : UserControl
             ? []
             : await _client.GetProjectsAsync(instance.InstanceUrl, instance.Token, CancellationToken.None);
 
-        var options = new List<string> { AllOption };
-        options.AddRange(projects.OrderBy(project => project, StringComparer.OrdinalIgnoreCase));
+        var options = new List<YouTrackProjectOption> { AllProjectOption };
+        options.AddRange(projects
+            .OrderBy(project => project.ShortName, StringComparer.OrdinalIgnoreCase)
+            .Select(project => new YouTrackProjectOption(
+                project.ShortName,
+                string.IsNullOrWhiteSpace(project.Name) ? project.ShortName : $"{project.ShortName} - {project.Name}")));
 
         _isSyncingProjectFilter = true;
         _projectFilter.ItemsSource = options;
-        _projectFilter.SelectedItem = !string.IsNullOrWhiteSpace(instance.DefaultProjectTag) && options.Contains(instance.DefaultProjectTag)
-            ? instance.DefaultProjectTag
-            : AllOption;
+        _projectFilter.SelectedItem = options.FirstOrDefault(option =>
+            !string.IsNullOrWhiteSpace(instance.DefaultProjectTag)
+            && string.Equals(option.Tag, instance.DefaultProjectTag, StringComparison.OrdinalIgnoreCase))
+            ?? AllProjectOption;
         _isSyncingProjectFilter = false;
 
         await _LoadIssuesAsync();
@@ -294,8 +302,8 @@ internal sealed class YouTrackDialogControl : UserControl
                 return;
             }
 
-            var selectedProject = _projectFilter.SelectedItem as string;
-            var projectTag = string.IsNullOrEmpty(selectedProject) || selectedProject == AllOption ? null : selectedProject;
+            // A null Tag (the "All" option) omits the project: clause and queries every project on the instance.
+            var projectTag = (_projectFilter.SelectedItem as YouTrackProjectOption)?.Tag;
 
             _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter: null, MaxResults, CancellationToken.None);
             _PopulateStateFilter();
@@ -434,4 +442,12 @@ internal sealed class YouTrackDialogControl : UserControl
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+
+    // A project-filter dropdown entry: Tag is the server-side query value (null = every project, the "All"
+    // entry), Display is what the user sees — "SHORTNAME - Full Name", or just the short name when the
+    // instance reports no name. ToString drives the ComboBox's default item rendering.
+    private sealed record YouTrackProjectOption(string? Tag, string Display)
+    {
+        public override string ToString() => Display;
+    }
 }

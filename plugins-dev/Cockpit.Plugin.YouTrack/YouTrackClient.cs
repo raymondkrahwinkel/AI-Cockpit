@@ -52,12 +52,12 @@ internal sealed class YouTrackClient
     }
 
     /// <summary>
-    /// Distinct project short-names configured on the instance, via the admin API (needs the token's account
-    /// to have project-admin read access). Returns an empty list — never throws — when that call fails, e.g.
-    /// a token scoped without admin access; the dialog then falls back to the projects already present in the
-    /// fetched issues (#48).
+    /// Projects configured on the instance (short-name + full name) via the admin API (needs the token's
+    /// account to have project-admin read access). Returns an empty list — never throws — when that call fails,
+    /// e.g. a token scoped without admin access; the dialog then falls back to the projects already present in
+    /// the fetched issues (#48).
     /// </summary>
-    public async Task<IReadOnlyList<string>> GetProjectsAsync(string instanceBaseUrl, string token, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<YouTrackProject>> GetProjectsAsync(string instanceBaseUrl, string token, CancellationToken cancellationToken)
     {
         try
         {
@@ -77,13 +77,16 @@ internal sealed class YouTrackClient
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
-            var projects = new List<string>();
+            var projects = new List<YouTrackProject>();
             foreach (var element in document.RootElement.EnumerateArray())
             {
                 if (element.TryGetProperty("shortName", out var shortNameProperty) && shortNameProperty.ValueKind == JsonValueKind.String
                     && shortNameProperty.GetString() is { Length: > 0 } shortName)
                 {
-                    projects.Add(shortName);
+                    var name = element.TryGetProperty("name", out var nameProperty) && nameProperty.ValueKind == JsonValueKind.String
+                        ? nameProperty.GetString() ?? string.Empty
+                        : string.Empty;
+                    projects.Add(new YouTrackProject(shortName, name));
                 }
             }
 
