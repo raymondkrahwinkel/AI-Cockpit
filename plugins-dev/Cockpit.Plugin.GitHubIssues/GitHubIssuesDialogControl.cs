@@ -29,6 +29,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly GitHubGhClient _gh = new();
 
     private readonly ComboBox _repoFilter;
+    private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
     private readonly TextBlock _status;
     private readonly DataGrid _grid;
@@ -59,6 +60,16 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         };
         _repoFilter.SelectionChanged += (_, _) => _ApplyFilter();
 
+        // Assigned-to-me narrows the fetch server-side (gh --assignee @me, or the REST assignee filter), so a
+        // toggle re-loads rather than filtering the already-fetched list client-side.
+        _assignedToMe = new CheckBox
+        {
+            Content = "Assigned to me",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        _assignedToMe.IsCheckedChanged += async (_, _) => await _LoadAsync(forceRefresh: true);
+
         _search = new TextBox { PlaceholderText = "Filter by title, repository or number…", Width = 320 };
         _search.TextChanged += (_, _) => _ApplyFilter();
 
@@ -84,8 +95,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
         DockPanel.SetDock(_repoFilter, Dock.Left);
+        DockPanel.SetDock(_assignedToMe, Dock.Left);
         topBar.Children.Add(refresh);
         topBar.Children.Add(_repoFilter);
+        topBar.Children.Add(_assignedToMe);
         topBar.Children.Add(_search);
 
         // Details panel (right).
@@ -200,9 +213,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _status.Text = "Loading…";
         try
         {
+            var assignedToMe = _assignedToMe.IsChecked == true;
             if (_settings.UseGitHubCli)
             {
-                _all = await _gh.SearchOpenIssuesAsync(_settings.GhOwner, forceRefresh, CancellationToken.None);
+                _all = await _gh.SearchOpenIssuesAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None);
             }
             else
             {
@@ -212,7 +226,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
                     return;
                 }
 
-                _all = await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, CancellationToken.None);
+                _all = await _http.GetOpenIssuesAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe, CancellationToken.None);
             }
 
             _PopulateRepoFilter();

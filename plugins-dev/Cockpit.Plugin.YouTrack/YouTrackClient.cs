@@ -18,10 +18,10 @@ internal sealed class YouTrackClient
 {
     private static readonly HttpClient Http = new();
 
-    public async Task<IReadOnlyList<YouTrackIssue>> GetOpenIssuesAsync(string instanceBaseUrl, string token, string? projectTag, string? extraFilter, int top, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<YouTrackIssue>> GetOpenIssuesAsync(string instanceBaseUrl, string token, string? projectTag, string? extraFilter, bool assignedToMe, int top, CancellationToken cancellationToken)
     {
         var baseUrl = instanceBaseUrl.TrimEnd('/');
-        var query = BuildQuery(projectTag, extraFilter);
+        var query = BuildQuery(projectTag, extraFilter, assignedToMe);
         var url = $"{baseUrl}/issues?fields=idReadable,id,summary,description,project(shortName),customFields(name,value(name))&query={Uri.EscapeDataString(query)}&$top={top}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -98,10 +98,15 @@ internal sealed class YouTrackClient
         }
     }
 
-    /// <summary>[project:{tag}] #Unresolved, plus an optional extra filter (e.g. "Priority: Critical") appended verbatim. A null/empty tag omits the project clause, matching every project on the instance.</summary>
-    internal static string BuildQuery(string? projectTag, string? extraFilter)
+    /// <summary>[project:{tag}] #Unresolved, plus <c>for: me</c> when <paramref name="assignedToMe"/> (YouTrack's own "assigned to the current user" clause, resolved against the token), plus an optional extra filter (e.g. "Priority: Critical") appended verbatim. A null/empty tag omits the project clause, matching every project on the instance.</summary>
+    internal static string BuildQuery(string? projectTag, string? extraFilter, bool assignedToMe)
     {
         var query = string.IsNullOrWhiteSpace(projectTag) ? "#Unresolved" : $"project:{projectTag} #Unresolved";
+        if (assignedToMe)
+        {
+            query += " for: me";
+        }
+
         return string.IsNullOrWhiteSpace(extraFilter) ? query : $"{query} {extraFilter.Trim()}";
     }
 

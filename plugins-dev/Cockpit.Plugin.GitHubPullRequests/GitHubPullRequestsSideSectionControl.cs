@@ -77,7 +77,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             IReadOnlyList<GitHubPullRequest> all;
             if (_settings.UseGitHubCli)
             {
-                all = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, forceRefresh, CancellationToken.None);
+                all = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe: false, forceRefresh, CancellationToken.None);
             }
             else
             {
@@ -87,7 +87,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
                     return;
                 }
 
-                all = await _http.GetOpenPullRequestsAsync(_settings.Owner, _settings.Repo, _settings.Token, CancellationToken.None);
+                all = await _http.GetOpenPullRequestsAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe: false, CancellationToken.None);
             }
 
             foreach (var pullRequest in all.Take(MaxItems))

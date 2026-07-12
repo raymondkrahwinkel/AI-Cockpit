@@ -19,9 +19,9 @@ public sealed class YouTrackPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.2.0",
+        Version: "1.3.0",
         Author: "Cockpit",
-        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters, and drop a prompt asking the agent to work on one. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools.");
+        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools.");
 
     public void ConfigureServices(IServiceCollection services)
     {

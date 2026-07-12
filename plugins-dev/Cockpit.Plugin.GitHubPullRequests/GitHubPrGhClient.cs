@@ -19,15 +19,17 @@ internal sealed class GitHubPrGhClient
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubPullRequest> PullRequests)> PullRequestCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<IReadOnlyList<GitHubPullRequest>> SearchOpenPullRequestsAsync(string owner, bool forceRefresh, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<GitHubPullRequest>> SearchOpenPullRequestsAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
+        // The assigned-to-me filter changes the server-side query, so it keys the cache separately.
+        var cacheKey = assignedToMe ? normalizedOwner + "|@me" : normalizedOwner;
 
         if (!forceRefresh)
         {
             lock (CacheGate)
             {
-                if (PullRequestCache.TryGetValue(normalizedOwner, out var cached) && DateTimeOffset.UtcNow - cached.At < PullRequestTtl)
+                if (PullRequestCache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < PullRequestTtl)
                 {
                     return cached.PullRequests;
                 }
@@ -36,19 +38,26 @@ internal sealed class GitHubPrGhClient
 
         var archived = await _GetArchivedReposAsync(normalizedOwner, forceRefresh, cancellationToken);
 
-        var searchArgs = new[]
+        var searchArgs = new List<string>
         {
             "search", "prs", "--owner", normalizedOwner, "--state", "open",
             "--limit", "100", "--json", "number,title,url,body,repository,author",
         };
-        var pullRequests = _ParsePullRequests(await _RunGhAsync(searchArgs, cancellationToken));
+        if (assignedToMe)
+        {
+            // gh resolves @me to the authenticated user, so this stays login-free like the rest of the plugin.
+            searchArgs.Add("--assignee");
+            searchArgs.Add("@me");
+        }
+
+        var pullRequests = _ParsePullRequests(await _RunGhAsync(searchArgs.ToArray(), cancellationToken));
         var result = archived.Count == 0
             ? pullRequests
             : pullRequests.Where(pullRequest => !archived.Contains(pullRequest.Repository)).ToList();
 
         lock (CacheGate)
         {
-            PullRequestCache[normalizedOwner] = (DateTimeOffset.UtcNow, result);
+            PullRequestCache[cacheKey] = (DateTimeOffset.UtcNow, result);
         }
 
         return result;

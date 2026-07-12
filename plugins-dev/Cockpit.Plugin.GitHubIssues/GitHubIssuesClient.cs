@@ -13,10 +13,23 @@ internal sealed class GitHubIssuesClient
 {
     private static readonly HttpClient Http = new();
 
-    public async Task<IReadOnlyList<GitHubIssue>> GetOpenIssuesAsync(string owner, string repo, string? token, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<GitHubIssue>> GetOpenIssuesAsync(string owner, string repo, string? token, bool assignedToMe, CancellationToken cancellationToken)
     {
         var repository = $"{owner}/{repo}";
-        var url = $"https://api.github.com/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}/issues?state=open&per_page=100";
+        var query = "state=open&per_page=100";
+        if (assignedToMe)
+        {
+            // The REST issues endpoint filters by a username, not "@me", so resolve the token's own login
+            // first. Without a token there is no "me" to resolve, so the filter is simply skipped (the CLI
+            // mode is the login-free path for assigned-to-me).
+            var login = string.IsNullOrWhiteSpace(token) ? null : await _ResolveLoginAsync(token, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(login))
+            {
+                query += $"&assignee={Uri.EscapeDataString(login)}";
+            }
+        }
+
+        var url = $"https://api.github.com/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}/issues?{query}";
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd("Cockpit-GitHubIssues-Plugin");
         request.Headers.Accept.ParseAdd("application/vnd.github+json");
@@ -47,5 +60,33 @@ internal sealed class GitHubIssuesClient
         }
 
         return issues;
+    }
+
+    // The authenticated user's login for the assigned-to-me filter (the REST issues endpoint needs a username,
+    // not "@me"). Returns null on any failure so the caller falls back to the unfiltered list rather than
+    // erroring out the whole dialog.
+    private static async Task<string?> _ResolveLoginAsync(string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/user");
+            request.Headers.UserAgent.ParseAdd("Cockpit-GitHubIssues-Plugin");
+            request.Headers.Accept.ParseAdd("application/vnd.github+json");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var response = await Http.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            return document.RootElement.TryGetProperty("login", out var login) ? login.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

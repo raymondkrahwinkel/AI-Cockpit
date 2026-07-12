@@ -36,6 +36,7 @@ internal sealed class YouTrackDialogControl : UserControl
     private readonly ComboBox _instanceSelector;
     private readonly ComboBox _projectFilter;
     private readonly ComboBox _stateFilter;
+    private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
     private readonly TextBlock _status;
     private readonly DataGrid _grid;
@@ -88,6 +89,16 @@ internal sealed class YouTrackDialogControl : UserControl
         };
         _stateFilter.SelectionChanged += (_, _) => _ApplyFilter();
 
+        // Assigned-to-me adds YouTrack's "for: me" clause to the server-side query, so a toggle re-fetches
+        // rather than filtering the already-loaded list client-side.
+        _assignedToMe = new CheckBox
+        {
+            Content = "Assigned to me",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        _assignedToMe.IsCheckedChanged += async (_, _) => await _LoadIssuesAsync();
+
         _search = new TextBox { PlaceholderText = "Filter by id, summary or state…", Width = 260 };
         _search.TextChanged += (_, _) => _ApplyFilter();
 
@@ -116,10 +127,12 @@ internal sealed class YouTrackDialogControl : UserControl
         DockPanel.SetDock(_instanceSelector, Dock.Left);
         DockPanel.SetDock(_projectFilter, Dock.Left);
         DockPanel.SetDock(_stateFilter, Dock.Left);
+        DockPanel.SetDock(_assignedToMe, Dock.Left);
         topBar.Children.Add(refresh);
         topBar.Children.Add(_instanceSelector);
         topBar.Children.Add(_projectFilter);
         topBar.Children.Add(_stateFilter);
+        topBar.Children.Add(_assignedToMe);
         topBar.Children.Add(_search);
 
         // Details panel (right).
@@ -305,7 +318,7 @@ internal sealed class YouTrackDialogControl : UserControl
             // A null Tag (the "All" option) omits the project: clause and queries every project on the instance.
             var projectTag = (_projectFilter.SelectedItem as YouTrackProjectOption)?.Tag;
 
-            _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter: null, MaxResults, CancellationToken.None);
+            _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter: null, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
             _PopulateStateFilter();
             _ApplyFilter();
             _status.Text = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";

@@ -14,7 +14,7 @@ internal sealed class GitHubPullRequestsClient
 {
     private static readonly HttpClient Http = new();
 
-    public async Task<IReadOnlyList<GitHubPullRequest>> GetOpenPullRequestsAsync(string owner, string repo, string? token, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<GitHubPullRequest>> GetOpenPullRequestsAsync(string owner, string repo, string? token, bool assignedToMe, CancellationToken cancellationToken)
     {
         var repository = $"{owner}/{repo}";
         var url = $"https://api.github.com/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}/pulls?state=open&per_page=100";
@@ -29,22 +29,82 @@ internal sealed class GitHubPullRequestsClient
         using var response = await Http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
+        // The /pulls endpoint has no assignee query param (unlike /issues), but its objects carry an
+        // "assignees" array, so assigned-to-me is a client-side filter against the token user's login.
+        // Without a token there is no "me" to resolve, so the filter is skipped (CLI mode is the login-free
+        // assigned-to-me path).
+        var login = assignedToMe && !string.IsNullOrWhiteSpace(token)
+            ? await _ResolveLoginAsync(token, cancellationToken)
+            : null;
+
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
         var pullRequests = new List<GitHubPullRequest>();
         foreach (var element in document.RootElement.EnumerateArray())
         {
+            if (login is not null && !_IsAssignedTo(element, login))
+            {
+                continue;
+            }
+
             var number = element.GetProperty("number").GetInt32();
             var title = element.TryGetProperty("title", out var t) ? t.GetString() ?? string.Empty : string.Empty;
             var htmlUrl = element.TryGetProperty("html_url", out var u) ? u.GetString() ?? string.Empty : string.Empty;
             var body = element.TryGetProperty("body", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString() : null;
-            var author = element.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.Object && user.TryGetProperty("login", out var login)
-                ? login.GetString() ?? string.Empty
+            var author = element.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.Object && user.TryGetProperty("login", out var login2)
+                ? login2.GetString() ?? string.Empty
                 : string.Empty;
             pullRequests.Add(new GitHubPullRequest(number, title, htmlUrl, body, repository, author));
         }
 
         return pullRequests;
+    }
+
+    // True when the PR's "assignees" array contains the given login (case-insensitive).
+    private static bool _IsAssignedTo(JsonElement pullRequest, string login)
+    {
+        if (!pullRequest.TryGetProperty("assignees", out var assignees) || assignees.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (var assignee in assignees.EnumerateArray())
+        {
+            if (assignee.TryGetProperty("login", out var assigneeLogin)
+                && string.Equals(assigneeLogin.GetString(), login, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The authenticated user's login (the REST /pulls endpoint has no "@me" filter). Returns null on any
+    // failure so the caller falls back to the unfiltered list rather than erroring the whole dialog.
+    private static async Task<string?> _ResolveLoginAsync(string token, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/user");
+            request.Headers.UserAgent.ParseAdd("Cockpit-GitHubPullRequests-Plugin");
+            request.Headers.Accept.ParseAdd("application/vnd.github+json");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var response = await Http.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            return document.RootElement.TryGetProperty("login", out var login) ? login.GetString() : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
