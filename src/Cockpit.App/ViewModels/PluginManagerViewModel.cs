@@ -96,9 +96,24 @@ public partial class PluginManagerViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanRestart))]
     private void RestartNow() => _restartService?.Restart();
 
-    /// <summary>Opens the plugin store dialog (#62) — the Options tab's "Browse store…" button — over this same manager instance, so installs/updates/consent/restart all stay on the one shared flow.</summary>
+    /// <summary>
+    /// Opens the plugin store dialog (#62) — now the single home for all plugin control (from the main menu's
+    /// "Plugin store" and the plugin-update toast) — over this same manager instance, so installs/updates/
+    /// consent/restart stay on the one shared flow. Loads the installed plugins + stores first: unlike the
+    /// old Options→Plugins tab, the store can be opened without ever opening Options, and its Installed view
+    /// needs <see cref="Plugins"/> populated.
+    /// </summary>
     [RelayCommand]
-    private Task OpenStoreDialogAsync() => _dialogService?.ShowPluginStoreDialogAsync(this) ?? Task.CompletedTask;
+    private async Task OpenStoreDialogAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await LoadAsync();
+        await _dialogService.ShowPluginStoreDialogAsync(this);
+    }
 
     /// <summary>Rediscovers the installed plugins and loads the configured stores; called when the Options dialog opens and after every change.</summary>
     public async Task LoadAsync()

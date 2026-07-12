@@ -112,6 +112,14 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     /// <summary>The Discover page's Featured/Recently-added rails only show above the "All plugins" grid when Discover is selected and there is no active search (§1.4).</summary>
     public bool ShowDiscoverRails => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Discover && string.IsNullOrWhiteSpace(SearchText);
 
+    /// <summary>
+    /// True when the <b>Installed</b> filter is selected, so the main pane swaps the catalogue grid for the
+    /// local plugin-management view (install-from-zip + per-plugin enable/disable/remove/settings) — moved
+    /// here from the old Options → Plugins tab so all plugin control lives in one place. Unlike catalogue
+    /// browsing, this view works even with no store configured (installing from a zip needs no store).
+    /// </summary>
+    public bool IsInstalledView => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Installed;
+
     /// <summary>The empty-state message for the current filter/search combination (§1.8) — search takes priority over the filter-specific message.</summary>
     public string EmptyStateMessage => BuildEmptyStateMessage(SelectedSidebarItem?.Filter ?? PluginStoreFilter.Discover, SearchText);
 
@@ -166,7 +174,11 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         _RecomputeFiltered();
     }
 
-    partial void OnSelectedSidebarItemChanged(PluginStoreSidebarItem? value) => _RecomputeFiltered();
+    partial void OnSelectedSidebarItemChanged(PluginStoreSidebarItem? value)
+    {
+        OnPropertyChanged(nameof(IsInstalledView));
+        _RecomputeFiltered();
+    }
 
     private void _OnCatalogueChanged()
     {

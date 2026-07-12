@@ -109,8 +109,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         PluginFailureBanner = failures.Count switch
         {
             0 => string.Empty,
-            1 => $"A plugin failed to load: {failures[0].DisplayName}. See Options → Plugins for details.",
-            _ => $"{failures.Count} plugins failed to load. See Options → Plugins for details.",
+            1 => $"A plugin failed to load: {failures[0].DisplayName}. See the Plugin store → Installed for details.",
+            _ => $"{failures.Count} plugins failed to load. See the Plugin store → Installed for details.",
         };
     }
 

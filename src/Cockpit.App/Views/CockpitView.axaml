@@ -72,6 +72,10 @@
                             Command="{Binding OpenMcpServersCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Add, edit or remove shared MCP servers"/>
+                    <Button Content="Plugin store" HorizontalAlignment="Stretch" Classes="Subtle"
+                            Command="{Binding Plugins.OpenStoreDialogCommand}"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Browse, install, update and manage plugins — all in one place"/>
                     <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding OptionsCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
@@ -251,7 +255,7 @@
                 </ItemsControl>
             </DockPanel>
 
-            <!-- Plugin-failure banner (#14): the app kept running; details live in Options → Plugins. -->
+            <!-- Plugin-failure banner (#14): the app kept running; details live in the Plugin store → Installed. -->
             <Border IsVisible="{Binding HasPluginFailures}" VerticalAlignment="Top" Margin="12,12,12,0"
                     Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
                     BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
