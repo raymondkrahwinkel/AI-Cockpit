@@ -26,15 +26,13 @@
                 <TextBox x:Name="QueryBox" Text="{Binding Query}"
                          Background="Transparent" BorderThickness="0" Padding="0" FontSize="15"
                          VerticalContentAlignment="Center"
-                         PlaceholderText="Type a command…  ↑/↓ to move, Enter to run, Esc to close"
-                         KeyDown="OnQueryKeyDown"/>
+                         PlaceholderText="Type a command…  ↑/↓ to move, Enter to run, Esc to close"/>
             </DockPanel>
         </Border>
 
         <ListBox x:Name="CommandList" Grid.Row="1" Margin="0,10,0,0"
                  ItemsSource="{Binding Visible}" SelectedItem="{Binding Selected}"
-                 Background="Transparent" BorderThickness="0"
-                 DoubleTapped="OnItemActivated">
+                 Background="Transparent" BorderThickness="0">
             <ListBox.Resources>
                 <StaticResource x:Key="ListBoxItemBackgroundSelected" ResourceKey="CockpitAccentBrush"/>
                 <StaticResource x:Key="ListBoxItemBackgroundSelectedPointerOver" ResourceKey="CockpitAccentBrush"/>

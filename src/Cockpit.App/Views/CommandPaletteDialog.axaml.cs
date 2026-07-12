@@ -19,6 +19,11 @@ public partial class CommandPaletteDialog : Window
         CockpitWindowChrome.Apply(this);
         DataContextChanged += OnDataContextChanged;
         Opened += (_, _) => QueryBox.Focus();
+
+        // Tunnel so the arrow keys reach us before the TextBox consumes them (a bubbling handler never sees
+        // Up/Down). A single click on a row runs it — selection lands on press, so it is correct by release.
+        QueryBox.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
+        CommandList.AddHandler(PointerReleasedEvent, OnListPointerReleased, RoutingStrategies.Tunnel);
     }
 
     private void OnDataContextChanged(object? sender, System.EventArgs e)
@@ -48,18 +53,28 @@ public partial class CommandPaletteDialog : Window
                 break;
             case Key.Down:
                 viewModel.Move(1);
+                _ScrollToSelected(viewModel);
                 e.Handled = true;
                 break;
             case Key.Up:
                 viewModel.Move(-1);
+                _ScrollToSelected(viewModel);
                 e.Handled = true;
                 break;
         }
     }
 
-    private void OnItemActivated(object? sender, RoutedEventArgs e)
+    private void _ScrollToSelected(CommandPaletteDialogViewModel viewModel)
     {
-        if (DataContext is CommandPaletteDialogViewModel viewModel)
+        if (viewModel.Selected is { } selected)
+        {
+            CommandList.ScrollIntoView(selected);
+        }
+    }
+
+    private void OnListPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (DataContext is CommandPaletteDialogViewModel { Selected: not null } viewModel)
         {
             viewModel.RunCommand.Execute(null);
         }
