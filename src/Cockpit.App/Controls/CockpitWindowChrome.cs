@@ -15,13 +15,27 @@ namespace Cockpit.App.Controls;
 /// </summary>
 internal static class CockpitWindowChrome
 {
-    public static void Apply(Window window, string? title = null, bool includeMinimize = false, bool includeMaximize = false)
+    public static void Apply(Window window, string? title = null, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true)
     {
         window.WindowDecorations = WindowDecorations.BorderOnly;
         window.ExtendClientAreaToDecorationsHint = true;
         if (_Brush("CockpitPanelBgBrush") is { } background)
         {
             window.Background = background;
+        }
+
+        if (closeOnEscape)
+        {
+            // Esc closes a dialog. A bubbling handler, so a control that legitimately uses Esc first — an open
+            // dropdown, or a palette with its own Esc handling — consumes it and the dialog stays open.
+            window.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+            {
+                if (e.Key == Key.Escape && !e.Handled)
+                {
+                    e.Handled = true;
+                    window.Close();
+                }
+            });
         }
 
         var body = window.Content as Control ?? new Panel();

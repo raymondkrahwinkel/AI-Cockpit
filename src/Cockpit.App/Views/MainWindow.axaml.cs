@@ -21,7 +21,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        CockpitWindowChrome.Apply(this, "Cockpit", includeMinimize: true, includeMaximize: true);
+        CockpitWindowChrome.Apply(this, "Cockpit", includeMinimize: true, includeMaximize: true, closeOnEscape: false);
     }
 
     protected override void OnOpened(EventArgs e)
