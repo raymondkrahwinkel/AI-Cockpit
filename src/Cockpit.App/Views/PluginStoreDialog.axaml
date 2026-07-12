@@ -46,6 +46,13 @@
                 <ComboBox ItemsSource="{Binding SortModes}" SelectedItem="{Binding SelectedSortModeOption}"
                           DisplayMemberBinding="{Binding Label}"/>
                 <Button Content="↻ Refresh" Classes="Compact" Command="{Binding RefreshCommand}"/>
+                <!-- One-click update of every installed plugin that has a newer version. Hidden when
+                     everything is up to date. -->
+                <Button Classes="Accent Compact"
+                        Content="{Binding Manager.AvailableUpdateCount, StringFormat='⬆ Update all ({0})'}"
+                        Command="{Binding Manager.UpdateAllCommand}"
+                        IsVisible="{Binding Manager.HasAvailableUpdates}"
+                        ToolTip.Tip="Download and install the latest version of every plugin with an update available."/>
             </StackPanel>
         </Border>
 

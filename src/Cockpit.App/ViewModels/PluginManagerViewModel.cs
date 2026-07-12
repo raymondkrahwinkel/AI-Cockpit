@@ -324,42 +324,102 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        if (row.LatestVersionEntry is not { } version)
+        IsBusy = true;
+        try
         {
-            StatusMessage = $"'{row.Name}' has no downloadable version in the store.";
+            await _DownloadAndInstallRowAsync(row);
+
+            // Refresh the catalogue rows to their new installed/up-to-date state, but keep the install
+            // (or consent) message the operator just saw rather than the browse summary.
+            var installMessage = StatusMessage;
+            await BrowseStoresAsync();
+            StatusMessage = installMessage;
+        }
+        finally
+        {
+            IsBusy = false;
+            // The catalogue was rebuilt (or cleared) — refresh the "Update all" button's gate and count.
+            OnPropertyChanged(nameof(HasAvailableUpdates));
+            OnPropertyChanged(nameof(AvailableUpdateCount));
+        }
+    }
+
+    /// <summary>True when at least one installed plugin has a newer version in a store — gates the "Update all" button.</summary>
+    public bool HasAvailableUpdates => AvailablePlugins.Any(row => row.UpdateAvailable);
+
+    /// <summary>How many installed plugins have a newer version available — shown on the "Update all" button.</summary>
+    public int AvailableUpdateCount => AvailablePlugins.Count(row => row.UpdateAvailable);
+
+    [RelayCommand]
+    private async Task UpdateAllAsync()
+    {
+        if (_storeClient is null || _installer is null)
+        {
+            return;
+        }
+
+        // Snapshot before installing: each install triggers a reload that rebuilds AvailablePlugins, which
+        // would otherwise mutate the collection we are iterating.
+        var updates = AvailablePlugins.Where(row => row.UpdateAvailable).ToList();
+        if (updates.Count == 0)
+        {
+            StatusMessage = "Everything is up to date.";
             return;
         }
 
         IsBusy = true;
         try
         {
-            StatusMessage = $"Downloading '{row.Name}' v{version.Version}…";
-            var download = await _storeClient.DownloadZipAsync(row.IndexUrl, version.Path, version.Sha256);
-            if (!download.IsSuccess || download.ZipPath is null)
+            var updated = 0;
+            foreach (var row in updates)
             {
-                StatusMessage = download.Error ?? "Download failed.";
-                return;
+                StatusMessage = $"Updating '{row.Name}' ({updated + 1} of {updates.Count})…";
+                if (await _DownloadAndInstallRowAsync(row))
+                {
+                    updated++;
+                }
             }
 
-            try
-            {
-                var result = await _installer.InstallFromZipAsync(download.ZipPath, AbstractionsContract.Version);
-                await _AfterInstallAsync(result, $"'{row.Name}' installed. Restart the cockpit to activate it.");
-
-                // Refresh the catalogue rows to their new installed/up-to-date state, but keep the install
-                // (or consent) message the operator just saw rather than the browse summary.
-                var installMessage = StatusMessage;
-                await BrowseStoresAsync();
-                StatusMessage = installMessage;
-            }
-            finally
-            {
-                _TryDelete(download.ZipPath);
-            }
+            await BrowseStoresAsync();
+            StatusMessage = updated == updates.Count
+                ? $"Updated {updated} plugin(s). Restart the cockpit to activate."
+                : $"Updated {updated} of {updates.Count} plugin(s); the rest failed — see the last error above. Restart to activate.";
+            NeedsRestart = updated > 0;
         }
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    // Download + install one store row's latest version, reporting through StatusMessage. No IsBusy/browse of
+    // its own so it composes into both the single-row install and the batch "Update all". Returns whether the
+    // install succeeded.
+    private async Task<bool> _DownloadAndInstallRowAsync(StorePluginRowViewModel row)
+    {
+        if (row.LatestVersionEntry is not { } version)
+        {
+            StatusMessage = $"'{row.Name}' has no downloadable version in the store.";
+            return false;
+        }
+
+        StatusMessage = $"Downloading '{row.Name}' v{version.Version}…";
+        var download = await _storeClient!.DownloadZipAsync(row.IndexUrl, version.Path, version.Sha256);
+        if (!download.IsSuccess || download.ZipPath is null)
+        {
+            StatusMessage = download.Error ?? "Download failed.";
+            return false;
+        }
+
+        try
+        {
+            var result = await _installer!.InstallFromZipAsync(download.ZipPath, AbstractionsContract.Version);
+            await _AfterInstallAsync(result, $"'{row.Name}' installed. Restart the cockpit to activate it.");
+            return result.IsSuccess;
+        }
+        finally
+        {
+            _TryDelete(download.ZipPath);
         }
     }
 

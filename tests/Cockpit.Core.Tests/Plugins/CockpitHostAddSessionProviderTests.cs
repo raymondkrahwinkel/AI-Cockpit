@@ -26,7 +26,8 @@ public class CockpitHostAddSessionProviderTests
             Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),
             Substitute.For<IPluginStorage>(),
-            Substitute.For<IPluginDialogHost>());
+            Substitute.For<IPluginDialogHost>(),
+            NullCockpitSessionObserver.Instance);
         var registration = new SessionProviderRegistration(
             ProviderId: "gemini-provider.gemini",
             DisplayName: "Gemini",

@@ -758,6 +758,13 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
         switch (evt)
         {
             case SessionInitialized init:
+                // The init event is where an SDK session's working directory becomes known — surface it on the
+                // shared base so the read/observe surface can report it (a directory-scoped plugin follows this).
+                if (!string.IsNullOrEmpty(init.Cwd))
+                {
+                    WorkingDirectory = init.Cwd;
+                }
+
                 Status = string.IsNullOrEmpty(init.Cwd)
                     ? $"Connected ({init.Tools.Count} tools)."
                     : $"Connected ({init.Tools.Count} tools, cwd={init.Cwd}).";
@@ -804,6 +811,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                     _currentTurnAssistantEntries.Add(completedEntry);
                 }
 
+                // Assistant prose is one of the two channels a plugin watches for an output signal (the other
+                // is tool output below) — e.g. Claude announcing "opened https://github.com/…/pull/5".
+                RaiseOutputText(completed.Text);
                 break;
 
             case ToolUseRequested toolUse:
@@ -836,6 +846,9 @@ public partial class ClaudeSessionViewModel : SessionPanelViewModel, ITransientS
                         toolResult.IsError ? $"Tool error: {toolResult.Content}" : $"Tool result: {toolResult.Content}"));
                 }
 
+                // Tool output is where a shelled-out `gh pr create`/`git push` prints its pull-request url, so
+                // it is the primary channel the PR watcher scans (the read/observe surface).
+                RaiseOutputText(toolResult.Content);
                 break;
 
             case PermissionRequested permission:

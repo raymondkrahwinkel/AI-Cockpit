@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
@@ -23,11 +24,18 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
     // above the gh client's own 60s cache TTL, and it only runs while the section is on screen.
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(60);
 
+    // On top of the periodic poll, the section refreshes near-instantly when it sees a PR signal in session
+    // output (a pull url, a merged/closed line) via the read/observe surface. A short debounce coalesces the
+    // burst of lines a single `gh pr create` prints into one refresh, and waits out the gh-side propagation
+    // so the just-changed PR is actually reflected by the time we re-query.
+    private static readonly TimeSpan SignalDebounce = TimeSpan.FromSeconds(3);
+
     private readonly GitHubPullRequestsSettings _settings;
     private readonly ICockpitHost _host;
     private readonly GitHubPullRequestsClient _http = new();
     private readonly GitHubPrGhClient _gh = new();
     private readonly DispatcherTimer _autoRefresh;
+    private readonly DispatcherTimer _signalRefresh;
 
     private readonly TextBlock _status;
     private readonly StackPanel _list;
@@ -76,6 +84,26 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
         _autoRefresh = new DispatcherTimer { Interval = AutoRefreshInterval };
         _autoRefresh.Tick += (_, _) => _ = _LoadAsync(forceRefresh: true, quiet: true);
+
+        // Smart refresh: watch session output for a PR signal and refresh once the debounce settles. The
+        // observer marshals OutputProduced to the UI thread, so touching the timer here is safe.
+        _signalRefresh = new DispatcherTimer { Interval = SignalDebounce };
+        _signalRefresh.Tick += (_, _) =>
+        {
+            _signalRefresh.Stop();
+            _ = _LoadAsync(forceRefresh: true, quiet: true);
+        };
+    }
+
+    private void _OnSessionOutput(object? sender, SessionOutputText output)
+    {
+        // A single create/merge can print the url several times; (re)start the debounce so the burst collapses
+        // to one refresh a moment after the last line.
+        if (PullRequestSignalDetector.ContainsSignal(output.Text))
+        {
+            _signalRefresh.Stop();
+            _signalRefresh.Start();
+        }
     }
 
     // The section is always on screen while the plugin is loaded, so tie the poll to attach/detach: it runs
@@ -84,12 +112,15 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
     {
         base.OnAttachedToVisualTree(e);
         _autoRefresh.Start();
+        _host.Sessions.OutputProduced += _OnSessionOutput;
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
         _autoRefresh.Stop();
+        _signalRefresh.Stop();
+        _host.Sessions.OutputProduced -= _OnSessionOutput;
     }
 
     private async Task _LoadAsync(bool forceRefresh, bool quiet = false)

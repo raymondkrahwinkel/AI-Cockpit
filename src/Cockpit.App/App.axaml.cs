@@ -90,13 +90,17 @@ public partial class App : Application
             cockpit,
             () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard);
 
+        // One shared read/observe surface across all plugins, mirroring the single shared actions surface.
+        var sessionObserver = new PluginSessionObserver(cockpit);
+
         pluginManager.Initialize(discovered => new CockpitHost(
             discovered.FolderId,
             Program.Services,
             cockpit,
             actions,
             _CreatePluginStorage(discovered, registrationStore),
-            dialogHost));
+            dialogHost,
+            sessionObserver));
 
         // Surface any load/init failures (phase 1 or 2) as a banner; the app kept running regardless.
         cockpit.RefreshPluginFailures();

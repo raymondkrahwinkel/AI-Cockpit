@@ -72,4 +72,13 @@ public interface ICockpitHost
     /// only the app's own host overrides it.
     /// </summary>
     Task AddMcpServer(McpServerContribution contribution) => Task.CompletedTask;
+
+    /// <summary>
+    /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):
+    /// the active session's working directory and a stream of session output, so a plugin can react to what
+    /// a session is doing rather than only writing into it. Default returns
+    /// <see cref="NullCockpitSessionObserver.Instance"/> so existing <see cref="ICockpitHost"/> implementations
+    /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host supplies a live one.
+    /// </summary>
+    ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
 }

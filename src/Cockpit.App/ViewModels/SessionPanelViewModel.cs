@@ -135,6 +135,32 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _providerBadge = string.Empty;
 
+    /// <summary>
+    /// This session's working directory, once known — the SDK session learns it from its <c>init</c> event,
+    /// the TTY session from its launch path. Exposed to plugins through the read/observe surface
+    /// (<c>ICockpitSessionObserver.ActiveSessionWorkingDirectory</c>) so a directory-scoped contribution can
+    /// follow the session in view. Null until known.
+    /// </summary>
+    [ObservableProperty]
+    private string? _workingDirectory;
+
+    /// <summary>
+    /// Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the
+    /// TTY session — a tailed transcript line), surfaced to plugins via the read/observe surface so a watcher
+    /// can scan for an output signal such as a new pull-request url. Fired on the thread the producing code
+    /// runs on; the host-side observer marshals to the UI thread before handing it to plugins.
+    /// </summary>
+    public event EventHandler<string>? OutputTextProduced;
+
+    /// <summary>Surfaces a chunk of produced text to <see cref="OutputTextProduced"/> subscribers (the read/observe surface). No-op for empty text.</summary>
+    protected void RaiseOutputText(string? text)
+    {
+        if (!string.IsNullOrEmpty(text))
+        {
+            OutputTextProduced?.Invoke(this, text);
+        }
+    }
+
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;

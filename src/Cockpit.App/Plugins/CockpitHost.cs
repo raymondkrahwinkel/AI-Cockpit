@@ -22,13 +22,16 @@ internal sealed class CockpitHost(
     IPluginContributionSink contributionSink,
     ICockpitActions actions,
     IPluginStorage storage,
-    IPluginDialogHost dialogHost) : ICockpitHost
+    IPluginDialogHost dialogHost,
+    ICockpitSessionObserver sessions) : ICockpitHost
 {
     public IServiceProvider Services => services;
 
     public ICockpitActions Actions => actions;
 
     public IPluginStorage Storage => storage;
+
+    public ICockpitSessionObserver Sessions => sessions;
 
     public void AddSettings(Func<Control> createView) =>
         contributionSink.AddPluginSettings(pluginId, createView);

@@ -122,6 +122,9 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         _launcher = launcher;
         _transcriptReader = transcriptReader;
         WorkingPath = ResolveWorkingPath(options);
+        // Also publish it on the shared base so the read/observe surface reports where this session runs — the
+        // TTY working dir is known up front (unlike an SDK session, which learns it from its init event).
+        WorkingDirectory = WorkingPath;
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
     }
 
@@ -303,6 +306,11 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
                     {
                         SessionStatus = _statusTracker.OnLine(signal, DateTimeOffset.UtcNow);
                     }
+
+                    // Surface the raw transcript line to the read/observe surface: it carries any output signal
+                    // (a pull-request url printed by gh, a merged/closed line) as a substring regardless of which
+                    // JSONL field holds it, which is exactly what a substring-scanning watcher needs.
+                    RaiseOutputText(line);
                 });
             }
         }
