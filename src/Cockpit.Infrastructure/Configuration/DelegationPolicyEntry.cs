@@ -18,6 +18,8 @@ internal sealed class DelegationPolicyEntry
 
     public bool MayDelegateFurther { get; set; }
 
+    public int TimeoutMinutes { get; set; } = DelegationPolicy.DefaultTimeoutMinutes;
+
     public List<string>? AllowedTaskTypes { get; set; }
 
     public string? Purpose { get; set; }
@@ -33,6 +35,7 @@ internal sealed class DelegationPolicyEntry
             AllowedWorkingDirs = policy.AllowedWorkingDirs?.ToList(),
             PermissionCeiling = policy.PermissionCeiling,
             MayDelegateFurther = policy.MayDelegateFurther,
+            TimeoutMinutes = policy.TimeoutMinutes,
             AllowedTaskTypes = policy.AllowedTaskTypes?.ToList(),
             Purpose = policy.Purpose,
             Tags = policy.Tags?.ToList(),
@@ -44,6 +47,7 @@ internal sealed class DelegationPolicyEntry
         AllowedWorkingDirs,
         PermissionCeiling,
         MayDelegateFurther,
+        TimeoutMinutes,
         AllowedTaskTypes,
         Purpose,
         Tags);

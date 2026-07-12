@@ -33,14 +33,33 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     private readonly ISessionProfileStore _profileStore;
     private readonly ISessionManager _sessionManager;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly IDelegationAuditLog _auditLog;
+    private readonly Func<int, TimeSpan> _timeout;
     private readonly List<DelegatedTaskEntry> _tasks = [];
     private readonly Lock _tasksLock = new();
 
-    public DelegationService(ISessionProfileStore profileStore, ISessionManager sessionManager, IMcpServerStore mcpServerStore)
+    public DelegationService(
+        ISessionProfileStore profileStore,
+        ISessionManager sessionManager,
+        IMcpServerStore mcpServerStore,
+        IDelegationAuditLog auditLog)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes))
+    {
+    }
+
+    /// <summary>Test seam: lets a test express the profile's timeout in milliseconds rather than waiting minutes for it.</summary>
+    internal DelegationService(
+        ISessionProfileStore profileStore,
+        ISessionManager sessionManager,
+        IMcpServerStore mcpServerStore,
+        IDelegationAuditLog auditLog,
+        Func<int, TimeSpan> timeout)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
         _mcpServerStore = mcpServerStore;
+        _auditLog = auditLog;
+        _timeout = timeout;
     }
 
     /// <summary>Raised whenever a task is added or changes state, so a UI view can follow along without polling.</summary>
@@ -70,7 +89,17 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             ?? throw new DelegationRejectedException($"No profile named '{request.ProfileLabel}'.");
 
         var policy = profile.DelegationPolicy;
-        _Guard(request, policy);
+        try
+        {
+            _Guard(request, policy);
+        }
+        catch (DelegationRejectedException ex)
+        {
+            // A refusal is the interesting half of the trail: it says what an agent tried to do and what stopped
+            // it, which a log of successes alone would never show.
+            await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, ex.Message);
+            throw;
+        }
 
         var entry = new DelegatedTaskEntry(profile, request);
         lock (_tasksLock)
@@ -84,6 +113,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         }
 
         TasksChanged?.Invoke();
+        await _Audit(DelegationAuditAction.Delegated, profile.Label, entry.TaskId, request, reason: null);
 
         // At the cap the task waits rather than being refused or, worse, started anyway: the caller gets an
         // honest "Queued" back and can decide what to do, and a freeing slot picks it up.
@@ -155,6 +185,11 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         entry.Status = DelegatedTaskStatus.Running;
         TasksChanged?.Invoke();
         await entry.Runtime.SendUserMessageAsync(text, cancellationToken: cancellationToken);
+
+        // The new turn gets the profile's time budget of its own; the old timer was cancelled when the previous
+        // turn finished, so a follow-up is not silently running against an expired clock.
+        _ArmTimeout(entry);
+        await _Audit(DelegationAuditAction.FollowUp, entry.Profile.Label, entry.TaskId, request: null, reason: null, entry);
         return entry.ToView();
     }
 
@@ -173,6 +208,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
         entry.Finish(DelegatedTaskStatus.Stopped, result: entry.Result, error: null);
         TasksChanged?.Invoke();
+        await _Audit(DelegationAuditAction.Stopped, entry.Profile.Label, entry.TaskId, request: null, reason: null, entry);
         await _StartNextQueuedAsync(entry.Profile);
         return entry.ToView();
     }
@@ -248,14 +284,80 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 workingDirectory: entry.WorkingDirectory);
 
             await runtime.SendUserMessageAsync(entry.Prompt);
+            _ArmTimeout(entry);
         }
         catch (Exception ex)
         {
             // A task that cannot start is a visibly failed task, not one that quietly sits at Queued forever.
             entry.Finish(DelegatedTaskStatus.Failed, result: null, error: ex.Message);
             TasksChanged?.Invoke();
+            await _Audit(DelegationAuditAction.Failed, entry.Profile.Label, entry.TaskId, request: null, ex.Message, entry);
         }
     }
+
+    /// <summary>
+    /// Stops a task that outlives what its profile allows. Nobody is watching a delegated session, so a model that
+    /// loops or waits on something that never comes would otherwise hold the profile's slot — and keep drawing on
+    /// its provider — until the app closes. The timer is cancelled the moment the task ends, so a finished task is
+    /// never stopped after the fact.
+    /// </summary>
+    private void _ArmTimeout(DelegatedTaskEntry entry)
+    {
+        var minutes = entry.Profile.DelegationPolicy.TimeoutMinutes;
+        if (minutes <= 0)
+        {
+            return;
+        }
+
+        var timeout = new CancellationTokenSource();
+        entry.TimeoutCancellation = timeout;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(_timeout(minutes), timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // The task finished in time — the ordinary case.
+                return;
+            }
+
+            if (entry.IsFinished)
+            {
+                return;
+            }
+
+            if (entry.Runtime is not null)
+            {
+                await _sessionManager.StopAsync(entry.Runtime.Id);
+            }
+
+            var reason = $"The task ran longer than the {minutes} minute(s) '{entry.Profile.Label}' allows and was stopped.";
+            entry.Finish(DelegatedTaskStatus.Failed, result: entry.Result, error: reason);
+            TasksChanged?.Invoke();
+            await _Audit(DelegationAuditAction.TimedOut, entry.Profile.Label, entry.TaskId, request: null, reason, entry);
+            await _StartNextQueuedAsync(entry.Profile);
+        });
+    }
+
+    private Task _Audit(
+        DelegationAuditAction action,
+        string profileLabel,
+        string? taskId,
+        DelegationRequest? request,
+        string? reason,
+        DelegatedTaskEntry? entry = null) =>
+        _auditLog.RecordAsync(new DelegationAuditEntry(
+            DateTimeOffset.Now,
+            action,
+            profileLabel,
+            taskId,
+            request?.Label ?? entry?.Label,
+            request?.TaskType ?? entry?.TaskType,
+            request?.Prompt ?? entry?.Prompt,
+            reason));
 
     /// <summary>
     /// The MCP servers a delegated session gets: everything the operator enabled — a sub-agent still needs its
@@ -293,12 +395,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                     error: turn.IsError ? turn.Result : null,
                     keepSessionAlive: true);
                 TasksChanged?.Invoke();
+                _ = _Audit(
+                    turn.IsError ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,
+                    entry.Profile.Label, entry.TaskId, request: null, turn.IsError ? turn.Result : null, entry);
                 _ = _StartNextQueuedAsync(entry.Profile);
                 break;
 
             case SessionError error:
                 entry.Finish(DelegatedTaskStatus.Failed, result: null, error: error.Message);
                 TasksChanged?.Invoke();
+                _ = _Audit(DelegationAuditAction.Failed, entry.Profile.Label, entry.TaskId, request: null, error.Message, entry);
                 _ = _StartNextQueuedAsync(entry.Profile);
                 break;
         }
