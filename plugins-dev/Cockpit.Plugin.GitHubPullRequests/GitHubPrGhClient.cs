@@ -21,9 +21,13 @@ internal sealed class GitHubPrGhClient
 
     public async Task<IReadOnlyList<GitHubPullRequest>> SearchOpenPullRequestsAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken)
     {
-        var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
-        // The assigned-to-me filter changes the server-side query, so it keys the cache separately.
-        var cacheKey = assignedToMe ? normalizedOwner + "|@me" : normalizedOwner;
+        var trimmedOwner = owner?.Trim();
+        // "@me" (or blank) means the PRs I'm involved in across EVERY repo — not just the repos I own, which
+        // is what --owner @me searches and which misses org repos I contribute to (e.g. a PR I opened on an
+        // org repo). So for @me we search by --author @me (the PRs I opened) or --assignee @me (the
+        // assigned-to-me filter), with no --owner; a concrete owner keeps the --owner-scoped browse.
+        var isMe = string.IsNullOrWhiteSpace(trimmedOwner) || string.Equals(trimmedOwner, "@me", StringComparison.OrdinalIgnoreCase);
+        var cacheKey = (isMe ? "@me" : trimmedOwner!) + (assignedToMe ? "|assignee" : string.Empty);
 
         if (!forceRefresh)
         {
@@ -36,24 +40,40 @@ internal sealed class GitHubPrGhClient
             }
         }
 
-        var archived = await _GetArchivedReposAsync(normalizedOwner, forceRefresh, cancellationToken);
-
         var searchArgs = new List<string>
         {
-            "search", "prs", "--owner", normalizedOwner, "--state", "open",
-            "--limit", "100", "--json", "number,title,url,body,repository,author",
+            "search", "prs", "--state", "open", "--limit", "100", "--json", "number,title,url,body,repository,author",
         };
-        if (assignedToMe)
+        if (isMe)
         {
             // gh resolves @me to the authenticated user, so this stays login-free like the rest of the plugin.
-            searchArgs.Add("--assignee");
+            searchArgs.Add(assignedToMe ? "--assignee" : "--author");
             searchArgs.Add("@me");
+        }
+        else
+        {
+            searchArgs.Add("--owner");
+            searchArgs.Add(trimmedOwner!);
+            if (assignedToMe)
+            {
+                searchArgs.Add("--assignee");
+                searchArgs.Add("@me");
+            }
         }
 
         var pullRequests = _ParsePullRequests(await _RunGhAsync(searchArgs.ToArray(), cancellationToken));
-        var result = archived.Count == 0
-            ? pullRequests
-            : pullRequests.Where(pullRequest => !archived.Contains(pullRequest.Repository)).ToList();
+
+        // The archived-repo exclusion only makes sense for a concrete owner's repos; an @me search spans many
+        // owners, so it is left unfiltered (your own PRs show regardless of which repo they live in).
+        var result = pullRequests;
+        if (!isMe)
+        {
+            var archived = await _GetArchivedReposAsync(trimmedOwner!, forceRefresh, cancellationToken);
+            if (archived.Count > 0)
+            {
+                result = pullRequests.Where(pullRequest => !archived.Contains(pullRequest.Repository)).ToList();
+            }
+        }
 
         lock (CacheGate)
         {
