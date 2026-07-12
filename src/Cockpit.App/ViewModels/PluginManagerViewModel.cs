@@ -384,24 +384,35 @@ public partial class PluginManagerViewModel : ViewModelBase
         try
         {
             var updated = 0;
-            foreach (var row in updates)
+            for (var i = 0; i < updates.Count; i++)
             {
-                StatusMessage = $"Updating '{row.Name}' ({updated + 1} of {updates.Count})…";
-                if (await _DownloadAndInstallRowAsync(row))
+                var row = updates[i];
+                StatusMessage = $"Updating '{row.Name}' ({i + 1} of {updates.Count})…";
+                try
                 {
-                    updated++;
+                    // Isolate each plugin: one failing update must not abort the whole batch.
+                    if (await _DownloadAndInstallRowAsync(row))
+                    {
+                        updated++;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    StatusMessage = $"'{row.Name}' failed to update: {exception.Message}";
                 }
             }
 
             await BrowseStoresAsync();
             StatusMessage = updated == updates.Count
                 ? $"Updated {updated} plugin(s). Restart the cockpit to activate."
-                : $"Updated {updated} of {updates.Count} plugin(s); the rest failed — see the last error above. Restart to activate.";
+                : $"Updated {updated} of {updates.Count} plugin(s); the rest failed — see the message above. Restart to activate.";
             NeedsRestart = updated > 0;
         }
         finally
         {
             IsBusy = false;
+            OnPropertyChanged(nameof(HasAvailableUpdates));
+            OnPropertyChanged(nameof(AvailableUpdateCount));
         }
     }
 
@@ -487,9 +498,9 @@ public partial class PluginManagerViewModel : ViewModelBase
             var result = await _installer!.InstallFromZipAsync(download.ZipPath, AbstractionsContract.Version);
             await _AfterInstallAsync(result, $"'{row.Name}' installed. Restart the cockpit to activate it.");
 
-            // An update of an already-installed plugin is staged (live only after restart), so remember the
-            // version it now effectively is, so the store stops offering the same update until the restart.
-            if (result.IsSuccess && row.IsInstalled)
+            // A staged update is live only after restart, so remember the version it now effectively is, so the
+            // store stops offering the same update (and drops it out of the updates list) until the restart.
+            if (result.IsSuccess && result.Staged)
             {
                 _pendingUpdateVersions[row.Id] = version.Version;
             }
@@ -502,8 +513,10 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
     }
 
-    // Shared tail of every install path: on success reload, then walk a freshly installed (needs-consent)
-    // plugin straight into the consent step; otherwise report the restart-to-activate note.
+    // Shared tail of every install path. A fresh install walks a needs-consent plugin into the consent step;
+    // an update (staged over an existing install) never re-prompts consent — it re-pins the new bytes' hash and
+    // preserves the plugin's enabled state, so after the restart swap it comes back exactly as it was. That is
+    // also what keeps a batch "Update all" from popping a consent modal per plugin.
     private async Task _AfterInstallAsync(PluginInstallResult result, string installedMessage)
     {
         if (!result.IsSuccess)
@@ -512,25 +525,24 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        // Updating an already-enabled plugin must keep it enabled. An update is staged to .pending-updates and
-        // only swapped live on the next restart, so its new bytes' hash won't match the pinned one — the plugin
-        // would drop to "needs consent" after the restart (the bug behind "update all disabled everything").
-        // Since the operator explicitly updated it from the configured, sha256-verified store, re-pin the NEW
-        // hash (from the install result) now, so the swapped-in bytes match on restart and it stays enabled. Do
-        // not re-discover here: the new bytes aren't live yet, so a rediscovery would transiently read as
-        // needs-consent — the restart applies it cleanly. A fresh install still walks into consent below.
-        if (_registrationStore is not null && result.FolderId is { } folderId && result.Sha256 is { } newSha256)
+        if (result.Staged)
         {
-            var registrations = await _registrationStore.LoadAllAsync();
-            if (registrations.TryGetValue(folderId, out var prior) && prior.Enabled)
+            // An update: the new bytes are live only after the restart, so re-pin their hash now (matching the
+            // swap) and keep the current enabled/disabled state. No rediscovery, no consent — the restart
+            // applies it cleanly.
+            if (_registrationStore is not null && result.FolderId is { } folderId && result.Sha256 is { } newSha256)
             {
-                await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: true, PinnedSha256: newSha256));
-                StatusMessage = installedMessage;
-                NeedsRestart = true;
-                return;
+                var registrations = await _registrationStore.LoadAllAsync();
+                var wasEnabled = registrations.TryGetValue(folderId, out var prior) && prior.Enabled;
+                await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: wasEnabled, PinnedSha256: newSha256));
             }
+
+            StatusMessage = installedMessage;
+            NeedsRestart = true;
+            return;
         }
 
+        // Fresh install: reload and walk a needs-consent plugin straight into the consent step.
         await LoadAsync();
         var installed = Plugins.FirstOrDefault(row => row.FolderId == result.FolderId);
         if (installed is not null && installed.CanEnable)

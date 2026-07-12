@@ -100,11 +100,11 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 }
 
                 Directory.Move(stagingDir, pendingDir);
-                return PluginInstallResult.Success(folderId, newSha256);
+                return PluginInstallResult.Success(folderId, newSha256, staged: true);
             }
 
             Directory.Move(stagingDir, finalDir);
-            return PluginInstallResult.Success(folderId, newSha256);
+            return PluginInstallResult.Success(folderId, newSha256, staged: false);
         }
         catch (Exception exception)
         {

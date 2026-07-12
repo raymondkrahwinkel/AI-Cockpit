@@ -134,6 +134,10 @@ public class PluginInstallerTests : IDisposable
         v1.Sha256.Should().NotBeNullOrEmpty();
         v2.Sha256.Should().NotBeNullOrEmpty();
         v2.Sha256.Should().NotBe(v1.Sha256);
+
+        // v1 is a fresh install (not staged); v2 is an update over it (staged to .pending-updates).
+        v1.Staged.Should().BeFalse();
+        v2.Staged.Should().BeTrue();
     }
 
     [Fact]
