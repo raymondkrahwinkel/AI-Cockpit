@@ -44,9 +44,20 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     {
         _providers = SessionProviderCatalog.Providers;
 
-        // Design-time preview: one editable profile so the dialog renders in the previewer.
+        // Design-time preview: one editable profile so the dialog renders in the previewer — a delegation target,
+        // so the whole form (including the delegation fields, which are hidden until a profile is one) shows up.
         var sample = new EditableProfileViewModel(
-            new SessionProfile("personal", "~/.claude-personal", Purpose: "private"), isLoggedIn: true);
+            new SessionProfile(
+                "local",
+                ConfigDir: string.Empty,
+                Purpose: "cheap local model",
+                ProviderConfig: new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null),
+                Delegation: new DelegationPolicy(
+                    AllowedAsTarget: true,
+                    MaxConcurrent: 2,
+                    AllowedTaskTypes: ["summarize", "refactor"],
+                    Purpose: "cheap bulk refactors and summarising — no web access")),
+            isLoggedIn: true);
         Profiles.Add(sample);
         SelectedProfile = sample;
     }

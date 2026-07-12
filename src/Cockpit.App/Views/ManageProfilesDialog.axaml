@@ -181,6 +181,45 @@
                         <TextBox Text="{Binding Purpose}"/>
                     </StackPanel>
 
+                    <!-- Delegation (#67): whether another session may hand work to this profile, and what it may
+                         be handed. Off by default — delegating spawns a process under this profile's login. -->
+                    <StackPanel Spacing="11">
+                        <TextBlock Text="DELEGATION" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+                        <CheckBox Content="Other sessions may delegate work to this profile"
+                                  IsChecked="{Binding AllowedAsTarget}"
+                                  ToolTip.Tip="Lets a session hand a task to this profile, which then runs it as its own background session"/>
+
+                        <StackPanel Spacing="11" IsVisible="{Binding AllowedAsTarget}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Good for" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox Text="{Binding DelegationPurpose}"
+                                         PlaceholderText="e.g. cheap bulk refactors and summarising — no web access"/>
+                                <TextBlock Text="Told to the delegating agent so it picks the right profile for the job."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Only these kinds of work" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox Text="{Binding AllowedTaskTypes}" PlaceholderText="summarize, refactor  (leave empty to accept anything)"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Tasks at once" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <NumericUpDown Value="{Binding MaxConcurrentTasks}" Minimum="1" Maximum="8"
+                                               Increment="1" FormatString="0" Width="110"
+                                               HorizontalContentAlignment="Center"
+                                               ToolTip.Tip="How many delegated tasks may run on this profile at the same time — keeps a burst of sub-tasks from eating this provider's usage (or the GPU, for a local model)"/>
+                            </StackPanel>
+
+                            <CheckBox Content="Tasks on this profile may delegate further"
+                                      IsChecked="{Binding MayDelegateFurther}"
+                                      ToolTip.Tip="Off by default: without this, a delegated task cannot hand work on again, so a chain of agents cannot start"/>
+                        </StackPanel>
+                    </StackPanel>
+
                     <!-- Session defaults + login are Claude-CLI concepts; a local provider has no permission
                          mode / thinking budget / login, so this whole block is hidden for those. -->
                     <StackPanel Spacing="11" IsVisible="{Binding IsClaudeProvider}">

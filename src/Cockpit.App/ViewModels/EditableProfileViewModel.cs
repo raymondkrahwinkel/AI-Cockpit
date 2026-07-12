@@ -41,6 +41,26 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private bool _autoApproveTools;
 
+    /// <summary>Whether another session may hand work to this profile (#67). Off by default: delegation spawns a process under this profile's login, so it is opted into.</summary>
+    [ObservableProperty]
+    private bool _allowedAsTarget;
+
+    /// <summary>What this profile is good for, told to a calling agent so it picks the right one — e.g. "cheap bulk refactors and summarising, no web access".</summary>
+    [ObservableProperty]
+    private string _delegationPurpose;
+
+    /// <summary>The kinds of work this profile accepts, comma-separated (e.g. "summarize, refactor"); empty accepts anything.</summary>
+    [ObservableProperty]
+    private string _allowedTaskTypes;
+
+    /// <summary>How many delegated tasks may run on this profile at once — the guard on its provider's usage pot (and, for a local model, its GPU).</summary>
+    [ObservableProperty]
+    private int _maxConcurrentTasks;
+
+    /// <summary>Whether a task running on this profile may itself delegate. Off by default, or a sub-agent could start a chain of agents.</summary>
+    [ObservableProperty]
+    private bool _mayDelegateFurther;
+
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;
 
@@ -203,6 +223,14 @@ public partial class EditableProfileViewModel : ViewModelBase
         _selectedModel = SessionOptionCatalog.ResolveModel(profile.Defaults?.Model);
         _selectedEffort = SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort);
         _autoApproveTools = profile.Defaults?.AutoApproveTools ?? false;
+
+        var delegation = profile.DelegationPolicy;
+        _allowedAsTarget = delegation.AllowedAsTarget;
+        _delegationPurpose = delegation.Purpose ?? string.Empty;
+        _allowedTaskTypes = delegation.AllowedTaskTypes is { Count: > 0 } types ? string.Join(", ", types) : string.Empty;
+        _maxConcurrentTasks = delegation.MaxConcurrent;
+        _mayDelegateFurther = delegation.MayDelegateFurther;
+
         _canChooseProvider = canChooseProvider;
         _isLoggedIn = isLoggedIn;
         _pluginProviderRegistry = pluginProviderRegistry;
@@ -241,7 +269,32 @@ public partial class EditableProfileViewModel : ViewModelBase
         string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim(),
         string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
         new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value, AutoApproveTools),
-        _ToProviderConfig());
+        _ToProviderConfig(),
+        _ToDelegationPolicy());
+
+    // A profile that is not a target carries no policy at all, so cockpit.json stays quiet about the profiles
+    // that have nothing to do with delegation.
+    private DelegationPolicy? _ToDelegationPolicy()
+    {
+        if (!AllowedAsTarget)
+        {
+            return null;
+        }
+
+        var taskTypes = AllowedTaskTypes
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        return new DelegationPolicy(
+            AllowedAsTarget: true,
+            MaxConcurrent: Math.Max(1, MaxConcurrentTasks),
+            AllowedWorkingDirs: null,
+            PermissionCeiling: DelegationPolicy.DefaultPermissionCeiling,
+            MayDelegateFurther: MayDelegateFurther,
+            AllowedTaskTypes: taskTypes.Count > 0 ? taskTypes : null,
+            Purpose: string.IsNullOrWhiteSpace(DelegationPurpose) ? null : DelegationPurpose.Trim(),
+            Tags: null);
+    }
 
     private ProviderConfig? _ToProviderConfig()
     {
