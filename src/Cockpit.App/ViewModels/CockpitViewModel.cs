@@ -25,7 +25,6 @@ using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.SessionSwitching;
 using Cockpit.Core.Shortcuts;
-using Cockpit.Plugins.Abstractions;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;

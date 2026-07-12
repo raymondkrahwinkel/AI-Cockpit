@@ -508,12 +508,12 @@ public partial class PluginManagerViewModel : ViewModelBase
         // restart (the bug behind "update all disabled everything"). Since the operator explicitly updated it
         // from the configured, sha256-verified store, re-pin the new hash and keep it enabled instead of
         // re-prompting consent. A fresh install (no prior enabled registration) still walks into consent.
-        if (_registrationStore is not null)
+        if (_registrationStore is not null && result.FolderId is { } folderId)
         {
             var registrations = await _registrationStore.LoadAllAsync();
-            if (registrations.TryGetValue(result.FolderId, out var prior) && prior.Enabled)
+            if (registrations.TryGetValue(folderId, out var prior) && prior.Enabled)
             {
-                await _registrationStore.SaveAsync(result.FolderId, new PluginRegistration(Enabled: true, PinnedSha256: installed.Discovered.Sha256));
+                await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: true, PinnedSha256: installed.Discovered.Sha256));
                 await LoadAsync();
                 StatusMessage = installedMessage;
                 NeedsRestart = true;
