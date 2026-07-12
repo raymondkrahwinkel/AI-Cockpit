@@ -21,8 +21,8 @@
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="10" Padding="14,11">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Left" Text="✳" FontSize="17" VerticalAlignment="Center"
-                           Margin="2,0,10,0" Foreground="{StaticResource CockpitAccentBrush}"/>
+                <TextBlock DockPanel.Dock="Left" Text="›" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"
+                           Margin="2,0,12,0" Foreground="{StaticResource CockpitAccentBrush}"/>
                 <TextBox x:Name="QueryBox" Text="{Binding Query}"
                          Background="Transparent" BorderThickness="0" Padding="0" FontSize="15"
                          VerticalContentAlignment="Center"
