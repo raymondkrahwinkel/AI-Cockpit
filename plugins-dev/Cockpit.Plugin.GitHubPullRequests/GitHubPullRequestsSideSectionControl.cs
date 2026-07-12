@@ -10,14 +10,14 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 
 /// <summary>
 /// The inline accordion section registered via <see cref="ICockpitHost.AddSideMenuSection"/>, always visible
-/// under the session list: up to <see cref="MaxItems"/> open pull requests (across all repos in GitHub CLI
-/// mode, or one repo in HTTP mode), each a clickable row that renders the prompt template and injects it into
-/// the active session — or, with no active session, copies it to the clipboard instead — plus a "View all
-/// open PRs" button that opens the full <see cref="GitHubPullRequestsDialogControl"/> dialog.
+/// under the session list: up to the configured max of open pull requests (across all repos in GitHub CLI
+/// mode, or one repo in HTTP mode, optionally filtered to chosen repositories), each a clickable row that
+/// renders the prompt template and injects it into the active session — or, with no active session, copies it
+/// to the clipboard instead — plus a "View all open PRs" button that opens the full
+/// <see cref="GitHubPullRequestsDialogControl"/> dialog.
 /// </summary>
 internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 {
-    private const int MaxItems = 5;
 
     // Auto-refresh so PRs appear/disappear on their own as they are opened, merged or closed (Raymond's ask)
     // without the operator clicking ⟳. A quiet, force-refreshing background poll — its interval is comfortably
@@ -148,16 +148,21 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
                 all = await _http.GetOpenPullRequestsAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe: false, CancellationToken.None);
             }
 
+            // Optional repository filter: when set, keep only PRs in the chosen owner/repo list.
+            var filter = _settings.RepoFilterSet;
+            var filtered = filter.Count == 0 ? all : all.Where(pullRequest => filter.Contains(pullRequest.Repository)).ToList();
+
+            var max = _settings.MaxItems;
             _list.Children.Clear();
-            foreach (var pullRequest in all.Take(MaxItems))
+            foreach (var pullRequest in filtered.Take(max))
             {
                 _list.Children.Add(_BuildRow(pullRequest));
             }
 
-            _status.Text = all.Count switch
+            _status.Text = filtered.Count switch
             {
                 0 => "No open pull requests.",
-                _ => $"{Math.Min(all.Count, MaxItems)} of {all.Count} open PR(s) — click to add to the prompt.",
+                _ => $"{Math.Min(filtered.Count, max)} of {filtered.Count} open PR(s) — click to add to the prompt.",
             };
         }
         catch (Exception exception)

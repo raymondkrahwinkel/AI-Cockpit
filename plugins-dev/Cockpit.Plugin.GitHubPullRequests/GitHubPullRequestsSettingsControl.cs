@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
 
@@ -20,6 +21,8 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     private readonly TextBox _repo;
     private readonly TextBox _token;
     private readonly TextBox _template;
+    private readonly NumericUpDown _maxItems;
+    private readonly TextBox _repoFilter;
 
     public GitHubPullRequestsSettingsControl(GitHubPullRequestsSettings settings)
     {
@@ -71,6 +74,26 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         _useGh.IsCheckedChanged += (_, _) => SyncMode();
         SyncMode();
 
+        _maxItems = new NumericUpDown
+        {
+            Value = settings.MaxItems,
+            Minimum = 1,
+            Maximum = 20,
+            Increment = 1,
+            FormatString = "0",
+            Width = 120,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+
+        _repoFilter = new TextBox
+        {
+            Text = settings.RepoFilter,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 70,
+            PlaceholderText = "owner/repo per line — blank = all repositories",
+        };
+
         _template = new TextBox
         {
             Text = settings.Template,
@@ -90,6 +113,10 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                     useGhRow,
                     ghPanel,
                     httpPanel,
+                    _Label("Show how many pull requests inline (the dialog lists them all)"),
+                    SettingsHelpRow.Build(_maxItems, "How many pull requests the inline section shows under the session list (1–20). The \"View all open PRs\" dialog always lists every one."),
+                    _Label("Only these repositories (optional)"),
+                    SettingsHelpRow.Build(_repoFilter, "Limit the list to specific repositories — one owner/repo per line (or comma-separated), e.g. octocat/hello-world. Leave blank to show pull requests from all your repositories."),
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body} {author}"),
                     SettingsHelpRow.Build(_template, "Prompt inserted when you click a pull request. Placeholders: {number} {title} {url} {owner} {repo} {body} {author}."),
                 },
@@ -105,6 +132,8 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         _settings.Owner = _owner.Text?.Trim() ?? string.Empty;
         _settings.Repo = _repo.Text?.Trim() ?? string.Empty;
         _settings.Token = _token.Text?.Trim() ?? string.Empty;
+        _settings.MaxItems = (int)(_maxItems.Value ?? 5);
+        _settings.RepoFilter = _repoFilter.Text?.Trim() ?? string.Empty;
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         return true;
     }
