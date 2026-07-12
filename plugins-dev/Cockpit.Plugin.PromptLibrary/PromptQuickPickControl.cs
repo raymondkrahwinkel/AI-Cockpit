@@ -19,8 +19,15 @@ namespace Cockpit.Plugin.PromptLibrary;
 /// </summary>
 internal sealed class PromptQuickPickControl : UserControl
 {
+    // Dark-theme fallbacks used until the real host brushes are resolved on attach.
+    private static readonly IBrush AccentFallback = new SolidColorBrush(Color.Parse("#E2795A"));
+    private static readonly IBrush PillFallback = new SolidColorBrush(Color.Parse("#23262D"));
+    private static readonly IBrush HairlineFallback = new SolidColorBrush(Color.Parse("#363B45"));
+
     private readonly PromptLibrarySettings _settings;
     private readonly ICockpitActions _actions;
+    private readonly Border _searchBar;
+    private readonly TextBlock _icon;
     private readonly TextBox _search;
     private readonly ListBox _list;
     private readonly TextBlock _status;
@@ -32,28 +39,63 @@ internal sealed class PromptQuickPickControl : UserControl
         _settings = settings;
         _actions = actions;
 
-        _search = new TextBox { PlaceholderText = "Search prompts — Enter to insert, Esc to close" };
+        // A spotlight-style search bar: a rounded pill with an accent spark icon and a borderless input, so the
+        // whole thing reads as one search field rather than a boxed TextBox.
+        _search = new TextBox
+        {
+            PlaceholderText = "Search your prompts…",
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(0),
+            FontSize = 15,
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
         _search.TextChanged += (_, _) => _ApplyFilter();
         _search.AddHandler(KeyDownEvent, _OnSearchKeyDown, RoutingStrategies.Tunnel);
+
+        _icon = new TextBlock
+        {
+            Text = "✳",
+            FontSize = 17,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(2, 0, 10, 0),
+            Foreground = AccentFallback,
+        };
+        var searchInner = new DockPanel();
+        DockPanel.SetDock(_icon, Dock.Left);
+        searchInner.Children.Add(_icon);
+        searchInner.Children.Add(_search);
+
+        _searchBar = new Border
+        {
+            Background = PillFallback,
+            BorderBrush = HairlineFallback,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(14, 11),
+            Child = searchInner,
+        };
 
         _list = new ListBox
         {
             ItemsSource = _visible,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
             ItemTemplate = new FuncDataTemplate<PromptTemplate>((template, _) =>
-                new TextBlock { Text = template?.Name, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(4, 3) }, true),
+                new TextBlock { Text = template?.Name, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(6, 5) }, true),
         };
         PromptListSelectionStyle.Apply(_list);
         // A click injects the item just selected by that same click.
         _list.AddHandler(PointerReleasedEvent, (_, _) => _ = _InjectSelectedAndCloseAsync(), RoutingStrategies.Tunnel);
 
-        _status = new TextBlock { FontSize = 11, Opacity = 0.6, Margin = new Thickness(2, 6, 0, 0), TextWrapping = TextWrapping.Wrap };
+        _status = new TextBlock { FontSize = 11, Opacity = 0.6, Margin = new Thickness(4, 6, 0, 0), TextWrapping = TextWrapping.Wrap };
 
         var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Margin = new Thickness(12) };
-        Grid.SetRow(_search, 0);
+        Grid.SetRow(_searchBar, 0);
         Grid.SetRow(_list, 1);
         Grid.SetRow(_status, 2);
-        _list.Margin = new Thickness(0, 8, 0, 0);
-        layout.Children.Add(_search);
+        _list.Margin = new Thickness(0, 10, 0, 0);
+        layout.Children.Add(_searchBar);
         layout.Children.Add(_list);
         layout.Children.Add(_status);
         Content = layout;
@@ -61,7 +103,30 @@ internal sealed class PromptQuickPickControl : UserControl
         _all = [.. _settings.Load()];
         _ApplyFilter();
 
-        AttachedToVisualTree += (_, _) => _search.Focus();
+        AttachedToVisualTree += (_, _) =>
+        {
+            _search.Focus();
+            _ApplyThemeBrushes();
+        };
+    }
+
+    // Match the host theme where it is available (falls back to the built-in dark palette otherwise).
+    private void _ApplyThemeBrushes()
+    {
+        if (this.TryFindResource("CockpitAccentBrush", out var accent) && accent is IBrush a)
+        {
+            _icon.Foreground = a;
+        }
+
+        if (this.TryFindResource("CockpitSecondaryBgBrush", out var bg) && bg is IBrush b)
+        {
+            _searchBar.Background = b;
+        }
+
+        if (this.TryFindResource("CockpitHairlineBrush", out var line) && line is IBrush l)
+        {
+            _searchBar.BorderBrush = l;
+        }
     }
 
     private void _ApplyFilter()

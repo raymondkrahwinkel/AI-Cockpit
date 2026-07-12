@@ -14,9 +14,9 @@ public sealed class PromptLibraryPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "prompt-library",
         DisplayName: "Prompt Library",
-        Version: "1.1.1",
+        Version: "1.2.0",
         Author: "Cockpit",
-        Description: "Reusable prompt templates in the left menu — click one to insert it into the active session, filling in any {{variable}} fields first. Plus a quick-insert palette (the Ctrl+Shift+P shortcut, or the command palette): search your prompts and drop one into the session with a click or Enter.");
+        Description: "Reusable prompt templates in the left menu — click one to insert it into the active session, filling in any {{variable}} fields first. Plus a spotlight-style quick-insert (the Ctrl+Shift+P shortcut, or the command palette): a search bar over your prompts — type, then click or Enter to drop one into the session.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -32,7 +32,7 @@ public sealed class PromptLibraryPlugin : ICockpitPlugin
         // Quick-insert palette (#: prompt quick-inject): a small search-and-inject dialog reached by the
         // keyboard shortcut and the command palette (no separate menu button — that duplicated "Prompt Library").
         void QuickInsert() =>
-            _ = host.ShowDialogAsync("Insert prompt", () => new PromptQuickPickControl(settings, host.Actions), 460, 420);
+            _ = host.ShowDialogAsync("Insert prompt", () => new PromptQuickPickControl(settings, host.Actions), 540, 380);
 
         host.AddShortcut(new PluginShortcut("prompt-library.quick-insert", "Insert prompt", "Ctrl+Shift+P", QuickInsert));
     }
