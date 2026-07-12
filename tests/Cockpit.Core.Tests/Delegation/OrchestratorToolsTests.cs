@@ -48,6 +48,27 @@ public class OrchestratorToolsTests
     }
 
     [Fact]
+    public async Task DelegateTask_WhenQueued_SaysItIsAcceptedAndToPollRatherThanRetry()
+    {
+        // A bare "Queued" reads to a model like a failure: it re-sends the same work and the tasks pile up behind
+        // a profile that runs them one at a time anyway (seen live with MaxConcurrent = 1). The answer has to say
+        // that the work is in hand and that polling — not delegating again — is the next move.
+        var delegation = Substitute.For<IDelegationService>();
+        delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<CancellationToken>())
+            .Returns(_View("task-2", DelegatedTaskStatus.Queued));
+        var tools = new OrchestratorTools(delegation);
+
+        var json = await tools.DelegateTaskAsync("local", "bulk work", null, null, null, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        document.RootElement.GetProperty("queued").GetBoolean().Should().BeTrue();
+        var note = document.RootElement.GetProperty("note").GetString();
+        note.Should().Contain("Do not call delegate_task again");
+        note.Should().Contain("get_task_status");
+        document.RootElement.GetProperty("task").GetProperty("TaskId").GetString().Should().Be("task-2");
+    }
+
+    [Fact]
     public void GetTaskResult_OnAnUnknownTask_SaysSo()
     {
         var delegation = Substitute.For<IDelegationService>();

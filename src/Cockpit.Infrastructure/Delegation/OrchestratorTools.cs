@@ -37,7 +37,7 @@ internal sealed class OrchestratorTools
     }
 
     [McpServerTool(Name = "delegate_task")]
-    [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task runs in the background. Returns status 'Queued' when the target profile is already at its concurrency limit.")]
+    [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again.")]
     public async Task<string> DelegateTaskAsync(
         [Description("The label of the profile to delegate to, as returned by list_profiles.")] string profile,
         [Description("The prompt for the delegated session.")] string prompt,
@@ -51,6 +51,23 @@ internal sealed class OrchestratorTools
             var task = await _delegation.DelegateAsync(
                 new DelegationRequest(profile, prompt, task_type, label, working_directory),
                 cancellationToken);
+
+            // A queued task is accepted, not rejected — but a bare "Queued" reads to a model like a failure, and
+            // it re-sends the same work, piling up tasks the profile will run one after another anyway. So say
+            // plainly that it is in hand and that polling, not re-delegating, is what to do next.
+            if (task.Status == DelegatedTaskStatus.Queued)
+            {
+                return JsonSerializer.Serialize(
+                    new
+                    {
+                        task,
+                        queued = true,
+                        note = $"Accepted and queued: '{task.ProfileLabel}' is already running as many tasks as it allows at once. " +
+                               "It starts on its own as soon as a slot frees. Do not call delegate_task again for this work — " +
+                               "poll get_task_status with this TaskId, and collect the answer with get_task_result.",
+                    },
+                    SerializerOptions);
+            }
 
             return JsonSerializer.Serialize(task, SerializerOptions);
         }
