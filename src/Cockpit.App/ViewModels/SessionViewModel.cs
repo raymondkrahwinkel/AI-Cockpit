@@ -215,23 +215,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         // A sample queued message so the previewer/Screenshotter render the send-queue strip (T8).
         QueuedMessages.Add(new QueuedMessageViewModel(
             "run the tests once the build finishes", [], m => QueuedMessages.Remove(m)));
-
-        // A sample pasted-image chip so the previewer/Screenshotter render the attachment strip.
-        // Decoding the Bitmap needs Avalonia's imaging platform: the previewer and the headless
-        // Screenshotter both initialize an Application, the unit-test host does not — so guard on
-        // that rather than decode (and crash) when no platform is present.
-        if (Application.Current is not null)
-        {
-            AddPastedImage(Convert.FromBase64String(_SampleChipPng));
-        }
     }
-
-    // 64x64 solid-blue PNG, design-time only: seeds one attachment chip for the Avalonia previewer.
-    private const string _SampleChipPng =
-        "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJ" +
-        "cEhZcwAADsMAAA7DAcdvqGQAAACJSURBVHhe5cgxAQAADMOg+je9CYgEDh623dkSmoQmoUloEpqEJqFJaBKahCah" +
-        "SWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgSmoQmoUloEpqEJqFJaBKahCahSWgS" +
-        "moQmoUloEpqEJqFJaBKahCahSWgSmoQmYXlhqOHSNEsP9wAAAABJRU5ErkJggg==";
 
     public SessionViewModel(
         ISessionDriverFactory driverFactory,
