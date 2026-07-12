@@ -124,6 +124,19 @@ public class PluginInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallFromZipAsync_UpdateResult_CarriesTheNewBytesSha256_NotTheOld()
+    {
+        // The update result must hash the NEW (staged) bytes, so the manager can pin that hash and keep the
+        // plugin enabled after the restart swap — pinning the still-live old bytes' hash was the disable bug.
+        var v1 = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);
+        var v2 = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
+
+        v1.Sha256.Should().NotBeNullOrEmpty();
+        v2.Sha256.Should().NotBeNullOrEmpty();
+        v2.Sha256.Should().NotBe(v1.Sha256);
+    }
+
+    [Fact]
     public async Task SweepPendingUpdatesAsync_AppliesStagedUpdate_ReplacingTheOldFolder()
     {
         await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);

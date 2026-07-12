@@ -81,14 +81,17 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             }
 
             var folderId = _ResolveFolderId(manifest.Id);
+            // Hash of the newly installed entry assembly (computed from staging, before the move). The caller
+            // pins this so an updated plugin — whose new bytes only go live after the next restart — stays
+            // enabled instead of dropping to needs-consent when the pending copy is swapped in.
+            var newSha256 = PluginHash.Compute(await File.ReadAllBytesAsync(Path.Combine(stagingDir, manifest.EntryAssembly), cancellationToken).ConfigureAwait(false));
             var finalDir = Path.Combine(_pluginsRoot, folderId);
             if (Directory.Exists(finalDir))
             {
                 // Updating an existing install: the plugin may be loaded, and a loaded assembly's file is locked
                 // until the process exits (on Windows), so an in-place replace would throw an access-denied.
                 // Stage the new version and let SweepPendingUpdatesAsync swap it in at the next startup — before
-                // any plugin loads — the same restart-deferred contract removal uses. The changed hash
-                // re-triggers consent on the next discovery.
+                // any plugin loads — the same restart-deferred contract removal uses.
                 var pendingDir = Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId);
                 Directory.CreateDirectory(Path.Combine(_pluginsRoot, PendingUpdatesFolder));
                 if (Directory.Exists(pendingDir))
@@ -97,11 +100,11 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 }
 
                 Directory.Move(stagingDir, pendingDir);
-                return PluginInstallResult.Success(folderId);
+                return PluginInstallResult.Success(folderId, newSha256);
             }
 
             Directory.Move(stagingDir, finalDir);
-            return PluginInstallResult.Success(folderId);
+            return PluginInstallResult.Success(folderId, newSha256);
         }
         catch (Exception exception)
         {

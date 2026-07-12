@@ -20,9 +20,10 @@ public partial class CommandPaletteDialog : Window
         DataContextChanged += OnDataContextChanged;
         Opened += (_, _) => QueryBox.Focus();
 
-        // Tunnel so the arrow keys reach us before the TextBox consumes them (a bubbling handler never sees
-        // Up/Down). A single click on a row runs it — selection lands on press, so it is correct by release.
-        QueryBox.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
+        // Tunnel on the window (not the TextBox): the window is the root of the tunnel route, so this fires
+        // before the TextBox's own arrow-key handling consumes Up/Down. A single click on a row runs it —
+        // selection lands on press, so it is correct by release.
+        this.AddHandler(KeyDownEvent, OnQueryKeyDown, RoutingStrategies.Tunnel);
         CommandList.AddHandler(PointerReleasedEvent, OnListPointerReleased, RoutingStrategies.Tunnel);
     }
 

@@ -494,34 +494,28 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        await LoadAsync();
-        var installed = Plugins.FirstOrDefault(row => row.FolderId == result.FolderId);
-        if (installed is null)
-        {
-            StatusMessage = installedMessage;
-            NeedsRestart = true;
-            return;
-        }
-
-        // Updating an already-enabled plugin must keep it enabled. The install writes new bytes, so the pinned
-        // SHA no longer matches and the plugin would drop to "needs consent" — which reads as disabled after a
-        // restart (the bug behind "update all disabled everything"). Since the operator explicitly updated it
-        // from the configured, sha256-verified store, re-pin the new hash and keep it enabled instead of
-        // re-prompting consent. A fresh install (no prior enabled registration) still walks into consent.
-        if (_registrationStore is not null && result.FolderId is { } folderId)
+        // Updating an already-enabled plugin must keep it enabled. An update is staged to .pending-updates and
+        // only swapped live on the next restart, so its new bytes' hash won't match the pinned one — the plugin
+        // would drop to "needs consent" after the restart (the bug behind "update all disabled everything").
+        // Since the operator explicitly updated it from the configured, sha256-verified store, re-pin the NEW
+        // hash (from the install result) now, so the swapped-in bytes match on restart and it stays enabled. Do
+        // not re-discover here: the new bytes aren't live yet, so a rediscovery would transiently read as
+        // needs-consent — the restart applies it cleanly. A fresh install still walks into consent below.
+        if (_registrationStore is not null && result.FolderId is { } folderId && result.Sha256 is { } newSha256)
         {
             var registrations = await _registrationStore.LoadAllAsync();
             if (registrations.TryGetValue(folderId, out var prior) && prior.Enabled)
             {
-                await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: true, PinnedSha256: installed.Discovered.Sha256));
-                await LoadAsync();
+                await _registrationStore.SaveAsync(folderId, new PluginRegistration(Enabled: true, PinnedSha256: newSha256));
                 StatusMessage = installedMessage;
                 NeedsRestart = true;
                 return;
             }
         }
 
-        if (installed.CanEnable)
+        await LoadAsync();
+        var installed = Plugins.FirstOrDefault(row => row.FolderId == result.FolderId);
+        if (installed is not null && installed.CanEnable)
         {
             await EnablePluginAsync(installed);
         }

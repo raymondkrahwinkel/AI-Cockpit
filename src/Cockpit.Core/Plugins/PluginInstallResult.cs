@@ -2,12 +2,14 @@ namespace Cockpit.Core.Plugins;
 
 /// <summary>
 /// Outcome of installing a plugin from a <c>.zip</c> (#14): the folder id the plugin landed under on
-/// success, or a human-readable reason it was rejected (bad archive, unsafe path, missing/invalid
-/// manifest, incompatible abstractions major). No exceptions for the expected rejection cases.
+/// success (and the SHA-256 of the newly installed entry assembly — which for an update is staged to
+/// <c>.pending-updates</c> and only becomes live after the next restart, so it is the hash to pin so the
+/// updated plugin stays enabled), or a human-readable reason it was rejected. No exceptions for the expected
+/// rejection cases.
 /// </summary>
-public sealed record PluginInstallResult(bool IsSuccess, string? Error, string? FolderId)
+public sealed record PluginInstallResult(bool IsSuccess, string? Error, string? FolderId, string? Sha256 = null)
 {
-    public static PluginInstallResult Success(string folderId) => new(true, null, folderId);
+    public static PluginInstallResult Success(string folderId, string? sha256 = null) => new(true, null, folderId, sha256);
 
     public static PluginInstallResult Failure(string error) => new(false, error, null);
 }
