@@ -202,6 +202,37 @@ public class ClaudeStreamJsonParserTests
     }
 
     [Fact]
+    public void ParseLine_ResultWithUsageAndCost_CapturesTokensCostAndTurns()
+    {
+        const string line = """
+            {"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"S1","num_turns":3,"total_cost_usd":0.0123,"usage":{"input_tokens":100,"output_tokens":200,"cache_read_input_tokens":50,"cache_creation_input_tokens":10}}
+            """;
+
+        var result = ClaudeStreamJsonParser.TryParseLine(line);
+
+        var turn = result.Should().BeOfType<TurnCompleted>().Subject;
+        turn.NumTurns.Should().Be(3);
+        turn.TotalCostUsd.Should().Be(0.0123);
+        turn.Usage.Should().Be(new TokenUsage(100, 200, 50, 10));
+        turn.Usage!.Total.Should().Be(360);
+    }
+
+    [Fact]
+    public void ParseLine_ResultWithoutUsage_LeavesUsageCostAndTurnsNull()
+    {
+        const string line = """
+            {"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"S1"}
+            """;
+
+        var result = ClaudeStreamJsonParser.TryParseLine(line);
+
+        var turn = result.Should().BeOfType<TurnCompleted>().Subject;
+        turn.Usage.Should().BeNull();
+        turn.TotalCostUsd.Should().BeNull();
+        turn.NumTurns.Should().BeNull();
+    }
+
+    [Fact]
     public void ParseLine_AssistantToolUseBlock_ReturnsToolUseRequested()
     {
         const string line = """

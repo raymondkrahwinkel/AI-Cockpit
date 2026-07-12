@@ -120,6 +120,26 @@ public sealed record TurnCompleted : ClaudeSessionEvent
     public required bool IsError { get; init; }
     public string? StopReason { get; init; }
     public string? TerminalReason { get; init; }
+
+    /// <summary>Token usage reported in the result event's <c>usage</c> object (#8 token/cost meter), or null when the result carries none (e.g. an error subtype).</summary>
+    public TokenUsage? Usage { get; init; }
+
+    /// <summary>Session cost in USD from the result's <c>total_cost_usd</c> (#8), or null when absent.</summary>
+    public double? TotalCostUsd { get; init; }
+
+    /// <summary>The CLI's own turn count for the session from <c>num_turns</c> (#8), or null when absent.</summary>
+    public int? NumTurns { get; init; }
+}
+
+/// <summary>
+/// Token counts from a <c>result</c> event's <c>usage</c> object (#8 token/cost meter). Carried on
+/// <see cref="TurnCompleted.Usage"/>; how these accumulate across turns (running total vs per-turn delta) is a
+/// consumer concern, not decided here — this record just mirrors what the CLI reported for one result.
+/// </summary>
+public sealed record TokenUsage(int InputTokens, int OutputTokens, int CacheReadInputTokens, int CacheCreationInputTokens)
+{
+    /// <summary>Input + output tokens including cache reads and creations — one number for a compact meter.</summary>
+    public int Total => InputTokens + OutputTokens + CacheReadInputTokens + CacheCreationInputTokens;
 }
 
 /// <summary>

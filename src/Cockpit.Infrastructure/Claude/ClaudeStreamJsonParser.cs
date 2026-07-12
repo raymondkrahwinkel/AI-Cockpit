@@ -332,6 +332,12 @@ internal static class ClaudeStreamJsonParser
         var terminalReason = root.TryGetProperty("terminal_reason", out var termProp) && termProp.ValueKind == JsonValueKind.String
             ? termProp.GetString()
             : null;
+        var totalCostUsd = root.TryGetProperty("total_cost_usd", out var costProp) && costProp.ValueKind == JsonValueKind.Number
+            ? costProp.GetDouble()
+            : (double?)null;
+        var numTurns = root.TryGetProperty("num_turns", out var turnsProp) && turnsProp.ValueKind == JsonValueKind.Number
+            ? turnsProp.GetInt32()
+            : (int?)null;
 
         return new TurnCompleted
         {
@@ -341,6 +347,28 @@ internal static class ClaudeStreamJsonParser
             IsError = isError,
             StopReason = stopReason,
             TerminalReason = terminalReason,
+            Usage = ParseUsage(root),
+            TotalCostUsd = totalCostUsd,
+            NumTurns = numTurns,
         };
+    }
+
+    // The result event's usage object (#8): token counts the CLI reports at end-of-turn. Missing counts read as
+    // 0 and a missing/non-object usage yields null, so a result without usage leaves TurnCompleted.Usage null.
+    private static TokenUsage? ParseUsage(JsonElement root)
+    {
+        if (!root.TryGetProperty("usage", out var usage) || usage.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new TokenUsage(
+            ReadInt(usage, "input_tokens"),
+            ReadInt(usage, "output_tokens"),
+            ReadInt(usage, "cache_read_input_tokens"),
+            ReadInt(usage, "cache_creation_input_tokens"));
+
+        static int ReadInt(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.Number ? prop.GetInt32() : 0;
     }
 }
