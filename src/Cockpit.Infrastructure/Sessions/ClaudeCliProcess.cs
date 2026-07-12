@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
@@ -93,9 +94,9 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         // it carries the same servers the local-LLM tool-loop hosts, alongside the permission server. Done
         // per spawn so registry edits take effect for the next session without an app restart. The per-session
         // selection (#44) narrows which registry servers are included for this particular spawn.
-        FanOutRegistryToMcpConfig(permissionMode, enabledMcpServerNames);
+        var canDelegate = FanOutRegistryToMcpConfig(permissionMode, enabledMcpServerNames);
 
-        var arguments = BuildArguments(cli, permissionMode, model, _permissionServerState);
+        var arguments = BuildArguments(cli, permissionMode, model, _permissionServerState, canDelegate);
 
         var startInfo = new ProcessStartInfo
         {
@@ -190,11 +191,17 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
     /// construction — especially the permission-prompt/MCP wiring — is unit-testable without
     /// spawning a real process.
     /// </summary>
+    /// <param name="canDelegate">
+    /// True when this session actually gets the orchestrator's tools (#67). The tool descriptions say what they
+    /// do, but nothing about when reaching for them is worthwhile — without a nudge, an agent that could hand
+    /// bulk work to a local model just does it itself and the tools go unused.
+    /// </param>
     internal static List<string> BuildArguments(
         ClaudeCliOptions cli,
         string? permissionMode,
         string? model,
-        IPermissionServerState permissionServerState)
+        IPermissionServerState permissionServerState,
+        bool canDelegate = false)
     {
         var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? cli.PermissionMode : permissionMode;
 
@@ -234,6 +241,12 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             arguments.Add(model);
         }
 
+        if (canDelegate)
+        {
+            arguments.Add("--append-system-prompt");
+            arguments.Add(DelegationSystemPrompt.Default);
+        }
+
         arguments.AddRange(cli.ExtraArguments);
         return arguments;
     }
@@ -244,17 +257,18 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
     // selection (#44). Skipped in bypass mode (no --mcp-config is passed there) and when the permission
     // server isn't ready yet. Best-effort: any failure leaves the baseline permission-only config in place
     // rather than blocking the spawn.
-    private void FanOutRegistryToMcpConfig(string? permissionMode, IReadOnlySet<string>? enabledMcpServerNames)
+    /// <returns>True when the orchestrator's tools (#67) end up in this session's config, so the caller can tell the model it may delegate.</returns>
+    private bool FanOutRegistryToMcpConfig(string? permissionMode, IReadOnlySet<string>? enabledMcpServerNames)
     {
         var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? _options.Claude.PermissionMode : permissionMode;
         if (string.Equals(effectiveMode, "bypassPermissions", StringComparison.Ordinal))
         {
-            return;
+            return false;
         }
 
         if (_permissionServerState is not { McpConfigPath: { } configPath, PermissionMcpUrl: { } mcpUrl })
         {
-            return;
+            return false;
         }
 
         try
@@ -264,10 +278,14 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
             var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, enabledMcpServerNames);
             File.WriteAllText(configPath, McpConfigFile.Serialize(mcpUrl, sessionRegistry));
+
+            return sessionRegistry.Any(server =>
+                server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception)
         {
             // Leave the baseline config the permission server wrote; the session still gets permission gating.
+            return false;
         }
     }
 

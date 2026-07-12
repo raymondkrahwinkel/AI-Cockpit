@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
@@ -25,8 +26,8 @@ namespace Cockpit.Infrastructure.Delegation;
 /// </remarks>
 internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServerState, ISingletonService, IAsyncDisposable
 {
-    /// <summary>The MCP server name; the tools appear to a session as <c>mcp__cockpit-orchestrator__delegate_task</c> and friends.</summary>
-    public const string ServerName = "cockpit-orchestrator";
+    /// <summary>The MCP server name, shared with the spawn paths that decide whether a session gets these tools.</summary>
+    public const string ServerName = DelegationMcp.ServerName;
 
     private readonly IDelegationService _delegation;
     private readonly IMcpServerStore _mcpServerStore;
