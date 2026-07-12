@@ -55,10 +55,11 @@ internal sealed class PromptQuickPickControl : UserControl
 
         _icon = new TextBlock
         {
-            Text = "✳",
-            FontSize = 17,
+            Text = "›",
+            FontSize = 20,
+            FontWeight = FontWeight.Bold,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(2, 0, 10, 0),
+            Margin = new Thickness(2, 0, 12, 0),
             Foreground = AccentFallback,
         };
         var searchInner = new DockPanel();
