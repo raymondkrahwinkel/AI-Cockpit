@@ -139,6 +139,19 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 $"Task '{taskId}' has no live session to continue (it is {entry.Status}). Delegate a new task instead.");
         }
 
+        // The concurrency cap counts work being done on a profile, not just tasks being started on it: a
+        // follow-up puts that session back to work, so it has to pass the same gate. It used to skip it, which
+        // let a follow-up run alongside another task on a profile set to one at a time — exactly the parallel
+        // load (a second model on the same GPU, a second draw on the same usage pot) the cap exists to prevent.
+        // Refused rather than queued: a follow-up is the next turn of a conversation, and quietly deferring it
+        // while the caller believes it is under way is the kind of silent lie this engine does not tell.
+        if (entry.Status != DelegatedTaskStatus.Running && !_HasFreeSlot(entry.Profile.Label, entry.Profile.DelegationPolicy))
+        {
+            throw new DelegationRejectedException(
+                $"Profile '{entry.Profile.Label}' is already running as many tasks as it allows at once " +
+                $"({entry.Profile.DelegationPolicy.MaxConcurrent}). Wait for one to finish, then send the follow-up.");
+        }
+
         entry.Status = DelegatedTaskStatus.Running;
         TasksChanged?.Invoke();
         await entry.Runtime.SendUserMessageAsync(text, cancellationToken: cancellationToken);

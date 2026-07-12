@@ -229,6 +229,36 @@ public class DelegationGuardTests
     }
 
     [Fact]
+    public async Task SendFollowUp_WhenTheProfileIsAlreadyAtItsCap_IsRefused()
+    {
+        // Found in live use: the cap gated new tasks but not follow-ups, so a follow-up woke a finished session
+        // back up alongside a task that was already running on a profile set to one at a time — two models on the
+        // same GPU, two draws on the same usage pot. The cap counts work being done, not tasks being started.
+        // The first session answers and stays alive (so it could take a follow-up); the second keeps working, and
+        // is therefore the profile's one allowed running task.
+        var answering = Substitute.For<ISessionDriver>();
+        answering.Events.Returns(_StreamCompletingATurn());
+        var stillWorking = Substitute.For<ISessionDriver>();
+        stillWorking.Events.Returns(_StreamThatNeverFinishes());
+
+        var driverFactory = Substitute.For<ISessionDriverFactory>();
+        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(answering, stillWorking);
+        var service = _Service(driverFactory, _Registry(), _Target("local", policy => policy with { MaxConcurrent = 1 }));
+
+        var first = await service.DelegateAsync(new DelegationRequest("local", "first"));
+        await _WaitUntilAsync(() => service.GetTask(first.TaskId)!.Status == DelegatedTaskStatus.Completed);
+
+        var second = await service.DelegateAsync(new DelegationRequest("local", "second"));
+        service.GetTask(second.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Running);
+
+        var followUp = async () => await service.SendFollowUpAsync(first.TaskId, "one more thing");
+
+        await followUp.Should().ThrowAsync<DelegationRejectedException>()
+            .WithMessage("*already running as many tasks as it allows*");
+        service.GetTask(first.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Completed, "the refused follow-up must not put it back to work");
+    }
+
+    [Fact]
     public async Task SendFollowUp_ToATaskWhoseSessionIsGone_IsRefusedLoudly()
     {
         // The other half: never a quiet "ok" for a follow-up that cannot land.
@@ -247,6 +277,14 @@ public class DelegationGuardTests
         {
             await Task.Delay(10);
         }
+    }
+
+    // A session that is still working: it has produced nothing yet and its stream stays open, so the task sits at
+    // Running — which is what occupies the profile's slot.
+    private static async IAsyncEnumerable<Cockpit.Core.Sessions.SessionEvent> _StreamThatNeverFinishes()
+    {
+        await Task.Delay(Timeout.Infinite, CancellationToken.None);
+        yield break;
     }
 
     private static async IAsyncEnumerable<Cockpit.Core.Sessions.SessionEvent> _StreamCompletingATurn()
