@@ -61,12 +61,6 @@ public partial class ClaudeTtyView : UserControl
     private readonly ILogger<ClaudeTtyView>? _logger =
         Design.IsDesignMode ? null : Program.Services.GetService<ILogger<ClaudeTtyView>>();
 
-    // Auto-redraw (#55): debounces a burst of redraw triggers (focus, activation, visibility) into a
-    // single ForceRedraw() once they stop arriving, same restart-on-trigger approach as _resizeSettle
-    // above, just a separate timer/concern.
-    private DispatcherTimer? _autoRedrawDebounce;
-    private WindowBase? _activatedWindow;
-
     // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
     // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
     // doesn't flood the log while a reproduction (double-click + type) still has enough samples to show
@@ -84,15 +78,6 @@ public partial class ClaudeTtyView : UserControl
         // KeyDown handling would otherwise encode it as a VT keystroke and send it into the pty.
         AddHandler(InputElement.KeyDownEvent, _OnPushToTalkKeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyUpEvent, _OnPushToTalkKeyUp, RoutingStrategies.Tunnel);
-
-        // Auto-redraw (#55): Rick confirmed the existing manual Redraw button (ForceRedraw(), see below)
-        // recovers a TUI that renders desynced after the user does something outside the TTY (a dialog
-        // button, a focus change) — intermittent on his Fedora/KDE/Wayland setup. Firing it automatically
-        // on the same signals that correlate with the glitch means he never has to notice and click it.
-        // ForceRedraw() is non-destructive (a two-step pty resize, no emulator clear), so auto-firing it
-        // costs nothing when the render was already fine.
-        Terminal.GotFocus += OnTerminalGotFocus;
-        PropertyChanged += OnControlPropertyChanged;
 
         // Scrollback dispatch for the terminal's mouse wheel (#56 alt-screen arrow-key fallback, #57
         // primary/inline-screen native scroll): tunnel so we intercept before TerminalControl's own
@@ -128,83 +113,6 @@ public partial class ClaudeTtyView : UserControl
 
         WireTerminal();
         _ApplyTerminalFont();
-    }
-
-    /// <summary>
-    /// Auto-redraw trigger (#55): the window hosting this pane was activated — covers switching back to
-    /// the app from elsewhere, and an owned modal dialog closing and handing activation back to the main
-    /// window. Subscribed here (not the constructor) because the control isn't attached to a
-    /// <see cref="TopLevel"/> yet when constructed.
-    /// </summary>
-    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnAttachedToVisualTree(e);
-
-        if (TopLevel.GetTopLevel(this) is WindowBase window)
-        {
-            _activatedWindow = window;
-            window.Activated += OnWindowActivated;
-        }
-
-        // The pane itself just entered the visual tree (e.g. a freshly created session, or reparented
-        // back after being hidden) — another of the #55 auto-redraw triggers.
-        ScheduleAutoRedraw();
-    }
-
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnDetachedFromVisualTree(e);
-
-        if (_activatedWindow is not null)
-        {
-            _activatedWindow.Activated -= OnWindowActivated;
-            _activatedWindow = null;
-        }
-    }
-
-    private void OnWindowActivated(object? sender, EventArgs e) => ScheduleAutoRedraw();
-
-    private void OnTerminalGotFocus(object? sender, FocusChangedEventArgs e) => ScheduleAutoRedraw();
-
-    /// <summary>Auto-redraw trigger (#55): the TTY pane was re-selected/became visible again — e.g. switching back to it in single-session or zoomed layout, where the other panels are collapsed via <c>IsVisible</c> rather than removed.</summary>
-    private void OnControlPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
-    {
-        if (e.Property == Visual.IsVisibleProperty && e.NewValue is true)
-        {
-            ScheduleAutoRedraw();
-        }
-    }
-
-    /// <summary>
-    /// Debounces the auto-redraw triggers above into a single <see cref="ForceRedraw"/> once they stop
-    /// arriving for the debounce window — a single user gesture (closing a dialog) can raise several in
-    /// quick succession (focus regained, window activated), and each would otherwise independently kick
-    /// off the two-step pty resize. <see cref="TtyAutoRedrawGate"/> guards against scheduling before
-    /// there is a running pty with a known size to redraw.
-    /// </summary>
-    private void ScheduleAutoRedraw()
-    {
-        if (!TtyAutoRedrawGate.ShouldScheduleRedraw(
-                _pty is not null, _lastColumns, _lastRows, _resizeSettle is { IsEnabled: true }))
-        {
-            return;
-        }
-
-        _autoRedrawDebounce ??= CreateAutoRedrawDebounceTimer();
-        _autoRedrawDebounce.Stop();
-        _autoRedrawDebounce.Start();
-    }
-
-    private DispatcherTimer CreateAutoRedrawDebounceTimer()
-    {
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            ForceRedraw();
-        };
-
-        return timer;
     }
 
     /// <summary>
@@ -657,9 +565,6 @@ public partial class ClaudeTtyView : UserControl
     {
         _resizeSettle?.Stop();
         _resizeSettle = null;
-
-        _autoRedrawDebounce?.Stop();
-        _autoRedrawDebounce = null;
 
         _outputCancellation?.Cancel();
         _outputCancellation?.Dispose();
