@@ -1,11 +1,11 @@
 {
   "id": "prompt-library",
   "name": "Prompt Library",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "entryAssembly": "Cockpit.Plugin.PromptLibrary.dll",
   "entryType": "Cockpit.Plugin.PromptLibrary.PromptLibraryPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "1.0.0",
-  "description": "A library of reusable prompt templates in the left menu. Click one to insert it into the active session, filling in any {{variable}} fields first. Create, edit and remove templates in the same dialog.",
+  "description": "A library of reusable prompt templates in the left menu. Click one to insert it into the active session, filling in any {{variable}} fields first. Create, edit and remove templates in the same dialog. Plus a quick-insert palette (\"Insert prompt\" button or the Ctrl+Shift+P shortcut): search your prompts and drop one into the session with a click or Enter.",
   "author": "Cockpit"
 }

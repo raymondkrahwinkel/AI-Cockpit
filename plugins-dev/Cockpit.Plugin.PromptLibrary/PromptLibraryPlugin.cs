@@ -14,9 +14,9 @@ public sealed class PromptLibraryPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "prompt-library",
         DisplayName: "Prompt Library",
-        Version: "1.0.0",
+        Version: "1.1.0",
         Author: "Cockpit",
-        Description: "Reusable prompt templates in the left menu — click one to insert it into the active session, filling in any {{variable}} fields first.");
+        Description: "Reusable prompt templates in the left menu — click one to insert it into the active session, filling in any {{variable}} fields first. Plus a quick-insert palette (\"Insert prompt\" button or the Ctrl+Shift+P shortcut): search your prompts and drop one into the session with a click or Enter.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -28,6 +28,14 @@ public sealed class PromptLibraryPlugin : ICockpitPlugin
         host.AddSideMenuButton(
             "Prompt Library",
             () => _ = host.ShowDialogAsync("Prompt Library", () => new PromptLibraryDialogControl(settings, host.Actions), 900, 620));
+
+        // Quick-insert palette (#: prompt quick-inject): a small search-and-inject dialog on a button and a
+        // keyboard shortcut, for dropping a prompt into the session without opening the full library.
+        void QuickInsert() =>
+            _ = host.ShowDialogAsync("Insert prompt", () => new PromptQuickPickControl(settings, host.Actions), 460, 420);
+
+        host.AddSideMenuButton("Insert prompt", QuickInsert);
+        host.AddShortcut(new PluginShortcut("prompt-library.quick-insert", "Insert prompt", "Ctrl+Shift+P", QuickInsert));
     }
 
     public void Dispose()
