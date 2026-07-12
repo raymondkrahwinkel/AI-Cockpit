@@ -28,6 +28,14 @@ internal sealed class PluginDiscovery : ISingletonService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            // Skip reserved, dot-prefixed folders (a leftover .staging-* extraction or the .pending-updates
+            // staging area): they hold a valid manifest but are not installed plugins, so discovering them
+            // would surface a phantom duplicate.
+            if (Path.GetFileName(folder).StartsWith('.'))
+            {
+                continue;
+            }
+
             var manifestPath = Path.Combine(folder, "plugin.json");
             if (!File.Exists(manifestPath))
             {

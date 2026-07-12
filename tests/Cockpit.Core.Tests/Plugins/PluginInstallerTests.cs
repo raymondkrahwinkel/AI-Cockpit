@@ -109,6 +109,38 @@ public class PluginInstallerTests : IDisposable
         Directory.Exists(Path.Combine(_pluginsRoot, "gone")).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task InstallFromZipAsync_UpdateOverExistingInstall_StagesPendingWithoutReplacingCurrent()
+    {
+        await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);
+
+        var result = await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
+
+        result.IsSuccess.Should().BeTrue();
+        result.FolderId.Should().Be("acme");
+        // The live install is untouched (its assembly may be loaded/locked); the new version waits in staging.
+        (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))).Should().Be("MZ-v1");
+        (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, ".pending-updates", "acme", "Plugin.dll"))).Should().Be("MZ-v2");
+    }
+
+    [Fact]
+    public async Task SweepPendingUpdatesAsync_AppliesStagedUpdate_ReplacingTheOldFolder()
+    {
+        await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v1"), HostMajor);
+        await _installer.InstallFromZipAsync(_PluginZip("acme", dll: "MZ-v2"), HostMajor);
+
+        await _installer.SweepPendingUpdatesAsync();
+
+        (await File.ReadAllTextAsync(Path.Combine(_pluginsRoot, "acme", "Plugin.dll"))).Should().Be("MZ-v2");
+        Directory.Exists(Path.Combine(_pluginsRoot, ".pending-updates")).Should().BeFalse();
+    }
+
+    private string _PluginZip(string id, string dll) => _CreateZip(new()
+    {
+        ["plugin.json"] = _Manifest(id, id, "Plugin.dll", abstractionsVersion: 1),
+        ["Plugin.dll"] = dll,
+    });
+
     private static string _Manifest(string id, string name, string entryAssembly, int abstractionsVersion) =>
         $$"""{"id":"{{id}}","name":"{{name}}","version":"1.0.0","entryAssembly":"{{entryAssembly}}","abstractionsVersion":{{abstractionsVersion}}}""";
 

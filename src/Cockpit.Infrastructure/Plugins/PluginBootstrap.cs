@@ -25,8 +25,10 @@ public sealed class PluginBootstrap : ISingletonService
     /// </summary>
     public async Task<IReadOnlyList<DiscoveredPlugin>> DiscoverAsync(int hostAbstractionsMajor, CancellationToken cancellationToken = default)
     {
-        // Delete any folder the operator removed last session before scanning, so a removed plugin is
-        // never rediscovered or loaded.
+        // Apply any staged update and delete any folder the operator removed last session before scanning, so
+        // the swap/delete runs while no plugin assembly is loaded (locked) and a removed plugin is never
+        // rediscovered or loaded.
+        await _installer.SweepPendingUpdatesAsync(cancellationToken).ConfigureAwait(false);
         await _installer.SweepRemovalsAsync(cancellationToken).ConfigureAwait(false);
 
         var saved = await _registrationStore.LoadAllAsync(cancellationToken).ConfigureAwait(false);

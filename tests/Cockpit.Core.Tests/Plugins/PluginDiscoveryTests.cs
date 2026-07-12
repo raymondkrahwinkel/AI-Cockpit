@@ -86,6 +86,19 @@ public class PluginDiscoveryTests : IDisposable
         found.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task DiscoverAsync_SkipsReservedDotPrefixedFolders_EvenWithAValidManifest()
+    {
+        // A leftover .staging-* extraction or the .pending-updates staging area carries a valid manifest but is
+        // not an installed plugin, so it must never be discovered as a phantom duplicate.
+        WritePlugin(".staging-abc123", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
+        var discovery = new PluginDiscovery();
+
+        var found = await discovery.DiscoverAsync(_root, Empty, HostMajor);
+
+        found.Should().BeEmpty();
+    }
+
     private string WritePlugin(string folderId, string entryAssembly, int abstractionsVersion)
     {
         var folder = Path.Combine(_root, folderId);

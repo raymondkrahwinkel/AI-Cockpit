@@ -11,12 +11,20 @@ namespace Cockpit.Infrastructure.Plugins;
 /// entry through the <see cref="PluginInstallPath"/> zip-slip guard into a staging folder on the same
 /// volume as the plugins root, its root <c>plugin.json</c> is parsed and its abstractions major checked,
 /// and only then is it moved into its final <c>plugins/&lt;id&gt;/</c> folder. Removal drops a
-/// <c>.remove</c> marker that <see cref="SweepRemovalsAsync"/> acts on at the next startup — a loaded
-/// plugin's assembly stays locked until the process exits.
+/// <c>.remove</c> marker that <see cref="SweepRemovalsAsync"/> acts on at the next startup, and an update
+/// over an existing install is staged under <see cref="PendingUpdatesFolder"/> for
+/// <see cref="SweepPendingUpdatesAsync"/> to apply at the next startup — both deferred because a loaded
+/// plugin's assembly file stays locked (on Windows) until the process exits, so replacing it in place
+/// throws an access-denied.
 /// </summary>
 internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
 {
     private const string RemovalMarker = ".remove";
+
+    // A reserved (dot-prefixed, so discovery skips it) folder under the plugins root holding staged updates as
+    // .pending-updates/<folderId>/. Kept off to the side rather than swapped in place so an update never has to
+    // delete a locked, loaded assembly mid-session; the swap happens at startup before any plugin loads.
+    private const string PendingUpdatesFolder = ".pending-updates";
 
     private readonly string _pluginsRoot;
 
@@ -76,8 +84,20 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             var finalDir = Path.Combine(_pluginsRoot, folderId);
             if (Directory.Exists(finalDir))
             {
-                // Updating an existing install: the changed hash re-triggers consent on next discovery.
-                Directory.Delete(finalDir, recursive: true);
+                // Updating an existing install: the plugin may be loaded, and a loaded assembly's file is locked
+                // until the process exits (on Windows), so an in-place replace would throw an access-denied.
+                // Stage the new version and let SweepPendingUpdatesAsync swap it in at the next startup — before
+                // any plugin loads — the same restart-deferred contract removal uses. The changed hash
+                // re-triggers consent on the next discovery.
+                var pendingDir = Path.Combine(_pluginsRoot, PendingUpdatesFolder, folderId);
+                Directory.CreateDirectory(Path.Combine(_pluginsRoot, PendingUpdatesFolder));
+                if (Directory.Exists(pendingDir))
+                {
+                    Directory.Delete(pendingDir, recursive: true);
+                }
+
+                Directory.Move(stagingDir, pendingDir);
+                return PluginInstallResult.Success(folderId);
             }
 
             Directory.Move(stagingDir, finalDir);
@@ -137,6 +157,61 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
                 // If the folder is still locked (rare — the plugin was disabled but not yet unloaded),
                 // the marker remains and it is swept on the next start.
             }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task SweepPendingUpdatesAsync(CancellationToken cancellationToken = default)
+    {
+        var pendingRoot = Path.Combine(_pluginsRoot, PendingUpdatesFolder);
+        if (!Directory.Exists(pendingRoot))
+        {
+            return Task.CompletedTask;
+        }
+
+        foreach (var pendingDir in Directory.EnumerateDirectories(pendingRoot))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // The pending folder's name is the target folder id (see InstallFromZipAsync). At startup no plugin
+            // is loaded yet, so the old folder is unlocked and can be replaced.
+            var finalDir = Path.Combine(_pluginsRoot, Path.GetFileName(pendingDir));
+            try
+            {
+                if (Directory.Exists(finalDir))
+                {
+                    Directory.Delete(finalDir, recursive: true);
+                }
+
+                Directory.Move(pendingDir, finalDir);
+            }
+            catch
+            {
+                // If the old folder is somehow still locked, leave the staged copy in place and apply it on the
+                // next start; the existing install keeps working meanwhile.
+            }
+        }
+
+        // Best-effort cleanup: drop the pending root once every staged update has been applied.
+        try
+        {
+            var hasRemaining = false;
+            foreach (var _ in Directory.EnumerateFileSystemEntries(pendingRoot))
+            {
+                hasRemaining = true;
+                break;
+            }
+
+            if (!hasRemaining)
+            {
+                Directory.Delete(pendingRoot);
+            }
+        }
+        catch
+        {
+            // A lingering empty pending root is harmless — discovery skips dot-prefixed folders — and it is
+            // cleaned on the next start.
         }
 
         return Task.CompletedTask;
