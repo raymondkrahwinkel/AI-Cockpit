@@ -18,9 +18,9 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-pull-requests",
         DisplayName: "GitHub Pull Requests",
-        Version: "1.2.0",
+        Version: "1.3.0",
         Author: "Cockpit",
-        Description: "Shows up to 5 of your open GitHub pull requests inline under the session list (via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP), plus a dialog with an \"Assigned to me\" filter. Click one to drop a prompt asking the agent to review it. The prompt template is editable in settings.");
+        Description: "Shows up to 5 of your open GitHub pull requests inline under the session list, auto-refreshing so they appear/disappear as they are opened, merged or closed (via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP), plus a dialog with an \"Assigned to me\" filter. Click one to drop a prompt asking the agent to review it. The prompt template is editable in settings.");
 
     public void ConfigureServices(IServiceCollection services)
     {

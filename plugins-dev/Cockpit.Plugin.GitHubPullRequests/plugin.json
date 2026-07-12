@@ -1,11 +1,11 @@
 {
   "id": "github-pull-requests",
   "name": "GitHub Pull Requests",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "entryAssembly": "Cockpit.Plugin.GitHubPullRequests.dll",
   "entryType": "Cockpit.Plugin.GitHubPullRequests.GitHubPullRequestsPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "1.0.0",
-  "description": "Shows up to 5 of your open GitHub pull requests inline under the session list (via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP), plus a dialog listing them in a searchable, sortable grid with an \"Assigned to me\" filter; click one to drop a prompt asking the agent to review it. The prompt template is editable in settings.",
+  "description": "Shows up to 5 of your open GitHub pull requests inline under the session list, auto-refreshing so they appear/disappear as they are opened, merged or closed (via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP), plus a dialog listing them in a searchable, sortable grid with an \"Assigned to me\" filter; click one to drop a prompt asking the agent to review it. The prompt template is editable in settings.",
   "author": "Cockpit"
 }

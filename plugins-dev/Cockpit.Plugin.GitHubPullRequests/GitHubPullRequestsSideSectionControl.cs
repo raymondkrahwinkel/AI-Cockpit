@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
@@ -17,10 +18,16 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 {
     private const int MaxItems = 5;
 
+    // Auto-refresh so PRs appear/disappear on their own as they are opened, merged or closed (Raymond's ask)
+    // without the operator clicking ⟳. A quiet, force-refreshing background poll — its interval is comfortably
+    // above the gh client's own 60s cache TTL, and it only runs while the section is on screen.
+    private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(60);
+
     private readonly GitHubPullRequestsSettings _settings;
     private readonly ICockpitHost _host;
     private readonly GitHubPullRequestsClient _http = new();
     private readonly GitHubPrGhClient _gh = new();
+    private readonly DispatcherTimer _autoRefresh;
 
     private readonly TextBlock _status;
     private readonly StackPanel _list;
@@ -66,12 +73,32 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         host.OnSettingsSaved(() => _ = _LoadAsync(forceRefresh: true));
 
         _ = _LoadAsync(forceRefresh: false);
+
+        _autoRefresh = new DispatcherTimer { Interval = AutoRefreshInterval };
+        _autoRefresh.Tick += (_, _) => _ = _LoadAsync(forceRefresh: true, quiet: true);
     }
 
-    private async Task _LoadAsync(bool forceRefresh)
+    // The section is always on screen while the plugin is loaded, so tie the poll to attach/detach: it runs
+    // while visible and stops (no orphaned gh spawns) once the pane goes away.
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        _status.Text = "Loading…";
-        _list.Children.Clear();
+        base.OnAttachedToVisualTree(e);
+        _autoRefresh.Start();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _autoRefresh.Stop();
+    }
+
+    private async Task _LoadAsync(bool forceRefresh, bool quiet = false)
+    {
+        if (!quiet)
+        {
+            _status.Text = "Loading…";
+        }
+
         try
         {
             IReadOnlyList<GitHubPullRequest> all;
@@ -90,6 +117,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
                 all = await _http.GetOpenPullRequestsAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe: false, CancellationToken.None);
             }
 
+            _list.Children.Clear();
             foreach (var pullRequest in all.Take(MaxItems))
             {
                 _list.Children.Add(_BuildRow(pullRequest));
@@ -103,7 +131,12 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         }
         catch (Exception exception)
         {
-            _status.Text = $"Could not load pull requests: {exception.Message}";
+            // A quiet background poll that fails keeps the last good list rather than flashing an error; an
+            // explicit (manual/settings) load surfaces it.
+            if (!quiet)
+            {
+                _status.Text = $"Could not load pull requests: {exception.Message}";
+            }
         }
     }
 
