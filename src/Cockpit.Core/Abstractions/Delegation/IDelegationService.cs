@@ -11,6 +11,13 @@ namespace Cockpit.Core.Abstractions.Delegation;
 public interface IDelegationService
 {
     /// <summary>
+    /// Raised whenever a task is created or changes state, so the cockpit's task view follows a delegated session
+    /// live. Delegation runs real work in the background; the operator has to be able to see it and stop it —
+    /// invisible background agents are exactly what this project does not do.
+    /// </summary>
+    event Action? TasksChanged;
+
+    /// <summary>
     /// The profiles that may be delegated to, with what they say they are good for. A profile that has not opted
     /// in is absent — a calling agent cannot delegate to what it cannot see.
     /// </summary>

@@ -25,6 +25,7 @@ internal static class Screenshotter
             "about" => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
             "options" => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
             "shortcuts" => _OptionsOnTab("Shortcuts"),
+            "tasks" => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
             "session" => new MainWindow { DataContext = new ViewModels.CockpitViewModel { SingleSessionLayout = true } },
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
