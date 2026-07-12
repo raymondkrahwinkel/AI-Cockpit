@@ -47,11 +47,13 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private CancellationTokenSource? _transcriptTailCancellation;
 
     // JSONL-driven session status: a TTY panel hosts the real TUI, so there is no event stream to read
-    // status from — instead the same live transcript is tailed for activity (any appended line = a turn
-    // in flight) and a periodic poll flips the dot to Done once it falls quiet. Separate from the
-    // read-aloud tailer above so status works regardless of the read-aloud toggle.
-    private static readonly TimeSpan StatusIdleThreshold = TimeSpan.FromSeconds(5);
-    private readonly TtyActivityStatusTracker _statusTracker = new(StatusIdleThreshold);
+    // status from — instead each appended transcript line is classified (TtyTranscriptStatus.ClassifyLine)
+    // into busy / done / metadata and fed to the tracker, so a long thinking pause (which writes no line but
+    // is very much busy) stays Busy instead of a quiet-timeout wrongly flipping the dot to Done. Separate from
+    // the read-aloud tailer above so status works regardless of the read-aloud toggle. The safety timeout only
+    // rescues a busy turn that went silent far past any real turn (a missed end_turn, a killed CLI).
+    private static readonly TimeSpan BusySafetyTimeout = TimeSpan.FromSeconds(120);
+    private readonly TtyActivityStatusTracker _statusTracker = new(BusySafetyTimeout);
     private CancellationTokenSource? _statusTailCancellation;
     private DispatcherTimer? _statusPollTimer;
     private bool _statusTrackingStopped;
@@ -282,7 +284,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         _statusPollTimer.Start();
     }
 
-    /// <summary>Marks every appended transcript line as activity; the tailer runs on a background task, so the status update is marshaled onto the UI thread.</summary>
+    /// <summary>Classifies each appended transcript line (busy / done / metadata) and feeds it to the tracker; the tailer runs on a background task, so the status update is marshaled onto the UI thread.</summary>
     private async Task _TailTranscriptForStatusAsync(string configDir, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
     {
         if (_transcriptReader is null)
@@ -292,13 +294,14 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 
         try
         {
-            await foreach (var _ in _transcriptReader.ReadLinesAsync(configDir, transcriptBaseline, cancellationToken))
+            await foreach (var line in _transcriptReader.ReadLinesAsync(configDir, transcriptBaseline, cancellationToken))
             {
+                var signal = TtyTranscriptStatus.ClassifyLine(line);
                 Dispatcher.UIThread.Post(() =>
                 {
                     if (!_statusTrackingStopped)
                     {
-                        SessionStatus = _statusTracker.OnActivity(DateTimeOffset.UtcNow);
+                        SessionStatus = _statusTracker.OnLine(signal, DateTimeOffset.UtcNow);
                     }
                 });
             }
