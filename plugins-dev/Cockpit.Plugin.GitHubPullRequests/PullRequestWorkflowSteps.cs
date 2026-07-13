@@ -15,10 +15,44 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// </summary>
 internal static class PullRequestWorkflowSteps
 {
+    /// <summary>Fired when one of your pull requests goes from not-merged to merged — see <see cref="MergedPullRequestWatcher"/>.</summary>
+    public const string MergedTrigger = "github.pr.merged";
+
     public static IEnumerable<IWorkflowStep> All() =>
     [
+        new PullRequestMergedTrigger(),
         new OpenPullRequestStep(),
     ];
+
+    /// <summary>
+    /// A pull request of yours was merged. The end of the ticket: the branch is in, and what usually wants to happen
+    /// next — move the ticket to Done, tell somebody, delete the branch — is a flow.
+    /// </summary>
+    private sealed class PullRequestMergedTrigger : IWorkflowStep
+    {
+        public string TypeId => MergedTrigger;
+
+        public string Name => "Pull request merged";
+
+        public string Description => "Fires when one of your pull requests goes from not-merged to merged. GitHub cannot tell a desktop app, so it is asked every few minutes; the first look after the cockpit starts fires nothing, or every merge you have ever made would fire at once.";
+
+        public string Icon => "⇵";
+
+        public string Category => "GitHub";
+
+        public bool IsTrigger => true;
+
+        public IReadOnlyList<string> Parameters => [];
+
+        public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
+        {
+            ["number"] = "12",
+            ["repository"] = "raymondkrahwinkel/AI-Cockpit",
+            ["title"] = "Fix the login redirect",
+            ["url"] = "https://github.com/raymondkrahwinkel/AI-Cockpit/pull/12",
+            ["author"] = "raymondkrahwinkel",
+        };
+    }
 
     private sealed class OpenPullRequestStep : IWorkflowStep
     {

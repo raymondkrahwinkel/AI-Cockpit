@@ -113,8 +113,21 @@ internal sealed class GitHubPrGhClient
         return pullRequests;
     }
 
-    // Kept as a field rather than inlined so the review-requested query is assertable in a test without
-    // shelling out to gh.
+    /// <summary>
+    /// The pull requests that have been merged recently — what the "merged" trigger watches (#69). Authored by the
+    /// operator, because a flow that fired on every merge in every repository they can see would be a flow about other
+    /// people's afternoons.
+    /// </summary>
+    public async Task<IReadOnlyList<GitHubPullRequest>> SearchMergedAsync(CancellationToken cancellationToken) =>
+        _ParsePullRequests(await _RunGhAsync(MergedArguments, cancellationToken));
+
+    // Kept as fields rather than inlined so the queries are assertable in a test without shelling out to gh.
+    internal static readonly string[] MergedArguments =
+    [
+        "search", "prs", "--author", "@me", "--merged", "--limit", "30",
+        "--json", "number,title,url,body,repository,author",
+    ];
+
     internal static readonly string[] ReviewRequestedArguments =
     [
         "search", "prs", "--state", "open", "--review-requested", "@me", "--limit", "100",

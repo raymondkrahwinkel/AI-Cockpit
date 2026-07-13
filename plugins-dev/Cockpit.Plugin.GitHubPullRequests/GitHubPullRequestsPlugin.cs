@@ -15,10 +15,12 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// </summary>
 public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 {
+    private MergedPullRequestWatcher? _merged;
+
     public PluginMetadata Metadata { get; } = new(
         Id: "github-pull-requests",
         DisplayName: "GitHub Pull Requests",
-        Version: "1.8.0",
+        Version: "1.9.0",
         Author: "Cockpit",
         Description: "Shows your open GitHub pull requests inline under the session list (how many is configurable, and you can limit it to specific repositories), refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP — plus a dialog with an \"Assigned to me\" filter. Left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). Pull requests waiting for your review are listed separately under \"Review requested\", each with an Open button, and a new one raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.");
 
@@ -28,11 +30,14 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
-        // Opening a pull request from a flow (#69) — the end of the day the git steps describe.
+        // Opening a pull request from a flow, and the trigger for one being merged (#69) — the two ends of the day the
+        // git steps describe.
         foreach (var step in PullRequestWorkflowSteps.All())
         {
             host.AddWorkflowStep(step);
         }
+
+        _merged = new MergedPullRequestWatcher(host);
 
         var settings = new GitHubPullRequestsSettings(host.Storage);
 
@@ -40,7 +45,5 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         host.AddSideMenuSection("Open PRs", () => new GitHubPullRequestsSideSectionControl(settings, host));
     }
 
-    public void Dispose()
-    {
-    }
+    public void Dispose() => _merged?.Dispose();
 }
