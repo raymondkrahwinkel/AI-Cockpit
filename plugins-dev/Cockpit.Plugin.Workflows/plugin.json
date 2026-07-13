@@ -1,0 +1,11 @@
+{
+  "id": "workflows",
+  "name": "Workflows",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.Workflows.dll",
+  "entryType": "Cockpit.Plugin.Workflows.WorkflowsPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "A visual editor for cockpit workflows: drop triggers, actions and decisions on a canvas, wire them together, and the flow is saved as you draw it. Editor only for now: nothing executes these flows yet.",
+  "author": "Cockpit"
+}
