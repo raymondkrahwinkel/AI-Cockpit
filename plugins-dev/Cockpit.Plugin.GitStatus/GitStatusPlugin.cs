@@ -14,7 +14,7 @@ public sealed class GitStatusPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "git-status",
         DisplayName: "Git status",
-        Version: "1.2.0",
+        Version: "1.3.0",
         Author: "Cockpit",
         Description: "An inline panel that follows the active session — the branch / uncommitted / unpushed status of the repo it is working in, refreshing when the session switches or runs a git command — plus a button/dialog for the same across all your configured repositories. Click to drop a status summary into the session.");
 
@@ -30,6 +30,13 @@ public sealed class GitStatusPlugin : ICockpitPlugin
         // session works in, and a sidebar section following "whichever session is selected" says nothing about
         // the other panes on screen.
         host.AddSessionHeaderItem(session => new GitStatusHeaderControl(host, session));
+
+        // What a flow can do with git (#69): cut a branch, commit, push. Nothing that can throw away work — no force,
+        // no reset, no deleting branches.
+        foreach (var step in GitWorkflowSteps.All())
+        {
+            host.AddWorkflowStep(step);
+        }
         host.AddSideMenuButton(
             "Git status",
             () => _ = host.ShowDialogAsync("Git status", () => new GitStatusDialogControl(settings, host.Actions), 780, 540));

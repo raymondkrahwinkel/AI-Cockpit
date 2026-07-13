@@ -29,6 +29,17 @@ internal sealed class GitHubIssuesSettings(IPluginStorage storage)
         set => storage.Set("inProgressLabel", value);
     }
 
+    /// <summary>
+    /// Extra GitHub search terms for the session picker — "-label:blocked", "label:bug", "no:assignee". Empty by
+    /// default. The picker already asks only for open issues: a closed issue is work that is over, and offering it is
+    /// offering to start something that finished.
+    /// </summary>
+    public string PickerTerms
+    {
+        get => storage.Get<string>("pickerTerms") ?? string.Empty;
+        set => storage.Set("pickerTerms", value);
+    }
+
     public string Owner
     {
         get => storage.Get<string>("owner") ?? string.Empty;

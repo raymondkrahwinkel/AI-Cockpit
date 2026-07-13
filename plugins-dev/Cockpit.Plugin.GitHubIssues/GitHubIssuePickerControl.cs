@@ -78,7 +78,8 @@ internal sealed class GitHubIssuePickerControl : UserControl
                 _settings.GhOwner,
                 _mine.IsChecked == true,
                 forceRefresh: false,
-                CancellationToken.None);
+                CancellationToken.None,
+                _settings.PickerTerms);
 
             _status.Text = _all.Count == 0 ? "No open issues here." : string.Empty;
             _Render();

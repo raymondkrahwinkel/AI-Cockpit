@@ -105,11 +105,13 @@ internal sealed class YouTrackIssuePickerControl : UserControl
 
         try
         {
+            // What the operator said they want to see. The client's own query is "#Unresolved"; anything written here
+            // replaces the states half of it, so "done" issues stay out unless someone asks for them.
             var issues = await _client.GetOpenIssuesAsync(
                 instance.InstanceUrl,
                 instance.Token,
                 instance.DefaultProjectTag is { Length: > 0 } tag ? tag : null,
-                extraFilter: null,
+                _settings.PickerQuery,
                 _mine.IsChecked == true,
                 MaxResults,
                 CancellationToken.None);

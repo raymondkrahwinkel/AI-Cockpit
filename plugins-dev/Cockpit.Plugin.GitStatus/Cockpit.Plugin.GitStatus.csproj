@@ -41,4 +41,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets Cockpit.Plugin.GitStatus.Tests unit-test the workflow steps against a real repository (#69), same
+         pattern as the other plugins' test projects. -->
+    <InternalsVisibleTo Include="Cockpit.Plugin.GitStatus.Tests" />
+  </ItemGroup>
+
 </Project>

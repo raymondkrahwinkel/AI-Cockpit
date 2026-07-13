@@ -17,6 +17,17 @@ internal sealed class YouTrackSettings(IPluginStorage storage)
         set => storage.Set("instances", value);
     }
 
+    /// <summary>
+    /// Which issues the session picker offers, as a YouTrack query. Default <c>#Unresolved</c> — showing issues that
+    /// are done is offering work that is over. Anything YouTrack's own search understands works here, so a board that
+    /// calls its states something unusual is not a special case: <c>State: {In Progress}</c>, <c>#Unresolved -State: Review</c>.
+    /// </summary>
+    public string PickerQuery
+    {
+        get => storage.Get<string>("pickerQuery") is { Length: > 0 } query ? query : "#Unresolved";
+        set => storage.Set("pickerQuery", value);
+    }
+
     public string Template
     {
         get => storage.Get<string>("template") ?? PromptTemplate.Default;

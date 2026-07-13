@@ -21,6 +21,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
     private readonly TextBox _token;
     private readonly TextBox _template;
     private readonly TextBox _inProgressLabel;
+    private readonly TextBox _pickerTerms;
 
     public GitHubIssuesSettingsControl(GitHubIssuesSettings settings)
     {
@@ -43,12 +44,16 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
                 SettingsHelpRow.Build(_ghOwner, "Owner (user or org, e.g. \"octocat\" or \"@me\" for yourself) whose repositories to search — cross-repo, unlike the single owner/repo below."),
                 _Hint("Uses your existing gh login — no token needed."),
 
+                _Label("Which issues the session picker shows (extra search terms, optional)"),
+                SettingsHelpRow.Build(_pickerTerms, "GitHub's own search syntax, added to \"open issues\": \"-label:blocked\", \"label:bug\", \"no:assignee\". Closed issues are never offered — that is work that is over."),
+
                 _Label("Label your repos use for work in progress (optional)"),
                 SettingsHelpRow.Build(_inProgressLabel, "A GitHub issue has no status field. Teams use a label instead, and GitHub enforces no name for it — so name yours here (\"in progress\", \"status: in progress\"). Left empty, nothing offers to label anything."),
             },
         };
 
         _inProgressLabel = new TextBox { Text = settings.InProgressLabel, PlaceholderText = "in progress (leave empty for none)" };
+        _pickerTerms = new TextBox { Text = settings.PickerTerms, PlaceholderText = "-label:blocked  label:bug  no:assignee" };
 
         _owner = new TextBox { Text = settings.Owner, PlaceholderText = "owner (e.g. octocat)" };
         _repo = new TextBox { Text = settings.Repo, PlaceholderText = "repository (e.g. hello-world)" };
@@ -112,6 +117,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
         _settings.Repo = _repo.Text?.Trim() ?? string.Empty;
         _settings.Token = _token.Text?.Trim() ?? string.Empty;
         _settings.InProgressLabel = _inProgressLabel.Text?.Trim() ?? string.Empty;
+        _settings.PickerTerms = _pickerTerms.Text?.Trim() ?? string.Empty;
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         return true;
     }

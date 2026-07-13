@@ -244,16 +244,24 @@ internal sealed class YouTrackClient
         throw new InvalidOperationException($"YouTrack refused the update ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
     }
 
-    /// <summary>[project:{tag}] #Unresolved, plus <c>for: me</c> when <paramref name="assignedToMe"/> (YouTrack's own "assigned to the current user" clause, resolved against the token), plus an optional extra filter (e.g. "Priority: Critical") appended verbatim. A null/empty tag omits the project clause, matching every project on the instance.</summary>
-    internal static string BuildQuery(string? projectTag, string? extraFilter, bool assignedToMe)
+    /// <summary>
+    /// [project:{tag}] plus what to look for — <c>#Unresolved</c> unless the caller says otherwise, because showing
+    /// issues that are done is offering work that is over — plus <c>for: me</c> when <paramref name="assignedToMe"/>
+    /// (YouTrack's own "assigned to the current user" clause, resolved against the token). A null/empty tag omits the
+    /// project clause, matching every project on the instance.
+    /// <para>
+    /// <paramref name="filter"/> replaces <c>#Unresolved</c> rather than being appended to it: an operator who writes
+    /// "State: Done" means it, and a query that quietly kept "#Unresolved" in front of it would return nothing and
+    /// look like a broken search.
+    /// </para>
+    /// </summary>
+    internal static string BuildQuery(string? projectTag, string? filter, bool assignedToMe)
     {
-        var query = string.IsNullOrWhiteSpace(projectTag) ? "#Unresolved" : $"project:{projectTag} #Unresolved";
-        if (assignedToMe)
-        {
-            query += " for: me";
-        }
+        var what = string.IsNullOrWhiteSpace(filter) ? "#Unresolved" : filter.Trim();
 
-        return string.IsNullOrWhiteSpace(extraFilter) ? query : $"{query} {extraFilter.Trim()}";
+        var query = string.IsNullOrWhiteSpace(projectTag) ? what : $"project:{projectTag} {what}";
+
+        return assignedToMe ? $"{query} for: me" : query;
     }
 
     /// <summary>The issue's web URL, derived from the API base URL by dropping a trailing "/api" — e.g. "https://x.youtrack.cloud/api" -> "https://x.youtrack.cloud/issue/PROJ-123".</summary>

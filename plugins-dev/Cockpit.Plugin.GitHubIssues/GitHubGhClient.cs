@@ -18,12 +18,16 @@ internal sealed class GitHubGhClient
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubIssue> Issues)> IssueCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<GitHubIssue>> SearchOpenIssuesAsync(string owner, bool assignedToMe, bool forceRefresh, CancellationToken cancellationToken, string? extraTerms = null)
     {
         var normalizedOwner = string.IsNullOrWhiteSpace(owner) ? "@me" : owner.Trim();
         // The assigned-to-me filter changes the server-side query, so it must key the cache separately —
         // otherwise toggling it would return the other set's cached results.
-        var cacheKey = assignedToMe ? normalizedOwner + "|@me" : normalizedOwner;
+        var terms = extraTerms?.Trim() ?? string.Empty;
+
+        // The extra terms change the server-side query, so they key the cache: two searches that ask different
+        // questions must not answer each other's.
+        var cacheKey = (assignedToMe ? normalizedOwner + "|@me" : normalizedOwner) + "|" + terms;
 
         if (!forceRefresh)
         {
@@ -48,6 +52,13 @@ internal sealed class GitHubGhClient
             // gh resolves @me to the authenticated user, so this stays login-free like the rest of the plugin.
             searchArgs.Add("--assignee");
             searchArgs.Add("@me");
+        }
+
+        // What the operator asked to narrow it by — GitHub's own search syntax, handed straight to gh: "-label:blocked",
+        // "label:bug", "no:assignee". Each word is its own argument, because gh takes them that way.
+        foreach (var term in terms.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            searchArgs.Add(term);
         }
 
         var issues = _ParseIssues(await _RunGhAsync(searchArgs.ToArray(), cancellationToken));
