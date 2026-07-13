@@ -36,6 +36,8 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
 
     public string? ActiveSessionWorkingDirectory => _cockpit.SelectedSession?.WorkingDirectory;
 
+    public string? ActivePaneId => _cockpit.SelectedSession?.PaneId;
+
     public event EventHandler? ActiveSessionChanged;
 
     public event EventHandler<SessionOutputText>? OutputProduced;

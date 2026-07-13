@@ -213,11 +213,17 @@ follows whichever session is *selected*, this is bound to the one your control s
 
 | Member | Meaning |
 |---|---|
+| `string PaneId` | Identifies this session pane for as long as it exists. Match it against `ICockpitSessionObserver.ActivePaneId` to know whether an action taken *outside* a session (in a dialog, say) was meant for this one. **Not** the provider's conversation id — panes come and go with the window, and two panes can resume the same conversation. Empty on a host that predates it. |
 | `string? WorkingDirectory` | The directory this session is working in; null until known (an SDK session before its init event). |
 | `event EventHandler? WorkingDirectoryChanged` | The directory became known or changed — re-scope. |
 | `event EventHandler<SessionOutputText>? OutputProduced` | Each chunk of text **this** session produced, verbatim. Substring-scan it for a signal (a git command, a pushed branch, …). |
 
 Events are raised on the UI thread, so a handler can touch its controls directly.
+
+A dialog belongs to no session, so an action it takes "for the current session" needs naming: read
+`host.Sessions.ActivePaneId`, hand that to your own state, and let the header item whose `PaneId` matches pick
+it up. That is how the YouTrack plugin starts an issue from its dialog and has it appear in the right session's
+header — with four panes open, "the session" is not obvious, and guessing would put the ticket on the wrong one.
 
 ### `void AddConversationPicker(ConversationPickerRegistration picker)`
 Registers a way to **pick an earlier conversation to resume**. The New-session dialog can resume a conversation

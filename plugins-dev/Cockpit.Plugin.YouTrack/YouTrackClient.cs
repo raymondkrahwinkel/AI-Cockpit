@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 
 namespace Cockpit.Plugin.YouTrack;
@@ -96,6 +97,122 @@ internal sealed class YouTrackClient
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// The status field of one issue as its project defines it (#75) — which field is the status, what it is
+    /// worth now, and what it may become. Reads the issue's own custom fields (no admin rights needed), then
+    /// fills in the possible moves: a workflow-governed field is asked for its <c>possibleEvents</c>, an
+    /// ordinary one for the project's allowed values, falling back to the admin route when the issue response
+    /// did not carry the bundle. When neither yields anything the field comes back with no targets, and the UI
+    /// offers no status actions rather than actions that would be refused.
+    /// </summary>
+    public async Task<YouTrackIssueFields> GetIssueFieldsAsync(string instanceBaseUrl, string token, YouTrackIssue issue, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+        var json = await _GetAsync(
+            $"{baseUrl}/issues/{issue.IdReadable}/customFields?fields=id,name,$type,value(name),projectCustomField(field(name),bundle(values(name)))",
+            token,
+            cancellationToken);
+
+        var fields = YouTrackFieldParser.Parse(json);
+        if (fields.State is not { } state)
+        {
+            return fields;
+        }
+
+        if (state.IsStateMachine)
+        {
+            var eventsJson = await _GetAsync(
+                $"{baseUrl}/issues/{issue.IdReadable}/customFields/{state.Id}?fields=$type,possibleEvents(id,presentation)",
+                token,
+                cancellationToken);
+
+            return fields with { State = state with { PossibleEvents = YouTrackFieldParser.ParsePossibleEvents(eventsJson) } };
+        }
+
+        if (state.Values.Count > 0)
+        {
+            return fields;
+        }
+
+        var values = await _GetProjectFieldValuesAsync(baseUrl, token, issue.Project, state.Name, cancellationToken);
+        return fields with { State = state with { Values = values } };
+    }
+
+    /// <summary>Moves an issue's status to <paramref name="target"/> — a value on an ordinary field, an event on a workflow-governed one. Throws when YouTrack refuses (an undefined transition, or no permission), so the caller can say why.</summary>
+    public Task SetStateAsync(string instanceBaseUrl, string token, YouTrackIssue issue, YouTrackStateField field, string target, CancellationToken cancellationToken) =>
+        _PostIssueAsync(instanceBaseUrl, token, issue, YouTrackUpdateBody.ForState(field, target), cancellationToken);
+
+    /// <summary>Assigns the issue to the token's own account (<c>GET /users/me</c>), on the project's assignee field.</summary>
+    public async Task AssignToMeAsync(string instanceBaseUrl, string token, YouTrackIssue issue, string assigneeFieldName, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+        var meJson = await _GetAsync($"{baseUrl}/users/me?fields=login", token, cancellationToken);
+
+        using var document = JsonDocument.Parse(meJson);
+        if (!document.RootElement.TryGetProperty("login", out var login) || login.GetString() is not { Length: > 0 } value)
+        {
+            throw new InvalidOperationException("YouTrack did not say who the token belongs to, so the issue was not assigned.");
+        }
+
+        await _PostIssueAsync(baseUrl, token, issue, YouTrackUpdateBody.ForAssignee(assigneeFieldName, value), cancellationToken);
+    }
+
+    // The project's allowed values for one field. Needs the token's account to read the project's field
+    // configuration; returns empty — never throws — when it may not, same fail-open shape as GetProjectsAsync.
+    private async Task<IReadOnlyList<string>> _GetProjectFieldValuesAsync(string baseUrl, string token, string projectShortName, string fieldName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(projectShortName))
+        {
+            return [];
+        }
+
+        try
+        {
+            var json = await _GetAsync(
+                $"{baseUrl}/admin/projects/{projectShortName}/customFields?fields=field(name),bundle(values(name))",
+                token,
+                cancellationToken);
+
+            return YouTrackFieldParser.ParseProjectFieldValues(json, fieldName);
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    private static async Task<string> _GetAsync(string url, string token, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
+
+    // YouTrack answers a refused update with a body that says why (an undefined transition, a value the field
+    // does not have, no permission) — surface it, because "it did not work" is not something the operator can act on.
+    private static async Task _PostIssueAsync(string instanceBaseUrl, string token, YouTrackIssue issue, string body, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/issues/{issue.IdReadable}?fields=idReadable");
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var failure = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new InvalidOperationException($"YouTrack refused the update ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
     }
 
     /// <summary>[project:{tag}] #Unresolved, plus <c>for: me</c> when <paramref name="assignedToMe"/> (YouTrack's own "assigned to the current user" clause, resolved against the token), plus an optional extra filter (e.g. "Priority: Critical") appended verbatim. A null/empty tag omits the project clause, matching every project on the instance.</summary>

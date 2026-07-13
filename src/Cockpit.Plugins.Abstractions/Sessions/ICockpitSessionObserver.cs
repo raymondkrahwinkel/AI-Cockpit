@@ -18,6 +18,13 @@ public interface ICockpitSessionObserver
     string? ActiveSessionWorkingDirectory { get; }
 
     /// <summary>
+    /// <see cref="IPluginSessionContext.PaneId"/> of the currently selected session, or <see langword="null"/>
+    /// when nothing is selected — how a contribution outside a session (a dialog, say) names the session an
+    /// action applies to, so the matching header item can pick it up. Null on a host that predates this member.
+    /// </summary>
+    string? ActivePaneId => null;
+
+    /// <summary>
     /// Raised when the selected session changes, or when the selected session's working directory first
     /// becomes known — the cue to re-read <see cref="ActiveSessionWorkingDirectory"/> and re-scope.
     /// </summary>

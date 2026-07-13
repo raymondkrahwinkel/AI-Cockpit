@@ -9,6 +9,15 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 public interface IPluginSessionContext
 {
+    /// <summary>
+    /// Identifies this session pane for as long as it exists — how a plugin says "this session, not the other
+    /// three on screen" and matches a header item against
+    /// <see cref="ICockpitSessionObserver.ActivePaneId"/>. Not the provider's conversation id (the thing you
+    /// resume by): panes come and go with the window, and two panes can resume the same conversation. Empty on
+    /// a host that predates this member — treat empty as "unknown" rather than as a real id.
+    /// </summary>
+    string PaneId => string.Empty;
+
     /// <summary>The directory this session is working in, or null until it is known (an SDK session before its init event).</summary>
     string? WorkingDirectory { get; }
 

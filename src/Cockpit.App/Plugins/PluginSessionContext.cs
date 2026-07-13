@@ -23,6 +23,8 @@ internal sealed class PluginSessionContext : IPluginSessionContext, IDisposable
         _session.PropertyChanged += _OnSessionPropertyChanged;
     }
 
+    public string PaneId => _session.PaneId;
+
     public string? WorkingDirectory => _session.WorkingDirectory;
 
     public event EventHandler? WorkingDirectoryChanged;

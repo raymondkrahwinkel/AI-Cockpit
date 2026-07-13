@@ -30,8 +30,11 @@ internal sealed class YouTrackDialogControl : UserControl
     private static readonly YouTrackProjectOption AllProjectOption = new(null, AllOption);
 
     private readonly YouTrackSettings _settings;
+    private readonly ICockpitHost _host;
     private readonly ICockpitActions _actions;
+    private readonly SessionIssueLinks _links;
     private readonly YouTrackClient _client = new();
+    private readonly YouTrackWorkflow _workflow;
 
     private readonly ComboBox _instanceSelector;
     private readonly ComboBox _projectFilter;
@@ -46,6 +49,9 @@ internal sealed class YouTrackDialogControl : UserControl
     private readonly TextBlock _detailTitle;
     private readonly TextBlock _detailMeta;
     private readonly Button _inject;
+    private readonly Button _start;
+    private readonly Button _setState;
+    private readonly Button _link;
     private readonly SelectableTextBlock _detailBody;
     private readonly SelectableTextBlock _promptPreview;
     private readonly TextBlock _detailStatus;
@@ -53,15 +59,23 @@ internal sealed class YouTrackDialogControl : UserControl
     private IReadOnlyList<YouTrackIssue> _all = [];
     private string _renderedPrompt = string.Empty;
 
+    // The selected issue's status field, as its project defines it (#75) — what it may become, and whether a
+    // workflow governs it. Loaded per selection, so the action buttons only offer what the board allows.
+    private YouTrackIssueFields? _fields;
+    private int _fieldsToken;
+
     // Guards the project-filter reset that _OnInstanceChangedAsync does after fetching the new instance's
     // projects: setting _projectFilter.SelectedItem there would otherwise also fire _OnProjectChangedAsync
     // and trigger a second, redundant issues fetch before the first one (driven explicitly below) even ran.
     private bool _isSyncingProjectFilter;
 
-    public YouTrackDialogControl(YouTrackSettings settings, ICockpitActions actions)
+    public YouTrackDialogControl(YouTrackSettings settings, ICockpitHost host, SessionIssueLinks links)
     {
         _settings = settings;
-        _actions = actions;
+        _host = host;
+        _actions = host.Actions;
+        _links = links;
+        _workflow = new YouTrackWorkflow(_client);
 
         _instanceSelector = new ComboBox
         {
@@ -143,9 +157,22 @@ internal sealed class YouTrackDialogControl : UserControl
         _inject.Click += (_, _) => _AddToPrompt(_grid.SelectedItem as YouTrackIssue);
         var openBrowser = new Button { Content = "Open in browser" };
         openBrowser.Click += (_, _) => _OpenInBrowser(_grid.SelectedItem as YouTrackIssue);
-        var detailButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 8, 0, 0) };
-        detailButtons.Children.Add(_inject);
-        detailButtons.Children.Add(openBrowser);
+
+        // The workflow actions (#75). Each hides itself when the board cannot back it: no in-progress state, no
+        // states to move to, or no session to attach the issue to.
+        _start = new Button { Content = "Start", IsVisible = false };
+        _start.Click += async (_, _) => await _StartAsync(_grid.SelectedItem as YouTrackIssue);
+        _setState = new Button { Content = "Set state ▾", IsVisible = false };
+        _setState.Click += (_, _) => _ShowStateMenu(_grid.SelectedItem as YouTrackIssue);
+        _link = new Button { Content = "Link to session", IsVisible = false };
+        _link.Click += (_, _) => _LinkToActiveSession(_grid.SelectedItem as YouTrackIssue);
+
+        var detailButtons = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
+        foreach (var button in new[] { _inject, _start, _setState, _link, openBrowser })
+        {
+            button.Margin = new Thickness(0, 0, 6, 6);
+            detailButtons.Children.Add(button);
+        }
 
         _detailBody = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         _promptPreview = new SelectableTextBlock
@@ -393,6 +420,129 @@ internal sealed class YouTrackDialogControl : UserControl
 
         // "Add to prompt" only makes sense with a live session; otherwise the copy button is the way to grab it.
         _inject.IsVisible = _actions.HasActiveSession;
+        _link.IsVisible = _host.Sessions.ActivePaneId is { Length: > 0 };
+        _ = _LoadFieldsAsync(issue);
+    }
+
+    // What this issue's project allows, read per selection: until it is known, the status actions stay hidden
+    // rather than being offered and then refused.
+    private async Task _LoadFieldsAsync(YouTrackIssue issue)
+    {
+        _fields = null;
+        _start.IsVisible = false;
+        _setState.IsVisible = false;
+
+        if (_instanceSelector.SelectedItem is not YouTrackInstance instance)
+        {
+            return;
+        }
+
+        var token = ++_fieldsToken;
+        try
+        {
+            var fields = await _client.GetIssueFieldsAsync(instance.InstanceUrl, instance.Token, issue, CancellationToken.None);
+            if (token != _fieldsToken || !ReferenceEquals(_grid.SelectedItem, issue))
+            {
+                return;
+            }
+
+            _fields = fields;
+            _setState.IsVisible = fields.State?.AvailableTargets.Count > 0;
+            _start.IsVisible = fields.State is { } state && YouTrackWorkflow.FindStartTarget(state) is not null;
+        }
+        catch (Exception exception)
+        {
+            if (token == _fieldsToken)
+            {
+                _detailStatus.Text = $"Could not read this issue's states: {exception.Message}";
+            }
+        }
+    }
+
+    // Start = the three steps Raymond starts a ticket with: move it to in progress, put his name on it, and tie
+    // it to the session he is going to do the work in.
+    private async Task _StartAsync(YouTrackIssue? issue)
+    {
+        if (issue is null || _instanceSelector.SelectedItem is not YouTrackInstance instance
+            || _fields is not { State: { } state } fields
+            || YouTrackWorkflow.FindStartTarget(state) is not { } target)
+        {
+            return;
+        }
+
+        _start.IsEnabled = false;
+        try
+        {
+            _detailStatus.Text = await _workflow.StartAsync(instance, issue, fields, target, CancellationToken.None);
+            _LinkToActiveSession(issue);
+            await _LoadIssuesAsync();
+        }
+        catch (Exception exception)
+        {
+            _detailStatus.Text = $"Could not start {issue.IdReadable}: {exception.Message}";
+        }
+        finally
+        {
+            _start.IsEnabled = true;
+        }
+    }
+
+    private void _ShowStateMenu(YouTrackIssue? issue)
+    {
+        if (issue is null || _fields?.State is not { } state)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = _setState };
+        var items = new List<MenuItem>();
+        foreach (var target in state.AvailableTargets)
+        {
+            var item = new MenuItem { Header = target };
+            item.Click += async (_, _) => await _SetStateAsync(issue, target);
+            items.Add(item);
+        }
+
+        menu.ItemsSource = items;
+        menu.Open(_setState);
+    }
+
+    private async Task _SetStateAsync(YouTrackIssue issue, string target)
+    {
+        if (_instanceSelector.SelectedItem is not YouTrackInstance instance || _fields?.State is not { } state)
+        {
+            return;
+        }
+
+        try
+        {
+            await _client.SetStateAsync(instance.InstanceUrl, instance.Token, issue, state, target, CancellationToken.None);
+            _detailStatus.Text = $"✓ {issue.IdReadable} → {target}.";
+            await _LoadIssuesAsync();
+        }
+        catch (Exception exception)
+        {
+            _detailStatus.Text = $"Could not move {issue.IdReadable}: {exception.Message}";
+        }
+    }
+
+    // Ties the issue to the session pane that is selected right now, which is the one the header item showing it
+    // sits in — the dialog itself belongs to no session.
+    private void _LinkToActiveSession(YouTrackIssue? issue)
+    {
+        if (issue is null || _instanceSelector.SelectedItem is not YouTrackInstance instance)
+        {
+            return;
+        }
+
+        if (_host.Sessions.ActivePaneId is not { Length: > 0 } paneId)
+        {
+            _detailStatus.Text = "No active session to link this issue to.";
+            return;
+        }
+
+        _links.Link(paneId, new LinkedIssue(instance, issue));
+        _detailStatus.Text = $"✓ {issue.IdReadable} linked to the active session.";
     }
 
     private void _AddToPrompt(YouTrackIssue? issue)

@@ -13,6 +13,14 @@ namespace Cockpit.App.ViewModels;
 /// </summary>
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {
+    /// <summary>
+    /// Identifies this session pane for as long as it exists — what a plugin uses to say "this one, not the
+    /// other three on screen" (exposed as <c>IPluginSessionContext.PaneId</c> / <c>ICockpitSessionObserver.ActivePaneId</c>).
+    /// Deliberately not the provider's conversation id (the thing you resume by): panes come and go with the
+    /// window, and two panes can even resume the same conversation.
+    /// </summary>
+    public string PaneId { get; } = Guid.NewGuid().ToString("n");
+
     /// <summary>Display title for this session's sidebar/grid panel, e.g. "Session 1". Set by <see cref="CockpitViewModel"/>.</summary>
     [ObservableProperty]
     private string _title = "Session";
