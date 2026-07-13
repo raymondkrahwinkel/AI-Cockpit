@@ -28,6 +28,17 @@ internal sealed class YouTrackSettings(IPluginStorage storage)
         set => storage.Set("pickerQuery", value);
     }
 
+    /// <summary>
+    /// How a branch is named for an issue — <c>{id}</c> and <c>{summary}</c>, e.g. <c>{id}-{summary}</c> (the default)
+    /// or <c>feature/{id}</c>. A naming convention is a team's business, not this plugin's; what stays this plugin's
+    /// business is that the result is a ref git will accept.
+    /// </summary>
+    public string BranchPattern
+    {
+        get => storage.Get<string>("branchPattern") is { Length: > 0 } pattern ? pattern : BranchName.DefaultPattern;
+        set => storage.Set("branchPattern", value);
+    }
+
     public string Template
     {
         get => storage.Get<string>("template") ?? PromptTemplate.Default;

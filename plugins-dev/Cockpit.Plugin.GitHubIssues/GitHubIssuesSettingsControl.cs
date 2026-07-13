@@ -22,6 +22,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
     private readonly TextBox _template;
     private readonly TextBox _inProgressLabel;
     private readonly TextBox _pickerTerms;
+    private readonly TextBox _branchPattern;
 
     public GitHubIssuesSettingsControl(GitHubIssuesSettings settings)
     {
@@ -47,6 +48,9 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
                 _Label("Which issues the session picker shows (extra search terms, optional)"),
                 SettingsHelpRow.Build(_pickerTerms, "GitHub's own search syntax, added to \"open issues\": \"-label:blocked\", \"label:bug\", \"no:assignee\". Closed issues are never offered — that is work that is over."),
 
+                _Label("Branch name pattern"),
+                SettingsHelpRow.Build(_branchPattern, "How a branch is named for an issue. Placeholders: {number} and {title}. Default \"{number}-{title}\" (42-fix-the-login-redirect); \"feature/{number}\" works too. Whatever you write, the result is lowercased and made safe for git."),
+
                 _Label("Label your repos use for work in progress (optional)"),
                 SettingsHelpRow.Build(_inProgressLabel, "A GitHub issue has no status field. Teams use a label instead, and GitHub enforces no name for it — so name yours here (\"in progress\", \"status: in progress\"). Left empty, nothing offers to label anything."),
             },
@@ -54,6 +58,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
 
         _inProgressLabel = new TextBox { Text = settings.InProgressLabel, PlaceholderText = "in progress (leave empty for none)" };
         _pickerTerms = new TextBox { Text = settings.PickerTerms, PlaceholderText = "-label:blocked  label:bug  no:assignee" };
+        _branchPattern = new TextBox { Text = settings.BranchPattern, PlaceholderText = GitHubBranchName.DefaultPattern };
 
         _owner = new TextBox { Text = settings.Owner, PlaceholderText = "owner (e.g. octocat)" };
         _repo = new TextBox { Text = settings.Repo, PlaceholderText = "repository (e.g. hello-world)" };
@@ -118,6 +123,7 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
         _settings.Token = _token.Text?.Trim() ?? string.Empty;
         _settings.InProgressLabel = _inProgressLabel.Text?.Trim() ?? string.Empty;
         _settings.PickerTerms = _pickerTerms.Text?.Trim() ?? string.Empty;
+        _settings.BranchPattern = string.IsNullOrWhiteSpace(_branchPattern.Text) ? GitHubBranchName.DefaultPattern : _branchPattern.Text.Trim();
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         return true;
     }

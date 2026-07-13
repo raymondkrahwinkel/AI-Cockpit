@@ -15,7 +15,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-issues",
         DisplayName: "GitHub Issues",
-        Version: "1.5.0",
+        Version: "1.6.0",
         Author: "Cockpit",
         Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. The prompt template is editable in settings.");
 
@@ -52,7 +52,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
                 ["repository"] = picked.Issue.Repository,
                 ["title"] = picked.Issue.Title,
                 ["url"] = picked.Issue.Url,
-                ["branch"] = GitHubBranchName.From(picked.Issue.Number, picked.Issue.Title),
+                ["branch"] = GitHubBranchName.From(picked.Issue.Number, picked.Issue.Title, settings.BranchPattern),
                 ["directory"] = picked.WorkingDirectory ?? string.Empty,
             });
     }

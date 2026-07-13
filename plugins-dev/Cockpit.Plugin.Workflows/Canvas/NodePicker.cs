@@ -118,23 +118,57 @@ internal sealed class NodePicker : Border
             return;
         }
 
+        var searching = !string.IsNullOrWhiteSpace(term);
+
         foreach (var group in matches.GroupBy(type => type.Heading))
         {
-            _results.Children.Add(new TextBlock
-            {
-                Text = group.Key,
-                FontSize = 10,
-                FontWeight = FontWeight.SemiBold,
-                Opacity = 0.45,
-                Margin = new Thickness(8, 12, 0, 4),
-            });
+            var steps = new StackPanel();
 
             foreach (var type in group)
             {
-                _results.Children.Add(_Row(type));
+                steps.Children.Add(_Row(type));
             }
+
+            // A search opens everything: what you are looking for is worth more than what you folded away, and a hit
+            // hidden inside a collapsed heading is a search that looks broken.
+            var open = searching || !_collapsed.Contains(group.Key);
+            steps.IsVisible = open;
+
+            var heading = new Button
+            {
+                Classes = { "Subtle" },
+                Padding = new Thickness(8, 4),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 8, 0, 2),
+                Content = new TextBlock
+                {
+                    Text = $"{(open ? "▾" : "▸")}  {group.Key}",
+                    FontSize = 10,
+                    FontWeight = FontWeight.SemiBold,
+                    Opacity = 0.45,
+                },
+            };
+
+            var key = group.Key;
+            heading.Click += (_, _) =>
+            {
+                if (!_collapsed.Add(key))
+                {
+                    _collapsed.Remove(key);
+                }
+
+                _Render(term);
+            };
+
+            _results.Children.Add(heading);
+            _results.Children.Add(steps);
         }
     }
+
+    // Which headings the operator folded away. Kept for as long as the editor is open, not saved: it is a way of
+    // looking at the list right now, not a setting about how they want it forever.
+    private readonly HashSet<string> _collapsed = new(StringComparer.Ordinal);
 
     private Control _Row(NodeTypeDescriptor type)
     {

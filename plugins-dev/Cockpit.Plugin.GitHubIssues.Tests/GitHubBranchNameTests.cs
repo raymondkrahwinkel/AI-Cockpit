@@ -31,4 +31,18 @@ public class GitHubBranchNameTests
     [InlineData("!!!")]
     public void AnIssueWithNothingSayableInItsTitle_IsStillABranch(string? title) =>
         GitHubBranchName.From(42, title).Should().Be("42");
+
+    [Fact]
+    public void APatternIsFollowed_BecauseTheConventionIsTheTeamsToChoose() =>
+        GitHubBranchName.From(42, "Fix the login redirect", "feature/{number}")
+            .Should().Be("feature/42");
+
+    [Fact]
+    public void AnIssueWithNothingSayable_LeavesNoDanglingSeparator() =>
+        GitHubBranchName.From(42, "!!!", "{number}-{title}").Should().Be("42");
+
+    [Fact]
+    public void NoPattern_IsTheDefaultOne() =>
+        GitHubBranchName.From(42, "Fix the login redirect")
+            .Should().Be(GitHubBranchName.From(42, "Fix the login redirect", GitHubBranchName.DefaultPattern));
 }

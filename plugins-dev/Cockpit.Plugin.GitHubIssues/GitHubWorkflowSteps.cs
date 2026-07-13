@@ -103,7 +103,7 @@ internal static class GitHubWorkflowSteps
                         ["issue"] = issue.Number.ToString(),
                         ["title"] = issue.Title,
                         ["url"] = issue.Url,
-                        ["branch"] = GitHubBranchName.From(issue.Number, issue.Title),
+                        ["branch"] = GitHubBranchName.From(issue.Number, issue.Title, settings.BranchPattern),
                     },
                 ],
                 said + ".");

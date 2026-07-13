@@ -163,7 +163,7 @@ internal sealed class GitHubSessionHeaderControl : UserControl
         var branch = new MenuItem { Header = "Copy branch name" };
         branch.Click += async (_, _) =>
         {
-            var name = GitHubBranchName.From(issue.Number, issue.Title);
+            var name = GitHubBranchName.From(issue.Number, issue.Title, _settings.BranchPattern);
             await _host.Actions.SetClipboardTextAsync(name);
             _host.ShowToast($"Branch name copied: {name}", PluginToastSeverity.Success);
         };

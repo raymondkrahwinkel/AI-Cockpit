@@ -252,7 +252,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
 
     private async Task _CopyBranchNameAsync(LinkedIssue link)
     {
-        var name = BranchName.From(link.Issue.IdReadable, link.Issue.Summary);
+        var name = BranchName.From(link.Issue.IdReadable, link.Issue.Summary, _settings.BranchPattern);
         await _host.Actions.SetClipboardTextAsync(name);
         _host.ShowToast($"Branch name copied: {name}", PluginToastSeverity.Success);
     }

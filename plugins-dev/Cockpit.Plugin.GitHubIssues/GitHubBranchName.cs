@@ -14,9 +14,12 @@ namespace Cockpit.Plugin.GitHubIssues;
 /// </summary>
 internal static class GitHubBranchName
 {
+    /// <summary>What the operator gets unless they say otherwise.</summary>
+    public const string DefaultPattern = "{number}-{title}";
+
     private const int MaxWords = 60;
 
-    public static string From(int number, string? title)
+    public static string From(int number, string? title, string? pattern = null)
     {
         var slug = new StringBuilder();
 
@@ -46,6 +49,44 @@ internal static class GitHubBranchName
             words = words[..MaxWords].TrimEnd('-');
         }
 
-        return words.Length == 0 ? number.ToString() : $"{number}-{words}";
+        var template = string.IsNullOrWhiteSpace(pattern) ? DefaultPattern : pattern.Trim();
+
+        var branch = template
+            .Replace("{number}", number.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{issue}", number.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{title}", words, StringComparison.OrdinalIgnoreCase)
+            .Replace("{summary}", words, StringComparison.OrdinalIgnoreCase);
+
+        // A pattern with no title in it, or an issue whose title slugs to nothing, must not leave the separator
+        // dangling: "42-" is a name someone typed wrong, and it looks like one.
+        branch = _Tidy(branch);
+
+        return branch.Length == 0 ? number.ToString() : branch;
+    }
+
+    // Slashes survive (feature/42 is a branch); everything git or a shell would argue with does not, and repeated or
+    // trailing separators are collapsed — a pattern is written once and used on a hundred issues, and one of them will
+    // have a title made entirely of punctuation.
+    private static string _Tidy(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+
+        foreach (var character in value)
+        {
+            if (!char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_' or '.' or '/'))
+            {
+                continue;
+            }
+
+            var separator = character is '-' or '_' or '.' or '/';
+            if (separator && (builder.Length == 0 || builder[^1] == character))
+            {
+                continue;
+            }
+
+            builder.Append(character);
+        }
+
+        return builder.ToString().Trim('-', '_', '.', '/');
     }
 }

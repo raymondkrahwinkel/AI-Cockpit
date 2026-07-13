@@ -18,6 +18,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     private readonly List<YouTrackInstanceRowControl> _rows = [];
     private readonly TextBox _template;
     private readonly TextBox _pickerQuery;
+    private readonly TextBox _branchPattern;
 
     public YouTrackSettingsControl(YouTrackSettings settings)
     {
@@ -42,6 +43,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
         addInstance.Click += (_, _) => _AddRow(new YouTrackInstance(string.Empty, string.Empty, string.Empty, string.Empty));
 
         _pickerQuery = new TextBox { Text = settings.PickerQuery, Watermark = "#Unresolved" };
+        _branchPattern = new TextBox { Text = settings.BranchPattern, Watermark = BranchName.DefaultPattern };
 
         _template = new TextBox
         {
@@ -65,6 +67,9 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
                     addInstance,
                     _Label("Which issues the session picker shows (YouTrack query)"),
                     SettingsHelpRow.Build(_pickerQuery, "Anything YouTrack's own search understands. Default \"#Unresolved\": showing issues that are done is offering work that is over. Examples: \"State: {In Progress}\", \"#Unresolved -State: Review\", \"#Unresolved Priority: Critical\"."),
+
+                    _Label("Branch name pattern"),
+                    SettingsHelpRow.Build(_branchPattern, "How a branch is named for an issue. Placeholders: {id} and {summary}. Default \"{id}-{summary}\" (EVE-14-fix-the-login-redirect); \"feature/{id}\" and \"{id}_{summary}\" work too. Whatever you write, the result is lowercased and made safe for git."),
 
                     _Label("Prompt template — placeholders: {id} {idReadable} {summary} {url} {project} {description}"),
                     SettingsHelpRow.Build(_template, "Prompt inserted when you click an issue. Placeholders: {id} {idReadable} {summary} {url} {project} {description}."),
@@ -90,6 +95,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     {
         _settings.Instances = _rows.Where(row => !row.IsBlank).Select(row => row.ToInstance()).ToList();
         _settings.PickerQuery = string.IsNullOrWhiteSpace(_pickerQuery.Text) ? "#Unresolved" : _pickerQuery.Text.Trim();
+        _settings.BranchPattern = string.IsNullOrWhiteSpace(_branchPattern.Text) ? BranchName.DefaultPattern : _branchPattern.Text.Trim();
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         return true;
     }

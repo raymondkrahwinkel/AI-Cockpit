@@ -119,7 +119,7 @@ internal static class YouTrackWorkflowSteps
                         ["ticket"] = issue.IdReadable,
                         ["state"] = target,
                         ["summary"] = issue.Summary,
-                        ["branch"] = BranchName.From(issue.IdReadable, issue.Summary),
+                        ["branch"] = BranchName.From(issue.IdReadable, issue.Summary, settings.BranchPattern),
                     },
                 ],
                 said + ".");

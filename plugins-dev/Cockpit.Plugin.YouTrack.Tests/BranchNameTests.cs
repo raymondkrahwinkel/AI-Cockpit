@@ -45,4 +45,30 @@ public class BranchNameTests
     {
         BranchName.From("EWB-3", summary).Should().Be("ewb-3");
     }
+
+    [Fact]
+    public void APatternIsFollowed_BecauseTheConventionIsTheTeamsAndNotThePluginsToChoose() =>
+        BranchName.From("EVE-14", "Fix the login redirect", "feature/{id}")
+            .Should().Be("feature/eve-14");
+
+    [Theory]
+    [InlineData("{id}_{summary}", "eve-14_fix-the-login-redirect")]
+    [InlineData("{summary}", "fix-the-login-redirect")]
+    [InlineData("bugfix/{id}-{summary}", "bugfix/eve-14-fix-the-login-redirect")]
+    public void EveryPlaceholderIsFilled_AndTheResultIsStillARefGitAccepts(string pattern, string expected) =>
+        BranchName.From("EVE-14", "Fix the login redirect", pattern).Should().Be(expected);
+
+    [Fact]
+    public void AnIssueWithNoSummary_LeavesNoDanglingSeparator() =>
+        // "EVE-14-" is a name someone typed wrong, and it looks like one.
+        BranchName.From("EVE-14", null, "{id}-{summary}").Should().Be("eve-14");
+
+    [Fact]
+    public void APatternThatSaysNothing_FallsBackToTheId() =>
+        BranchName.From("EVE-14", "Fix it", "///").Should().Be("eve-14");
+
+    [Fact]
+    public void NoPattern_IsTheDefaultOne() =>
+        BranchName.From("EVE-14", "Fix the login redirect")
+            .Should().Be(BranchName.From("EVE-14", "Fix the login redirect", BranchName.DefaultPattern));
 }
