@@ -36,6 +36,10 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
         var useGhRow = SettingsHelpRow.Build(_useGh, "Use the installed `gh` CLI (uses your existing gh login, no token) instead of a single-repo HTTP call.");
 
         _ghOwner = new TextBox { Text = settings.GhOwner, PlaceholderText = "@me (or an org / user)" };
+        _inProgressLabel = new TextBox { Text = settings.InProgressLabel, PlaceholderText = "in progress (leave empty for none)" };
+        _pickerTerms = new TextBox { Text = settings.PickerTerms, PlaceholderText = "-label:blocked  label:bug  no:assignee" };
+        _branchPattern = new TextBox { Text = settings.BranchPattern, PlaceholderText = GitHubBranchName.DefaultPattern };
+
         var ghPanel = new StackPanel
         {
             Spacing = 6,
@@ -56,9 +60,6 @@ internal sealed class GitHubIssuesSettingsControl : UserControl, IPluginSettings
             },
         };
 
-        _inProgressLabel = new TextBox { Text = settings.InProgressLabel, PlaceholderText = "in progress (leave empty for none)" };
-        _pickerTerms = new TextBox { Text = settings.PickerTerms, PlaceholderText = "-label:blocked  label:bug  no:assignee" };
-        _branchPattern = new TextBox { Text = settings.BranchPattern, PlaceholderText = GitHubBranchName.DefaultPattern };
 
         _owner = new TextBox { Text = settings.Owner, PlaceholderText = "owner (e.g. octocat)" };
         _repo = new TextBox { Text = settings.Repo, PlaceholderText = "repository (e.g. hello-world)" };

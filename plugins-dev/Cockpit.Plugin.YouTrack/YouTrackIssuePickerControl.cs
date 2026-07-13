@@ -40,7 +40,7 @@ internal sealed class YouTrackIssuePickerControl : UserControl
         _instances = new ComboBox { MinWidth = 160, ItemsSource = _Configured().Select(instance => instance.Label).ToList() };
         _instances.SelectionChanged += async (_, _) => await _LoadAsync();
 
-        _search = new TextBox { Watermark = "Filter by id or summary…", MinWidth = 220 };
+        _search = new TextBox { PlaceholderText = "Filter by id or summary…", MinWidth = 220 };
         _search.TextChanged += (_, _) => _Render();
 
         _mine = new CheckBox { Content = "Assigned to me", IsChecked = true, VerticalAlignment = VerticalAlignment.Center };

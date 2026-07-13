@@ -30,7 +30,7 @@ internal sealed class GitHubIssuePickerControl : UserControl
 
         _status = new TextBlock { FontSize = 11, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
 
-        _search = new TextBox { Watermark = "Filter by number, title or repo…", MinWidth = 260 };
+        _search = new TextBox { PlaceholderText = "Filter by number, title or repo…", MinWidth = 260 };
         _search.TextChanged += (_, _) => _Render();
 
         _mine = new CheckBox { Content = "Assigned to me", IsChecked = true, VerticalAlignment = VerticalAlignment.Center };

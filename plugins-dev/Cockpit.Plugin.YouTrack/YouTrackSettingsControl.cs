@@ -42,8 +42,8 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
         var addInstance = new Button { Content = "+ Add instance" };
         addInstance.Click += (_, _) => _AddRow(new YouTrackInstance(string.Empty, string.Empty, string.Empty, string.Empty));
 
-        _pickerQuery = new TextBox { Text = settings.PickerQuery, Watermark = "#Unresolved" };
-        _branchPattern = new TextBox { Text = settings.BranchPattern, Watermark = BranchName.DefaultPattern };
+        _pickerQuery = new TextBox { Text = settings.PickerQuery, PlaceholderText = "#Unresolved" };
+        _branchPattern = new TextBox { Text = settings.BranchPattern, PlaceholderText = BranchName.DefaultPattern };
 
         _template = new TextBox
         {
