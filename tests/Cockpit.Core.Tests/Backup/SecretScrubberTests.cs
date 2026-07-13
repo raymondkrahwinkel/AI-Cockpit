@@ -90,4 +90,29 @@ public class SecretScrubberTests
     [InlineData("configDir", false)]
     public void WhatCountsAsASecret_IsDecidedByTheFieldsName(string name, bool secret) =>
         SecretScrubber.IsSecret(name).Should().Be(secret);
+
+    [Fact]
+    public void AWebhookInsideAWorkflowsStep_IsFoundToo()
+    {
+        // A Slack or Discord step carries its own webhook — in the flow's JSON, inside the workflows plugin's storage,
+        // inside cockpit.json. Three layers deep, and still a credential: whoever has it can post as Raymond. A backup
+        // that promises "no credentials" and ships one anyway is worth less than no promise at all.
+        var flow = """[{"Name":"Release","Nodes":[{"TypeId":"cockpit.slack","Parameters":{"Message":"Deployed","Webhook URL":"https://hooks.example/POSTED-AS-YOU"}}]}]""";
+
+        var settings = new JsonObject
+        {
+            ["Plugins"] = new JsonObject
+            {
+                ["workflows"] = new JsonObject
+                {
+                    ["Data"] = new JsonObject { ["workflows"] = flow },
+                },
+            },
+        };
+
+        var removed = SecretScrubber.Scrub(settings);
+
+        settings.ToJsonString().Should().NotContain("POSTED-AS-YOU");
+        removed.Should().ContainSingle(path => path.Contains("workflows", StringComparison.Ordinal));
+    }
 }

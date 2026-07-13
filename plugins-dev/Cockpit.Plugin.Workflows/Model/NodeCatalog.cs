@@ -64,6 +64,27 @@ public static class NodeCatalog
             ["Message"]),
 
         new(
+            "cockpit.slack",
+            "Send to Slack",
+            "Post a message to a Slack channel through its incoming webhook. Notify tells you; this tells everyone else.",
+            "💬",
+            NodeCategory.Notify,
+            WorkflowNodeKind.Action,
+            [""],
+            ["Message", "Webhook URL"],
+            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" }),
+        new(
+            "cockpit.discord",
+            "Send to Discord",
+            "Post a message to a Discord channel through its webhook. Anything past 2000 characters is cut, because Discord refuses the rest outright.",
+            "🎮",
+            NodeCategory.Notify,
+            WorkflowNodeKind.Action,
+            [""],
+            ["Message", "Webhook URL"],
+            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" }),
+
+        new(
             "cockpit.inject",
             "Send to session",
             "Put text into a session's prompt — the agent picks it up as if you typed it.",

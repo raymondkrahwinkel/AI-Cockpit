@@ -16,6 +16,8 @@ internal static class EngineFactory
             new TriggerRunner("cockpit.text-match"),
             new TriggerRunner("cockpit.schedule"),
             new NotifyRunner(host),
+            new ChatRunner("cockpit.slack", discord: false),
+            new ChatRunner("cockpit.discord", discord: true),
             new InjectRunner(host),
             new StartSessionRunner(host),
             new DelegateRunner(host),
