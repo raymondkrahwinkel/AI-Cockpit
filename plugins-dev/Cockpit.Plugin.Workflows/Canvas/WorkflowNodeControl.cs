@@ -74,6 +74,22 @@ internal sealed class WorkflowNodeControl : Border
             },
         };
 
+        // A double-click is invisible: nothing on a card says it can be opened. The gear says it, and it is the
+        // thing a hand goes to anyway.
+        var gear = new Button
+        {
+            Content = "⚙",
+            Classes = { "Subtle", "Compact" },
+            FontSize = 11,
+            Padding = new Thickness(4, 0),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 2, 4, 0),
+            Opacity = 0.55,
+        };
+        ToolTip.SetTip(gear, "What this step is set to do");
+        gear.Click += (_, _) => Opened?.Invoke(this, EventArgs.Empty);
+
         _card = new Border
         {
             Width = CardWidth,
@@ -85,17 +101,29 @@ internal sealed class WorkflowNodeControl : Border
             // leftmost box.
             CornerRadius = isTrigger ? new CornerRadius(CardHeight / 2, 8, 8, CardHeight / 2) : new CornerRadius(8),
             ClipToBounds = true,
-            Child = new DockPanel
+            Child = new Panel
             {
-                Children = { _Docked(edge, Dock.Left), _Docked(icon, Dock.Left), text },
+                Children =
+                {
+                    new DockPanel { Children = { _Docked(edge, Dock.Left), _Docked(icon, Dock.Left), text } },
+                    gear,
+                },
             },
         };
 
-        _card.PointerPressed += (_, e) => HeaderPressed?.Invoke(this, e);
-        _card.DoubleTapped += (_, e) =>
+        // The double-click is read from the press itself, not from Avalonia's DoubleTapped: the first click starts
+        // a drag and captures the pointer, and a captured pointer never delivers the second tap. That is why
+        // double-clicking a step did nothing at all — the settings were there, unreachable.
+        _card.PointerPressed += (_, e) =>
         {
-            Opened?.Invoke(this, EventArgs.Empty);
-            e.Handled = true;
+            if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed && e.ClickCount >= 2)
+            {
+                Opened?.Invoke(this, EventArgs.Empty);
+                e.Handled = true;
+                return;
+            }
+
+            HeaderPressed?.Invoke(this, e);
         };
         _card.Cursor = new Cursor(StandardCursorType.SizeAll);
         ToolTip.SetTip(_card, node.Type?.Description
