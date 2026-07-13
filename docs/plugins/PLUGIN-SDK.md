@@ -85,9 +85,14 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Left-menu button | `host.AddSideMenuButton(title, onInvoke)` | A launcher button in the sidebar; clicking runs your action (usually opening a dialog). |
 | Dialog | `host.ShowDialogAsync(title, () => control)` | A modal dialog over the main window hosting your control. The host provides the **DataGrid** (control + theme) app-wide, so you can use it. |
 | Left-menu section | `host.AddSideMenuSection(title, () => control)` | An inline accordion under the session list — for small, always-visible content. |
+| Session header item | `host.AddSessionHeaderItem(session => control)` | A small control in **every session's header bar**, built once per session and handed that session's own [`IPluginSessionContext`](API-REFERENCE.md#ipluginsessioncontext) — for status that belongs to one session. See [Session header items](#session-header-items--status-that-belongs-to-one-session). |
+| Conversation picker | `host.AddConversationPicker(registration)` | Lends your history-browsing to the **New-session dialog**: it grows a **Search…** button next to "resume by session id", which runs your picker. See [Conversation pickers](#conversation-pickers--let-the-operator-choose-a-conversation-to-resume). |
+| Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
+| Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, and a stream of every session's output. (For one *specific* session, use a session header item's context instead.) |
+| Keyboard shortcut | `host.AddShortcut(shortcut)` | A gesture and a command-palette entry, listed in Options → Shortcuts alongside the app's own. |
 | Persist settings | `host.Storage` | Per-plugin key/value storage in `cockpit.json`. |
 | Live-apply settings | `host.OnSettingsSaved(callback)` | Re-run a callback after your settings are saved, without needing an app restart. |
 | Register services | `plugin.ConfigureServices(services)` | Add your own services to the host DI container (phase 1). |
@@ -115,8 +120,13 @@ public interface ICockpitHost
     void AddSideMenuSection(string title, Func<Control> createView); // inline sidebar accordion
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                      // re-run after your settings are saved
+    void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView); // a control in every session's header
+    void AddConversationPicker(ConversationPickerRegistration picker);          // browse history for the New-session dialog
+    void AddShortcut(PluginShortcut shortcut);                  // a gesture + command-palette entry
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
+    Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
+    ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
 }
 
 public interface ICockpitActions
@@ -216,6 +226,56 @@ and `IPluginProviderConfigView` (the add/edit-profile panel that produces that c
 against your provider persists `ProviderId` + the config JSON; the host's driver adapter (internal) wraps your
 `IPluginSessionDriver` to satisfy its own full session-driver contract and no-ops whatever your capabilities
 don't support.
+
+## Session header items — status that belongs to one session
+
+`host.AddSessionHeaderItem(session => control)` puts a small control in **every session's header bar**. It is
+built once per session panel and handed that session's own `IPluginSessionContext`, so it shows the state of the
+session it sits in — not of whichever session happens to be selected.
+
+That distinction is the whole point. A cockpit shows several sessions at once; a sidebar section that follows
+the selection says nothing about the other panes on screen.
+
+```csharp
+host.AddSessionHeaderItem(session => new MyIndicator(host, session));
+```
+
+The context gives you exactly two things — where that session works, and what it produces:
+
+```csharp
+public interface IPluginSessionContext
+{
+    string? WorkingDirectory { get; }                            // null until known
+    event EventHandler? WorkingDirectoryChanged;                 // re-scope
+    event EventHandler<SessionOutputText>? OutputProduced;       // this session's output, verbatim
+}
+```
+
+**Keep it compact.** The header is a strip: an indicator with a tooltip, not a panel. The Git status plugin is
+the worked example — a coloured dot and the branch, the counts on hover, re-reading itself when that session
+runs a git command (it substring-scans `OutputProduced` for one) and clicking drops the summary into that
+session. The same control renders in both session kinds (SDK chat and TTY terminal), so you write it once.
+
+## Conversation pickers — let the operator choose a conversation to resume
+
+The New-session dialog can resume an earlier conversation by id, and typing an id by hand is a poor way to find
+one. But the cockpit cannot browse a provider's history itself: a transcript is one provider's own format, which
+is precisely why it lives in a plugin.
+
+So a plugin that *can* browse that history lends it to the dialog. Register a picker, and the dialog grows a
+**Search…** button next to the id field that runs it:
+
+```csharp
+host.AddConversationPicker(new ConversationPickerRegistration("Search transcripts", async () =>
+{
+    string? picked = null;
+    await host.ShowDialogAsync("Search transcripts", () => new MySearchControl(id => picked = id));
+    return picked;   // null = the operator cancelled
+}));
+```
+
+No plugin registers one → no button, and the id can still be typed. The core stays ignorant of transcripts and
+of Claude; it only knows that *someone* offers a picker. The transcript-search plugin is the worked example.
 
 ## MCP server registration
 
@@ -540,15 +600,31 @@ for how they fit into the app.
 ### The official store, as a worked reference
 
 **[github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins)**
-is a real store you can use as a template: its `index.json` lists all six `plugins-dev/` plugins with every
-field above filled in, laid out exactly as `<plugin-id>/<plugin-id>-<version>.zip`. Clone its layout for your
-own store, or open a PR against it to list your plugin alongside the official ones.
+is a real store you can use as a template: its `index.json` lists the `plugins-dev/` plugins with every field
+above filled in, laid out exactly as `<plugin-id>/<plugin-id>-<version>.zip`. Clone its layout for your own
+store, or open a PR against it to list your plugin alongside the official ones.
+
+## Plugins that ship with the app
+
+Two plugins are **bundled**: they are built with the cockpit, copied into its `bundled-plugins/` output, and
+installed into the operator's plugins directory on startup — enabled, and without the consent dialog (it asks
+whether you trust third-party code, and these came out of the very build that is asking).
+
+They exist because they *used* to be core features. Transcript search parses Claude's own JSONL format, and git
+status describes the repo one session works in; neither belongs in a core that drives several providers. Making
+them plugins kept the core honest, and bundling them means an operator does not have to know they exist to have
+what they always had.
+
+Bundling never overrides the operator: a plugin they disable stays disabled and untouched on disk, and a version
+they updated past ours from the store is not rolled back — only a newer bundled version replaces an older
+installed one, keeping it enabled and keeping its settings. Nothing about this is special to first-party code:
+it is the ordinary plugin loader, with the files put in place beforehand.
 
 ## Examples
 
-Six complete, working plugins live under [`plugins-dev/`](../../plugins-dev), each built exactly as described
+Eight complete, working plugins live under [`plugins-dev/`](../../plugins-dev), each built exactly as described
 above (compile-only shared refs, code-built views, settings persisted via `host.Storage`). Between them they
-exercise every contribution point, both built-in UI ones and the two provider/MCP registration seams:
+exercise every contribution point:
 
 **UI contribution plugins:**
 
@@ -567,6 +643,17 @@ exercise every contribution point, both built-in UI ones and the two provider/MC
   `host.AddMcpServer(...)` on `Initialize` and again on every settings save (`OnSettingsSaved`), so a session
   gets YouTrack tools without the user adding the server by hand.
 
+- **[Git status](../../plugins-dev/Cockpit.Plugin.GitStatus)** — the reference for a **session header item**:
+  a coloured dot and the branch of the repo *that session* works in, counts on hover, clicking drops the
+  summary into it. Re-reads itself when the session runs a git command (it substring-scans the session's own
+  `OutputProduced`, debounced so a command printing progress over several lines does not trigger five reads).
+  Also ships a dialog listing every configured repo. **Bundled with the app.**
+- **[Claude Transcript Search](../../plugins-dev/Cockpit.Plugin.TranscriptSearch)** — the reference for a
+  **conversation picker** and for `GetProfilesAsync`: it finds Claude's transcripts through the profiles the
+  operator actually configured rather than guessing at the well-known directories, opens on your ten most
+  recent conversations, and lends its search to the New-session dialog so resuming one is a click instead of a
+  typed session id. Contributes a shortcut (`Ctrl+F`) as well. **Bundled with the app.**
+
 **Provider plugins (`host.AddSessionProvider`, #45):**
 
 - **[Gemini / OpenAI Provider](../../plugins-dev/Cockpit.Plugin.GeminiProvider)** — registers **two**
@@ -582,6 +669,6 @@ exercise every contribution point, both built-in UI ones and the two provider/MC
   non-HTTP driver. `SupportsTools: true`, `SupportsPermissions: false` (no in-band tool-permission channel;
   the sandbox/approval mode is fixed per profile). Experimental (0.x).
 
-All six ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
+They all ship their `plugin.json`, use `ConfigureServices` as an empty no-op (their state lives in
 `host.Storage` or is minted fresh per session instead of living in the DI container), and the UI-contribution
 plugins fall back to `SetClipboardTextAsync` when `HasActiveSession` is false.

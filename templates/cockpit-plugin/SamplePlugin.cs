@@ -27,6 +27,25 @@ public sealed class SamplePlugin : ICockpitPlugin
         // A left-menu button that opens the plugin's content in a dialog. For plugin settings, also call
         // host.AddSettings(() => new YourSettingsControl(...)) — it appears behind the gear in the manager.
         host.AddSideMenuButton("Sample", () => _ = host.ShowDialogAsync("Sample", () => new SamplePanelControl(host)));
+
+        // The other contribution points, in case one of them fits better than a button — see
+        // docs/plugins/PLUGIN-SDK.md for each, and plugins-dev/ for a worked example of every one:
+        //
+        //   host.AddSessionHeaderItem(session => new YourIndicator(host, session));
+        //       A small control in EVERY session's header, handed that session's own context (its working
+        //       directory and its output stream). For status belonging to one session — not to the cockpit.
+        //
+        //   host.AddConversationPicker(new ConversationPickerRegistration("Search history", PickAsync));
+        //       Lends your history-browsing to the New-session dialog's "resume by session id" field.
+        //
+        //   host.AddShortcut(new PluginShortcut("sample.open", "Sample", "Shift+S", OpenSample));
+        //       A gesture plus a command-palette entry, listed alongside the app's own shortcuts.
+        //
+        //   host.AddSideMenuSection("Sample", () => new YourSectionControl());   // inline, always visible
+        //   host.AddSessionProvider(registration);   // your own model/CLI as a selectable provider
+        //   _ = host.AddMcpServer(contribution);     // put an MCP server in the shared registry
+        //   var profiles = await host.GetProfilesAsync();   // where each provider keeps its state on disk
+        //   host.Sessions                            // read surface: the selected session, and every session's output
     }
 
     public void Dispose()
