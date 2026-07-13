@@ -20,6 +20,9 @@ internal sealed class SessionProfileEntry
     /// <summary>What this profile allows when another session delegates to it (#67); absent means it is not a target.</summary>
     public DelegationPolicyEntry? Delegation { get; set; }
 
+    /// <summary>A ceiling on the session CLI's memory, in MB. Absent — the normal case — means no ceiling: a capped session that needs more memory dies rather than slows.</summary>
+    public int? MemoryLimitMb { get; set; }
+
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
@@ -29,8 +32,9 @@ internal sealed class SessionProfileEntry
         Defaults = profile.Defaults is null ? null : ProfileDefaultsEntry.FromDomain(profile.Defaults),
         Provider = ProviderConfigEntry.FromDomain(profile.ProviderConfig),
         Delegation = DelegationPolicyEntry.FromDomain(profile.Delegation),
+        MemoryLimitMb = profile.MemoryLimitMb,
     };
 
     public SessionProfile ToDomain() =>
-        new(Label, ConfigDir, ExecutablePath, Purpose, Defaults?.ToDomain(), Provider?.ToDomain(), Delegation?.ToDomain());
+        new(Label, ConfigDir, ExecutablePath, Purpose, Defaults?.ToDomain(), Provider?.ToDomain(), Delegation?.ToDomain(), MemoryLimitMb);
 }

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -27,6 +28,15 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _purpose;
+
+    /// <summary>
+    /// A ceiling on the session CLI's memory, in MB — 0 means none, which is what it is unless someone types a
+    /// number. The Claude CLI is Node, and a long conversation grows its heap past half a gigabyte; this makes it
+    /// collect harder instead. It is also the one setting here that can kill a session mid-turn, which is why it is
+    /// off by default and says so in the dialog.
+    /// </summary>
+    [ObservableProperty]
+    private int _memoryLimitMb;
 
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode;
@@ -223,6 +233,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _configDir = profile.ConfigDir;
         _executablePath = profile.ExecutablePath ?? string.Empty;
         _purpose = profile.Purpose ?? string.Empty;
+        _memoryLimitMb = profile.MemoryLimitMb ?? 0;
         _selectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode);
         _selectedModel = SessionOptionCatalog.ResolveModel(profile.Defaults?.Model);
         _selectedEffort = SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort);
@@ -275,7 +286,8 @@ public partial class EditableProfileViewModel : ViewModelBase
         string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
         new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value, AutoApproveTools),
         _ToProviderConfig(),
-        _ToDelegationPolicy());
+        _ToDelegationPolicy(),
+        MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
 
     // A profile that is not a target carries no policy at all, so cockpit.json stays quiet about the profiles
     // that have nothing to do with delegation.

@@ -152,6 +152,13 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             {
                 startInfo.EnvironmentVariables.Remove(ClaudeConfigDirectory.EnvironmentVariable);
             }
+
+            // A memory ceiling, when the profile asks for one — the same lever the TTY path pulls, so a profile means
+            // the same thing whichever kind of session it opens.
+            if (SessionMemoryLimit.NodeOptions(startInfo.EnvironmentVariables["NODE_OPTIONS"], profile.MemoryLimitMb) is { } options)
+            {
+                startInfo.EnvironmentVariables["NODE_OPTIONS"] = options;
+            }
         }
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };

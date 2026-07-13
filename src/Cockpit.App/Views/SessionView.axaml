@@ -194,7 +194,16 @@
                    HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13"
                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
         <ScrollViewer x:Name="TranscriptScroll" IsVisible="{Binding HasTranscript}">
+            <!-- Virtualised (#memory): an ItemsControl builds a control tree for every row a session has ever
+                 produced and keeps it alive forever — hundreds of megabytes of UI nobody is looking at, in a long
+                 session. An ItemsRepeater builds what is on screen. The rows the operator scrolled past cost what
+                 they are worth: their view model, and nothing else. -->
             <ItemsControl ItemsSource="{Binding Transcript}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:TranscriptEntryViewModel">
                         <!-- Row surface: background/border/alignment come from the transcriptRow style classes
@@ -209,7 +218,7 @@
                                      the session view model, so bind up to it via the ItemsControl's DataContext. -->
                                 <TextBlock Text="{Binding TimestampText}" FontSize="10"
                                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                                           IsVisible="{Binding $parent[ItemsControl].((vm:SessionViewModel)DataContext).ShowTimestamps}"/>
+                                           IsVisible="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ShowTimestamps}"/>
 
                                 <!-- Thinking rows: dimmed, collapsed to a toggle by default so they read as
                                      reasoning-in-the-background rather than part of the visible transcript flow. -->
@@ -247,7 +256,7 @@
                                 <Button Content="🔊 Read aloud" Classes="Subtle Compact" HorizontalAlignment="Left"
                                         FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
                                         IsVisible="{Binding IsAssistantMarkdown}"
-                                        Command="{Binding $parent[ItemsControl].((vm:SessionViewModel)DataContext).ReadAloudCommand}"
+                                        Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ReadAloudCommand}"
                                         CommandParameter="{Binding}"
                                         ToolTip.Tip="Read this reply aloud"/>
 
@@ -301,16 +310,16 @@
                                 <WrapPanel Orientation="Horizontal"
                                            IsVisible="{Binding IsPendingPermission}">
                                     <Button Content="Allow" Classes="Accent Compact" Margin="0,4,6,0"
-                                            Command="{Binding $parent[ItemsControl].((vm:SessionViewModel)DataContext).AllowToolCommand}"
+                                            Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowToolCommand}"
                                             CommandParameter="{Binding}"/>
                                     <Button Content="Deny" Classes="Compact" Margin="0,4,6,0"
-                                            Command="{Binding $parent[ItemsControl].((vm:SessionViewModel)DataContext).DenyToolCommand}"
+                                            Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).DenyToolCommand}"
                                             CommandParameter="{Binding}"/>
                                     <Button Content="Always (exact)" Classes="Compact" Margin="0,4,6,0"
-                                            Command="{Binding $parent[ItemsControl].((vm:SessionViewModel)DataContext).AllowAlwaysExactToolCommand}"
+                                            Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowAlwaysExactToolCommand}"
                                             CommandParameter="{Binding}"/>
                                     <Button Content="Always (wildcard)" Classes="Compact" Margin="0,4,0,0"
-                                            Command="{Binding $parent[ItemsControl].((vm:SessionViewModel)DataContext).AllowAlwaysWildcardToolCommand}"
+                                            Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowAlwaysWildcardToolCommand}"
                                             CommandParameter="{Binding}"/>
                                 </WrapPanel>
                                 <TextBlock Text="{Binding PermissionDecision}"

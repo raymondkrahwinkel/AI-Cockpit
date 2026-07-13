@@ -95,6 +95,13 @@ public static class TtyEnvironment
             {
                 environment.Remove(ClaudeConfigDirectory.EnvironmentVariable);
             }
+
+            // A memory ceiling, when the profile asks for one. Off unless it does: a capped session that needs more
+            // memory than the cap does not slow down, it dies mid-turn.
+            if (SessionMemoryLimit.NodeOptions(environment.GetValueOrDefault("NODE_OPTIONS"), profile.MemoryLimitMb) is { } options)
+            {
+                environment["NODE_OPTIONS"] = options;
+            }
         }
 
         return environment;

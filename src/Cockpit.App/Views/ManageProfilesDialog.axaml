@@ -181,6 +181,18 @@
                         <TextBox Text="{Binding Purpose}"/>
                     </StackPanel>
 
+                    <!-- A memory ceiling for the session CLI. Off unless someone types a number, and the warning is
+                         not decoration: a capped session that needs more memory than the cap dies mid-turn. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Memory ceiling (MB, 0 = none)" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <NumericUpDown Value="{Binding MemoryLimitMb}" Minimum="0" Maximum="16384" Increment="256"
+                                       FormatString="0" Width="160" HorizontalAlignment="Left"
+                                       HorizontalContentAlignment="Center"/>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   Text="Claude runs on Node, and a long conversation grows past half a gigabyte. A ceiling makes it collect harder rather than grow — but a session that genuinely needs more than the ceiling does not slow down, it dies mid-turn and that turn's work is gone. Leave it at 0 unless you are short of memory. Below 256 MB is ignored: the CLI cannot start a conversation in less."/>
+                    </StackPanel>
+
                     <!-- Delegation (#67): whether another session may hand work to this profile, and what it may
                          be handed. Off by default — delegating spawns a process under this profile's login. -->
                     <StackPanel Spacing="11">
