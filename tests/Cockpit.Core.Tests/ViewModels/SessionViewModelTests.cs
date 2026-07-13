@@ -451,7 +451,10 @@ public class SessionViewModelTests
         var vm = NewVm();
         vm.Apply(new ToolUseRequested
         {
-            SessionId = "S1", ToolUseId = "toolu_3", ToolName = "Bash", InputJson = """{"command":"dotnet build"}""",
+            SessionId = "S1",
+            ToolUseId = "toolu_3",
+            ToolName = "Bash",
+            InputJson = """{"command":"dotnet build"}""",
         });
 
         var toolUse = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse);

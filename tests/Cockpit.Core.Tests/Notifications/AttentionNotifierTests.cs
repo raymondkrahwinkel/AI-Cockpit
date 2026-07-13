@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Notifications;
-using FluentAssertions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Notifications;

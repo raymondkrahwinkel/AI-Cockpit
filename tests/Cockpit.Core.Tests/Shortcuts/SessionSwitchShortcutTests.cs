@@ -1,4 +1,3 @@
-using System.Linq;
 using Cockpit.Core.Shortcuts;
 using FluentAssertions;
 

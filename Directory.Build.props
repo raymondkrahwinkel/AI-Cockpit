@@ -1,0 +1,33 @@
+<Project>
+
+  <!-- One place that says which version this is (#71). Every project inherits it, so the About dialog, the
+       plugin host-version check and a release artifact all mean the same thing by "1.2.3" — the app had no
+       version property at all before, which is why About was showing a hardcoded string.
+
+       A local build is plain <VersionPrefix>. A release build passes -p:Version=x.y.z from the tag, and a
+       nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
+       answer that does not depend on release notes. -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+
+    <Authors>Raymond Krahwinkel</Authors>
+    <Company>Krahwinkel-IT</Company>
+    <Product>AI-Cockpit</Product>
+    <Copyright>© 2026 Raymond Krahwinkel / Krahwinkel-IT</Copyright>
+  </PropertyGroup>
+
+  <!-- Style rules are enforced by the build, not by review: IDE0005 (an unused using) is only reported by the
+       compiler when EnforceCodeStyleInBuild is on, so without this the .editorconfig severity is advisory in
+       the IDE and invisible in CI. -->
+  <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- IDE0005 is only reported by the compiler when a documentation file is generated (a Roslyn quirk:
+         dotnet/roslyn#41640). We want the rule, not the XML: CS1591 ("missing doc comment on a public member")
+         would otherwise flood a codebase that documents interfaces rather than every public member. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591 and its relatives are complaints about the XML docs themselves (a missing param tag, an
+         unresolvable cref), not about the code. We generate the doc file for IDE0005's sake, not to publish it. -->
+    <NoWarn>$(NoWarn);CS1591;CS1570;CS1573;CS1574;CS1734;CS0419</NoWarn>
+  </PropertyGroup>
+
+</Project>

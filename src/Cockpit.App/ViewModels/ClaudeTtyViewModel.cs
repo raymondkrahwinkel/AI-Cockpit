@@ -7,7 +7,6 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 

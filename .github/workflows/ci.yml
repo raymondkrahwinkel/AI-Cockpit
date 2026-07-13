@@ -1,0 +1,59 @@
+name: CI
+
+# Every push and every pull request: the app builds warning-free and the tests pass. The repo had no CI at all,
+# so "0 warnings, tests green" was something a person had to remember to check on their own machine.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Cockpit.slnx
+
+      # -warnaserror is the point: the project's standing rule is a zero-warning build, and a rule nothing
+      # enforces is a suggestion. Unused usings fail here too (IDE0005, see Directory.Build.props).
+      - name: Build
+        run: dotnet build Cockpit.slnx --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --verbosity minimal
+
+  # The plugins live outside the solution (plugins-dev/), so the solution build above never sees them — and a
+  # contract change in Cockpit.Plugins.Abstractions breaks them silently until someone rebuilds one by hand.
+  plugins:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build every plugin against the current SDK
+        run: |
+          for plugin in plugins-dev/Cockpit.Plugin.*/; do
+            case "$plugin" in *.Tests/) continue;; esac
+            echo "::group::$plugin"
+            dotnet build "$plugin" --configuration Release -warnaserror
+            echo "::endgroup::"
+          done
+
+      - name: Test the plugins that have tests
+        run: |
+          for tests in plugins-dev/Cockpit.Plugin.*.Tests/; do
+            echo "::group::$tests"
+            dotnet test "$tests" --configuration Release --verbosity minimal
+            echo "::endgroup::"
+          done

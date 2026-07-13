@@ -2,7 +2,6 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
 using SoundFlow.Enums;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;

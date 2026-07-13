@@ -28,7 +28,10 @@ public class CockpitViewModelSessionIdleTests
 {
     private readonly IAttentionNotifier _attentionNotifier = Substitute.For<IAttentionNotifier>();
 
-    private static readonly DateTimeOffset Now = new(2026, 7, 13, 12, 0, 0, TimeSpan.Zero);
+    // The sweep is measured from the session's own last activity, which the view model stamps with the real
+    // clock. A fixed "now" here was a time bomb: it passed until the wall clock caught up with the date it
+    // hardcoded, and then every one of these tests failed for a reason that had nothing to do with idling.
+    private static DateTimeOffset Quiet(SessionPanelViewModel session, TimeSpan since) => session.LastActivityUtc + since;
 
     [Fact]
     public async Task FinishingATurn_NotifiesWithTheSelectionAndWindowState()
@@ -70,7 +73,7 @@ public class CockpitViewModelSessionIdleTests
         vm.SessionIdleMinutes = 5;
         session.SessionStatus = SessionStatus.Done;
 
-        vm.SweepIdleSessions(Now.AddMinutes(30));
+        vm.SweepIdleSessions(Quiet(session, TimeSpan.FromMinutes(30)));
 
         session.SessionStatus.Should().Be(SessionStatus.Idle);
         await _attentionNotifier.Received(1).NotifySessionIdleAsync(
@@ -87,7 +90,7 @@ public class CockpitViewModelSessionIdleTests
         vm.SessionIdleMinutes = 5;
         session.SessionStatus = SessionStatus.Busy;
 
-        vm.SweepIdleSessions(Now.AddHours(3));
+        vm.SweepIdleSessions(Quiet(session, TimeSpan.FromHours(3)));
 
         session.SessionStatus.Should().Be(SessionStatus.Busy);
     }
@@ -100,8 +103,8 @@ public class CockpitViewModelSessionIdleTests
         vm.SessionIdleMinutes = 5;
         vm.Sessions[0].SessionStatus = SessionStatus.Done;
 
-        vm.SweepIdleSessions(Now.AddMinutes(30));
-        vm.SweepIdleSessions(Now.AddMinutes(31));
+        vm.SweepIdleSessions(Quiet(vm.Sessions[0], TimeSpan.FromMinutes(30)));
+        vm.SweepIdleSessions(Quiet(vm.Sessions[0], TimeSpan.FromMinutes(31)));
 
         // A cockpit left alone keeps sweeping; it must not keep repeating that nothing is happening.
         await _attentionNotifier.Received(1).NotifyAllSessionsIdleAsync(Arg.Any<CancellationToken>());
@@ -116,11 +119,11 @@ public class CockpitViewModelSessionIdleTests
         vm.SessionIdleMinutes = 5;
 
         session.SessionStatus = SessionStatus.Done;
-        vm.SweepIdleSessions(Now.AddMinutes(30));
+        vm.SweepIdleSessions(Quiet(session, TimeSpan.FromMinutes(30)));
 
         session.SessionStatus = SessionStatus.Busy;
         session.SessionStatus = SessionStatus.Done;
-        vm.SweepIdleSessions(Now.AddMinutes(60));
+        vm.SweepIdleSessions(Quiet(session, TimeSpan.FromMinutes(60)));
 
         await _attentionNotifier.Received(2).NotifyAllSessionsIdleAsync(Arg.Any<CancellationToken>());
     }
@@ -134,7 +137,7 @@ public class CockpitViewModelSessionIdleTests
         vm.SessionIdleMinutes = 0;
         session.SessionStatus = SessionStatus.Done;
 
-        vm.SweepIdleSessions(Now.AddHours(3));
+        vm.SweepIdleSessions(Quiet(session, TimeSpan.FromHours(3)));
 
         session.SessionStatus.Should().Be(SessionStatus.Done);
         await _attentionNotifier.DidNotReceiveWithAnyArgs().NotifySessionIdleAsync(default!, default);

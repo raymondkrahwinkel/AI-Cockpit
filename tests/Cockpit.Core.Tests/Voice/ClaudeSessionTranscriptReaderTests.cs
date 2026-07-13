@@ -1,4 +1,3 @@
-using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Voice;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;

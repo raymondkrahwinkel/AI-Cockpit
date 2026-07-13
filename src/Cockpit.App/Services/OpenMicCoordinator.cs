@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 

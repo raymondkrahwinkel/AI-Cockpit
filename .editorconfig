@@ -1,0 +1,26 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+trim_trailing_whitespace = true
+
+[*.{cs,axaml,xaml,csproj,props,targets,json,yml,yaml,md}]
+indent_size = 4
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.cs]
+# An unused using is a build error, not a review comment (Directory.Build.props turns on
+# EnforceCodeStyleInBuild so the compiler actually reports this one).
+dotnet_diagnostic.IDE0005.severity = error
+
+# File-scoped namespaces, `is null` over `== null`, primary constructors: the house style, stated where the
+# build can see it rather than only in a document.
+csharp_style_namespace_declarations = file_scoped:warning
+dotnet_style_prefer_is_null_check_over_reference_equality_method = true:warning
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_using_directive_placement = outside_namespace:warning

@@ -1,4 +1,3 @@
-using Cockpit.Plugin.CliAgentProvider;
 using FluentAssertions;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;

@@ -1,4 +1,3 @@
-using Cockpit.Plugin.CliAgentProvider;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 

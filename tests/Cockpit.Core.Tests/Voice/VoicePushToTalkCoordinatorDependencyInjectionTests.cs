@@ -2,7 +2,6 @@ using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
-using Cockpit.Core;
 using Cockpit.Infrastructure;
 
 namespace Cockpit.Core.Tests.Voice;

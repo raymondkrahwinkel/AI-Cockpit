@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
 using Cockpit.App.ViewModels;
-using Cockpit.Core;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Voice.GlobalHotkey;

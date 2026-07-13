@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
-using Cockpit.Core;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Infrastructure;
 using FluentAssertions;

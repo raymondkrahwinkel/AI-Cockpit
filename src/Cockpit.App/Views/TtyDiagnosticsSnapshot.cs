@@ -1,4 +1,3 @@
-using System;
 using Exclr8.Terminal.Buffer;
 
 namespace Cockpit.App.Views;

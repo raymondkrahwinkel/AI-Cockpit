@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Cockpit.App.Controls;
 using FluentAssertions;
 

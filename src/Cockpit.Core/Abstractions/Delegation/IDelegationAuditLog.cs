@@ -44,6 +44,8 @@ public enum DelegationAuditAction
 }
 
 /// <summary>One line of the delegation audit trail (#67).</summary>
+/// <param name="Prompt">The prompt, trimmed: enough to recognise the task later without turning the log into a transcript.</param>
+/// <param name="Reason">Why a task was refused, or how it failed. Empty for the ordinary path.</param>
 public sealed record DelegationAuditEntry(
     DateTimeOffset At,
     DelegationAuditAction Action,
@@ -51,7 +53,5 @@ public sealed record DelegationAuditEntry(
     string? TaskId,
     string? Label,
     string? TaskType,
-    /// <summary>The prompt, trimmed: enough to recognise the task later without turning the log into a transcript.</summary>
     string? Prompt,
-    /// <summary>Why a task was refused, or how it failed. Empty for the ordinary path.</summary>
     string? Reason);

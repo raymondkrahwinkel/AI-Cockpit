@@ -1,0 +1,79 @@
+name: Nightly
+
+# Every commit on main becomes a testable build (#71), published to one rolling pre-release tagged 'nightly'
+# that is overwritten each time. Opting in to nightlies is a choice about which channel you follow, so this is
+# deliberately a *pre-release*: the updater's stable channel never sees it.
+#
+# A nightly has no version number to compare — that is the whole point of a rolling tag — so its identity is the
+# commit it was built from: 0.1.0-nightly.<run>+<sha>. "Is there something newer?" is answered by the run number,
+# and "which nightly am I running?" by the sha, which is the question you actually ask when one misbehaves.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: win-x64
+            os: windows-latest
+          - rid: osx-arm64
+            os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build the nightly version string
+        id: version
+        shell: bash
+        run: |
+          base=$(grep -oPm1 '(?<=<VersionPrefix>)[^<]+' Directory.Build.props)
+          echo "version=${base}-nightly.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish src/Cockpit.App/Cockpit.App.csproj \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            --self-contained true \
+            -p:Version=${{ steps.version.outputs.version }} \
+            -p:SourceRevisionId=${{ steps.version.outputs.sha }} \
+            --output publish/${{ matrix.rid }}
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cd publish/${{ matrix.rid }}
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            7z a -tzip "../../artifacts/ai-cockpit-nightly-${{ matrix.rid }}.zip" .
+          else
+            tar -czf "../../artifacts/ai-cockpit-nightly-${{ matrix.rid }}.tar.gz" .
+          fi
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly ${{ steps.version.outputs.version }} (${{ steps.version.outputs.sha }})
+          body: |
+            Rolling build of `main`, overwritten on every commit. Not a release: things here are expected to break.
+
+            Version: `${{ steps.version.outputs.version }}` · commit `${{ steps.version.outputs.sha }}`
+          files: artifacts/*
+          prerelease: true

@@ -1,4 +1,3 @@
-using System.IO;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.Input;
 

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using Avalonia;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,7 +8,6 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Voice;
 
 namespace Cockpit.App.ViewModels;
 

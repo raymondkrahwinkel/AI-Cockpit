@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using Cockpit.Plugin.CliAgentProvider;
 
 namespace Cockpit.Plugin.CliAgentProvider.Tests;
 

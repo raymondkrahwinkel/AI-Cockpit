@@ -3,7 +3,6 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
 

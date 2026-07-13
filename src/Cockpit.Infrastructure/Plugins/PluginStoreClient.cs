@@ -1,4 +1,3 @@
-using System.Net.Http;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
