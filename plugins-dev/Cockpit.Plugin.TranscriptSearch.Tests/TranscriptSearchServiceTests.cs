@@ -1,7 +1,6 @@
-using Cockpit.Infrastructure.Transcripts;
 using FluentAssertions;
 
-namespace Cockpit.Core.Tests.Transcripts;
+namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
 /// <summary>
 /// Searching the on-disk transcripts (#9): matches across files, newest-session-first ordering, the blank-query
@@ -70,6 +69,44 @@ public class TranscriptSearchServiceTests : IDisposable
         var service = new TranscriptSearchService([_root]);
 
         (await service.SearchAsync("login")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchAsync_MissingRoot_SearchesTheRemainingOnes()
+    {
+        _WriteSession("proj", "s", """{"type":"user","message":{"role":"user","content":"the login bug"}}""");
+
+        var service = new TranscriptSearchService([Path.Combine(_root, "does-not-exist"), _root]);
+
+        (await service.SearchAsync("login")).Should().HaveCount(1);
+    }
+
+    // A project folder the operator cannot read must not take the whole search down with it: the walk skips it and
+    // still returns the hits from every readable transcript. Unix-only — Windows has no chmod equivalent here, and
+    // running elevated bypasses the permission entirely, so the test would prove nothing.
+    [Fact]
+    public async Task SearchAsync_UnreadableProjectFolder_StillReturnsHitsFromTheReadableOnes()
+    {
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root")
+        {
+            return;
+        }
+
+        _WriteSession("readable", "s", """{"type":"user","message":{"role":"user","content":"the login bug"}}""");
+        var locked = Path.Combine(_root, "locked");
+        Directory.CreateDirectory(locked);
+        File.SetUnixFileMode(locked, UnixFileMode.None);
+
+        try
+        {
+            var service = new TranscriptSearchService([_root]);
+
+            (await service.SearchAsync("login")).Should().HaveCount(1);
+        }
+        finally
+        {
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     private void _WriteSession(string project, string sessionId, params string[] lines)

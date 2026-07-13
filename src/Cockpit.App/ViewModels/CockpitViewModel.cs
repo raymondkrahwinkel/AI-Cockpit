@@ -834,7 +834,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.Options => OptionsCommand,
             ShortcutAction.About => AboutCommand,
             ShortcutAction.ToggleZoom => ToggleZoomCommand,
-            ShortcutAction.SearchTranscripts => SearchTranscriptsCommand,
             ShortcutAction.CommandPalette => ShowCommandPaletteCommand,
             ShortcutAction.PreviousSession => SelectPreviousSessionCommand,
             ShortcutAction.NextSession => SelectNextSessionCommand,
@@ -1310,18 +1309,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _dialogService.ShowDelegatedTasksDialogAsync();
-    }
-
-    /// <summary>Opens the transcript-search dialog (#9): search your past sessions' text.</summary>
-    [RelayCommand]
-    private async Task SearchTranscriptsAsync()
-    {
-        if (_dialogService is null)
-        {
-            return;
-        }
-
-        await _dialogService.ShowTranscriptSearchDialogAsync();
     }
 
     /// <summary>Opens the command palette (#: command palette): a searchable list of every app action and plugin command with its shortcut.</summary>

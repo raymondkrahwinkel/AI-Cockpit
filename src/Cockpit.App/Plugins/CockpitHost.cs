@@ -1,10 +1,12 @@
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
@@ -53,6 +55,14 @@ internal sealed class CockpitHost(
 
     public void AddSessionProvider(SessionProviderRegistration registration) =>
         services.GetRequiredService<IPluginProviderRegistry>().Register(registration);
+
+    public async Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()
+    {
+        var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false);
+        return profiles
+            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.ConfigDir))
+            .ToList();
+    }
 
     /// <summary>
     /// Idempotent upsert-by-name into the shared <see cref="IMcpServerStore"/> registry (#60). No entry named

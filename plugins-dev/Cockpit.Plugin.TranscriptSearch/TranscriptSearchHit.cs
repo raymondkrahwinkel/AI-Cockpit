@@ -1,4 +1,4 @@
-namespace Cockpit.Core.Transcripts;
+namespace Cockpit.Plugin.TranscriptSearch;
 
 /// <summary>
 /// One match from a transcript search (#9): the <see cref="Role"/> that said it, a <see cref="Snippet"/> of

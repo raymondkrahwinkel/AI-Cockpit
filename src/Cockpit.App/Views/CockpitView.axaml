@@ -76,10 +76,6 @@
                             Command="{Binding Plugins.OpenStoreDialogCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             ToolTip.Tip="Browse, install, update and manage plugins — all in one place"/>
-                    <Button Content="Search transcripts" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding SearchTranscriptsCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Search the text of all your past sessions (Ctrl+F)"/>
                     <!-- Delegated work runs as sessions without a tab, so this is where it stays visible (#67).
                          Hidden until something has actually been delegated, rather than sitting there dead. -->
                     <Button HorizontalAlignment="Stretch" Classes="Subtle"

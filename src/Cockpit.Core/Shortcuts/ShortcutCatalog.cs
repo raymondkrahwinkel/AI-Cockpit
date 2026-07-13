@@ -21,7 +21,6 @@ public static class ShortcutCatalog
         new(ShortcutAction.Options, "Options", "Ctrl+O"),
         new(ShortcutAction.About, "About", ""),
         new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+B"),
-        new(ShortcutAction.SearchTranscripts, "Search transcripts", "Ctrl+F"),
         new(ShortcutAction.CommandPalette, "Command palette", "Ctrl+K"),
         new(ShortcutAction.PreviousSession, "Previous session", "Ctrl+Up"),
         new(ShortcutAction.NextSession, "Next session", "Ctrl+Down"),

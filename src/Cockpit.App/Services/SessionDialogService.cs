@@ -10,7 +10,6 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
-using Cockpit.Core.Abstractions.Transcripts;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Infrastructure.Sessions;
 
@@ -29,7 +28,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
-    private readonly ITranscriptSearchService _transcriptSearchService;
     private readonly DelegatedTasksViewModel _delegatedTasks;
 
     public SessionDialogService(
@@ -39,7 +37,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IMcpServerStore mcpServerStore,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
-        ITranscriptSearchService transcriptSearchService,
         DelegatedTasksViewModel delegatedTasks)
     {
         _delegatedTasks = delegatedTasks;
@@ -49,7 +46,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _mcpServerStore = mcpServerStore;
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
-        _transcriptSearchService = transcriptSearchService;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -210,19 +206,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
         var dialog = new AboutDialog { DataContext = info };
-        await dialog.ShowDialog(owner);
-    }
-
-    public async Task ShowTranscriptSearchDialogAsync()
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
-        {
-            return;
-        }
-
-        var viewModel = new TranscriptSearchDialogViewModel(_transcriptSearchService);
-        var dialog = new TranscriptSearchDialog { DataContext = viewModel };
-        viewModel.CloseRequested += dialog.Close;
         await dialog.ShowDialog(owner);
     }
 

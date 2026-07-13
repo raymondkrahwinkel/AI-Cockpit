@@ -1,0 +1,40 @@
+using Microsoft.Extensions.DependencyInjection;
+using Cockpit.Plugins.Abstractions;
+
+namespace Cockpit.Plugin.TranscriptSearch;
+
+/// <summary>
+/// Search over the <c>claude</c> CLI's on-disk transcripts, as a plugin: the JSONL history and its schema belong
+/// to that one provider, so in a cockpit that drives several they have no business in the core. Contributes a
+/// left-menu button and the <c>Ctrl+F</c> shortcut it used to own as a built-in action, both opening the search
+/// dialog. It needs no services of its own — the search reads the profiles from the host on every query.
+/// </summary>
+public sealed class TranscriptSearchPlugin : ICockpitPlugin
+{
+    public PluginMetadata Metadata { get; } = new(
+        Id: "transcript-search",
+        DisplayName: "Claude Transcript Search",
+        Version: "1.0.0",
+        Author: "Cockpit",
+        Description: "Search everything you and the agent ever wrote in a Claude CLI session, across every Claude profile you have configured.");
+
+    public void ConfigureServices(IServiceCollection services)
+    {
+    }
+
+    public void Initialize(ICockpitHost host)
+    {
+        void OpenSearch() => _ = host.ShowDialogAsync(
+            "Search transcripts",
+            () => new TranscriptSearchDialogControl(new TranscriptSearchService(host), host.Actions),
+            820,
+            600);
+
+        host.AddSideMenuButton("Search transcripts", OpenSearch);
+        host.AddShortcut(new PluginShortcut("transcript-search.open", "Search transcripts", "Ctrl+F", OpenSearch));
+    }
+
+    public void Dispose()
+    {
+    }
+}

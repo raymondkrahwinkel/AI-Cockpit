@@ -1,7 +1,6 @@
-using Cockpit.Core.Transcripts;
 using FluentAssertions;
 
-namespace Cockpit.Core.Tests.Transcripts;
+namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
 /// <summary>
 /// Pulling searchable prose out of a transcript JSONL line (#9): a plain-string user prompt, the text blocks

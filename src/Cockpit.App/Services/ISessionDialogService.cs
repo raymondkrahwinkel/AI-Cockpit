@@ -52,9 +52,6 @@ public interface ISessionDialogService
     /// <summary>Opens the delegated-tasks view (#67), so work another session handed to a profile stays visible and stoppable.</summary>
     Task ShowDelegatedTasksDialogAsync();
 
-    /// <summary>Shows the transcript-search dialog (#9): search your past sessions' text and jump to a match.</summary>
-    Task ShowTranscriptSearchDialogAsync();
-
     /// <summary>Shows the command palette (#: command palette) over the given commands; runs the chosen one after the palette closes.</summary>
     Task ShowCommandPaletteDialogAsync(IReadOnlyList<PaletteCommand> commands);
 

@@ -80,6 +80,7 @@ public interface ICockpitHost
     void OnSettingsSaved(Action callback);                       // default no-op
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
+    Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
 }
 ```
 
@@ -186,6 +187,31 @@ _ = host.AddMcpServer(new McpServerContribution(
     Name: "My Service: Prod",
     Url: "https://my-service.example.com/mcp",
     BearerToken: myToken));
+```
+
+### `Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()`
+The cockpit's configured **session profiles**: which identities exist and where each keeps its provider state
+on disk. For a plugin that reads a provider's on-disk artefacts — the Claude CLI's transcripts, say — this is
+how you find the directories the operator actually configured instead of guessing at the well-known ones.
+- Read **fresh on every call**, so a profile added or edited after your plugin initialised is picked up without
+  a restart. Call it per operation rather than caching it at construction.
+- Default returns an empty list, same compatibility rationale as `AddSessionProvider`.
+
+```csharp
+public sealed record PluginProfileInfo(string Label, string Provider, string ConfigDirectory);
+```
+
+| Property | Meaning |
+|---|---|
+| `Label` | Display name, as shown in the profile picker. |
+| `Provider` | The host's provider name — `ClaudeCli`, `Ollama`, `LmStudio`, `Plugin`. A string, not an enum, so the contract does not change every time the host gains a provider: match on the ones you care about and ignore the rest. |
+| `ConfigDirectory` | The provider's per-profile config directory (a Claude-CLI profile's `CLAUDE_CONFIG_DIR`, holding that identity's credentials, config and `projects/` transcripts). Empty for a provider that keeps no such directory. |
+
+```csharp
+var profiles = await host.GetProfilesAsync();
+var claudeConfigDirs = profiles
+    .Where(profile => profile.Provider == "ClaudeCli" && profile.ConfigDirectory.Length > 0)
+    .Select(profile => profile.ConfigDirectory);
 ```
 
 ---

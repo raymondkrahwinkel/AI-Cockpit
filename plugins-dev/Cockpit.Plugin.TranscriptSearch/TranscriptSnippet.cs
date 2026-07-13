@@ -1,4 +1,4 @@
-namespace Cockpit.Core.Transcripts;
+namespace Cockpit.Plugin.TranscriptSearch;
 
 /// <summary>
 /// Builds the one-line snippet shown for a transcript search hit (#9): the matched text collapsed to a single

@@ -15,6 +15,7 @@ Start with the [Quickstart](PLUGIN-SDK.md#quickstart) in the SDK guide if you ju
 
 The official plugin store is
 **[github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins)**,
-pre-seeded into a fresh cockpit install; the six example plugins under
-[`plugins-dev/`](../../plugins-dev) — three UI plugins (GitHub Issues, GitHub Pull Requests, YouTrack) and
-three provider plugins (Gemini/OpenAI, GitHub Models, CLI Agent/Codex) — are published there.
+pre-seeded into a fresh cockpit install; the example plugins under
+[`plugins-dev/`](../../plugins-dev) — UI plugins (GitHub Issues, GitHub Pull Requests, YouTrack, Git Status,
+Prompt Library, Claude Transcript Search) and provider plugins (Gemini/OpenAI, GitHub Models, CLI
+Agent/Codex) — are published there.

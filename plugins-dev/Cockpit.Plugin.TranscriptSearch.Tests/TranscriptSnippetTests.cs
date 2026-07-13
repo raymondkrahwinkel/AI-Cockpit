@@ -1,7 +1,6 @@
-using Cockpit.Core.Transcripts;
 using FluentAssertions;
 
-namespace Cockpit.Core.Tests.Transcripts;
+namespace Cockpit.Plugin.TranscriptSearch.Tests;
 
 /// <summary>Windowing the snippet around the match (#9): whitespace collapse, ellipses when trimmed, and no ellipsis at the ends.</summary>
 public class TranscriptSnippetTests

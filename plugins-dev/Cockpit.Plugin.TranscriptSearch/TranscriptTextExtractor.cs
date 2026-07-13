@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace Cockpit.Core.Transcripts;
+namespace Cockpit.Plugin.TranscriptSearch;
 
 /// <summary>The human-readable text of one transcript JSONL entry: who said it and what, for #9 transcript search.</summary>
 public sealed record TranscriptEntryText(string Role, string Text);

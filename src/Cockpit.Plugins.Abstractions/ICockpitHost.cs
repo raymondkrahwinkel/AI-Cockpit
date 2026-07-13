@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugins.Abstractions;
@@ -81,6 +82,15 @@ public interface ICockpitHost
     /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host supplies a live one.
     /// </summary>
     ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
+
+    /// <summary>
+    /// The cockpit's configured session profiles (#9): what identities exist and where each keeps its
+    /// provider state on disk. Read fresh on every call, so a profile added or edited after the plugin
+    /// initialised is picked up without a restart. Default returns an empty list so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host reads the real store.
+    /// </summary>
+    Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]);
 
     /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds

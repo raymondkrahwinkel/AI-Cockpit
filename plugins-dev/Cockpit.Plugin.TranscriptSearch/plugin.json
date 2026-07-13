@@ -1,0 +1,11 @@
+{
+  "id": "transcript-search",
+  "name": "Claude Transcript Search",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.TranscriptSearch.dll",
+  "entryType": "Cockpit.Plugin.TranscriptSearch.TranscriptSearchPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "Search everything you and the agent ever wrote in a Claude CLI session. Scans the JSONL transcripts of every Claude profile you have configured, shows the matching lines with their session and date, and lets you copy a session id to resume it.",
+  "author": "Cockpit"
+}
