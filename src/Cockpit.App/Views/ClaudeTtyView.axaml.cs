@@ -69,6 +69,11 @@ public partial class ClaudeTtyView : UserControl
         AddHandler(InputElement.KeyDownEvent, _OnPushToTalkKeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyUpEvent, _OnPushToTalkKeyUp, RoutingStrategies.Tunnel);
 
+        // A newline inside the prompt, the way every chat does it: Shift+Enter or Alt+Enter. Tunnel, because the
+        // terminal control encodes Enter as a bare carriage return whatever else is held down — so the agent saw
+        // "send it" and the line break was lost.
+        AddHandler(InputElement.KeyDownEvent, _OnNewlineKeyDown, RoutingStrategies.Tunnel);
+
         // Scrollback dispatch for the terminal's mouse wheel (#56 alt-screen arrow-key fallback, #57
         // primary/inline-screen native scroll): tunnel so we intercept before TerminalControl's own
         // OnPointerWheelChanged would otherwise run unconditionally — see OnTerminalWheel/TtyWheelScrollGate.
@@ -440,6 +445,36 @@ public partial class ClaudeTtyView : UserControl
         _outputCancellation = new CancellationTokenSource();
         _ = PumpOutputAsync(_pty, _outputCancellation.Token);
         _viewModel?.OnLaunchSucceeded();
+    }
+
+    // Shift+Enter and Alt+Enter mean "another line, do not send yet". The pty carries no modifier bits, so what goes
+    // down the wire is meta-Enter — ESC then CR — which is what a readline-style prompt (Claude's among them) reads as
+    // a line break rather than as submit.
+    private void _OnNewlineKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is not Key.Enter || (e.KeyModifiers & (KeyModifiers.Shift | KeyModifiers.Alt)) == 0)
+        {
+            return;
+        }
+
+        if (_pty is not { } pty)
+        {
+            return;
+        }
+
+        try
+        {
+            pty.InputStream.Write("\u001b\r"u8);
+            pty.InputStream.Flush();
+        }
+        catch (Exception)
+        {
+            // The pty may have exited; the output pump reports that. Losing a keystroke to a dead session is not
+            // something to take the cockpit down for.
+            return;
+        }
+
+        e.Handled = true;
     }
 
     private void OnTerminalBytesToPty(object? sender, ReadOnlyMemory<byte> e)
