@@ -62,6 +62,11 @@ public partial class App : Application
 
             // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
             // gets compared), then every 15 minutes for the rest of the run.
+            // #71: and the cockpit itself. One look on startup, if the operator left that on — an update nobody is
+            // told about is an update nobody installs. It never nags: a failed check is silent here, and only says
+            // what went wrong when someone asks from Options.
+            _ = cockpitViewModel.InitialiseUpdatesAsync();
+
             var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
             _ = pluginUpdateChecker.CheckNowAsync();
             _pluginUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };

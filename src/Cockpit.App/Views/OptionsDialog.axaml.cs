@@ -38,6 +38,17 @@ public partial class OptionsDialog : Window
 
     // The file pickers live here because picking a file is a view's job (Window.StorageProvider), the same way the
     // profile dialog picks a directory. What goes *in* the archive is the view model's business, not this one's.
+    private async void OnCheckForUpdates(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            await cockpit.CheckForUpdatesAsync();
+        }
+    }
+
+    private void OnOpenUpdate(object? sender, RoutedEventArgs e) =>
+        (DataContext as CockpitViewModel)?.OpenUpdate();
+
     private async void OnCreateBackup(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CockpitViewModel cockpit)

@@ -36,6 +36,9 @@ internal sealed class CockpitConfigFile
     public TerminalSettingsEntry? Terminal { get; set; }
 
     /// <summary>Plugin enable + consent state (#14) keyed by plugin folder id; owned by the plugin-registration store.</summary>
+    /// <summary>Whether the cockpit looks for a newer build of itself, and which builds it will mention (#71).</summary>
+    public UpdateSettingsEntry? Updates { get; set; }
+
     public Dictionary<string, PluginRegistrationEntry> Plugins { get; set; } = [];
 
     /// <summary>Configured plugin-store URLs (#14) the manager browses for installable plugins; owned by the plugin-store config store.</summary>

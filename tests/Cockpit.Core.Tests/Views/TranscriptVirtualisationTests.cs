@@ -17,7 +17,7 @@ namespace Cockpit.Core.Tests.Views;
 public class TranscriptVirtualisationTests
 {
     [Fact]
-    public void ALongTranscript_BuildsOnlyTheRowsThatFitOnScreen()
+    public void ALongTranscript_BuildsOnlyTheRowsThatFitOnScreen() => HeadlessAvalonia.Run(() =>
     {
         var session = new SessionViewModel();
         for (var index = 0; index < 400; index++)
@@ -43,5 +43,5 @@ public class TranscriptVirtualisationTests
         // building the whole history again.
         rows.Should().BeGreaterThan(0, "the rows on screen must actually be there");
         rows.Should().BeLessThan(100, "only what fits on screen (plus a little) should exist as controls");
-    }
+    });
 }

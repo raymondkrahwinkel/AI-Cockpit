@@ -307,6 +307,35 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="Updates">
+                <ScrollViewer>
+                    <StackPanel Spacing="8" Margin="16">
+                        <TextBlock Text="Updates" FontWeight="SemiBold"/>
+                        <TextBlock Text="The cockpit asks GitHub whether a newer build exists. It does not install itself: replacing a running, unsigned application on three platforms is a promise this project cannot keep, and an updater that half-keeps it is worse than a link you click yourself."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                            <TextBlock Text="This build:" Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding CurrentBuild}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <CheckBox Content="Look for a newer build when the cockpit starts" IsChecked="{Binding CheckForUpdatesOnStartup}"/>
+                        <CheckBox Content="Also tell me about nightly builds" IsChecked="{Binding IncludeNightlyBuilds}"
+                                  ToolTip.Tip="The rolling build of main, as it was last night. Things there are expected to break."/>
+                        <TextBlock Text="Nightlies are main, built last night. Useful for trying something that landed today; not what you run a working day on."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Content="Check now" Click="OnCheckForUpdates" IsEnabled="{Binding CanCheckForUpdates}"/>
+                            <Button Content="Open the release" Classes="Accent" Click="OnOpenUpdate" IsVisible="{Binding HasUpdate}"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding UpdateStatus}" IsVisible="{Binding UpdateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem Header="Backup">
                 <ScrollViewer>
                     <StackPanel Spacing="8" Margin="16">

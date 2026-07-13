@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -11,6 +12,9 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
+using Cockpit.Core.Toasts;
+using Cockpit.Core.Abstractions.Updates;
+using Cockpit.Core.Updates;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Layout;
@@ -63,6 +67,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IShortcutSettingsStore? _shortcutSettingsStore;
     private readonly IBackupService? _backupService;
     private readonly IAppRestartService? _appRestart;
+    private readonly IUpdateService? _updates;
+    private readonly IUpdateSettingsStore? _updateSettingsStore;
     private ShortcutSettings _shortcutSettings = ShortcutSettings.Default;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
@@ -321,6 +327,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _backupStatus = string.Empty;
+
+    /// <summary>The build this cockpit is (#71): the version, and the commit — which is a nightly's only identity.</summary>
+    [ObservableProperty]
+    private string _currentBuild = string.Empty;
+
+    /// <summary>Look for a newer build when the cockpit starts. On: an update nobody is told about is an update nobody installs.</summary>
+    [ObservableProperty]
+    private bool _checkForUpdatesOnStartup = true;
+
+    /// <summary>Also hear about the nightly build of main. Off, and it means what it says: main, as it was last night.</summary>
+    [ObservableProperty]
+    private bool _includeNightlyBuilds;
+
+    [ObservableProperty]
+    private string _updateStatus = string.Empty;
+
+    /// <summary>Where the newer build is, or empty — what the Download button opens.</summary>
+    [ObservableProperty]
+    private string _updateUrl = string.Empty;
+
+    public bool CanCheckForUpdates => _updates is not null;
+
+    public bool HasUpdate => UpdateUrl.Length > 0;
 
     /// <summary>
     /// Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
@@ -735,8 +764,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DelegatedTasksViewModel? delegatedTasks = null,
         IDebugSettingsStore? debugSettingsStore = null,
         ResourceMonitor? resourceMonitor = null,
-        IBackupService? backupService = null)
+        IBackupService? backupService = null,
+        IUpdateService? updateService = null,
+        IUpdateSettingsStore? updateSettingsStore = null)
     {
+        _updates = updateService;
+        _updateSettingsStore = updateSettingsStore;
         _backupService = backupService;
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
@@ -1079,6 +1112,116 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// rather than showing two controls that swallow a click and do nothing.
     /// </summary>
     public bool CanBackUp => _backupService is not null;
+
+    /// <summary>
+    /// Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup. A
+    /// failed check is silent here: the cockpit has just opened, and a toast saying GitHub was unreachable is noise
+    /// about a thing nobody asked for. Ask from the Options tab and it says exactly what went wrong.
+    /// </summary>
+    public async Task InitialiseUpdatesAsync()
+    {
+        if (_updates is not { } updates)
+        {
+            return;
+        }
+
+        var (version, commit) = updates.Current;
+        CurrentBuild = commit.Length == 0 ? version : $"{version} ({commit[..Math.Min(7, commit.Length)]})";
+
+        if (_updateSettingsStore is { } store)
+        {
+            var settings = await store.LoadAsync();
+            CheckForUpdatesOnStartup = settings.CheckOnStartup;
+            IncludeNightlyBuilds = settings.Channel == UpdateChannel.Nightly;
+        }
+
+        if (!CheckForUpdatesOnStartup)
+        {
+            return;
+        }
+
+        var result = await updates.CheckAsync(IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable);
+        if (result.Release is not { } release)
+        {
+            return;
+        }
+
+        _Announce(release);
+
+        // The toast is the whole point of checking on startup: a newer build nobody is told about is a newer build
+        // nobody installs. Raised on the host this view model already owns rather than through IToastService —
+        // that service is built *from* this view model, and injecting it here would be a circle the container walks
+        // in forever.
+        ToastHost.Add(
+            $"{release.Name} is out. You are on {CurrentBuild}.",
+            ToastSeverity.Information,
+            "Open it",
+            OpenUpdate);
+    }
+
+    /// <summary>Looks now, because the operator asked (#71). Unlike the startup check, this one says when it could not look at all.</summary>
+    public async Task CheckForUpdatesAsync()
+    {
+        if (_updates is not { } updates)
+        {
+            return;
+        }
+
+        UpdateStatus = "Looking…";
+        UpdateUrl = string.Empty;
+
+        var result = await updates.CheckAsync(IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable);
+
+        if (result.Failure is { } failure)
+        {
+            // Not "up to date": that would be a lie the operator has every reason to believe.
+            UpdateStatus = failure;
+            return;
+        }
+
+        if (result.Release is { } release)
+        {
+            _Announce(release);
+            return;
+        }
+
+        UpdateStatus = $"You are on the newest build ({CurrentBuild}).";
+    }
+
+    /// <summary>Opens the release page. The cockpit does not install itself — see IUpdateService for why.</summary>
+    public void OpenUpdate()
+    {
+        if (UpdateUrl.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(UpdateUrl) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // A browser that will not open is not worth taking the cockpit down for; the URL is on screen either way.
+            UpdateStatus = $"Could not open a browser. The release is at {UpdateUrl}";
+        }
+    }
+
+    private void _Announce(AppRelease release)
+    {
+        UpdateUrl = release.Url;
+        UpdateStatus = $"{release.Name} is available (published {release.PublishedAt.ToLocalTime():d MMMM yyyy}).";
+        OnPropertyChanged(nameof(HasUpdate));
+    }
+
+    partial void OnCheckForUpdatesOnStartupChanged(bool value) => _SaveUpdateSettings();
+
+    partial void OnIncludeNightlyBuildsChanged(bool value) => _SaveUpdateSettings();
+
+    private void _SaveUpdateSettings() => _ = _updateSettingsStore?.SaveAsync(
+        new UpdateSettings(
+            CheckForUpdatesOnStartup,
+            IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable));
 
     /// <summary>
     /// Writes the whole cockpit to <paramref name="archivePath"/> (#70). The view picks the file; this decides what
