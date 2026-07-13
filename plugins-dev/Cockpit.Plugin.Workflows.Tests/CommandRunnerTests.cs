@@ -16,7 +16,7 @@ public class CommandRunnerTests
     {
         var node = _Command("echo hello from the flow");
 
-        var outcome = await new CommandRunner().RunAsync(node, [], CancellationToken.None);
+        var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
         outcome.Output.Should().Be("hello from the flow");
         outcome.Items.Single().Json["output"]!.ToString().Should().Be("hello from the flow");
@@ -27,7 +27,7 @@ public class CommandRunnerTests
     {
         var node = _Command("echo it broke >&2; exit 3");
 
-        var run = async () => await new CommandRunner().RunAsync(node, [], CancellationToken.None);
+        var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
         (await run.Should().ThrowAsync<InvalidOperationException>())
             .Which.Message.Should().Contain("exited with 3").And.Contain("it broke");
@@ -36,7 +36,7 @@ public class CommandRunnerTests
     [Fact]
     public async Task AStepWithNoCommand_SaysSo_RatherThanQuietlyDoingNothing()
     {
-        var run = async () => await new CommandRunner().RunAsync(_Command(string.Empty), [], CancellationToken.None);
+        var run = async () => await new CommandRunner().RunAsync(_Context(_Command(string.Empty)), CancellationToken.None);
 
         (await run.Should().ThrowAsync<InvalidOperationException>())
             .Which.Message.Should().Contain("no command");
@@ -48,7 +48,7 @@ public class CommandRunnerTests
         var node = _Command("pwd");
         node.Parameters["Working directory"] = "/there/is/no/such/place";
 
-        var run = async () => await new CommandRunner().RunAsync(node, [], CancellationToken.None);
+        var run = async () => await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
         (await run.Should().ThrowAsync<InvalidOperationException>())
             .Which.Message.Should().Contain("no directory");
@@ -60,7 +60,7 @@ public class CommandRunnerTests
         var node = _Command("pwd");
         node.Parameters["Working directory"] = Path.GetTempPath().TrimEnd('/');
 
-        var outcome = await new CommandRunner().RunAsync(node, [], CancellationToken.None);
+        var outcome = await new CommandRunner().RunAsync(_Context(node), CancellationToken.None);
 
         outcome.Output.Should().Contain("tmp");
     }
@@ -72,4 +72,6 @@ public class CommandRunnerTests
         Name = "Run a command",
         Parameters = { ["Command"] = command },
     };
+
+    private static StepContext _Context(WorkflowNode node) => new(node, [], new Dictionary<string, IReadOnlyList<WorkflowItem>>());
 }

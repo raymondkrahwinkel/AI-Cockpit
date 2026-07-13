@@ -30,6 +30,21 @@ public class WorkflowEngineTests
     }
 
     [Fact]
+    public async Task EachStep_CanReachWhatEveryEarlierStepProduced_ByName()
+    {
+        var recorder = new RecordingRunner("cockpit.notify");
+        var workflow = _Flow(out var trigger, out var first, out var second);
+        workflow.Connections.Add(new WorkflowConnection { FromNodeId = trigger.Id, FromOutput = 0, ToNodeId = first.Id });
+        workflow.Connections.Add(new WorkflowConnection { FromNodeId = first.Id, FromOutput = 0, ToNodeId = second.Id });
+
+        await new WorkflowEngine([new ManualTriggerRunner(), recorder]).RunAsync(workflow, trigger.Id);
+
+        // The last step sees both the trigger and the step before it — not only its own input.
+        recorder.Reachable[^1].Keys.Should().Contain(["Start", "First"]);
+        recorder.Reachable[^1]["First"][0].Json["from"]!.ToString().Should().Be("First");
+    }
+
+    [Fact]
     public async Task FanOut_RunsBothBranches()
     {
         var workflow = _Flow(out var trigger, out var left, out var right);
@@ -175,10 +190,15 @@ internal sealed class RecordingRunner(string typeId) : IStepRunner
 
     public List<IReadOnlyList<WorkflowItem>> Inputs { get; } = [];
 
-    public Task<StepOutcome> RunAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, CancellationToken cancellationToken)
+    /// <summary>What each step could reach by name at the moment it ran — the engine's promise that a parameter can look further back than one step.</summary>
+    public List<IReadOnlyDictionary<string, IReadOnlyList<WorkflowItem>>> Reachable { get; } = [];
+
+    public Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
-        Inputs.Add(input);
-        return Task.FromResult(new StepOutcome([WorkflowItem.Of("from", node.Name)], $"ran {node.Name}"));
+        Inputs.Add(context.Input);
+        Reachable.Add(context.Produced.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.OrdinalIgnoreCase));
+
+        return Task.FromResult(new StepOutcome([WorkflowItem.Of("from", context.Node.Name)], $"ran {context.Node.Name}"));
     }
 }
 
@@ -187,7 +207,7 @@ internal sealed class ThrowingRunner(string typeId) : IStepRunner
 {
     public string TypeId => typeId;
 
-    public Task<StepOutcome> RunAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, CancellationToken cancellationToken) =>
+    public Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken) =>
         throw new InvalidOperationException("This step has no message to send.");
 }
 
@@ -196,6 +216,6 @@ internal sealed class BranchingRunner(string typeId, string branch) : IStepRunne
 {
     public string TypeId => typeId;
 
-    public Task<StepOutcome> RunAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, CancellationToken cancellationToken) =>
-        Task.FromResult(new StepOutcome(input, branch));
+    public Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(new StepOutcome(context.Input, branch));
 }

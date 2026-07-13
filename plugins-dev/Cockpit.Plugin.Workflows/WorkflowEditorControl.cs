@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Canvas;
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
+using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows;
@@ -27,7 +28,7 @@ internal sealed class WorkflowEditorControl : UserControl
     private readonly Button _execute;
     private readonly WorkflowCanvas _canvas;
     private readonly NodePicker _picker;
-    private readonly NodeSettingsPanel _settings;
+    private readonly NodeDialog _dialog;
     private readonly TextBlock _status;
     private readonly TextBlock _saved;
 
@@ -55,11 +56,9 @@ internal sealed class WorkflowEditorControl : UserControl
         _picker = new NodePicker();
         _picker.Picked += (_, picked) => _Add(picked);
 
-        // The settings take the picker's place while a step is open: one panel's worth of room, and the canvas
-        // keeps the rest.
-        _settings = new NodeSettingsPanel();
-        _settings.Changed += (_, _) => _Touched();
-        _settings.CloseRequested += (_, _) => _CloseSettings();
+        // A step opens over the canvas, not beside it: what a step has to work with is a bigger question than what
+        // it is called, and a strip of text boxes on the right cannot show what came in and what went out at once.
+        _dialog = new NodeDialog();
 
         _canvas = new WorkflowCanvas(workflow);
         _canvas.Changed += (_, _) =>
@@ -71,13 +70,22 @@ internal sealed class WorkflowEditorControl : UserControl
         _canvas.SelectionChanged += (_, _) => _Describe();
         _canvas.AddRequested += (_, from) =>
         {
-            // Asking what comes next is a different question from what this step is set to do: the settings step
-            // aside for the picker, rather than the + quietly doing nothing behind an open panel.
+            // Asking what comes next is a different question from what this step is set to do: an open step steps
+            // aside for the picker, rather than the + quietly doing nothing behind it.
             _CloseSettings();
             _picker.AimAt(from.NodeId, from.Output);
         };
         _canvas.DropRequested += (_, drop) => _Drop(drop.TypeId, drop.X, drop.Y);
         _canvas.OpenRequested += (_, node) => _OpenSettings(node);
+
+        _dialog.Changed += (_, _) =>
+        {
+            // A renamed step is a step other steps refer to by a different name, and its card now says something
+            // else — so the canvas is redrawn as you type, not once you close.
+            _Touched();
+            _canvas.Rebuild();
+        };
+        _dialog.CloseRequested += (_, _) => _CloseSettings();
 
         var canvasArea = new Grid();
         canvasArea.Children.Add(_canvas);
@@ -97,12 +105,10 @@ internal sealed class WorkflowEditorControl : UserControl
 
         var root = new DockPanel();
         DockPanel.SetDock(_picker, Dock.Right);
-        DockPanel.SetDock(_settings, Dock.Right);
-        root.Children.Add(_settings);
         root.Children.Add(_picker);
         root.Children.Add(middle);
 
-        Content = root;
+        Content = new Grid { Children = { root, _dialog } };
         _Describe();
         _RefreshExecutable();
     }
@@ -338,34 +344,50 @@ internal sealed class WorkflowEditorControl : UserControl
     // a step is told what to actually do.
     private void _OpenSettings(WorkflowNode node)
     {
-        _picker.IsVisible = false;
-        _settings.Show(node, _IncomingFields(node));
+        _dialog.Show(node, _Incoming(node), _Produced(node), _Earlier(node));
     }
 
-    // What the step before this one produced, according to the last run. The names come from what actually flowed,
-    // not from what a type claims it might produce — a guess in a help text is worse than no help text.
-    private IReadOnlyList<string> _IncomingFields(WorkflowNode node)
+    // What flowed into this step in the last run: what the steps wired before it handed on.
+    private IReadOnlyList<JsonObject> _Incoming(WorkflowNode node)
     {
         if (_lastRun is not { } run)
         {
             return [];
         }
 
-        var previousIds = _workflow.Connections
+        var before = _workflow.Connections
             .Where(connection => connection.ToNodeId == node.Id)
             .Select(connection => connection.FromNodeId)
             .ToHashSet(StringComparer.Ordinal);
 
         return run.Steps
-            .Where(step => previousIds.Contains(step.NodeId))
-            .SelectMany(step => step.Fields)
-            .Distinct(StringComparer.Ordinal)
+            .Where(step => before.Contains(step.NodeId))
+            .SelectMany(step => step.Items)
+            .ToList();
+    }
+
+    // What this step itself produced last time it ran.
+    private IReadOnlyList<JsonObject> _Produced(WorkflowNode node) =>
+        _lastRun?.Steps.LastOrDefault(step => step.NodeId == node.Id)?.Items ?? [];
+
+    // Every step that ran before this one, and the fields it handed on — the data this step can reach by name.
+    // Taken from what actually flowed, not from what a type claims it might produce.
+    private IReadOnlyList<(string Name, IReadOnlyList<string> Fields)> _Earlier(WorkflowNode node)
+    {
+        if (_lastRun is not { } run)
+        {
+            return [];
+        }
+
+        return run.Steps
+            .TakeWhile(step => step.NodeId != node.Id)
+            .Select(step => (step.NodeName, step.Fields))
             .ToList();
     }
 
     private void _CloseSettings()
     {
-        _settings.Hide();
+        _dialog.Hide();
         _picker.IsVisible = true;
         _canvas.Rebuild();
     }

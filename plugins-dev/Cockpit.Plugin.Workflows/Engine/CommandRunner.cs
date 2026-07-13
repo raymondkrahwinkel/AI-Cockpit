@@ -14,18 +14,19 @@ internal sealed class CommandRunner : IStepRunner
 
     public string TypeId => "cockpit.command";
 
-    public async Task<StepOutcome> RunAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, CancellationToken cancellationToken)
+    public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
+        var node = context.Node;
         var command = node.Parameters.GetValueOrDefault("Command");
         if (string.IsNullOrWhiteSpace(command))
         {
             throw new InvalidOperationException("This step has no command to run. Open it and write one.");
         }
 
-        // A command can use what the step before it produced: "grep -c error {output}", say.
-        command = StepData.Resolve(command, input).Text;
+        // A command can use what an earlier step produced: "grep -c error {output}", or "{Fetch log.path}".
+        command = context.Resolve(command).Text;
 
-        var workingDirectory = node.Parameters.GetValueOrDefault("Working directory");
+        var workingDirectory = context.Resolve(node.Parameters.GetValueOrDefault("Working directory")).Text;
         if (!string.IsNullOrWhiteSpace(workingDirectory) && !Directory.Exists(workingDirectory))
         {
             throw new InvalidOperationException($"There is no directory '{workingDirectory}'.");

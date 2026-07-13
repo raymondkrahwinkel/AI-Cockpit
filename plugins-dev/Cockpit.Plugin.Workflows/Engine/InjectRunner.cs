@@ -1,4 +1,3 @@
-using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
@@ -8,9 +7,9 @@ internal sealed class InjectRunner(ICockpitHost host) : IStepRunner
 {
     public string TypeId => "cockpit.inject";
 
-    public async Task<StepOutcome> RunAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, CancellationToken cancellationToken)
+    public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
-        var text = node.Parameters.GetValueOrDefault("Text");
+        var text = context.Node.Parameters.GetValueOrDefault("Text");
         if (string.IsNullOrWhiteSpace(text))
         {
             throw new InvalidOperationException("This step has no text to send. Open it and write some.");
@@ -21,9 +20,9 @@ internal sealed class InjectRunner(ICockpitHost host) : IStepRunner
             throw new InvalidOperationException("There is no session to send this to.");
         }
 
-        var resolved = StepData.Resolve(text, input);
+        var resolved = context.Resolve(text);
         await host.Actions.InjectIntoActiveSessionAsync(resolved.Text);
 
-        return StepOutcome.Passing(input, $"Sent to the session: {resolved.Text}");
+        return StepOutcome.Passing(context.Input, $"Sent to the session: {resolved.Text}");
     }
 }

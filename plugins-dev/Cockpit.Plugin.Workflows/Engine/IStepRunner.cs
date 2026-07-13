@@ -13,10 +13,10 @@ public interface IStepRunner
     string TypeId { get; }
 
     /// <summary>
-    /// Runs the step on the items the previous step produced, and returns what to hand on. Throwing means the step
-    /// failed: the engine records why and stops that branch.
+    /// Runs the step on what it was handed, and returns what to hand on. Throwing means the step failed: the engine
+    /// records why and stops that branch.
     /// </summary>
-    Task<StepOutcome> RunAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, CancellationToken cancellationToken);
+    Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken);
 }
 
 /// <summary>What a step produced: the items the next step gets, and a line for the run log saying what happened.</summary>

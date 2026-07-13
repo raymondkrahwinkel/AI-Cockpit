@@ -7,6 +7,6 @@ internal sealed class ManualTriggerRunner : IStepRunner
 {
     public string TypeId => "cockpit.manual";
 
-    public Task<StepOutcome> RunAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, CancellationToken cancellationToken) =>
+    public Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken) =>
         Task.FromResult(new StepOutcome([WorkflowItem.Of("startedBy", "you")], "Started by hand."));
 }

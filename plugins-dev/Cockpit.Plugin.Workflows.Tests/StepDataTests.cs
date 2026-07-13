@@ -40,6 +40,31 @@ public class StepDataTests
     }
 
     [Fact]
+    public void AnEarlierStep_IsReachedByName_NotOnlyTheOneImmediatelyBefore()
+    {
+        // The difference between a chain and a flow: the notification at the end can quote the command from the
+        // middle, without every step in between having to carry it along.
+        var produced = new Dictionary<string, IReadOnlyList<WorkflowItem>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Run a command"] = _Items(("output", "3 files changed")),
+        };
+
+        var result = StepData.Resolve("Command said: {Run a command.output}", _Items(("output", "something else")), produced);
+
+        result.Text.Should().Be("Command said: 3 files changed");
+        result.Missing.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void AStepNameNothingCarries_IsMissing_NotQuietlyReadAsAField()
+    {
+        var result = StepData.Resolve("{Fetch log.path}", _Items(("output", "x")), new Dictionary<string, IReadOnlyList<WorkflowItem>>());
+
+        result.Text.Should().Be("{Fetch log.path}");
+        result.Missing.Should().Equal("Fetch log.path");
+    }
+
+    [Fact]
     public void TheFieldsOnOffer_AreThoseOfTheItemTheStepReceives()
     {
         StepData.FieldsOf(_Items(("output", "x"), ("exitCode", "0")))

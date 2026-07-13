@@ -1,3 +1,6 @@
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+
 namespace Cockpit.Plugin.Workflows.Engine;
 
 /// <summary>One step of a run: what it was handed, what it produced, and what became of it.</summary>
@@ -14,8 +17,16 @@ public sealed class StepRun
     /// <summary>What the step produced, as text — a command's output, the message that was sent. The engine's own record of what actually happened.</summary>
     public string Output { get; set; } = string.Empty;
 
-    /// <summary>The field names the step handed on. What a later step can refer to with <c>{field}</c> — recorded from what actually flowed, so the settings panel can list it instead of guessing.</summary>
-    public IReadOnlyList<string> Fields { get; set; } = [];
+    /// <summary>
+    /// What the step handed on, kept as data rather than as a sentence: this is what the node dialog shows in its
+    /// output pane, and where the fields a later step may refer to come from. Recorded from what actually flowed —
+    /// a list of what a step <em>might</em> produce would be a guess.
+    /// </summary>
+    public IReadOnlyList<JsonObject> Items { get; set; } = [];
+
+    /// <summary>The names of the fields it handed on.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> Fields => Items.FirstOrDefault()?.Select(entry => entry.Key).ToList() ?? [];
 
     /// <summary>Why it failed, or why it was passed by.</summary>
     public string? Note { get; set; }

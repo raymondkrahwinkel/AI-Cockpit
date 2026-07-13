@@ -55,6 +55,10 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
         var pending = new Queue<(string NodeId, IReadOnlyList<WorkflowItem> Input)>();
         pending.Enqueue((startNodeId, [WorkflowItem.Empty()]));
 
+        // What each step handed on, by name: this is what lets a parameter reach back past the step before it
+        // ({Run a command.output}) rather than only to its immediate input.
+        var produced = new Dictionary<string, IReadOnlyList<WorkflowItem>>(StringComparer.OrdinalIgnoreCase);
+
         var executed = 0;
 
         while (pending.Count > 0 && !cancellationToken.IsCancellationRequested)
@@ -81,8 +85,9 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
             };
             run.Steps.Add(step);
 
-            var outcome = await _RunStepAsync(node, input, step, cancellationToken);
+            var outcome = await _RunStepAsync(new StepContext(node, input, produced), step, cancellationToken);
             step.FinishedAt = DateTimeOffset.UtcNow;
+            produced[node.Name] = outcome.Items;
 
             if (step.Status == RunStatus.Failed)
             {
@@ -105,14 +110,17 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
         return run;
     }
 
-    private async Task<StepOutcome> _RunStepAsync(WorkflowNode node, IReadOnlyList<WorkflowItem> input, StepRun step, CancellationToken cancellationToken)
+    private async Task<StepOutcome> _RunStepAsync(StepContext context, StepRun step, CancellationToken cancellationToken)
     {
+        var (node, input, _) = context;
+
         // Switched off: the items pass through untouched, so the rest of the flow still runs on the data it would
         // have had. That is what "skip this step" means, and it is more useful than stopping.
         if (node.IsDisabled)
         {
             step.Status = RunStatus.Skipped;
             step.Note = "Switched off.";
+            step.Items = RunItems.Keep(input);
             return StepOutcome.Passing(input, string.Empty);
         }
 
@@ -120,15 +128,16 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
         {
             step.Status = RunStatus.Skipped;
             step.Note = $"This cockpit cannot run '{node.TypeId}' yet — the step was passed by, not performed.";
+            step.Items = RunItems.Keep(input);
             return StepOutcome.Passing(input, string.Empty);
         }
 
         try
         {
-            var outcome = await runner.RunAsync(node, input, cancellationToken);
+            var outcome = await runner.RunAsync(context, cancellationToken);
             step.Status = RunStatus.Succeeded;
             step.Output = outcome.Output;
-            step.Fields = StepData.FieldsOf(outcome.Items);
+            step.Items = RunItems.Keep(outcome.Items);
             return outcome;
         }
         catch (OperationCanceledException)
