@@ -24,5 +24,14 @@ public interface IStepRunner
 /// <param name="Output">What the operator reads in the run: the command's output, the message that was sent.</param>
 public sealed record StepOutcome(IReadOnlyList<WorkflowItem> Items, string Output)
 {
+    /// <summary>
+    /// This branch ends here, and nothing went wrong. A step that asked you and was told "not now" is not a failure —
+    /// but without saying so it would report success and the flow would carry on doing the very thing you refused.
+    /// </summary>
+    public bool Stops { get; init; }
+
     public static StepOutcome Passing(IReadOnlyList<WorkflowItem> input, string output) => new(input, output);
+
+    /// <summary>The branch ends here on purpose. <paramref name="why"/> is what the run says about it.</summary>
+    public static StepOutcome Stop(string why) => new([], why) { Stops = true };
 }

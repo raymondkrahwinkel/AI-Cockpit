@@ -17,8 +17,11 @@ internal static class EngineFactory
             new TriggerRunner("cockpit.schedule"),
             new NotifyRunner(host),
             new InjectRunner(host),
+            new StartSessionRunner(host),
             new CommandRunner(),
+            new HttpRunner(),
             new IfRunner(),
+            new ApproveRunner(host),
             .. contributed.Select(step => new ContributedStep(step)),
         ]);
 }

@@ -17,4 +17,22 @@ public interface ICockpitActions
     /// the app's own host shows the real confirmation.
     /// </summary>
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm") => Task.FromResult(true);
+
+    /// <summary>
+    /// Opens a new session on the profile named <paramref name="profileLabel"/> — the cockpit's own act, done for a
+    /// plugin: a workflow that starts a session on a ticket, a shortcut that opens the session you always open.
+    /// The prompt, if any, is handed to it as its first input. <paramref name="workingDirectory"/> overrides the
+    /// profile's, for the flow that has just cut a branch in one repo.
+    /// <para>
+    /// Returns the name the session got, so the caller can say which one it started. Throws when no profile carries
+    /// that label — guessing between profiles would run someone's work on the wrong model, in the wrong directory,
+    /// with the wrong permissions.
+    /// </para>
+    /// <para>
+    /// Default throws rather than returning quietly: a plugin that asked for a session and got none, with nothing
+    /// said, is the worst of the three outcomes. Only the app's own host can actually open one.
+    /// </para>
+    /// </summary>
+    Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null) =>
+        throw new NotSupportedException("This host cannot start sessions.");
 }

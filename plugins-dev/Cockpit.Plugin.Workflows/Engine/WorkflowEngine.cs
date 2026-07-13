@@ -104,6 +104,15 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
                 continue;
             }
 
+            // A step may end its branch without failing — "Ask me first", answered with "not now". The run says so,
+            // and nothing after it runs.
+            if (outcome.Stops)
+            {
+                step.Status = RunStatus.Skipped;
+                step.Note = outcome.Output;
+                continue;
+            }
+
             _QueueNext(workflow, node, outcome, pending);
         }
 

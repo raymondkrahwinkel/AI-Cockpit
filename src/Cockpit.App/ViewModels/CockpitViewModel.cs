@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Profiles;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Layout;
@@ -1372,6 +1373,39 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _LaunchSessionFromResultAsync(result);
+    }
+
+    /// <summary>
+    /// Opens a session on <paramref name="profile"/> for a plugin (#69) — a workflow step, a shortcut — and hands it
+    /// <paramref name="prompt"/> as its first input. The profile's own defaults decide model, permissions and effort:
+    /// naming a profile means "the way I set that one up", and a caller who knew better would have said so.
+    /// Returns the name the session carries, so the caller can say which one it started.
+    /// </summary>
+    public async Task<string> StartSessionForPluginAsync(SessionProfile profile, string? prompt, string? workingDirectory)
+    {
+        var name = $"{profile.Label} — {DateTime.Now:HH:mm}";
+
+        // An SDK session, always: a plugin's prompt is text handed to a session, and a TTY is a terminal a human
+        // drives. Starting one and typing into it on someone's behalf is not the same act at all.
+        var result = new NewSessionResult(
+            SessionKind.Sdk,
+            profile,
+            SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode),
+            SessionOptionCatalog.ResolveModel(profile.Defaults?.Model),
+            SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort),
+            name,
+            WorkingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory);
+
+        await _LaunchSessionFromResultAsync(result);
+
+        // The prompt goes in after the session exists, through the same seam a plugin's inject uses — a session that
+        // is not up yet cannot be typed into, and pretending otherwise loses the prompt.
+        if (!string.IsNullOrWhiteSpace(prompt))
+        {
+            Sessions.LastOrDefault()?.InjectText(prompt);
+        }
+
+        return name;
     }
 
     // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording

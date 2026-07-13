@@ -45,7 +45,7 @@ public class NodeCatalogTests
     public void Search_FindsAStepByWhatItDoes_NotOnlyByItsName()
     {
         // "Delegate" is called Delegate, but an operator looking for it may well type "background".
-        NodeCatalog.Search("background").Select(type => type.Id).Should().Contain("cockpit.delegate");
+        NodeCatalog.Search("shell").Select(type => type.Id).Should().Contain("cockpit.command");
     }
 
     [Fact]

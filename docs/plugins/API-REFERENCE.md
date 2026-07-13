@@ -367,8 +367,21 @@ public interface ICockpitActions
     Task SetClipboardTextAsync(string text);
     Task InjectIntoActiveSessionAsync(string text);
     bool HasActiveSession { get; }
+    Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm");  // default true
+    Task<string> StartSessionAsync(string profileLabel, string? prompt = null,
+                                   string? workingDirectory = null);                         // default throws
 }
 ```
+
+### `Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)`
+Opens a session on the profile with that label and hands it `prompt` as its first input — the New-session dialog's act,
+without the dialog. The profile's own defaults decide model, permissions and effort: naming a profile means "the way I
+set that one up". `workingDirectory` overrides the profile's, for the flow that has just cut a branch in one repo.
+
+Returns the name the session was given. Throws when no profile carries that label, listing the ones that do — guessing
+between profiles would run someone's work on the wrong model, in the wrong directory, with the wrong permissions, and
+the caller would never learn that it had guessed. The default implementation throws `NotSupportedException`, so a
+plugin on a host too old to start sessions finds out rather than silently getting none.
 
 ### `Task SetClipboardTextAsync(string text)`
 Puts `text` on the system clipboard. Use as a fallback when there is no active session to inject into.
