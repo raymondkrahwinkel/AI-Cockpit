@@ -52,6 +52,36 @@ internal sealed class YouTrackClient
     }
 
     /// <summary>
+    /// One issue, by the id a human writes ("EVE-14") — what a workflow step is given, since a flow refers to a
+    /// ticket the way you would say it out loud, not by the internal id nobody sees.
+    /// </summary>
+    public async Task<YouTrackIssue> GetIssueAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+        var json = await _GetAsync(
+            $"{baseUrl}/issues/{Uri.EscapeDataString(idReadable)}?fields=idReadable,id,summary,description,project(shortName),customFields(name,value(name))",
+            token,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(json);
+        var element = document.RootElement;
+
+        var id = element.TryGetProperty("id", out var idProperty) ? idProperty.GetString() ?? string.Empty : string.Empty;
+        if (id.Length == 0)
+        {
+            throw new InvalidOperationException($"YouTrack does not know an issue called '{idReadable}'.");
+        }
+
+        var readable = element.TryGetProperty("idReadable", out var readableProperty) ? readableProperty.GetString() ?? idReadable : idReadable;
+        var summary = element.TryGetProperty("summary", out var summaryProperty) ? summaryProperty.GetString() ?? string.Empty : string.Empty;
+        var description = element.TryGetProperty("description", out var descriptionProperty) && descriptionProperty.ValueKind == JsonValueKind.String
+            ? descriptionProperty.GetString()
+            : null;
+
+        return new YouTrackIssue(id, readable, summary, description, _ExtractProject(element, null), _ExtractState(element));
+    }
+
+    /// <summary>
     /// Projects configured on the instance (short-name + full name) via the admin API (needs the token's
     /// account to have project-admin read access). Returns an empty list — never throws — when that call fails,
     /// e.g. a token scoped without admin access; the dialog then falls back to the projects already present in

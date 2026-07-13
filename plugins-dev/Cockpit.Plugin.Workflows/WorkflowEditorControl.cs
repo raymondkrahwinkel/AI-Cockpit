@@ -8,6 +8,7 @@ using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.Workflows;
 
@@ -32,7 +33,7 @@ internal sealed class WorkflowEditorControl : UserControl
     private readonly TextBlock _status;
     private readonly TextBlock _saved;
 
-    public WorkflowEditorControl(Workflow workflow, Action save, ICockpitHost host, RunStore runs)
+    public WorkflowEditorControl(Workflow workflow, Action save, ICockpitHost host, RunStore runs, IReadOnlyList<IWorkflowStep> contributed)
     {
         _workflow = workflow;
         _save = save;
@@ -41,12 +42,16 @@ internal sealed class WorkflowEditorControl : UserControl
 
         // The steps this build can actually perform. A type without a runner is skipped with a reason at run time,
         // never counted as a success.
+        // The cockpit's own steps, and whatever the plugins offered. A type with no runner is skipped with a reason
+        // at run time, never counted as a success — which is what a step from a plugin that has since been disabled
+        // becomes.
         _engine = new WorkflowEngine([
             new ManualTriggerRunner(),
             new NotifyRunner(host),
             new InjectRunner(host),
             new CommandRunner(),
             new IfRunner(),
+            .. contributed.Select(step => new ContributedStep(step)),
         ]);
 
         _execute = _ExecuteButton();

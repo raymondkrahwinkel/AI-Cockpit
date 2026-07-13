@@ -78,6 +78,8 @@ public interface ICockpitHost
     void AddSideMenuSection(string title, Func<Control> createView);
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView);  // default no-op
     void AddConversationPicker(ConversationPickerRegistration picker);           // default no-op
+    void AddWorkflowStep(IWorkflowStep step);                                   // default no-op
+    IReadOnlyList<IWorkflowStep> WorkflowSteps { get; }                         // default []
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                       // default no-op
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
@@ -224,6 +226,65 @@ A dialog belongs to no session, so an action it takes "for the current session" 
 `host.Sessions.ActivePaneId`, hand that to your own state, and let the header item whose `PaneId` matches pick
 it up. That is how the YouTrack plugin starts an issue from its dialog and has it appear in the right session's
 header — with four panes open, "the session" is not obvious, and guessing would put the ticket on the wrong one.
+
+### `void AddWorkflowStep(IWorkflowStep step)`
+Contributes a **step to the workflow editor** (#69) — "Start a ticket", "Comment on a pull request". It appears in
+the step picker under your own category, is wired on the canvas like any other step, and runs as part of the flow.
+
+Without this, what a flow can do is whatever the workflows plugin was built to do — and every integration the cockpit
+ever grows would have to be built *there*, by someone who does not have your API client in front of them.
+
+```csharp
+internal sealed class StartIssueStep(YouTrackSettings settings) : IWorkflowStep
+{
+    public string TypeId => "youtrack.start";      // stored in the flow — never change it once flows use it
+    public string Name => "Start a ticket";
+    public string Description => "Move a ticket to the state its board calls in progress, and assign it to you.";
+    public string Icon => "▶";
+    public string Category => "YouTrack";          // the picker's heading: your plugin's own name reads best
+    public IReadOnlyList<string> Parameters => ["Ticket", "Instance"];
+
+    // Shown before a flow has ever run, so the next step can be configured against your output rather than a guess.
+    public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
+    {
+        ["ticket"] = "EVE-14",
+        ["state"] = "In Progress",
+    };
+
+    public async Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken)
+    {
+        var ticket = context.Parameter("Ticket");  // already resolved: {ticket} became EVE-14 before you saw it
+        // ... do the work; throw with a sentence the operator can act on if it cannot be done ...
+        return WorkflowStepResult.Of("state", "In Progress", $"{ticket} → In Progress");
+    }
+}
+
+// in Initialize:
+foreach (var step in YouTrackWorkflowSteps.All(settings))
+{
+    host.AddWorkflowStep(step);
+}
+```
+
+Three things the host does for you, so you never write workflow code:
+
+- **Placeholders are resolved before you see them.** A parameter the operator wrote as `{ticket}` or
+  `{Run a command.output}` arrives as the value. You never learn the syntax exists.
+- **Producing nothing means passing on what came in.** A step that only *acts* (a comment, a notification) returns
+  `WorkflowStepResult.Done("…")` and the data flowing through the flow is untouched behind it.
+- **Several `Outputs` make it a decision.** Name them (`["yes", "no"]`), say in `WorkflowStepResult.Branch` which one
+  you took, and only that wire is followed.
+
+Throwing fails the step, and your message is what the operator reads in the run — write it as a sentence they can act
+on ("EVE-14 cannot go to 'Done'. Its board allows: Review, Reopened."). Returning success without having done the work
+is invisible to the run, so don't.
+
+`TypeId` must be unique across all plugins — prefix it with your plugin's id. Registering a duplicate throws at
+startup rather than letting load order decide which of two steps a stored flow means.
+
+### `IReadOnlyList<IWorkflowStep> WorkflowSteps { get; }`
+Every step all plugins contributed. Only the workflows plugin has a reason to read this; it does so when its editor
+opens, not at startup, because plugins initialise in an order nobody controls.
 
 ### `void AddConversationPicker(ConversationPickerRegistration picker)`
 Registers a way to **pick an earlier conversation to resume**. The New-session dialog can resume a conversation

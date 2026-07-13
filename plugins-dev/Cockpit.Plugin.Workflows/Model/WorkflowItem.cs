@@ -19,4 +19,16 @@ public sealed record WorkflowItem(JsonObject Json)
 
     /// <summary>One item carrying a single named value — what a trigger usually starts a run with.</summary>
     public static WorkflowItem Of(string name, string value) => new(new JsonObject { [name] = value });
+
+    /// <summary>An item out of the plain fields a contributed step handed back — the SDK deals in strings so a plugin never has to reference this one.</summary>
+    public static WorkflowItem Of(IReadOnlyDictionary<string, string> fields)
+    {
+        var json = new JsonObject();
+        foreach (var (key, value) in fields)
+        {
+            json[key] = value;
+        }
+
+        return new WorkflowItem(json);
+    }
 }

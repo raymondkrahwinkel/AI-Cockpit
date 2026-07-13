@@ -22,8 +22,24 @@ public sealed record NodeTypeDescriptor(
     WorkflowNodeKind Kind,
     IReadOnlyList<string> Outputs,
     IReadOnlyList<string> Parameters,
-    IReadOnlyDictionary<string, string>? Sample = null)
+    IReadOnlyDictionary<string, string>? Sample = null,
+    string? Group = null)
 {
+    /// <summary>
+    /// The heading the picker files this under. A cockpit type belongs to one of the fixed categories; a step a
+    /// plugin contributed belongs under that plugin's own name ("YOUTRACK"), because <see cref="NodeCategory"/> is a
+    /// list of the things this app knows about, and a plugin is by definition not on it.
+    /// </summary>
+    public string Heading => Group ?? Category switch
+    {
+        NodeCategory.Trigger => "STARTS A FLOW",
+        NodeCategory.Sessions => "SESSIONS",
+        NodeCategory.Notify => "TELL ME",
+        NodeCategory.External => "OUTSIDE THE COCKPIT",
+        NodeCategory.Flow => "FLOW",
+        _ => "OTHER",
+    };
+
     /// <summary>
     /// What this kind of step typically hands on, with an example value — so a step you have not run yet can still
     /// say what will come out of it. Not a guess dressed as fact: the dialog labels it an example, and the moment a

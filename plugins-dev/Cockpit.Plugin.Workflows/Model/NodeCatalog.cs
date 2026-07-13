@@ -5,13 +5,22 @@ namespace Cockpit.Plugin.Workflows.Model;
 /// value here is in what only this app can do — start sessions, delegate work, watch what an agent says, put a
 /// ticket in progress. Anything that talks to a hundred SaaS products already exists, and Raymond runs it.
 /// <para>
-/// A list rather than a registry for now. When plugins contribute their own types (the SDK's
-/// <c>AddWorkflowNode</c>), this becomes the built-in half of one.
+/// The built-in half of the list. The other half comes from plugins (<c>ICockpitHost.AddWorkflowStep</c>) and is
+/// handed to <see cref="Contribute"/> once, at startup: YouTrack knows how to move a ticket, and this plugin should
+/// never have to.
 /// </para>
 /// </summary>
 public static class NodeCatalog
 {
-    public static IReadOnlyList<NodeTypeDescriptor> All { get; } =
+    private static IReadOnlyList<NodeTypeDescriptor> _contributed = [];
+
+    /// <summary>Every step the picker offers: the cockpit's own, then whatever plugins added.</summary>
+    public static IReadOnlyList<NodeTypeDescriptor> All => [.. BuiltIn, .. _contributed];
+
+    /// <summary>The steps plugins contributed, in the order they registered. Called once, when the plugin starts.</summary>
+    public static void Contribute(IReadOnlyList<NodeTypeDescriptor> types) => _contributed = types;
+
+    public static IReadOnlyList<NodeTypeDescriptor> BuiltIn { get; } =
     [
         new(
             "cockpit.event",

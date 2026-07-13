@@ -3,6 +3,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugins.Abstractions;
 
@@ -53,6 +54,23 @@ public interface ICockpitHost
     void AddConversationPicker(ConversationPickerRegistration picker)
     {
     }
+
+    /// <summary>
+    /// Contributes a step to the workflow editor (#69) — "Move a ticket to In Progress", "Comment on a pull request".
+    /// The step appears in the picker under its own category and runs like any other. Without this, what a flow can do
+    /// is limited to what the workflows plugin itself was built to do, and every integration the cockpit ever grows
+    /// would have to be built there, by someone who does not have your API client in front of them. Default no-op so
+    /// existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched.
+    /// </summary>
+    void AddWorkflowStep(IWorkflowStep step)
+    {
+    }
+
+    /// <summary>
+    /// The steps every plugin has contributed — what the workflows plugin reads to build its picker. A plugin that is
+    /// not the workflows plugin has no reason to call this. Default empty.
+    /// </summary>
+    IReadOnlyList<IWorkflowStep> WorkflowSteps => [];
 
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);

@@ -118,11 +118,11 @@ internal sealed class NodePicker : Border
             return;
         }
 
-        foreach (var group in matches.GroupBy(type => type.Category))
+        foreach (var group in matches.GroupBy(type => type.Heading))
         {
             _results.Children.Add(new TextBlock
             {
-                Text = _CategoryName(group.Key),
+                Text = group.Key,
                 FontSize = 10,
                 FontWeight = FontWeight.SemiBold,
                 Opacity = 0.45,
@@ -192,16 +192,6 @@ internal sealed class NodePicker : Border
 
         return row;
     }
-
-    private static string _CategoryName(NodeCategory category) => category switch
-    {
-        NodeCategory.Trigger => "STARTS A FLOW",
-        NodeCategory.Sessions => "SESSIONS",
-        NodeCategory.Notify => "TELL ME",
-        NodeCategory.External => "OUTSIDE THE COCKPIT",
-        NodeCategory.Flow => "FLOW",
-        _ => category.ToString().ToUpperInvariant(),
-    };
 
     private static Control _Docked(Control control, Dock dock)
     {

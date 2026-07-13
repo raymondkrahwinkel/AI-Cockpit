@@ -19,9 +19,9 @@ public sealed class YouTrackPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.5.0",
+        Version: "1.6.0",
         Author: "Cockpit",
-        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools.");
+        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools, and contributes two workflow steps — start a ticket, move a ticket — so a flow can run the ticket half of your working day.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -41,6 +41,13 @@ public sealed class YouTrackPlugin : ICockpitPlugin
             _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links), 1040, 700);
 
         host.AddSideMenuButton("YouTrack", OpenIssues);
+
+        // What a flow can do with a ticket (#69): the workflow plugin knows nothing about YouTrack, and should not.
+        // It knows that someone offers a step called youtrack.start which asks for a ticket.
+        foreach (var step in YouTrackWorkflowSteps.All(settings))
+        {
+            host.AddWorkflowStep(step);
+        }
         host.AddSessionHeaderItem(session => new YouTrackSessionHeaderControl(host, session, links));
         // Same action on a keyboard shortcut (#: shortcuts) — the SDK's AddShortcut, shown in Options → Shortcuts.
         host.AddShortcut(new PluginShortcut("youtrack.open", "YouTrack issues", "Shift+Y", OpenIssues));

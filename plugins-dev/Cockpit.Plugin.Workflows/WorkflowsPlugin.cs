@@ -4,12 +4,13 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Workflows;
 
 /// <summary>
-/// The workflow editor (#69): a left-menu button opens a canvas where flows are drawn — triggers, actions and
-/// decisions, wired together — and saved to the plugin's own storage.
+/// Workflows (#69): a canvas where flows are drawn — triggers, actions and decisions, wired together — and an engine
+/// that runs them, handing each step the data the one before it produced.
 /// <para>
-/// This is the editor, not the engine: nothing executes a flow yet. It ships anyway because the shape of a
-/// workflow is the thing to get right first, and because the canvas is what tells us whether the model is any
-/// good to work with. The dialog says as much on screen rather than letting a drawn flow look live.
+/// What a flow can <em>do</em> is not fixed here. Any plugin may contribute a step
+/// (<see cref="ICockpitHost.AddWorkflowStep"/>): YouTrack knows how to move a ticket and this plugin never has to.
+/// The contributed steps are read when the editor opens rather than at startup, because plugins initialise in an
+/// order nobody controls and a step registered after us would otherwise be invisible until the next run of the app.
 /// </para>
 /// The canvas is written on plain Avalonia: every node-editor library depends on Avalonia.Xaml.Behaviors, which
 /// has no Avalonia 12 release — see the spike under <c>spikes/spike-node-editor</c>.
@@ -19,9 +20,9 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "workflows",
         DisplayName: "Workflows",
-        Version: "0.7.1",
+        Version: "0.11.0",
         Author: "Cockpit",
-        Description: "A visual editor for cockpit workflows: drop triggers, actions and decisions on a canvas, wire them together, and the flow is saved as you draw it. Drag a node by its header, pull a wire out of an output pin, Delete removes the selected node; the wheel zooms and dragging the background pans. The rules are the model's, not the canvas's — a trigger takes nothing in, a step continues one way at a time, and a flow cannot loop back on itself, each refusal saying why. Editor only for now: nothing executes these flows yet.");
+        Description: "Draw a flow and run it: a manual trigger, a shell command, a decision, a notification — wired together on a canvas and saved as you draw. A step uses what the steps before it produced ({output}, or {Run a command.output} to reach further back), and a decision's condition is an expression over that same data. Double-click a step to open it: what comes in on the left, its settings in the middle, what it produced on the right. Other plugins can contribute their own steps, so a flow can do whatever they know how to do.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -34,8 +35,15 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
 
         // Ask big: a canvas is the one thing that is never too large, and the host clamps the request to the
         // cockpit window anyway.
-        void OpenEditor() =>
-            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store, host, runs), 1600, 1000);
+        void OpenEditor()
+        {
+            // Read now, not at startup: plugins initialise in an order nobody controls, and a step registered after
+            // this plugin would otherwise not exist until the app is restarted.
+            var contributed = host.WorkflowSteps;
+            Model.NodeCatalog.Contribute([.. contributed.Select(Engine.ContributedStep.Describe)]);
+
+            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store, host, runs, contributed), 1600, 1000);
+        }
 
         host.AddSideMenuButton("Workflows", OpenEditor);
         host.AddShortcut(new PluginShortcut("workflows.open", "Workflow editor", "Ctrl+Shift+W", OpenEditor));

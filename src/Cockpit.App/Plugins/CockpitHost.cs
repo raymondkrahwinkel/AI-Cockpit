@@ -7,6 +7,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
@@ -58,6 +59,12 @@ internal sealed class CockpitHost(
 
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
+
+    public void AddWorkflowStep(IWorkflowStep step) =>
+        services.GetRequiredService<IWorkflowStepRegistry>().Register(step);
+
+    public IReadOnlyList<IWorkflowStep> WorkflowSteps =>
+        services.GetRequiredService<IWorkflowStepRegistry>().Steps;
 
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
         dialogHost.ShowDialogAsync(title, createContent, width, height);
