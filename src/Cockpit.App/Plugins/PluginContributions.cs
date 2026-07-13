@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
@@ -8,6 +9,9 @@ public sealed record PluginSideSection(string Title, Func<Control> CreateView);
 
 /// <summary>A left-menu launcher button a plugin contributes: its title and the action run on click (typically opening a dialog).</summary>
 public sealed record PluginSideButton(string Title, Action OnInvoke);
+
+/// <summary>A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).</summary>
+public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
 
 /// <summary>
 /// Where a plugin's contribution points land in the running UI. Implemented by <c>CockpitViewModel</c>
@@ -20,6 +24,9 @@ public interface IPluginContributionSink
     void AddPluginSideSection(string title, Func<Control> createView);
 
     void AddPluginSideButton(string title, Action onInvoke);
+
+    /// <summary>Registers a control shown in every session's header, built per session from that session's own context.</summary>
+    void AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView);
 
     /// <summary>Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.</summary>
     void AddPluginShortcut(PluginShortcut shortcut);

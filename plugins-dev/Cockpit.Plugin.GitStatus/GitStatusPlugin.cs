@@ -14,7 +14,7 @@ public sealed class GitStatusPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "git-status",
         DisplayName: "Git status",
-        Version: "1.1.0",
+        Version: "1.2.0",
         Author: "Cockpit",
         Description: "An inline panel that follows the active session — the branch / uncommitted / unpushed status of the repo it is working in, refreshing when the session switches or runs a git command — plus a button/dialog for the same across all your configured repositories. Click to drop a status summary into the session.");
 
@@ -26,8 +26,10 @@ public sealed class GitStatusPlugin : ICockpitPlugin
     {
         var settings = new GitStatusSettings(host.Storage);
         host.AddSettings(() => new GitStatusSettingsControl(settings));
-        // Follows the session in view via the read/observe surface (#3): the repo the active session is busy in.
-        host.AddSideMenuSection("Session repo", () => new GitStatusSessionSectionControl(host));
+        // In each session's own header rather than in the sidebar: the git state describes the repo that one
+        // session works in, and a sidebar section following "whichever session is selected" says nothing about
+        // the other panes on screen.
+        host.AddSessionHeaderItem(session => new GitStatusHeaderControl(host, session));
         host.AddSideMenuButton(
             "Git status",
             () => _ = host.ShowDialogAsync("Git status", () => new GitStatusDialogControl(settings, host.Actions), 780, 540));

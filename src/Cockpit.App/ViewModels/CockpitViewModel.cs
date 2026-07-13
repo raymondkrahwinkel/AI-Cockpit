@@ -27,6 +27,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -82,6 +83,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Left-menu launcher buttons contributed by plugins (#14); clicking one runs the plugin's action (typically opening a dialog).</summary>
     public ObservableCollection<PluginSideButton> PluginSideButtons { get; } = [];
+
+    /// <summary>Controls contributed by plugins to every session's header bar, each built per session from that session's own context. Empty = nothing rendered.</summary>
+    public ObservableCollection<PluginSessionHeaderItem> PluginSessionHeaderItems { get; } = [];
 
     /// <summary>Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.</summary>
     public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
@@ -139,6 +143,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     void IPluginContributionSink.AddPluginSideButton(string title, Action onInvoke) =>
         _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(title, onInvoke)));
+
+    void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
+        _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
 
     void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
         _OnUiThread(() => PluginShortcuts.Add(shortcut));

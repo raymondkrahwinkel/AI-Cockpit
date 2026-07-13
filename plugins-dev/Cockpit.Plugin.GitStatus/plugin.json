@@ -1,11 +1,11 @@
 {
   "id": "git-status",
   "name": "Git status",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "entryAssembly": "Cockpit.Plugin.GitStatus.dll",
   "entryType": "Cockpit.Plugin.GitStatus.GitStatusPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "1.0.0",
-  "description": "An inline panel that follows the active session — the branch, uncommitted changes and unpushed/behind commits of the repo it is working in, refreshing when the session switches or runs a git command — plus a sortable dialog for the same across all your configured repositories. Click to drop a status summary into the session. Manage the repository list in settings.",
+  "description": "A git indicator in every session's header — a coloured dot and the branch of the repo that session works in, with the uncommitted and unpushed counts on hover, refreshing when the session runs a git command. Click it to drop the summary into that session. Plus a sortable dialog for the same across all your configured repositories; manage the repository list in settings.",
   "author": "Cockpit"
 }

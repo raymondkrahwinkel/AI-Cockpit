@@ -29,6 +29,19 @@ public interface ICockpitHost
     /// <summary>Adds an inline accordion section to the left menu, under the session list — for small, always-visible content.</summary>
     void AddSideMenuSection(string title, Func<Control> createView);
 
+    /// <summary>
+    /// Adds a small control to <em>every session's header bar</em>, built once per session and handed that
+    /// session's own <see cref="IPluginSessionContext"/> — for status that belongs to the session it describes
+    /// (the git state of the repo it is working in, say) rather than to the cockpit as a whole. Keep it compact:
+    /// the header is a strip, so this is the place for an indicator with a tooltip, not for a panel. Default
+    /// no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
+    /// compiling untouched — only the app's own host renders it.
+    /// </summary>
+    /// <param name="createView">Builds the control for one session; invoked once per session panel, on the UI thread.</param>
+    void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)
+    {
+    }
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 

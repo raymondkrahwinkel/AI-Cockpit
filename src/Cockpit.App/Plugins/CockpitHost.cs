@@ -47,6 +47,9 @@ internal sealed class CockpitHost(
     public void AddSideMenuSection(string title, Func<Control> createView) =>
         contributionSink.AddPluginSideSection(title, createView);
 
+    public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
+        contributionSink.AddPluginSessionHeaderItem(createView);
+
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
         dialogHost.ShowDialogAsync(title, createContent, width, height);
 

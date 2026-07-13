@@ -76,6 +76,7 @@ public interface ICockpitHost
     void AddSettings(Func<Control> createView);
     void AddSideMenuButton(string title, Action onInvoke);
     void AddSideMenuSection(string title, Func<Control> createView);
+    void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView);  // default no-op
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                       // default no-op
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
@@ -188,6 +189,32 @@ _ = host.AddMcpServer(new McpServerContribution(
     Url: "https://my-service.example.com/mcp",
     BearerToken: myToken));
 ```
+
+### `void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)`
+Adds a small control to **every session's header bar**, built once per session and handed that session's own
+[`IPluginSessionContext`](#ipluginsessioncontext) — for status that belongs to the session it describes (the git
+state of the repo it is working in, say) rather than to the cockpit as a whole.
+- **Keep it compact.** The header is a strip: an indicator with a tooltip, not a panel.
+- The same control renders in both session kinds (SDK chat and TTY terminal), so you write it once.
+- Prefer this over a side-menu section when the thing you show is *about one session*. A sidebar section that
+  follows "whichever session is selected" says nothing about the other panes on screen.
+- Default no-op, same compatibility rationale as `AddSessionProvider`.
+
+```csharp
+host.AddSessionHeaderItem(session => new MyIndicator(host, session));
+```
+
+#### `IPluginSessionContext`
+One session, for as long as its panel exists — where [`ICockpitSessionObserver`](#the-sessions-namespace--provider-plugins)
+follows whichever session is *selected*, this is bound to the one your control sits in.
+
+| Member | Meaning |
+|---|---|
+| `string? WorkingDirectory` | The directory this session is working in; null until known (an SDK session before its init event). |
+| `event EventHandler? WorkingDirectoryChanged` | The directory became known or changed — re-scope. |
+| `event EventHandler<SessionOutputText>? OutputProduced` | Each chunk of text **this** session produced, verbatim. Substring-scan it for a signal (a git command, a pushed branch, …). |
+
+Events are raised on the UI thread, so a handler can touch its controls directly.
 
 ### `Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()`
 The cockpit's configured **session profiles**: which identities exist and where each keeps its provider state

@@ -1,4 +1,5 @@
 <UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:controls="using:Cockpit.App.Controls"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:term="using:Exclr8.Terminal"
@@ -40,6 +41,9 @@
                            Foreground="{StaticResource CockpitTextFaintBrush}"
                            TextTrimming="CharacterEllipsis" MaxWidth="300"
                            ToolTip.Tip="{Binding WorkingPath}"/>
+                <!-- Plugin-contributed header items (#: session header items) — same contribution point the SDK
+                     header renders, so a plugin writes its indicator once and it shows in both session kinds. -->
+                <controls:PluginSessionHeaderHost/>
                 <!-- Read-aloud (#35b): tails the live JSONL session transcript for assistant text. -->
                 <ToggleButton Content="Read aloud" IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
                               VerticalAlignment="Center"
