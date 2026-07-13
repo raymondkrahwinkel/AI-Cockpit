@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Abstractions.Updates;
+using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Updates;
 using Cockpit.Core.Backup;
 using Cockpit.Core.Abstractions.Debugging;
@@ -1070,6 +1071,47 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private string _resourceSessions = string.Empty;
 
     /// <summary>
+    /// Whether a memory warning is standing. Kept here between samples, because the decision is "has it climbed since
+    /// I last said so", and that question needs a memory of its own.
+    /// </summary>
+    private bool _warnedAboutMemory;
+
+    /// <summary>
+    /// Says something when the cockpit and its sessions together approach what the machine has (#78).
+    /// <para>
+    /// macOS puts an app and everything it spawns in one coalition, and its memory killer counts and kills at that
+    /// level: the Claude processes we start are charged to us, and when it fires, the coalition's leader — the cockpit
+    /// — is what dies, taking every session with it. A session is 300–700 MB of Node; three of them outweigh the whole
+    /// app. This is the difference between "the app suddenly disappeared" and "you were told, and you could have closed
+    /// a session".
+    /// </para>
+    /// </summary>
+    private void _WarnAboutMemory(ResourceUsage usage)
+    {
+        var decision = MemoryPressure.Decide(usage.MemoryBytes, MachineMemory.TotalBytes(), _warnedAboutMemory);
+        _warnedAboutMemory = decision.Warned;
+
+        if (!decision.Warn)
+        {
+            return;
+        }
+
+        var heaviest = usage.Sessions.MaxBy(session => session.MemoryBytes);
+
+        var advice = heaviest is not null
+            ? $" '{heaviest.Title}' is the largest at {_Megabytes(heaviest.MemoryBytes)} — closing or restarting it frees that."
+            : string.Empty;
+
+        // Raised on the host this view model owns: ToastService is built *from* it, and injecting the service back in
+        // is a circle the container walks forever.
+        ToastHost.Add(
+            $"The cockpit and its sessions are using {_Megabytes(usage.MemoryBytes)} of {_Megabytes(MachineMemory.TotalBytes())}. On macOS the system kills the whole app when memory gets tight — sessions and all.{advice}",
+            ToastSeverity.Warning,
+            actionLabel: null,
+            onAction: null);
+    }
+
+    /// <summary>
     /// Takes one sample and updates the status bar (#78). Driven by a timer in the view, like the idle sweep —
     /// the view model stays free of timers, and a test can tick it whenever it likes.
     /// </summary>
@@ -1089,6 +1131,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var usage = _resourceMonitor.Sample(processes);
+
+        _WarnAboutMemory(usage);
 
         ResourceSummary = $"CPU {usage.CpuPercent:0}%  ·  RAM {_Megabytes(usage.MemoryBytes)}";
         ResourceSessions = usage.Sessions.Count switch
