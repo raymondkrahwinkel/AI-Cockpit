@@ -109,6 +109,11 @@ internal sealed class WorkflowEditorControl : UserControl
         root.Children.Add(middle);
 
         Content = new Grid { Children = { root, _dialog } };
+
+        // What a step has to work with comes from the last run, and a run outlives the session it was made in: the
+        // history is stored. Without this a flow you ran yesterday opened with "nothing has flowed into this step",
+        // which is not true, and is exactly the moment the panes are worth having.
+        _lastRun = runs.Load().FirstOrDefault(run => run.WorkflowId == workflow.Id);
         _Describe();
         _RefreshExecutable();
     }
@@ -344,6 +349,9 @@ internal sealed class WorkflowEditorControl : UserControl
     // a step is told what to actually do.
     private void _OpenSettings(WorkflowNode node)
     {
+        // The picker steps aside: it sits outside the dialog, and a list of steps you can see but not reach (the
+        // scrim takes the click) is worse than one that is not there.
+        _picker.IsVisible = false;
         _dialog.Show(node, _Incoming(node), _Produced(node), _Earlier(node));
     }
 
