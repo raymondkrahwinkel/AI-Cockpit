@@ -58,6 +58,12 @@ sealed class Program
         var pluginManager = new PluginManager(loggerFactory.CreateLogger<PluginManager>(), pluginDiagnostics);
         try
         {
+            // The plugins this build ships (transcript search, git status) are put in place before discovery, so
+            // they are simply there on first run — no install step for something that used to be a core feature.
+            // Failing to install one must not cost the operator the plugins they installed themselves, so this
+            // is best-effort and discovery runs regardless.
+            _InstallBundledPlugins(loggerFactory);
+
             var discoveredPlugins = new PluginBootstrap()
                 .DiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
             var pluginActivator = new PluginActivator(loggerFactory.CreateLogger<PluginActivator>());
@@ -189,6 +195,33 @@ sealed class Program
 
     [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
     private static extern int setenv(string name, string value, int overwrite);
+
+    // Puts the plugins this build ships into the operator's plugins directory (see BundledPluginInstaller).
+    // Best-effort: a plugin that cannot be copied is logged and skipped, and the app carries on with whatever
+    // is already installed — a bundled plugin is a convenience, not a dependency.
+    private static void _InstallBundledPlugins(ILoggerFactory loggerFactory)
+    {
+        var bundledRoot = Path.Combine(AppContext.BaseDirectory, BundledPluginInstaller.BundledFolderName);
+
+        try
+        {
+            var installed = new BundledPluginInstaller()
+                .InstallAsync(bundledRoot, PluginBootstrap.PluginsRoot)
+                .GetAwaiter()
+                .GetResult();
+
+            if (installed.Count > 0)
+            {
+                loggerFactory.CreateLogger<Program>().LogInformation(
+                    "Installed the plugins shipped with this build: {Plugins}", string.Join(", ", installed));
+            }
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger<Program>().LogWarning(
+                exception, "Could not install the bundled plugins; continuing with whatever is already installed.");
+        }
+    }
 
     // Removes the host terminal's self-identification from this process's own environment (see the call in
     // Main). Reuses the same marker set TtyEnvironment scrubs for the claude pty (#58): TERM_PROGRAM(_VERSION)

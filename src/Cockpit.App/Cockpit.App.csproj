@@ -50,4 +50,36 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
   </ItemGroup>
+
+  <!-- Plugins that ship with the app (#: bundled plugins): features that used to be core and moved out to a
+       plugin, so an operator has them out of the box instead of having to know they exist. Referenced with
+       ReferenceOutputAssembly=false so they are *built* but never referenced — a bundled plugin must load
+       through the plugin loader like any other, in its own load context, or shared types lose their identity.
+       BundledPluginInstaller copies them into the operator's plugins directory on startup. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\Cockpit.Plugin.TranscriptSearch.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyBundledPlugins" AfterTargets="Build;Publish">
+    <ItemGroup>
+      <TranscriptSearchFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.dll;
+                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.deps.json;
+                                      $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\plugin.json" />
+      <GitStatusFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.dll;
+                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.deps.json;
+                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\plugin.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(OutDir)bundled-plugins\transcript-search" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(OutDir)bundled-plugins\git-status" SkipUnchangedFiles="true" />
+
+    <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a
+         cockpit missing the features that used to be core. -->
+    <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(PublishDir)bundled-plugins\transcript-search"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(PublishDir)bundled-plugins\git-status"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+  </Target>
 </Project>
