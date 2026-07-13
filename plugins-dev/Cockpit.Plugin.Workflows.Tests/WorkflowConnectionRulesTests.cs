@@ -135,7 +135,7 @@ public class WorkflowConnectionRulesTests
 
     private static Workflow _Workflow(out WorkflowNode trigger, out WorkflowNode notify, out WorkflowNode delegateStep)
     {
-        trigger = _Node("t", "cockpit.event", "Event");
+        trigger = _Node("t", "cockpit.text-match", "Event");
         notify = _Node("a", "cockpit.notify", "Notify");
         delegateStep = _Node("b", "cockpit.delegate", "Delegate");
 

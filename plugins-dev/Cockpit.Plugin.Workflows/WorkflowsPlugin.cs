@@ -20,7 +20,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "workflows",
         DisplayName: "Workflows",
-        Version: "0.11.0",
+        Version: "0.12.0",
         Author: "Cockpit",
         Description: "Draw a flow and run it: a manual trigger, a shell command, a decision, a notification — wired together on a canvas and saved as you draw. A step uses what the steps before it produced ({output}, or {Run a command.output} to reach further back), and a decision's condition is an expression over that same data. Double-click a step to open it: what comes in on the left, its settings in the middle, what it produced on the right. Other plugins can contribute their own steps, so a flow can do whatever they know how to do.");
 
@@ -28,10 +28,16 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     {
     }
 
+    private Engine.FlowWatcher? _watcher;
+
     public void Initialize(ICockpitHost host)
     {
         var store = new WorkflowStore(host.Storage);
         var runs = new Engine.RunStore(host.Storage);
+
+        // The triggers that fire by themselves. Started here rather than when the editor opens: a flow that only runs
+        // while you are looking at the editor is not automation, it is a button with extra steps.
+        _watcher = new Engine.FlowWatcher(store, runs, host);
 
         // Ask big: a canvas is the one thing that is never too large, and the host clamps the request to the
         // cockpit window anyway.
@@ -49,7 +55,5 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
         host.AddShortcut(new PluginShortcut("workflows.open", "Workflow editor", "Ctrl+Shift+W", OpenEditor));
     }
 
-    public void Dispose()
-    {
-    }
+    public void Dispose() => _watcher?.Dispose();
 }

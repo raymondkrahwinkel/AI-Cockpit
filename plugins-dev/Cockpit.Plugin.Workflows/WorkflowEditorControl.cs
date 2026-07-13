@@ -42,17 +42,8 @@ internal sealed class WorkflowEditorControl : UserControl
 
         // The steps this build can actually perform. A type without a runner is skipped with a reason at run time,
         // never counted as a success.
-        // The cockpit's own steps, and whatever the plugins offered. A type with no runner is skipped with a reason
-        // at run time, never counted as a success — which is what a step from a plugin that has since been disabled
-        // becomes.
-        _engine = new WorkflowEngine([
-            new ManualTriggerRunner(),
-            new NotifyRunner(host),
-            new InjectRunner(host),
-            new CommandRunner(),
-            new IfRunner(),
-            .. contributed.Select(step => new ContributedStep(step)),
-        ]);
+        // The same engine the watcher uses: a flow must not do different things depending on who started it.
+        _engine = EngineFactory.Create(host, contributed);
 
         _execute = _ExecuteButton();
 
@@ -163,7 +154,7 @@ internal sealed class WorkflowEditorControl : UserControl
             IsChecked = _workflow.IsActive,
             Classes = { "Compact" },
         };
-        ToolTip.SetTip(active, "An armed flow runs when its trigger fires. Not yet, though: nothing executes a flow until the engine lands.");
+        ToolTip.SetTip(active, "An active flow runs by itself when its trigger fires — a session says the thing it watches for, or the clock comes round. Inactive, it only runs when you press Execute.");
         active.IsCheckedChanged += (_, _) =>
         {
             _workflow.IsActive = active.IsChecked == true;

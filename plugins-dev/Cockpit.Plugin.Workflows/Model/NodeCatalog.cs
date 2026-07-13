@@ -23,16 +23,6 @@ public static class NodeCatalog
     public static IReadOnlyList<NodeTypeDescriptor> BuiltIn { get; } =
     [
         new(
-            "cockpit.event",
-            "Event",
-            "A session (or anything else) announced something happened.",
-            "⚡",
-            NodeCategory.Trigger,
-            WorkflowNodeKind.Trigger,
-            [""],
-            ["Event name"],
-            new Dictionary<string, string> { ["event"] = "session.finished", ["session"] = "Eveworkbench" }),
-        new(
             "cockpit.text-match",
             "Text appears",
             "A session's output contains something you are watching for. Best effort: a model's wording is not a contract.",

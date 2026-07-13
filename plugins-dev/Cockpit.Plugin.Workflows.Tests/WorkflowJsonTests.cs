@@ -18,7 +18,7 @@ public class WorkflowJsonTests
             Name = "PR review",
             Nodes =
             {
-                new WorkflowNode { Id = "t", TypeId = "cockpit.event", Name = "PR opened", X = 60, Y = 40 },
+                new WorkflowNode { Id = "t", TypeId = "cockpit.text-match", Name = "PR opened", X = 60, Y = 40 },
                 new WorkflowNode
                 {
                     Id = "a",
@@ -50,10 +50,10 @@ public class WorkflowJsonTests
         {
             Id = "w",
             Name = "Flow",
-            Nodes = { new WorkflowNode { Id = "t", TypeId = "cockpit.event", Name = "Trigger" } },
+            Nodes = { new WorkflowNode { Id = "t", TypeId = "cockpit.text-match", Name = "Trigger" } },
         };
 
-        WorkflowJson.Write(workflow).Should().Contain("cockpit.event");
+        WorkflowJson.Write(workflow).Should().Contain("cockpit.text-match");
     }
 
     [Fact]

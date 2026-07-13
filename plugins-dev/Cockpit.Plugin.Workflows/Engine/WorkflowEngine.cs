@@ -22,7 +22,11 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
         runners.ToDictionary(runner => runner.TypeId, StringComparer.Ordinal);
 
     /// <summary>Runs the flow from <paramref name="startNodeId"/> — a trigger. Never throws: what went wrong is written into the run, which is the point of keeping one.</summary>
-    public async Task<WorkflowRun> RunAsync(Workflow workflow, string startNodeId, CancellationToken cancellationToken = default)
+    public async Task<WorkflowRun> RunAsync(
+        Workflow workflow,
+        string startNodeId,
+        IReadOnlyList<WorkflowItem>? seed = null,
+        CancellationToken cancellationToken = default)
     {
         var run = new WorkflowRun
         {
@@ -53,7 +57,8 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
         // Breadth-first from the trigger: each pending entry is a step and the items handed to it. Fan-out simply
         // means one step queues several.
         var pending = new Queue<(string NodeId, IReadOnlyList<WorkflowItem> Input)>();
-        pending.Enqueue((startNodeId, [WorkflowItem.Empty()]));
+        // What the trigger was fired with — the matched text, the time — or nothing, when you pressed the button.
+        pending.Enqueue((startNodeId, seed ?? [WorkflowItem.Empty()]));
 
         // What each step handed on, by name: this is what lets a parameter reach back past the step before it
         // ({Run a command.output}) rather than only to its immediate input.
