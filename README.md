@@ -142,6 +142,34 @@ shortcuts, always-allow rules, the MCP registry and plugin state all live in tha
 Each **Claude** profile can point at its own **`CLAUDE_CONFIG_DIR`** (e.g. a work vs. a personal account), so two
 sessions can run under two different logins at the same time.
 
+### macOS
+
+macOS reads an app's identity from its bundle, so the cockpit ships as a real `.app` rather than a bare
+executable (without one the menu bar reads "Avalonia Application" and the microphone permission prompt has
+nothing to say):
+
+```
+scripts/package-macos.sh arm64 1.0.0        # or: x64
+```
+
+That publishes self-contained, assembles `artifacts/macos/AI-Cockpit.app`, stamps the version, builds the icon
+and signs the bundle **ad-hoc** — enough to run and to grant microphone access on the machine that built it.
+One bundle per architecture: a universal binary means lipo-ing every native library in the publish output, not
+just the apphost.
+
+For distribution, sign with a Developer ID and notarise (the script prints the exact commands):
+
+```
+CODESIGN_IDENTITY="Developer ID Application: … (TEAMID)" scripts/package-macos.sh arm64 1.0.0
+```
+
+Signing uses the hardened runtime with `src/Cockpit.App/Cockpit.entitlements` — the .NET JIT entitlements plus
+`device.audio-input`, without which macOS refuses to even ask about the microphone. The app is deliberately
+**not** sandboxed: it spawns the `claude` CLI and reads each profile's `~/.claude*` config directory.
+
+> The bundle uses the generic icon until `src/Cockpit.App/Assets/AppIcon.png` (1024×1024) exists — the script
+> says so rather than shipping a bundle that points at an icon that is not there.
+
 ### Requirements
 
 | Requirement | When |

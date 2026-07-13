@@ -22,3 +22,6 @@ piper-voices/
 
 # Plugin distribution artifacts (#14)
 plugins-dev/dist/
+
+# Packaged app bundles (scripts/package-macos.sh)
+artifacts/

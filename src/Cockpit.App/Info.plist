@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The macOS application bundle's manifest. Without it the app runs as a bare executable and macOS falls back
+     to the Avalonia template's own identity — the menu bar then reads "Avalonia Application" rather than the
+     app's name. Copied into AI-Cockpit.app/Contents/ by scripts/package-macos.sh, which is what turns the
+     published output into a real .app bundle. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>CFBundleName</key>
+    <string>AI-Cockpit</string>
+
+    <!-- What Finder and the menu bar show. Kept identical to CFBundleName: the two diverging is how an app ends
+         up called one thing in the Dock and another in its own menu. -->
+    <key>CFBundleDisplayName</key>
+    <string>AI-Cockpit</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>nl.krahwinkel.ai-cockpit</string>
+
+    <!-- The executable inside Contents/MacOS/, i.e. the published assembly name. -->
+    <key>CFBundleExecutable</key>
+    <string>Cockpit.App</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- Both are rewritten from the version passed to package-macos.sh, so a build never ships a stale number. -->
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+
+    <!-- Names Contents/Resources/AI-Cockpit.icns. The packaging script removes this key when it cannot build the
+         icon, so the bundle never points at a file that is not there. -->
+    <key>CFBundleIconFile</key>
+    <string>AI-Cockpit</string>
+
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
+
+    <!-- Retina: without this macOS renders the window through its 2x upscaler and everything looks soft. -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- A normal windowed app: it owns a Dock icon and a menu bar, rather than being a background agent. -->
+    <key>LSUIElement</key>
+    <false/>
+
+    <!-- .NET 10 supports macOS 14 and up; claiming 12 would let the app launch on a system its own runtime
+         does not support. -->
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026 Raymond Krahwinkel / Krahwinkel-IT</string>
+
+    <!-- The microphone is used for push-to-talk and open-mic dictation. TCC applies to every app since 10.14,
+         sandboxed or not: without this key the process is killed outright the moment it opens the input device. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AI-Cockpit uses the microphone for push-to-talk and open-mic dictation into a session.</string>
+
+    <!-- macOS 15+ gates connections to other machines on the local network. The cockpit's own MCP server is on
+         loopback (exempt), but a profile pointing at an Ollama or LM Studio server on another machine is not. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>AI-Cockpit connects to local model servers (Ollama, LM Studio) that you point a profile at, which may run on another machine on your network.</string>
+</dict>
+</plist>

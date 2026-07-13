@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Entitlements for signing the macOS bundle under the hardened runtime.
+     The first four are Microsoft's documented set for a .NET app: the runtime JIT-compiles, so a hardened
+     runtime that forbids writable-executable memory would kill it on startup. The fifth is the microphone.
+
+     Deliberately NOT the App Sandbox: the cockpit spawns the `claude` CLI as a child process and reads the
+     profiles' config directories (~/.claude*), neither of which survives sandboxing. -->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Under the hardened runtime TCC refuses to even prompt for the microphone without this, sandbox or not —
+         so push-to-talk and open-mic would fail with no way for the operator to grant access. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>
