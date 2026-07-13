@@ -42,6 +42,17 @@ public interface ICockpitHost
     {
     }
 
+    /// <summary>
+    /// Registers a way to pick an earlier conversation to resume — see <see cref="ConversationPickerRegistration"/>.
+    /// The New-session dialog can resume a conversation by id; with a picker registered it also shows a search
+    /// button that runs yours, so the operator chooses a conversation instead of typing an id. Default no-op so
+    /// existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host wires it up.
+    /// </summary>
+    void AddConversationPicker(ConversationPickerRegistration picker)
+    {
+    }
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 

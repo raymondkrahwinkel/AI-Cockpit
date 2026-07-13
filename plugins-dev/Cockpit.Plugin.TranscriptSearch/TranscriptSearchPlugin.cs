@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
@@ -14,7 +15,7 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "transcript-search",
         DisplayName: "Claude Transcript Search",
-        Version: "1.0.0",
+        Version: "1.1.0",
         Author: "Cockpit",
         Description: "Search everything you and the agent ever wrote in a Claude CLI session, across every Claude profile you have configured.");
 
@@ -32,6 +33,20 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
 
         host.AddSideMenuButton("Search transcripts", OpenSearch);
         host.AddShortcut(new PluginShortcut("transcript-search.open", "Search transcripts", "Ctrl+F", OpenSearch));
+
+        // The New-session dialog can resume a conversation by id, and typing one by hand is a poor way to find
+        // it. The cockpit knows nothing about claude's transcripts — this plugin does — so it offers the search
+        // as the picker behind that dialog's Search button.
+        host.AddConversationPicker(new ConversationPickerRegistration("Search transcripts", async () =>
+        {
+            string? picked = null;
+            await host.ShowDialogAsync(
+                "Search transcripts",
+                () => new TranscriptSearchDialogControl(new TranscriptSearchService(host), host.Actions, sessionId => picked = sessionId),
+                820,
+                600);
+            return picked;
+        }));
     }
 
     public void Dispose()

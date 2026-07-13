@@ -50,6 +50,9 @@ internal sealed class CockpitHost(
     public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         contributionSink.AddPluginSessionHeaderItem(createView);
 
+    public void AddConversationPicker(ConversationPickerRegistration picker) =>
+        services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
+
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
         dialogHost.ShowDialogAsync(title, createContent, width, height);
 

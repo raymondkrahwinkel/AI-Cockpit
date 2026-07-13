@@ -7,6 +7,8 @@ using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
+using Cockpit.App.Plugins;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -31,6 +33,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerStore? _mcpServerStore;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
+    private readonly ConversationPickerRegistration? _conversationPicker;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
@@ -125,6 +128,28 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [RelayCommand]
     private void ResumeConversationById() => ResumeMode = SessionResumeMode.BySessionId;
 
+    /// <summary>Whether a plugin offers a way to browse the provider's conversation history — no picker, no search button (and the id can still be typed).</summary>
+    public bool HasConversationPicker => _conversationPicker is not null;
+
+    /// <summary>Tooltip for the search button: whatever the picker calls itself, e.g. "Search transcripts".</summary>
+    public string ConversationPickerTitle => _conversationPicker?.Title ?? string.Empty;
+
+    /// <summary>Runs the plugin's picker and fills in whatever conversation the operator chose. Cancelling leaves the field as it was.</summary>
+    [RelayCommand]
+    private async Task PickConversationAsync()
+    {
+        if (_conversationPicker is null)
+        {
+            return;
+        }
+
+        if (await _conversationPicker.PickAsync() is { Length: > 0 } sessionId)
+        {
+            ResumeSessionId = sessionId;
+            ResumeMode = SessionResumeMode.BySessionId;
+        }
+    }
+
     /// <summary>The choice as the session layer consumes it; a blank id falls back to a fresh conversation rather than a broken resume.</summary>
     private SessionResume _Resume() => ResumeMode switch
     {
@@ -216,8 +241,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(ISessionProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null)
+    public NewSessionDialogViewModel(ISessionProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null, IConversationPickerRegistry? conversationPickers = null)
     {
+        _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _mcpServerStore = mcpServerStore;

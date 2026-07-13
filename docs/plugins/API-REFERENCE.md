@@ -77,6 +77,7 @@ public interface ICockpitHost
     void AddSideMenuButton(string title, Action onInvoke);
     void AddSideMenuSection(string title, Func<Control> createView);
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView);  // default no-op
+    void AddConversationPicker(ConversationPickerRegistration picker);           // default no-op
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                       // default no-op
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
@@ -215,6 +216,32 @@ follows whichever session is *selected*, this is bound to the one your control s
 | `event EventHandler<SessionOutputText>? OutputProduced` | Each chunk of text **this** session produced, verbatim. Substring-scan it for a signal (a git command, a pushed branch, …). |
 
 Events are raised on the UI thread, so a handler can touch its controls directly.
+
+### `void AddConversationPicker(ConversationPickerRegistration picker)`
+Registers a way to **pick an earlier conversation to resume**. The New-session dialog can resume a conversation
+by id; with a picker registered it also shows a **Search…** button that runs yours, so the operator chooses a
+conversation instead of typing an id by hand.
+
+The cockpit knows nothing about any provider's history — the transcripts are one provider's own format — so this
+is how a plugin that *can* browse that history lends it to the dialog without the core depending on the plugin.
+
+```csharp
+public sealed record ConversationPickerRegistration(string Title, Func<Task<string?>> PickAsync);
+```
+
+| Member | Meaning |
+|---|---|
+| `Title` | What the picker does; shown as the button's tooltip, e.g. "Search transcripts". |
+| `PickAsync` | Runs when the operator asks to pick one — typically opening your own dialog. Return the chosen conversation's id, or `null` when they cancelled. |
+
+```csharp
+host.AddConversationPicker(new ConversationPickerRegistration("Search transcripts", async () =>
+{
+    string? picked = null;
+    await host.ShowDialogAsync("Search transcripts", () => new MySearchControl(id => picked = id));
+    return picked;   // null = cancelled
+}));
+```
 
 ### `Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()`
 The cockpit's configured **session profiles**: which identities exist and where each keeps its provider state

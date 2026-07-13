@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
@@ -28,6 +29,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
+    private readonly IConversationPickerRegistry _conversationPickers;
     private readonly DelegatedTasksViewModel _delegatedTasks;
 
     public SessionDialogService(
@@ -37,8 +39,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IMcpServerStore mcpServerStore,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
+        IConversationPickerRegistry conversationPickers,
         DelegatedTasksViewModel delegatedTasks)
     {
+        _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
         _profileStore = profileStore;
         _loginChecker = loginChecker;
@@ -55,7 +59,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerStore, _workingPathStore);
+        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerStore, _workingPathStore, _conversationPickers);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };

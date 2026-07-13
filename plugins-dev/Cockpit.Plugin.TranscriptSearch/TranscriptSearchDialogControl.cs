@@ -24,15 +24,20 @@ internal sealed class TranscriptSearchDialogControl : UserControl
     private readonly TranscriptSearchService _search;
     private readonly ICockpitActions _actions;
 
+    // Set when the dialog was opened to *choose* a conversation (the New-session dialog's search button) rather
+    // than to browse: each hit then offers "Use this session", which hands the id back and closes.
+    private readonly Action<string>? _onPicked;
+
     private readonly TextBox _query;
     private readonly Button _searchButton;
     private readonly TextBlock _status;
     private readonly ObservableCollection<TranscriptSearchHit> _results = [];
 
-    public TranscriptSearchDialogControl(TranscriptSearchService search, ICockpitActions actions)
+    public TranscriptSearchDialogControl(TranscriptSearchService search, ICockpitActions actions, Action<string>? onPicked = null)
     {
         _search = search;
         _actions = actions;
+        _onPicked = onPicked;
 
         _query = new TextBox
         {
@@ -130,6 +135,20 @@ internal sealed class TranscriptSearchDialogControl : UserControl
         var reveal = new Button { Content = "Reveal", FontSize = 11, Padding = new Thickness(8, 2) };
         reveal.Click += (_, _) => _Reveal(hit.FilePath);
 
+        var use = new Button
+        {
+            Content = "Use this session",
+            Classes = { "Accent" },
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+            IsVisible = _onPicked is not null,
+        };
+        use.Click += (_, _) =>
+        {
+            _onPicked?.Invoke(hit.SessionId);
+            (TopLevel.GetTopLevel(this) as Window)?.Close();
+        };
+
         var footer = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -147,6 +166,7 @@ internal sealed class TranscriptSearchDialogControl : UserControl
                 },
                 copyId,
                 reveal,
+                use,
             },
         };
 

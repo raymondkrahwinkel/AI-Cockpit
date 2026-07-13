@@ -138,8 +138,17 @@
                                 Command="{Binding ResumeConversationByIdCommand}"
                                 ToolTip.Tip="Resume a specific conversation by its id (claude --resume &lt;id&gt;)"/>
                     </StackPanel>
-                    <TextBox Text="{Binding ResumeSessionId}" IsVisible="{Binding IsResumingBySessionId}"
-                             PlaceholderText="Session id — copy it from Search transcripts"/>
+                    <!-- The search button appears only when a plugin offers a conversation picker (the cockpit
+                         itself knows nothing about any provider's history). Without one the id can still be
+                         typed by hand. -->
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsResumingBySessionId}">
+                        <TextBox Grid.Column="0" Text="{Binding ResumeSessionId}"
+                                 PlaceholderText="Session id"/>
+                        <Button Grid.Column="1" Content="Search…" Margin="4,0,0,0"
+                                Command="{Binding PickConversationCommand}"
+                                IsVisible="{Binding HasConversationPicker}"
+                                ToolTip.Tip="{Binding ConversationPickerTitle}"/>
+                    </Grid>
                 </StackPanel>
             </Grid>
 
