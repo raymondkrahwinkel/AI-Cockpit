@@ -10,6 +10,8 @@ using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Backup;
+using Cockpit.Core.Backup;
 using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
@@ -59,6 +61,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAttentionNotifier? _attentionNotifier;
     private readonly INotificationSettingsStore? _notificationSettingsStore;
     private readonly IShortcutSettingsStore? _shortcutSettingsStore;
+    private readonly IBackupService? _backupService;
+    private readonly IAppRestartService? _appRestart;
     private ShortcutSettings _shortcutSettings = ShortcutSettings.Default;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
@@ -302,6 +306,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _debugSettingsStatus = string.Empty;
+
+    /// <summary>
+    /// Whether a backup keeps the keys, tokens and webhooks that live in the settings (#70). Off by design: the
+    /// archive's whole use is that you can put it somewhere — a cloud folder, another machine — and a thing you can
+    /// put anywhere must not be a key ring.
+    /// </summary>
+    [ObservableProperty]
+    private bool _backupIncludesCredentials;
+
+    /// <summary>Whether a backup also carries the profiles' own config directories (<c>~/.claude</c> and friends) — the agents' own logins, which live outside the cockpit's directory. Never a default.</summary>
+    [ObservableProperty]
+    private bool _backupIncludesProfiles;
+
+    [ObservableProperty]
+    private string _backupStatus = string.Empty;
 
     /// <summary>
     /// Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
@@ -715,8 +734,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IShortcutSettingsStore? shortcutSettingsStore = null,
         DelegatedTasksViewModel? delegatedTasks = null,
         IDebugSettingsStore? debugSettingsStore = null,
-        ResourceMonitor? resourceMonitor = null)
+        ResourceMonitor? resourceMonitor = null,
+        IBackupService? backupService = null)
     {
+        _backupService = backupService;
+        _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _audioDeviceProvider = audioDeviceProvider;
         _pluginDiagnostics = pluginDiagnostics;
@@ -1050,6 +1072,88 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         bytes >= 1024L * 1024 * 1024
             ? $"{bytes / 1024.0 / 1024 / 1024:0.0} GB"
             : $"{bytes / 1024 / 1024} MB";
+
+    /// <summary>
+    /// Whether this cockpit can back itself up (#70) — false only in the design-time view model, which has no
+    /// services at all. The buttons bind to it, so a build that forgot to register the service shows them disabled
+    /// rather than showing two controls that swallow a click and do nothing.
+    /// </summary>
+    public bool CanBackUp => _backupService is not null;
+
+    /// <summary>
+    /// Writes the whole cockpit to <paramref name="archivePath"/> (#70). The view picks the file; this decides what
+    /// goes in it, and says afterwards what was left out — a backup without keys is only useful if you know which
+    /// ones you will have to enter again.
+    /// </summary>
+    public async Task CreateBackupAsync(string archivePath)
+    {
+        if (_backupService is not { } backups)
+        {
+            return;
+        }
+
+        try
+        {
+            BackupStatus = "Backing up…";
+
+            var manifest = await backups.WriteAsync(
+                archivePath,
+                new BackupOptions(BackupIncludesCredentials, BackupIncludesProfiles));
+
+            var stripped = manifest.RemovedSecrets.Count == 0
+                ? string.Empty
+                : $" {manifest.RemovedSecrets.Count} were left out and must be entered again after a restore.";
+
+            BackupStatus = $"Backed up to {Path.GetFileName(archivePath)}.{stripped}";
+        }
+        catch (Exception exception)
+        {
+            BackupStatus = $"The backup was not made: {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Puts the cockpit back from an archive (#70). Asks first, and says what the archive is before it does: this
+    /// replaces every setting, profile and plugin the cockpit currently has. What is here now is moved aside rather
+    /// than deleted, and the app restarts afterwards to read what it now finds on disk.
+    /// </summary>
+    public async Task RestoreBackupAsync(string archivePath)
+    {
+        if (_backupService is not { } backups || _dialogService is not { } dialogs)
+        {
+            return;
+        }
+
+        try
+        {
+            var manifest = await backups.ReadManifestAsync(archivePath);
+
+            var carried = manifest.IncludesCredentials
+                ? "It carries its own keys and tokens."
+                : "It carries none of its keys or tokens — you will have to enter them again.";
+
+            var confirmed = await dialogs.ShowConfirmationDialogAsync(
+                "Restore this backup?",
+                $"Made {manifest.CreatedUtc.ToLocalTime():d MMMM yyyy, HH:mm} by cockpit {manifest.AppVersion}. {carried}\n\n" +
+                "This replaces every setting, profile and plugin in this cockpit. What is here now is moved aside, not deleted, and the cockpit restarts afterwards.",
+                "Restore");
+
+            if (!confirmed)
+            {
+                return;
+            }
+
+            BackupStatus = "Restoring…";
+            await backups.RestoreAsync(archivePath);
+
+            BackupStatus = "Restored. Restarting the cockpit to read it.";
+            _appRestart?.Restart();
+        }
+        catch (Exception exception)
+        {
+            BackupStatus = $"Nothing was restored: {exception.Message}";
+        }
+    }
 
     partial void OnShowDebugControlsChanged(bool value)
     {

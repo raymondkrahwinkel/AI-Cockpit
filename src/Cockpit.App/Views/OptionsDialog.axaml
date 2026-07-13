@@ -307,6 +307,37 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="Backup">
+                <ScrollViewer>
+                    <StackPanel Spacing="8" Margin="16">
+                        <TextBlock Text="Back up this cockpit" FontWeight="SemiBold"/>
+                        <TextBlock Text="One archive with your settings, profiles, plugins and everything they saved. The speech models are left out on purpose — they are gigabytes, and they download again in minutes. The same archive is what you carry to another machine."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <CheckBox Content="Include my keys and tokens" IsChecked="{Binding BackupIncludesCredentials}"
+                                  ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring."/>
+                        <TextBlock Text="Off by default. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+
+                        <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
+                                  ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside the cockpit's directory"/>
+                        <TextBlock Text="These hold the agents' logins. Needed to move a machine; not needed to undo a mistake."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                            <Button Content="Create backup…" Classes="Accent" Click="OnCreateBackup" IsEnabled="{Binding CanBackUp}"/>
+                            <Button Content="Restore from a backup…" Click="OnRestoreBackup" IsEnabled="{Binding CanBackUp}"/>
+                        </StackPanel>
+
+                        <TextBlock Text="Restoring replaces every setting, profile and plugin here. What is in place now is moved aside rather than deleted, and the cockpit restarts afterwards."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem Header="Debug">
                 <ScrollViewer>
                     <StackPanel Spacing="8" Margin="16">

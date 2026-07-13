@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
+using Cockpit.App.ViewModels;
 
 namespace Cockpit.App.Views;
 
@@ -33,4 +35,47 @@ public partial class OptionsDialog : Window
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
+
+    // The file pickers live here because picking a file is a view's job (Window.StorageProvider), the same way the
+    // profile dialog picks a directory. What goes *in* the archive is the view model's business, not this one's.
+    private async void OnCreateBackup(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Back up this cockpit",
+            SuggestedFileName = $"cockpit-backup-{DateTime.Now:yyyy-MM-dd}.zip",
+            DefaultExtension = "zip",
+            FileTypeChoices = [new FilePickerFileType("Cockpit backup") { Patterns = ["*.zip"] }],
+        });
+
+        if (file?.TryGetLocalPath() is { Length: > 0 } path)
+        {
+            await cockpit.CreateBackupAsync(path);
+        }
+    }
+
+    private async void OnRestoreBackup(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Restore from a backup",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Cockpit backup") { Patterns = ["*.zip"] }],
+        });
+
+        if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+        {
+            await cockpit.RestoreBackupAsync(path);
+        }
+    }
 }
