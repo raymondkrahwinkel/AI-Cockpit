@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
 
@@ -12,15 +13,19 @@ namespace Cockpit.Plugin.Workflows;
 internal sealed class WorkflowsDialogControl : UserControl
 {
     private readonly WorkflowStore _store;
+    private readonly ICockpitHost _host;
+    private readonly RunStore _runs;
     private readonly List<Workflow> _workflows;
     private readonly WorkflowManagerControl _manager;
 
-    public WorkflowsDialogControl(WorkflowStore store, ICockpitActions actions)
+    public WorkflowsDialogControl(WorkflowStore store, ICockpitHost host, RunStore runs)
     {
         _store = store;
+        _host = host;
+        _runs = runs;
         _workflows = [.. store.Load()];
 
-        _manager = new WorkflowManagerControl(_workflows, actions, _Save);
+        _manager = new WorkflowManagerControl(_workflows, host.Actions, _Save);
         _manager.OpenRequested += (_, workflow) => _Open(workflow);
 
         Content = _manager;
@@ -28,7 +33,7 @@ internal sealed class WorkflowsDialogControl : UserControl
 
     private void _Open(Workflow workflow)
     {
-        var editor = new WorkflowEditorControl(workflow, _Save);
+        var editor = new WorkflowEditorControl(workflow, _Save, _host, _runs);
         editor.BackRequested += (_, _) =>
         {
             _manager.Refresh();

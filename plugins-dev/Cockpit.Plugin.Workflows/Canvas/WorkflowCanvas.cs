@@ -151,6 +151,35 @@ internal sealed class WorkflowCanvas : Border
         Avalonia.Threading.Dispatcher.UIThread.Post(_RefreshPlusButtons, DispatcherPriority.Loaded);
     }
 
+    /// <summary>Paints the last run onto the flow: where it succeeded, where it was passed by, and where it broke.</summary>
+    public void ShowRun(Engine.WorkflowRun? run)
+    {
+        foreach (var control in _nodes.Values)
+        {
+            control.ShowRunStatus(null);
+        }
+
+        if (run is null)
+        {
+            return;
+        }
+
+        foreach (var step in run.Steps)
+        {
+            if (!_nodes.TryGetValue(step.NodeId, out var control))
+            {
+                continue;
+            }
+
+            control.ShowRunStatus(step.Status switch
+            {
+                Engine.RunStatus.Succeeded => "CockpitStatusDoneBrush",
+                Engine.RunStatus.Failed => "CockpitStatusWaitingBrush",
+                _ => "CockpitTextFaintBrush",
+            });
+        }
+    }
+
     public void ZoomBy(double factor)
     {
         var next = Math.Clamp(_zoom.ScaleX * factor, MinZoom, MaxZoom);

@@ -4,7 +4,9 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Canvas;
+using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows;
 
@@ -17,16 +19,33 @@ internal sealed class WorkflowEditorControl : UserControl
 {
     private readonly Workflow _workflow;
     private readonly Action _save;
+    private readonly WorkflowEngine _engine;
+    private readonly RunStore _runs;
+    private readonly RunPanel _runPanel;
+    private readonly Button _execute;
     private readonly WorkflowCanvas _canvas;
     private readonly NodePicker _picker;
     private readonly NodeSettingsPanel _settings;
     private readonly TextBlock _status;
     private readonly TextBlock _saved;
 
-    public WorkflowEditorControl(Workflow workflow, Action save)
+    public WorkflowEditorControl(Workflow workflow, Action save, ICockpitHost host, RunStore runs)
     {
         _workflow = workflow;
         _save = save;
+        _runs = runs;
+        _runPanel = new RunPanel();
+
+        // The steps this build can actually perform. A type without a runner is skipped with a reason at run time,
+        // never counted as a success.
+        _engine = new WorkflowEngine([
+            new ManualTriggerRunner(),
+            new NotifyRunner(host),
+            new InjectRunner(host),
+            new CommandRunner(),
+        ]);
+
+        _execute = _ExecuteButton();
 
         _status = new TextBlock { FontSize = 11, Opacity = 0.65, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12, 6, 12, 6) };
         _saved = new TextBlock { FontSize = 11, Opacity = 0.5, VerticalAlignment = VerticalAlignment.Center, Text = "Saved" };
@@ -41,7 +60,11 @@ internal sealed class WorkflowEditorControl : UserControl
         _settings.CloseRequested += (_, _) => _CloseSettings();
 
         _canvas = new WorkflowCanvas(workflow);
-        _canvas.Changed += (_, _) => _Touched();
+        _canvas.Changed += (_, _) =>
+        {
+            _Touched();
+            _RefreshExecutable();
+        };
         _canvas.Refused += (_, reason) => _status.Text = reason;
         _canvas.SelectionChanged += (_, _) => _Describe();
         _canvas.AddRequested += (_, from) => _picker.AimAt(from.NodeId, from.Output);
@@ -51,15 +74,17 @@ internal sealed class WorkflowEditorControl : UserControl
         var canvasArea = new Grid();
         canvasArea.Children.Add(_canvas);
         canvasArea.Children.Add(_ViewControls());
-        canvasArea.Children.Add(_ExecuteButton());
+        canvasArea.Children.Add(_execute);
 
-        var middle = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        var middle = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto") };
         var toolbar = _Toolbar();
         Grid.SetRow(toolbar, 0);
         Grid.SetRow(canvasArea, 1);
-        Grid.SetRow(_status, 2);
+        Grid.SetRow(_runPanel, 2);
+        Grid.SetRow(_status, 3);
         middle.Children.Add(toolbar);
         middle.Children.Add(canvasArea);
+        middle.Children.Add(_runPanel);
         middle.Children.Add(_status);
 
         var root = new DockPanel();
@@ -71,6 +96,7 @@ internal sealed class WorkflowEditorControl : UserControl
 
         Content = root;
         _Describe();
+        _RefreshExecutable();
     }
 
     /// <summary>Raised when the operator wants the list of flows back.</summary>
@@ -168,22 +194,61 @@ internal sealed class WorkflowEditorControl : UserControl
         };
     }
 
-    private static Control _ExecuteButton()
+    // Runs the flow from its manual trigger. Without one there is nothing to press: a flow that starts on an event
+    // starts when that event happens, not when you ask it to — so the button says why it is disabled rather than
+    // pretending it could.
+    private Button _ExecuteButton()
     {
         var execute = new Button
         {
             Content = "▶  Execute workflow",
             Classes = { "Accent" },
-            IsEnabled = false,
             Margin = new Thickness(12),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Bottom,
         };
 
-        ToolTip.SetTip(execute, "Not yet: the cockpit can draw and save a flow, but nothing runs it. The engine is the next step.");
         ToolTip.SetShowOnDisabled(execute, true);
+        execute.Click += async (_, _) => await _RunAsync();
 
         return execute;
+    }
+
+    private WorkflowNode? _ManualTrigger() =>
+        _workflow.Nodes.FirstOrDefault(node => node.TypeId == "cockpit.manual" && !node.IsDisabled);
+
+    private void _RefreshExecutable()
+    {
+        var manual = _ManualTrigger();
+        _execute.IsEnabled = manual is not null;
+        ToolTip.SetTip(_execute, manual is not null
+            ? $"Run this flow now, starting at '{manual.Name}'."
+            : "Add a 'Run manually' step to start this flow by hand. A flow that begins on an event starts when the event happens.");
+    }
+
+    private async Task _RunAsync()
+    {
+        if (_ManualTrigger() is not { } trigger)
+        {
+            return;
+        }
+
+        _execute.IsEnabled = false;
+        _execute.Content = "Running…";
+
+        try
+        {
+            var run = await _engine.RunAsync(_workflow, trigger.Id);
+
+            _runs.Add(run);
+            _runPanel.Show(run);
+            _canvas.ShowRun(run);
+        }
+        finally
+        {
+            _execute.Content = "▶  Execute workflow";
+            _RefreshExecutable();
+        }
     }
 
     private static Control _Separator() => new Border

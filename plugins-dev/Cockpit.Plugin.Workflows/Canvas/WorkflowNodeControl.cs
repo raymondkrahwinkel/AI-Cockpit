@@ -159,6 +159,20 @@ internal sealed class WorkflowNodeControl : Border
         }
     }
 
+    /// <summary>How the last run treated this step — a ring around the card, so a failed flow shows you where it broke without opening anything.</summary>
+    public void ShowRunStatus(string? statusKey)
+    {
+        if (statusKey is null)
+        {
+            _card.BorderBrush = _Hairline;
+            _card.BorderThickness = new Thickness(1);
+            return;
+        }
+
+        _card.BorderBrush = _Brush(statusKey) ?? _Hairline;
+        _card.BorderThickness = new Thickness(2);
+    }
+
     /// <summary>Lit while a wire is dragged over this step: the target of a drop should be obvious before you let go.</summary>
     public bool IsDropTarget
     {
