@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -13,6 +14,8 @@ namespace Cockpit.Plugin.Workflows.Canvas;
 /// </summary>
 internal sealed class RunPanel : Border
 {
+    private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true };
+
     private readonly StackPanel _steps;
     private readonly TextBlock _summary;
 
@@ -88,6 +91,46 @@ internal sealed class RunPanel : Border
         DockPanel.SetDock(timing, Dock.Right);
         row.Children.Add(timing);
 
+        var lines = new StackPanel
+        {
+            Children =
+            {
+                new TextBlock { Text = step.NodeName, FontSize = 11, FontWeight = FontWeight.SemiBold },
+                new TextBlock
+                {
+                    Text = detail,
+                    FontSize = 10,
+                    Opacity = 0.65,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 620,
+                    IsVisible = detail.Length > 0,
+                },
+            },
+        };
+
+        // The debug switch, honoured: everything the step handed on, not the sentence about it.
+        if (step.Traced && step.Items.Count > 0)
+        {
+            lines.Children.Add(new Border
+            {
+                Background = _Brush("CockpitPanelBgBrush"),
+                BorderBrush = _Brush("CockpitHairlineBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 6),
+                Margin = new Thickness(0, 4, 0, 2),
+                MaxWidth = 620,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Child = new SelectableTextBlock
+                {
+                    Text = string.Join("\n", step.Items.Select(item => item.ToJsonString(Pretty))),
+                    FontFamily = new FontFamily("monospace"),
+                    FontSize = 10,
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            });
+        }
+
         row.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -101,22 +144,7 @@ internal sealed class RunPanel : Border
                     Foreground = _StatusBrush(step.Status),
                     VerticalAlignment = VerticalAlignment.Top,
                 },
-                new StackPanel
-                {
-                    Children =
-                    {
-                        new TextBlock { Text = step.NodeName, FontSize = 11, FontWeight = FontWeight.SemiBold },
-                        new TextBlock
-                        {
-                            Text = detail,
-                            FontSize = 10,
-                            Opacity = 0.65,
-                            TextWrapping = TextWrapping.Wrap,
-                            MaxWidth = 620,
-                            IsVisible = detail.Length > 0,
-                        },
-                    },
-                },
+                lines,
             },
         });
 

@@ -8,13 +8,13 @@ namespace Cockpit.Plugin.Workflows.Engine;
 /// <list type="bullet">
 ///   <item><c>{output}</c> — a field of what the step immediately before handed over.</item>
 ///   <item><c>{Run a command.output}</c> — a field of what <em>any</em> earlier step produced, by its name.</item>
+///   <item><c>{= output.split('\n').length }</c> — a computed value (see <see cref="Expressions"/>).</item>
 /// </list>
 /// <para>
-/// Deliberately not n8n's <c>{{ $json.x }}</c>, and deliberately not an expression language. n8n needs JavaScript
-/// because its work <em>is</em> reshaping foreign JSON; ours is orchestration — run this, tell me, send that — and a
-/// sandbox with timeouts and a second mental mode is a steep price for "put that value here". Where an expression
-/// will genuinely pay is a decision's condition; that is the day to reach for one, behind its own marker, so plain
-/// text stays plain text.
+/// Two paths on purpose. Naming a value is what you want nine times out of ten, and it should cost nothing to learn:
+/// a field in braces, no language, no dollar signs. Computing one is the tenth time — and rather than a half-language
+/// that can compare but not count, that is real JavaScript behind its own marker, so plain text stays plain text and
+/// the easy case never pays for the hard one.
 /// </para>
 /// <para>
 /// The one rule that is not negotiable: a field that was asked for but never arrived is left exactly as written and
@@ -39,8 +39,24 @@ public static partial class StepData
         }
 
         var missing = new List<string>();
+        var errors = new List<string>();
 
-        var resolved = Placeholder().Replace(text, match =>
+        // Expressions first: what they compute may contain braces, and a placeholder pass over the result would then
+        // try to read the computed text as a reference.
+        var computed = Expression().Replace(text, match =>
+        {
+            try
+            {
+                return _Text(Expressions.Evaluate(match.Groups[1].Value, input, produced ?? _nothing));
+            }
+            catch (InvalidOperationException exception)
+            {
+                errors.Add(exception.Message);
+                return match.Value;
+            }
+        });
+
+        var resolved = Placeholder().Replace(computed, match =>
         {
             var reference = match.Groups[1].Value.Trim();
 
@@ -53,8 +69,22 @@ public static partial class StepData
             return match.Value;
         });
 
-        return new StepDataResult(resolved, missing);
+        return new StepDataResult(resolved, missing, errors);
     }
+
+    private static readonly Dictionary<string, IReadOnlyList<WorkflowItem>> _nothing = new(StringComparer.OrdinalIgnoreCase);
+
+    // What an expression's result looks like as text. .NET writes a boolean as "True" and a whole number as "3"
+    // only by luck of formatting; a value that came out of JavaScript should read back the way it was written there,
+    // or a condition copied into a message says something the language it came from never said.
+    private static string _Text(object? value) => value switch
+    {
+        null => string.Empty,
+        bool truth => truth ? "true" : "false",
+        double number when number == Math.Floor(number) && !double.IsInfinity(number) => ((long)number).ToString(System.Globalization.CultureInfo.InvariantCulture),
+        double number => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? string.Empty,
+    };
 
     /// <summary>The fields a step could refer to, given what it was handed — what the dialog lists so the operator does not have to guess the names.</summary>
     public static IReadOnlyList<string> FieldsOf(IReadOnlyList<WorkflowItem> items) =>
@@ -83,9 +113,15 @@ public static partial class StepData
         return input.FirstOrDefault()?.Json[reference]?.ToString();
     }
 
-    [GeneratedRegex(@"\{([^{}\r\n]+)\}")]
+    [GeneratedRegex(@"\{=([^{}]*)\}")]
+    private static partial Regex Expression();
+
+    [GeneratedRegex(@"\{([^{}=\r\n][^{}\r\n]*)\}")]
     private static partial Regex Placeholder();
 }
 
-/// <summary>The text with its placeholders filled, and the references that were asked for but not there.</summary>
-public sealed record StepDataResult(string Text, IReadOnlyList<string> Missing);
+/// <summary>The text with its placeholders filled, the references that were asked for but not there, and the expressions that would not run.</summary>
+public sealed record StepDataResult(string Text, IReadOnlyList<string> Missing, IReadOnlyList<string> Errors)
+{
+    public StepDataResult(string text, IReadOnlyList<string> missing) : this(text, missing, []) { }
+}

@@ -25,6 +25,9 @@ public sealed class WorkflowNode
     /// <summary>A node the operator switched off: it stays on the canvas, drawn dimmed, and a run skips it. Deleting is not the only way to say "not now".</summary>
     public bool IsDisabled { get; set; }
 
+    /// <summary>Print what this step hands on into the run log, in full. The debug switch: what a step produced is the thing you need when a flow does the wrong thing, and a one-line summary is not it.</summary>
+    public bool IsTraced { get; set; }
+
     /// <summary>The type, or null when the flow refers to a type this build does not have (an uninstalled plugin's node) — which is shown as such rather than crashing the canvas.</summary>
     public NodeTypeDescriptor? Type => NodeCatalog.Find(TypeId);
 

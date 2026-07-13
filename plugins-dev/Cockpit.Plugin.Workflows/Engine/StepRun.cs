@@ -28,6 +28,9 @@ public sealed class StepRun
     [JsonIgnore]
     public IReadOnlyList<string> Fields => Items.FirstOrDefault()?.Select(entry => entry.Key).ToList() ?? [];
 
+    /// <summary>Whether the operator asked this step to print what it produced, in full.</summary>
+    public bool Traced { get; set; }
+
     /// <summary>Why it failed, or why it was passed by.</summary>
     public string? Note { get; set; }
 

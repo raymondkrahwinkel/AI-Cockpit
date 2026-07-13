@@ -81,6 +81,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
                 NodeId = node.Id,
                 NodeName = node.Name,
                 TypeId = node.TypeId,
+                Traced = node.IsTraced,
                 StartedAt = DateTimeOffset.UtcNow,
             };
             run.Steps.Add(step);

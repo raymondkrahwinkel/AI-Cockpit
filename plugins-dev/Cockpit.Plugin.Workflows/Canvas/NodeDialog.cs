@@ -120,7 +120,8 @@ internal sealed class NodeDialog : Border
         WorkflowNode node,
         IReadOnlyList<JsonObject> incoming,
         IReadOnlyList<JsonObject> produced,
-        IReadOnlyList<(string Name, IReadOnlyList<string> Fields)> earlier)
+        IReadOnlyList<(string Name, IReadOnlyList<string> Fields)> earlier,
+        IReadOnlyList<WorkflowNode> before)
     {
         _node = node;
         _lastEdited = null;
@@ -130,8 +131,8 @@ internal sealed class NodeDialog : Border
         _description.Text = node.Type?.Description ?? $"'{node.TypeId}' is not a step this cockpit knows — a plugin may be missing.";
 
         _FillSettings(node);
-        _FillIncoming(incoming, earlier);
-        _FillOutgoing(produced);
+        _FillIncoming(incoming, earlier, before);
+        _FillOutgoing(node, produced);
     }
 
     public void Hide()
@@ -191,19 +192,27 @@ internal sealed class NodeDialog : Border
             Changed?.Invoke(this, EventArgs.Empty);
         };
         _fields.Children.Add(disabled);
+
+        // The debug switch. When a flow does the wrong thing, what you need is what a step actually handed on — and
+        // the one-line summary in the run log is a summary, not the data.
+        var traced = new CheckBox { Content = "Print what it produces", IsChecked = node.IsTraced };
+        ToolTip.SetTip(traced, "Write everything this step hands on into the run log, in full.");
+        traced.IsCheckedChanged += (_, _) =>
+        {
+            node.IsTraced = traced.IsChecked == true;
+            Changed?.Invoke(this, EventArgs.Empty);
+        };
+        _fields.Children.Add(traced);
     }
 
-    private void _FillIncoming(IReadOnlyList<JsonObject> incoming, IReadOnlyList<(string Name, IReadOnlyList<string> Fields)> earlier)
+    private void _FillIncoming(
+        IReadOnlyList<JsonObject> incoming,
+        IReadOnlyList<(string Name, IReadOnlyList<string> Fields)> earlier,
+        IReadOnlyList<WorkflowNode> before)
     {
         _incoming.Children.Clear();
 
         var item = incoming.FirstOrDefault();
-
-        if (item is null && earlier.Count == 0)
-        {
-            _incoming.Children.Add(_Faint("Nothing has flowed into this step yet. Run the flow once and what it receives appears here."));
-            return;
-        }
 
         if (item is not null)
         {
@@ -213,6 +222,33 @@ internal sealed class NodeDialog : Border
             {
                 _incoming.Children.Add(_FieldChip($"{{{key}}}", value?.ToString() ?? string.Empty));
             }
+        }
+        else if (before.Count > 0)
+        {
+            // No run yet — but the steps wired before this one say what they typically hand on, and knowing the
+            // shape of your input before you press Execute is the difference between writing a setting and guessing
+            // at one. Labelled an example, so it is never mistaken for what actually happened.
+            var samples = before
+                .SelectMany(step => (step.Type?.Produces ?? new Dictionary<string, string>()).Select(field => (step, field)))
+                .ToList();
+
+            if (samples.Count == 0)
+            {
+                _incoming.Children.Add(_Faint("Nothing has flowed into this step yet. Run the flow once and what it receives appears here."));
+            }
+            else
+            {
+                _incoming.Children.Add(_Label("From the step before — example, until you run it"));
+
+                foreach (var (step, field) in samples)
+                {
+                    _incoming.Children.Add(_FieldChip($"{{{field.Key}}}", $"e.g. {field.Value}   ({step.Name})"));
+                }
+            }
+        }
+        else
+        {
+            _incoming.Children.Add(_Faint("Nothing flows into this step: it is where a run begins."));
         }
 
         // Any step that already ran can be reached by name, which is the difference between a chain and a flow: the
@@ -232,35 +268,54 @@ internal sealed class NodeDialog : Border
         }
     }
 
-    private void _FillOutgoing(IReadOnlyList<JsonObject> produced)
+    private void _FillOutgoing(WorkflowNode node, IReadOnlyList<JsonObject> produced)
     {
         _outgoing.Children.Clear();
 
         if (produced.Count == 0)
         {
-            _outgoing.Children.Add(_Faint("Run the flow to see what this step produces."));
+            var sample = node.Type?.Produces ?? new Dictionary<string, string>();
+
+            if (sample.Count == 0)
+            {
+                _outgoing.Children.Add(_Faint("Run the flow to see what this step produces."));
+                return;
+            }
+
+            _outgoing.Children.Add(_Faint("An example of what this step hands on. Run the flow to see the real thing."));
+
+            var example = new JsonObject();
+            foreach (var (key, value) in sample)
+            {
+                example[key] = value;
+            }
+
+            _outgoing.Children.Add(_Json(example, faint: true));
             return;
         }
 
         foreach (var item in produced)
         {
-            _outgoing.Children.Add(new Border
-            {
-                Background = _Brush("CockpitPanelBgBrush"),
-                BorderBrush = _Brush("CockpitHairlineBrush"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(10, 8),
-                Child = new SelectableTextBlock
-                {
-                    Text = item.ToJsonString(Pretty),
-                    FontFamily = new FontFamily("monospace"),
-                    FontSize = 11,
-                    TextWrapping = TextWrapping.Wrap,
-                },
-            });
+            _outgoing.Children.Add(_Json(item, faint: false));
         }
     }
+
+    private static Control _Json(JsonObject item, bool faint) => new Border
+    {
+        Background = _Brush("CockpitPanelBgBrush"),
+        BorderBrush = _Brush("CockpitHairlineBrush"),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(6),
+        Padding = new Thickness(10, 8),
+        Opacity = faint ? 0.6 : 1,
+        Child = new SelectableTextBlock
+        {
+            Text = item.ToJsonString(Pretty),
+            FontFamily = new FontFamily("monospace"),
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+        },
+    };
 
     // A field you can click: it writes its reference into the parameter you were last in. Typing {Run a command.output}
     // by hand is exactly the kind of thing you get wrong once and then distrust forever.

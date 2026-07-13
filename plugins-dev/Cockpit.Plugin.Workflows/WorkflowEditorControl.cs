@@ -46,6 +46,7 @@ internal sealed class WorkflowEditorControl : UserControl
             new NotifyRunner(host),
             new InjectRunner(host),
             new CommandRunner(),
+            new IfRunner(),
         ]);
 
         _execute = _ExecuteButton();
@@ -352,7 +353,7 @@ internal sealed class WorkflowEditorControl : UserControl
         // The picker steps aside: it sits outside the dialog, and a list of steps you can see but not reach (the
         // scrim takes the click) is worse than one that is not there.
         _picker.IsVisible = false;
-        _dialog.Show(node, _Incoming(node), _Produced(node), _Earlier(node));
+        _dialog.Show(node, _Incoming(node), _Produced(node), _Earlier(node), _Before(node));
     }
 
     // What flowed into this step in the last run: what the steps wired before it handed on.
@@ -373,6 +374,15 @@ internal sealed class WorkflowEditorControl : UserControl
             .SelectMany(step => step.Items)
             .ToList();
     }
+
+    // The steps wired directly before this one. Without a run, their types are what can be said about the data this
+    // step will get — as an example, never as fact.
+    private IReadOnlyList<WorkflowNode> _Before(WorkflowNode node) =>
+        _workflow.Connections
+            .Where(connection => connection.ToNodeId == node.Id)
+            .Select(connection => _workflow.Node(connection.FromNodeId))
+            .OfType<WorkflowNode>()
+            .ToList();
 
     // What this step itself produced last time it ran.
     private IReadOnlyList<JsonObject> _Produced(WorkflowNode node) =>
@@ -429,6 +439,6 @@ internal sealed class WorkflowEditorControl : UserControl
 
         _status.Text = steps == 0
             ? "Empty. Pick a step on the right to begin — a flow starts with something that triggers it."
-            : $"{steps} step(s), {wires} connection(s) — double-click a step (or its ⚙) to say what it should do; drag it to move it; pull a wire from a way out, or click a + to add what comes next. Delete removes the selected step.";
+            : $"{steps} step(s), {wires} connection(s) — double-click a step (or its ⚙) to say what it should do; drag it to move it; pull a wire from a way out, or click a + to add what comes next. Delete removes the selected step; hover a connection for its ✕.";
     }
 }

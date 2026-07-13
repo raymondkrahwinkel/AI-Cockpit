@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Model;
@@ -30,6 +32,48 @@ internal sealed class WorkflowWire
         Line = NewLine();
         Arrow = new Path { Fill = WireBrush, IsHitTestVisible = false };
 
+        // A wire two pixels wide is a wire you cannot hit. This one is invisible, wide, and lies on top: it is what
+        // the pointer actually meets, and it is the only reason a connection can be removed at all.
+        Hit = new Path
+        {
+            Stroke = Brushes.Transparent,
+            StrokeThickness = 14,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+
+        Remove = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#22222A")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#3C3C46")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(9),
+            Width = 18,
+            Height = 18,
+            IsVisible = false,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Child = new TextBlock
+            {
+                Text = "✕",
+                FontSize = 9,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false,
+            },
+        };
+
+        ToolTip.SetTip(Remove, "Remove this connection");
+
+        // Shown while the pointer is on the wire or on the button itself — otherwise reaching for the ✕ would take
+        // the pointer off the wire and the ✕ would vanish under your hand.
+        Hit.PointerEntered += (_, _) => Remove.IsVisible = true;
+        Hit.PointerExited += (_, _) => Remove.IsVisible = Remove.IsPointerOver;
+        Remove.PointerExited += (_, _) => Remove.IsVisible = Hit.IsPointerOver;
+        Remove.PointerPressed += (_, e) =>
+        {
+            RemoveRequested?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        };
+
         // Only a branch that has a name gets a label: "true"/"false" on a decision means something, an empty
         // label on every other wire is noise.
         Label = string.IsNullOrEmpty(branchLabel)
@@ -46,7 +90,16 @@ internal sealed class WorkflowWire
             };
     }
 
+    /// <summary>Raised when the operator clicked the wire's ✕.</summary>
+    public event EventHandler? RemoveRequested;
+
     public Path Line { get; }
+
+    /// <summary>The wide, invisible curve the pointer meets.</summary>
+    public Path Hit { get; }
+
+    /// <summary>The ✕ on the middle of the wire, shown on hover.</summary>
+    public Border Remove { get; }
 
     public Path Arrow { get; }
 
@@ -63,7 +116,12 @@ internal sealed class WorkflowWire
         var end = _to.AnchorOn(surface);
 
         Draw(Line, start, end);
+        Draw(Hit, start, end);
         _DrawArrow(end);
+
+        // The middle of a bezier with flat tangents sits at the midpoint of its ends, near enough for a button.
+        Avalonia.Controls.Canvas.SetLeft(Remove, (start.X + end.X) / 2 - 9);
+        Avalonia.Controls.Canvas.SetTop(Remove, (start.Y + end.Y) / 2 - 9);
 
         if (Label is not null)
         {

@@ -228,9 +228,18 @@ internal sealed class WorkflowCanvas : Border
         var wire = new WorkflowWire(connection, from.OutputPin(connection.FromOutput), to.InputPin(), branch);
         _wires.Add(wire);
 
+        wire.RemoveRequested += (_, _) =>
+        {
+            Workflow.Connections.Remove(connection);
+            Rebuild();
+            Changed?.Invoke(this, EventArgs.Empty);
+        };
+
         // Behind the nodes: a curve must never cover the thing it connects.
         _surface.Children.Insert(0, wire.Line);
         _surface.Children.Insert(1, wire.Arrow);
+        _surface.Children.Insert(2, wire.Hit);
+        _surface.Children.Add(wire.Remove);
         if (wire.Label is not null)
         {
             _surface.Children.Add(wire.Label);

@@ -21,7 +21,8 @@ public static class NodeCatalog
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
-            ["Event name"]),
+            ["Event name"],
+            new Dictionary<string, string> { ["event"] = "session.finished", ["session"] = "Eveworkbench" }),
         new(
             "cockpit.text-match",
             "Text appears",
@@ -30,7 +31,8 @@ public static class NodeCatalog
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
-            ["Pattern"]),
+            ["Pattern"],
+            new Dictionary<string, string> { ["match"] = "All tests passed", ["session"] = "Eveworkbench" }),
         new(
             "cockpit.schedule",
             "Schedule",
@@ -39,7 +41,8 @@ public static class NodeCatalog
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
-            ["When"]),
+            ["When"],
+            new Dictionary<string, string> { ["at"] = "2026-07-13T09:00:00+02:00" }),
         new(
             "cockpit.manual",
             "Run manually",
@@ -48,7 +51,8 @@ public static class NodeCatalog
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
-            []),
+            [],
+            new Dictionary<string, string> { ["startedBy"] = "you" }),
 
         new(
             "cockpit.notify",
@@ -77,7 +81,8 @@ public static class NodeCatalog
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Profile", "Prompt", "Working directory"]),
+            ["Profile", "Prompt", "Working directory"],
+            new Dictionary<string, string> { ["session"] = "Eveworkbench" }),
         new(
             "cockpit.delegate",
             "Delegate",
@@ -86,7 +91,8 @@ public static class NodeCatalog
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Profile", "Prompt"]),
+            ["Profile", "Prompt"],
+            new Dictionary<string, string> { ["result"] = "Done — 3 files changed" }),
 
         new(
             "cockpit.command",
@@ -96,7 +102,8 @@ public static class NodeCatalog
             NodeCategory.External,
             WorkflowNodeKind.Action,
             [""],
-            ["Command", "Working directory"]),
+            ["Command", "Working directory"],
+            new Dictionary<string, string> { ["output"] = "M src/Program.cs", ["exitCode"] = "0" }),
         new(
             "cockpit.http",
             "HTTP request",
@@ -105,7 +112,8 @@ public static class NodeCatalog
             NodeCategory.External,
             WorkflowNodeKind.Action,
             [""],
-            ["Method", "URL", "Body"]),
+            ["Method", "URL", "Body"],
+            new Dictionary<string, string> { ["status"] = "200", ["body"] = "{\"id\": 42}" }),
 
         new(
             "cockpit.if",

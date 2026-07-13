@@ -21,8 +21,18 @@ public sealed record NodeTypeDescriptor(
     NodeCategory Category,
     WorkflowNodeKind Kind,
     IReadOnlyList<string> Outputs,
-    IReadOnlyList<string> Parameters)
+    IReadOnlyList<string> Parameters,
+    IReadOnlyDictionary<string, string>? Sample = null)
 {
+    /// <summary>
+    /// What this kind of step typically hands on, with an example value — so a step you have not run yet can still
+    /// say what will come out of it. Not a guess dressed as fact: the dialog labels it an example, and the moment a
+    /// run has happened the real data replaces it.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Produces => Sample ?? _nothing;
+
+    private static readonly Dictionary<string, string> _nothing = [];
+
     /// <summary>A trigger is where a run begins, so nothing flows into it.</summary>
     public bool HasInput => Kind != WorkflowNodeKind.Trigger;
 }
