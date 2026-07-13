@@ -46,15 +46,15 @@ internal sealed class NodeDialog : Border
         _title = new TextBlock { FontWeight = FontWeight.SemiBold, FontSize = 15 };
         _description = new TextBlock { FontSize = 11.5, Opacity = 0.6, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
 
-        _fields = new StackPanel { Spacing = 12 };
-        _incoming = new StackPanel { Spacing = 6 };
-        _outgoing = new StackPanel { Spacing = 6 };
+        _fields = new StackPanel { Spacing = 14 };
+        _incoming = new StackPanel { Spacing = 8 };
+        _outgoing = new StackPanel { Spacing = 8 };
 
         var close = new Button { Content = "✕", Classes = { "Subtle" } };
         ToolTip.SetTip(close, "Back to the canvas");
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
 
-        var header = new DockPanel { Margin = new Thickness(16, 14, 10, 12) };
+        var header = new DockPanel { Margin = new Thickness(22, 18, 14, 18) };
         DockPanel.SetDock(close, Dock.Right);
         header.Children.Add(close);
         header.Children.Add(new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { _title, _description } });
@@ -184,7 +184,7 @@ internal sealed class NodeDialog : Border
 
         // A step that is switched off stays on the canvas, drawn dimmed, and a run passes it by. Deleting is not the
         // only way to say "not now".
-        var disabled = new CheckBox { Content = "Skip this step", IsChecked = node.IsDisabled, Margin = new Thickness(0, 4, 0, 0) };
+        var disabled = new CheckBox { Content = "Skip this step", IsChecked = node.IsDisabled, Margin = new Thickness(0, 10, 0, 0) };
         ToolTip.SetTip(disabled, "Leave it on the canvas but pass it by when the flow runs.");
         disabled.IsCheckedChanged += (_, _) =>
         {
@@ -195,7 +195,7 @@ internal sealed class NodeDialog : Border
 
         // The debug switch. When a flow does the wrong thing, what you need is what a step actually handed on — and
         // the one-line summary in the run log is a summary, not the data.
-        var traced = new CheckBox { Content = "Print what it produces", IsChecked = node.IsTraced };
+        var traced = new CheckBox { Content = "Print what it produces", IsChecked = node.IsTraced, Margin = new Thickness(0, -4, 0, 0) };
         ToolTip.SetTip(traced, "Write everything this step hands on into the run log, in full.");
         traced.IsCheckedChanged += (_, _) =>
         {
@@ -306,7 +306,7 @@ internal sealed class NodeDialog : Border
         BorderBrush = _Brush("CockpitHairlineBrush"),
         BorderThickness = new Thickness(1),
         CornerRadius = new CornerRadius(6),
-        Padding = new Thickness(10, 8),
+        Padding = new Thickness(12, 10),
         Opacity = faint ? 0.6 : 1,
         Child = new SelectableTextBlock
         {
@@ -324,7 +324,7 @@ internal sealed class NodeDialog : Border
         var chip = new Button
         {
             Classes = { "Subtle" },
-            Padding = new Thickness(8, 5),
+            Padding = new Thickness(10, 7),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Content = new StackPanel
@@ -378,9 +378,11 @@ internal sealed class NodeDialog : Border
             box.GotFocus += (_, _) => _lastEdited = box;
         }
 
+        box.Padding = new Thickness(10, 7);
+
         return new StackPanel
         {
-            Spacing = 4,
+            Spacing = 6,
             Children =
             {
                 new TextBlock { Text = label, FontSize = 11, Opacity = 0.7 },
@@ -391,7 +393,7 @@ internal sealed class NodeDialog : Border
 
     private static Control _Pane(string title, string? hint, StackPanel body)
     {
-        var head = new StackPanel { Margin = new Thickness(16, 0, 16, 8) };
+        var head = new StackPanel { Margin = new Thickness(20, 16, 20, 12) };
         head.Children.Add(new TextBlock
         {
             Text = title.ToUpperInvariant(),
@@ -405,7 +407,7 @@ internal sealed class NodeDialog : Border
             head.Children.Add(new TextBlock { Text = hint, FontSize = 10.5, Opacity = 0.4, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) });
         }
 
-        body.Margin = new Thickness(16, 0, 16, 16);
+        body.Margin = new Thickness(20, 0, 20, 20);
 
         return new Border
         {

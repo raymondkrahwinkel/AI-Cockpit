@@ -46,9 +46,9 @@ internal sealed class WorkflowWire
             Background = new SolidColorBrush(Color.Parse("#22222A")),
             BorderBrush = new SolidColorBrush(Color.Parse("#3C3C46")),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(9),
-            Width = 18,
-            Height = 18,
+            CornerRadius = new CornerRadius(10),
+            Width = 20,
+            Height = 20,
             IsVisible = false,
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = new TextBlock
@@ -63,11 +63,13 @@ internal sealed class WorkflowWire
 
         ToolTip.SetTip(Remove, "Remove this connection");
 
-        // Shown while the pointer is on the wire or on the button itself — otherwise reaching for the ✕ would take
-        // the pointer off the wire and the ✕ would vanish under your hand.
+        // Shown while the pointer is on the wire or on the button itself. The re-check is deferred by one pass on
+        // purpose: moving the pointer onto the ✕ *leaves* the wire, and answering "is it still hovered?" in that same
+        // moment answers "no" — the button then vanishes from under your hand and can never be clicked.
         Hit.PointerEntered += (_, _) => Remove.IsVisible = true;
-        Hit.PointerExited += (_, _) => Remove.IsVisible = Remove.IsPointerOver;
-        Remove.PointerExited += (_, _) => Remove.IsVisible = Hit.IsPointerOver;
+        Hit.PointerExited += (_, _) => _ReconsiderLater();
+        Remove.PointerEntered += (_, _) => Remove.IsVisible = true;
+        Remove.PointerExited += (_, _) => _ReconsiderLater();
         Remove.PointerPressed += (_, e) =>
         {
             RemoveRequested?.Invoke(this, EventArgs.Empty);
@@ -130,6 +132,10 @@ internal sealed class WorkflowWire
             Avalonia.Controls.Canvas.SetTop(Label, start.Y - 9);
         }
     }
+
+    private void _ReconsiderLater() => Avalonia.Threading.Dispatcher.UIThread.Post(
+        () => Remove.IsVisible = Hit.IsPointerOver || Remove.IsPointerOver,
+        Avalonia.Threading.DispatcherPriority.Input);
 
     public static Path NewLine() => new()
     {
