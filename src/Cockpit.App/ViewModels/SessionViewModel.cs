@@ -248,7 +248,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null)
+    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null)
     {
         if (_runtime is not null)
         {
@@ -266,7 +266,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
 
-        await StartWithProfileAsync(profile, workingDirectory);
+        await StartWithProfileAsync(profile, workingDirectory, resume);
 
         // StartWithProfileAsync swallows launch failures (it only sets Status); the runtime is left un-started
         // when the CLI never came up. In that case unlock and reset the mode so a failed bypass launch doesn't
@@ -278,7 +278,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
-    private async Task StartWithProfileAsync(SessionProfile? profile, string? workingDirectory = null)
+    private async Task StartWithProfileAsync(SessionProfile? profile, string? workingDirectory = null, SessionResume? resume = null)
     {
         if (_sessionManager is null)
         {
@@ -314,7 +314,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory);
+            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume);
 
             // Capabilities (notably SupportsTools) only settle once the driver has actually started — the
             // local (OpenAI-compatible) driver's SupportsTools flips true only after its MCP tool session

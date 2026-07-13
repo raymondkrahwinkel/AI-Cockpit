@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Core.Tests.Claude;
@@ -30,11 +31,13 @@ internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
 
     public string? StartedWithWorkingDirectoryOverride { get; private set; }
 
+    public SessionResume? StartedWithResume { get; private set; }
+
     public void Enqueue(string line) => _outputLines.Writer.TryWrite(line);
 
     public void CompleteOutput() => _outputLines.Writer.TryComplete();
 
-    public void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null)
+    public void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null, SessionResume? resume = null)
     {
         Started = true;
         StartedWithProfile = profile;
@@ -42,6 +45,7 @@ internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
         StartedWithModel = model;
         StartedWithEnabledMcpServerNames = enabledMcpServerNames;
         StartedWithWorkingDirectoryOverride = workingDirectoryOverride;
+        StartedWithResume = resume;
     }
 
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)

@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 
 namespace Cockpit.App.ViewModels;
@@ -85,6 +86,54 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private string _sessionName = string.Empty;
 
     /// <summary>
+    /// Whether this session picks up an earlier conversation instead of starting fresh — the answer to "the app
+    /// crashed and I want to go on where I was". Only the Claude CLI keeps a history to resume from, so the
+    /// controls are hidden for a local provider rather than offered and then ignored.
+    /// </summary>
+    [ObservableProperty]
+    private SessionResumeMode _resumeMode = SessionResumeMode.New;
+
+    /// <summary>The conversation to resume when <see cref="ResumeMode"/> is <see cref="SessionResumeMode.BySessionId"/> — the id shown in a session's header, or copied from the transcript-search plugin.</summary>
+    [ObservableProperty]
+    private string _resumeSessionId = string.Empty;
+
+    /// <summary>Resuming is a Claude-CLI capability; a local provider keeps no conversation history of its own.</summary>
+    public bool ShowResumeOptions => IsClaudeProfile;
+
+    public bool IsStartingFresh => ResumeMode == SessionResumeMode.New;
+
+    public bool IsResumingMostRecent => ResumeMode == SessionResumeMode.MostRecent;
+
+    public bool IsResumingBySessionId => ResumeMode == SessionResumeMode.BySessionId;
+
+    partial void OnResumeModeChanged(SessionResumeMode value)
+    {
+        OnPropertyChanged(nameof(IsStartingFresh));
+        OnPropertyChanged(nameof(IsResumingMostRecent));
+        OnPropertyChanged(nameof(IsResumingBySessionId));
+        OnPropertyChanged(nameof(CanStart));
+    }
+
+    partial void OnResumeSessionIdChanged(string value) => OnPropertyChanged(nameof(CanStart));
+
+    [RelayCommand]
+    private void StartFreshConversation() => ResumeMode = SessionResumeMode.New;
+
+    [RelayCommand]
+    private void ContinueMostRecentConversation() => ResumeMode = SessionResumeMode.MostRecent;
+
+    [RelayCommand]
+    private void ResumeConversationById() => ResumeMode = SessionResumeMode.BySessionId;
+
+    /// <summary>The choice as the session layer consumes it; a blank id falls back to a fresh conversation rather than a broken resume.</summary>
+    private SessionResume _Resume() => ResumeMode switch
+    {
+        SessionResumeMode.MostRecent => SessionResume.MostRecent,
+        SessionResumeMode.BySessionId when !string.IsNullOrWhiteSpace(ResumeSessionId) => SessionResume.BySessionId(ResumeSessionId.Trim()),
+        _ => SessionResume.New,
+    };
+
+    /// <summary>
     /// Optional per-session working directory (#: project-folder launch): the directory <c>claude</c> is
     /// started in for this session, overriding the global option. Blank keeps the global default. Pre-fillable
     /// from <see cref="RecentPaths"/>/<see cref="FavoritePaths"/> so a previously-used folder is one click away.
@@ -152,7 +201,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// real interactive TUI, which runs its own <c>/login</c>, so it needs no pre-check; a local profile
     /// has no login at all.
     /// </summary>
-    public bool CanStart => SelectedProfile is not null && (IsLocalProfile || IsTty || IsSelectedProfileLoggedIn);
+    /// <summary>Resuming by id with no id typed is not a session anyone asked for, so Start stays disabled until it is filled in.</summary>
+    public bool CanStart =>
+        SelectedProfile is not null
+        && (IsLocalProfile || IsTty || IsSelectedProfileLoggedIn)
+        && (ResumeMode != SessionResumeMode.BySessionId || !string.IsNullOrWhiteSpace(ResumeSessionId));
 
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
@@ -350,7 +403,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             _ = _workingPathStore.RecordRecentAsync(workingDirectory);
         }
 
-        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name, enabledMcpServerNames, workingDirectory));
+        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name, enabledMcpServerNames, workingDirectory, _Resume()));
     }
 
     [RelayCommand]

@@ -62,7 +62,7 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
 
     public bool HasExited => _started && (_process?.HasExited ?? true);
 
-    public void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null)
+    public void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null, SessionResume? resume = null)
     {
         var cli = _options.Claude;
         // A per-session override (from the New-session dialog) wins over the global option, which in turn wins
@@ -96,7 +96,7 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         // selection (#44) narrows which registry servers are included for this particular spawn.
         var canDelegate = FanOutRegistryToMcpConfig(permissionMode, enabledMcpServerNames);
 
-        var arguments = BuildArguments(cli, permissionMode, model, _permissionServerState, canDelegate);
+        var arguments = BuildArguments(cli, permissionMode, model, _permissionServerState, canDelegate, resume);
 
         var startInfo = new ProcessStartInfo
         {
@@ -201,7 +201,8 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         string? permissionMode,
         string? model,
         IPermissionServerState permissionServerState,
-        bool canDelegate = false)
+        bool canDelegate = false,
+        SessionResume? resume = null)
     {
         var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? cli.PermissionMode : permissionMode;
 
@@ -214,6 +215,20 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             "--include-partial-messages",
             "--permission-mode", effectiveMode,
         };
+
+        // Pick up an earlier conversation instead of starting cold (a crashed cockpit should not cost you the
+        // thread you were on). --continue takes the most recent conversation in the working directory; --resume
+        // takes the one you name. The CLI resolves both against its own history, so the cockpit never has to
+        // parse a transcript to hand the work back.
+        if (resume is { Mode: SessionResumeMode.MostRecent })
+        {
+            arguments.Add("--continue");
+        }
+        else if (resume is { Mode: SessionResumeMode.BySessionId, SessionId: { } sessionId } && !string.IsNullOrWhiteSpace(sessionId))
+        {
+            arguments.Add("--resume");
+            arguments.Add(sessionId.Trim());
+        }
 
         // Route real permission enforcement through the cockpit's shared MCP server: the CLI calls
         // our permission_prompt tool for any tool that genuinely needs approval, and the operator's

@@ -58,6 +58,7 @@ public interface ISessionRuntime : IAsyncDisposable
         string? model = null,
         IReadOnlySet<string>? enabledMcpServerNames = null,
         string? workingDirectory = null,
+        SessionResume? resume = null,
         CancellationToken cancellationToken = default);
 
     Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default);

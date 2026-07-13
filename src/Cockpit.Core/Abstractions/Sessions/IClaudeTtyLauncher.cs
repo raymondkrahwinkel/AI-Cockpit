@@ -1,4 +1,5 @@
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Core.Abstractions.Sessions;
 
@@ -33,5 +34,6 @@ public interface IClaudeTtyLauncher
         string? effort,
         short columns,
         short rows,
-        string? workingDirectory = null);
+        string? workingDirectory = null,
+        SessionResume? resume = null);
 }

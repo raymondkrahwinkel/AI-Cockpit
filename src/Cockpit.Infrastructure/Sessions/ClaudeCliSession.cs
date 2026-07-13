@@ -69,7 +69,7 @@ internal sealed class ClaudeCliSession : ISessionDriver, ITransientService
 
     public IAsyncEnumerable<SessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, CancellationToken cancellationToken = default)
     {
         Profile = profile;
         _bypassPermissions = string.Equals(permissionMode, "bypassPermissions", StringComparison.Ordinal);
@@ -77,7 +77,7 @@ internal sealed class ClaudeCliSession : ISessionDriver, ITransientService
         var savedRules = await _permissionRuleStore.LoadAsync(profile?.Label, cancellationToken).ConfigureAwait(false);
         _permissionRules = new PermissionRuleSet(savedRules);
 
-        _process.Start(profile, permissionMode, model, enabledMcpServerNames, workingDirectory);
+        _process.Start(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume);
         _pumpCancellation = new CancellationTokenSource();
         _pumpTask = PumpOutputAsync(_pumpCancellation.Token);
     }

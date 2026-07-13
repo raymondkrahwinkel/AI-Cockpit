@@ -1,4 +1,5 @@
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -33,4 +34,5 @@ public sealed record NewSessionResult(
     EffortOption Effort,
     string? SessionName,
     IReadOnlySet<string>? EnabledMcpServerNames = null,
-    string? WorkingDirectory = null);
+    string? WorkingDirectory = null,
+    SessionResume? Resume = null);

@@ -46,7 +46,8 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         string? effort,
         short columns,
         short rows,
-        string? workingDirectory = null)
+        string? workingDirectory = null,
+        SessionResume? resume = null)
     {
         var cli = _options.Claude;
         // Per-session override (New-session dialog) wins over the global option, which wins over the process cwd.
@@ -75,7 +76,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
 
         var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome);
         var mcpConfigPath = _WriteRegistryMcpConfig();
-        var arguments = BuildArguments(permissionMode, model, effort, mcpConfigPath, _CanDelegate());
+        var arguments = BuildArguments(permissionMode, model, effort, mcpConfigPath, _CanDelegate(), resume);
 
         return _ptyHostFactory.Start(executablePath, arguments, resolvedWorkingDirectory, environment, columns, rows);
     }
@@ -132,9 +133,22 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     /// session and does not persist a transcript under that id) — the cockpit instead locates the live
     /// transcript as the new file that appears after launch (see <c>ISessionTranscriptReader</c>).
     /// </summary>
-    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort, string? mcpConfigPath = null, bool canDelegate = false)
+    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort, string? mcpConfigPath = null, bool canDelegate = false, SessionResume? resume = null)
     {
         var arguments = new List<string>();
+
+        // Pick up an earlier conversation rather than starting cold — the same two CLI flags the SDK spawn uses.
+        // --resume without an id would open the CLI's own interactive picker, which the cockpit does not want:
+        // the choice was already made in the New-session dialog.
+        if (resume is { Mode: SessionResumeMode.MostRecent })
+        {
+            arguments.Add("--continue");
+        }
+        else if (resume is { Mode: SessionResumeMode.BySessionId, SessionId: { } sessionId } && !string.IsNullOrWhiteSpace(sessionId))
+        {
+            arguments.Add("--resume");
+            arguments.Add(sessionId.Trim());
+        }
 
         // Bypass is a launch-only synonym for --dangerously-skip-permissions; the CLI does not accept
         // both flags together, so the two are mutually exclusive here (mirrors ClaudeCliProcess's

@@ -26,6 +26,7 @@ internal static class Screenshotter
             "options" => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
             "shortcuts" => _OptionsOnTab("Shortcuts"),
             "profiles" => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+            "new-session" => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
             "tasks" => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
             "session" => new MainWindow { DataContext = new ViewModels.CockpitViewModel { SingleSessionLayout = true } },
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },

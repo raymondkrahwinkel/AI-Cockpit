@@ -34,12 +34,7 @@ public partial class ClaudeTtyView : UserControl
     private IConPtyProcess? _pty;
     private CancellationTokenSource? _outputCancellation;
     private ClaudeTtyViewModel? _viewModel;
-    private IClaudeTtyLauncher? _pendingLauncher;
-    private SessionProfile? _pendingProfile;
-    private string? _pendingPermissionMode;
-    private string? _pendingModel;
-    private string? _pendingEffort;
-    private string? _pendingWorkingDirectory;
+    private TtyLaunchRequest? _pendingLaunch;
     private bool _launchPending;
     private bool _wired;
     private int _lastColumns;
@@ -268,20 +263,9 @@ public partial class ClaudeTtyView : UserControl
     /// terminal has a real size, so remember the request and launch on the next
     /// <see cref="OnTerminalResized"/> (or now if a size is already known).
     /// </summary>
-    private void OnLaunchRequested(
-        IClaudeTtyLauncher launcher,
-        SessionProfile? profile,
-        string? permissionMode,
-        string? model,
-        string? effort,
-        string? workingDirectory)
+    private void OnLaunchRequested(TtyLaunchRequest request)
     {
-        _pendingLauncher = launcher;
-        _pendingProfile = profile;
-        _pendingPermissionMode = permissionMode;
-        _pendingModel = model;
-        _pendingEffort = effort;
-        _pendingWorkingDirectory = workingDirectory;
+        _pendingLaunch = request;
         _launchPending = true;
 
         if (_lastColumns > 0 && _lastRows > 0)
@@ -420,7 +404,7 @@ public partial class ClaudeTtyView : UserControl
 
     private void StartPty()
     {
-        if (!_launchPending || _pendingLauncher is null || _lastColumns <= 0 || _lastRows <= 0)
+        if (!_launchPending || _pendingLaunch is null || _lastColumns <= 0 || _lastRows <= 0)
         {
             return;
         }
@@ -433,14 +417,15 @@ public partial class ClaudeTtyView : UserControl
             // races from the app's own startup so they don't leave stacked partial renders behind.
             Terminal.PrepareForNewSession();
 
-            _pty = _pendingLauncher.Launch(
-                _pendingProfile,
-                _pendingPermissionMode,
-                _pendingModel,
-                _pendingEffort,
+            _pty = _pendingLaunch.Launcher.Launch(
+                _pendingLaunch.Profile,
+                _pendingLaunch.PermissionMode,
+                _pendingLaunch.Model,
+                _pendingLaunch.Effort,
                 (short)_lastColumns,
                 (short)_lastRows,
-                _pendingWorkingDirectory);
+                _pendingLaunch.WorkingDirectory,
+                _pendingLaunch.Resume);
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;
             _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);

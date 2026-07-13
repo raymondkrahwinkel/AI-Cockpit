@@ -120,6 +120,29 @@
                 </StackPanel>
             </Grid>
 
+            <!-- Resume (#: resume): pick up an earlier conversation instead of starting cold — what you want after a
+                 crash, or when you closed a session you were not done with. Claude-only: the local providers keep no
+                 conversation history to resume from, so the row is hidden rather than offered and ignored. -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding ShowResumeOptions}">
+                <TextBlock Grid.Column="0" Text="Start" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="New" Classes.Accent="{Binding IsStartingFresh}"
+                                Command="{Binding StartFreshConversationCommand}"
+                                ToolTip.Tip="Start a new conversation"/>
+                        <Button Content="Continue last" Classes.Accent="{Binding IsResumingMostRecent}"
+                                Command="{Binding ContinueMostRecentConversationCommand}"
+                                ToolTip.Tip="Pick up the most recent conversation in this folder (claude --continue)"/>
+                        <Button Content="By session id" Classes.Accent="{Binding IsResumingBySessionId}"
+                                Command="{Binding ResumeConversationByIdCommand}"
+                                ToolTip.Tip="Resume a specific conversation by its id (claude --resume &lt;id&gt;)"/>
+                    </StackPanel>
+                    <TextBox Text="{Binding ResumeSessionId}" IsVisible="{Binding IsResumingBySessionId}"
+                             PlaceholderText="Session id — copy it from Search transcripts"/>
+                </StackPanel>
+            </Grid>
+
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
                 <TextBlock Grid.Column="0" Text="Mode" VerticalAlignment="Center" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>

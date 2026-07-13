@@ -28,13 +28,13 @@ public class ClaudeTtyViewModelTests
         string? launchedWorkingDirectory = null;
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, profile, mode, model, effort, workingDirectory) =>
+        vm.LaunchRequested += request =>
         {
-            launchedProfile = profile;
-            launchedMode = mode;
-            launchedModel = model;
-            launchedEffort = effort;
-            launchedWorkingDirectory = workingDirectory;
+            launchedProfile = request.Profile;
+            launchedMode = request.PermissionMode;
+            launchedModel = request.Model;
+            launchedEffort = request.Effort;
+            launchedWorkingDirectory = request.WorkingDirectory;
             launchCount++;
         };
 
@@ -58,7 +58,7 @@ public class ClaudeTtyViewModelTests
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");   // configured before any subscriber exists
-        vm.LaunchRequested += (_, _, _, _, _, _) => launchCount++;
+        vm.LaunchRequested += _ => launchCount++;
         launchCount.Should().Be(0);           // nothing raised yet — no subscriber at configure time
 
         vm.TryRaiseLaunch();                  // the view calls this once it has subscribed
@@ -71,7 +71,7 @@ public class ClaudeTtyViewModelTests
     {
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, _, _, _, _, _) => launchCount++;
+        vm.LaunchRequested += _ => launchCount++;
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.TryRaiseLaunch();
@@ -85,7 +85,7 @@ public class ClaudeTtyViewModelTests
     {
         var launchCount = 0;
         var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
-        vm.LaunchRequested += (_, _, _, _, _, _) => launchCount++;
+        vm.LaunchRequested += _ => launchCount++;
 
         vm.TryRaiseLaunch();
 

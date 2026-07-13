@@ -35,6 +35,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private string? _configuredEffort;
     private string? _configuredWorkingDirectory;
     private bool _isLaunchConfigured;
+    private SessionResume? _configuredResume;
     private bool _launched;
 
     /// <summary>
@@ -60,7 +61,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private bool _statusTrackingStopped;
 
     /// <summary>Raised once both the launch is configured and the view is subscribed; the view supplies the terminal size and wires the returned pty.</summary>
-    public event Action<IClaudeTtyLauncher, SessionProfile?, string?, string?, string?, string?>? LaunchRequested;
+    public event Action<TtyLaunchRequest>? LaunchRequested;
 
     /// <summary>
     /// Raised once a push-to-talk hold finished transcribing (no cleanup applied — TTY is a raw
@@ -149,9 +150,10 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// inline profile picker. <paramref name="permissionMode"/>/<paramref name="model"/>/
     /// <paramref name="effort"/> are launch-only: the real TUI owns any live switching afterwards.
     /// </summary>
-    public void LaunchConfigured(SessionProfile? profile, string? permissionMode, string? model, string? effort, string? workingDirectory = null)
+    public void LaunchConfigured(SessionProfile? profile, string? permissionMode, string? model, string? effort, string? workingDirectory = null, SessionResume? resume = null)
     {
         _configuredProfile = profile;
+        _configuredResume = resume;
         _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
         // Show and publish the effective working directory: the per-session override when given, else the
         // global resolution. Keeps the header and the read/observe surface pointing where the TUI actually runs.
@@ -196,7 +198,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         }
 
         _launched = true;
-        LaunchRequested.Invoke(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort, _configuredWorkingDirectory);
+        LaunchRequested.Invoke(new TtyLaunchRequest(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort, _configuredWorkingDirectory, _configuredResume));
     }
 
     /// <summary>

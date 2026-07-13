@@ -5,6 +5,7 @@ using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
 using FluentAssertions;
@@ -135,7 +136,7 @@ public class DelegationGuardTests
             Arg.Any<string?>(),
             Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(),
-            Arg.Any<CancellationToken>());
+            Arg.Any<SessionResume?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -176,6 +177,7 @@ public class DelegationGuardTests
             Arg.Is<IReadOnlySet<string>?>(servers =>
                 servers!.Contains("filesystem") && !servers.Contains("cockpit-orchestrator")),
             Arg.Any<string?>(),
+            Arg.Any<SessionResume?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -200,6 +202,7 @@ public class DelegationGuardTests
             Arg.Any<string?>(),
             Arg.Is<IReadOnlySet<string>?>(servers => servers!.Contains("cockpit-orchestrator")),
             Arg.Any<string?>(),
+            Arg.Any<SessionResume?>(),
             Arg.Any<CancellationToken>());
     }
 

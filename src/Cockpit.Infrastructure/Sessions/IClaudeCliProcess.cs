@@ -1,4 +1,5 @@
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -19,7 +20,7 @@ internal interface IClaudeCliProcess : IAsyncDisposable
     /// <paramref name="workingDirectoryOverride"/>, when non-blank, is the per-session working directory
     /// (New-session dialog) the process starts in, overriding the global option.
     /// </summary>
-    void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null);
+    void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null, SessionResume? resume = null);
 
     /// <summary>Writes a single line (without trailing newline) to the process's stdin and flushes.</summary>
     Task WriteLineAsync(string line, CancellationToken cancellationToken = default);
