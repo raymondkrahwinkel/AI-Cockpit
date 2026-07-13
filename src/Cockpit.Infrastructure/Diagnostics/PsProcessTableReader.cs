@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Diagnostics;
 
@@ -17,7 +16,7 @@ namespace Cockpit.Infrastructure.Diagnostics;
 /// </para>
 /// </summary>
 [SupportedOSPlatform("macos")]
-internal sealed class PsProcessTableReader : IProcessTableReader, ISingletonService
+internal sealed class PsProcessTableReader : IProcessTableReader
 {
     public IReadOnlyList<ProcessRow> Read()
     {

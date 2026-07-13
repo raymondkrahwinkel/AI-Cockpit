@@ -19,7 +19,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "workflows",
         DisplayName: "Workflows",
-        Version: "0.1.0",
+        Version: "0.2.0",
         Author: "Cockpit",
         Description: "A visual editor for cockpit workflows: drop triggers, actions and decisions on a canvas, wire them together, and the flow is saved as you draw it. Drag a node by its header, pull a wire out of an output pin, Delete removes the selected node; the wheel zooms and dragging the background pans. The rules are the model's, not the canvas's — a trigger takes nothing in, a step continues one way at a time, and a flow cannot loop back on itself, each refusal saying why. Editor only for now: nothing executes these flows yet.");
 
@@ -34,7 +34,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
         // Ask big: a canvas is the one thing that is never too large, and the host clamps the request to the
         // cockpit window anyway.
         void OpenEditor() =>
-            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store), 1600, 1000);
+            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store, host.Actions), 1600, 1000);
 
         host.AddSideMenuButton("Workflows", OpenEditor);
         host.AddShortcut(new PluginShortcut("workflows.open", "Workflow editor", "Ctrl+Shift+W", OpenEditor));

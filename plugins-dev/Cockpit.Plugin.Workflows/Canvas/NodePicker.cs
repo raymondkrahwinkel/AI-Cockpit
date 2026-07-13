@@ -17,21 +17,21 @@ internal sealed class NodePicker : Border
 {
     private readonly TextBox _search;
     private readonly StackPanel _results;
+    private readonly TextBlock _title;
 
     public NodePicker()
     {
-        Width = 300;
+        Width = 290;
         Background = _Brush("CockpitSecondaryBgBrush") ?? new SolidColorBrush(Color.Parse("#1E1E24"));
         BorderBrush = _Brush("CockpitHairlineBrush");
         BorderThickness = new Thickness(1, 0, 0, 0);
-        IsVisible = false;
 
-        _search = new TextBox { Watermark = "Search steps…", Margin = new Thickness(12, 12, 12, 8) };
+        _search = new TextBox { PlaceholderText = "Search steps…", Margin = new Thickness(12, 12, 12, 8) };
         _search.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape)
             {
-                Hide();
+                _AimAtNothing();
                 e.Handled = true;
             }
         };
@@ -39,18 +39,17 @@ internal sealed class NodePicker : Border
 
         _results = new StackPanel { Margin = new Thickness(6, 0, 6, 12) };
 
-        var header = new DockPanel { Margin = new Thickness(12, 12, 8, 0) };
-        var close = new Button { Content = "✕", Classes = { "Subtle", "Compact" } };
-        close.Click += (_, _) => Hide();
-        DockPanel.SetDock(close, Dock.Right);
-        header.Children.Add(close);
-        header.Children.Add(new TextBlock
+        _title = new TextBlock
         {
-            Text = "What happens next?",
+            Text = TitleLoose,
             FontWeight = FontWeight.SemiBold,
             FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
-        });
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var header = new DockPanel { Margin = new Thickness(12, 12, 12, 0) };
+        header.Children.Add(_title);
 
         Child = new DockPanel
         {
@@ -63,33 +62,32 @@ internal sealed class NodePicker : Border
         };
     }
 
-    /// <summary>The chosen type, and the way out it should be wired to (null when the operator just wanted a step somewhere).</summary>
+    /// <summary>The chosen type, and the way out it should be wired to (null when the step is just being added somewhere).</summary>
     public event EventHandler<NodePicked>? Picked;
+
+    private const string TitleLoose = "Add a step";
+    private const string TitleAimed = "What happens next?";
 
     private (string NodeId, int Output)? _from;
 
-    /// <summary>Opens the picker for a step's unconnected way out: whatever is chosen is added <em>and wired</em>, which is the whole reason the + exists.</summary>
-    public void ShowFor(string fromNodeId, int output)
+    /// <summary>
+    /// Points the picker at a step's unconnected way out: what you choose next is added <em>and wired</em> there.
+    /// The panel is always on screen — it is the answer to "what can this thing even do", which is a question you
+    /// have while looking at the canvas, not one you go and ask.
+    /// </summary>
+    public void AimAt(string fromNodeId, int output)
     {
         _from = (fromNodeId, output);
-        _Open();
-    }
-
-    /// <summary>Opens the picker with nothing to wire to — the "add a step" case.</summary>
-    public void ShowLoose()
-    {
-        _from = null;
-        _Open();
-    }
-
-    public void Hide() => IsVisible = false;
-
-    private void _Open()
-    {
+        _title.Text = TitleAimed;
         _search.Text = string.Empty;
         _Render(null);
-        IsVisible = true;
         _search.Focus();
+    }
+
+    private void _AimAtNothing()
+    {
+        _from = null;
+        _title.Text = TitleLoose;
     }
 
     private void _Render(string? term)
@@ -164,7 +162,9 @@ internal sealed class NodePicker : Border
         button.Click += (_, _) =>
         {
             Picked?.Invoke(this, new NodePicked(type, _from?.NodeId, _from?.Output ?? 0));
-            Hide();
+
+            // A + points the picker at one way out; once it has been used, it is pointing at nothing again.
+            _AimAtNothing();
         };
 
         return button;

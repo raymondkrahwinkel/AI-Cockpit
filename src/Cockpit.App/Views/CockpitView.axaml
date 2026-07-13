@@ -350,19 +350,24 @@
         </ItemsControl>
         <!-- Status bar (#78): what the cockpit is using right now. The total is the cockpit's own process tree,
              so it already contains every session it spawned; hovering breaks that down per session. -->
+        <!-- The tooltip hangs on the bar, not on the text: a TextBlock without a background catches no pointer,
+             so hovering "CPU 3% · RAM 1.2 GB" did nothing at all — the one place the breakdown lives. -->
         <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
-                Padding="10,4">
+                Padding="10,4"
+                ToolTip.Tip="{Binding ResourceDetail}"
+                ToolTip.Placement="Top">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Right"
                            Text="{Binding ResourceSummary}"
                            FontSize="11"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                           VerticalAlignment="Center"
-                           ToolTip.Tip="{Binding ResourceDetail}"
-                           ToolTip.Placement="Top"/>
-                <TextBlock Text="" />
+                           VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding ResourceSessions}"
+                           FontSize="11"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           VerticalAlignment="Center"/>
             </DockPanel>
         </Border>
     </Grid>

@@ -17,6 +17,16 @@ public sealed class Workflow
 
     public required string Name { get; set; }
 
+    /// <summary>
+    /// Whether this flow is armed (#69). A flow you are still drawing should not fire the moment its trigger
+    /// happens, and a flow you want to pause is not a flow you want to delete — so switching it off is a first-class
+    /// thing, exactly as it is in n8n's Active/Inactive.
+    /// </summary>
+    public bool IsActive { get; set; }
+
+    /// <summary>When it was last changed — what the manager sorts and shows, so "which one was I working on" has an answer.</summary>
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+
     public List<WorkflowNode> Nodes { get; init; } = [];
 
     public List<WorkflowConnection> Connections { get; init; } = [];

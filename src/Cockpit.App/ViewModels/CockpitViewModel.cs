@@ -1000,6 +1000,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _resourceDetail = string.Empty;
 
+    /// <summary>Left of the meter: how many sessions are being weighed, so it is visible that the breakdown exists at all rather than hidden behind a hover nobody tries.</summary>
+    [ObservableProperty]
+    private string _resourceSessions = string.Empty;
+
     /// <summary>
     /// Takes one sample and updates the status bar (#78). Driven by a timer in the view, like the idle sweep —
     /// the view model stays free of timers, and a test can tick it whenever it likes.
@@ -1022,11 +1026,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var usage = _resourceMonitor.Sample(processes);
 
         ResourceSummary = $"CPU {usage.CpuPercent:0}%  ·  RAM {_Megabytes(usage.MemoryBytes)}";
+        ResourceSessions = usage.Sessions.Count switch
+        {
+            0 => string.Empty,
+            1 => "1 session",
+            var count => $"{count} sessions",
+        };
+
+        // The total is the cockpit's whole tree, so it already contains the sessions — saying so stops the
+        // breakdown from reading like it should add up to the total.
         ResourceDetail = usage.Sessions.Count == 0
-            ? "The cockpit itself. A session that runs over HTTP (Ollama, LM Studio) has no local process to weigh."
-            : string.Join(
-                Environment.NewLine,
-                usage.Sessions.Select(session => $"{session.Title}: CPU {session.CpuPercent:0}%  ·  RAM {_Megabytes(session.MemoryBytes)}"));
+            ? "Nothing to break down: a session that runs over HTTP (Ollama, LM Studio) has no local process to weigh."
+            : "Per session — its process and everything it spawned. The total above already includes these."
+              + Environment.NewLine + Environment.NewLine
+              + string.Join(
+                  Environment.NewLine,
+                  usage.Sessions.Select(session => $"{session.Title}:   CPU {session.CpuPercent:0}%   ·   RAM {_Megabytes(session.MemoryBytes)}"));
     }
 
     // A session's number includes everything it spawned, so "RAM" here means the tree, not the parent.

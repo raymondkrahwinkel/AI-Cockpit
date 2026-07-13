@@ -1,6 +1,5 @@
 using System.Management;
 using System.Runtime.Versioning;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Diagnostics;
 
@@ -15,7 +14,7 @@ namespace Cockpit.Infrastructure.Diagnostics;
 /// </para>
 /// </summary>
 [SupportedOSPlatform("windows")]
-internal sealed class WmiProcessTableReader : IProcessTableReader, ISingletonService
+internal sealed class WmiProcessTableReader : IProcessTableReader
 {
     public IReadOnlyList<ProcessRow> Read()
     {

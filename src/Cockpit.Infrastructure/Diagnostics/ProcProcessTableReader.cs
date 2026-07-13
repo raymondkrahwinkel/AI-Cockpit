@@ -1,5 +1,4 @@
 using System.Runtime.Versioning;
-using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Diagnostics;
 
@@ -7,7 +6,7 @@ namespace Cockpit.Infrastructure.Diagnostics;
 
 /// <summary>Linux's process table, read straight from <c>/proc</c> (#78) — no shelling out, so it is cheap enough to do every couple of seconds.</summary>
 [SupportedOSPlatform("linux")]
-internal sealed class ProcProcessTableReader : IProcessTableReader, ISingletonService
+internal sealed class ProcProcessTableReader : IProcessTableReader
 {
     // Kernel ticks per second: 100 on any Linux worth running. sysconf(_SC_CLK_TCK) needs a P/Invoke, and being
     // wrong here would scale the CPU percentage, not break it.
