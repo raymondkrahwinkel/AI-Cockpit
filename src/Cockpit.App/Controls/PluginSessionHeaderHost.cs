@@ -39,6 +39,16 @@ internal sealed class PluginSessionHeaderHost : StackPanel
             return;
         }
 
+        // The menu comes first: it is always there, so it is where the hand goes, and it should not move sideways every
+        // time a badge appears or a session stops tracking a ticket. The badges — which come and go — sit after it.
+        if (cockpit.PluginSessionHeaderActions.Count > 0)
+        {
+            var menuContext = new PluginSessionContext(session);
+            _contexts.Add(menuContext);
+
+            Children.Add(_ActionsMenu(cockpit, menuContext));
+        }
+
         foreach (var item in cockpit.PluginSessionHeaderItems)
         {
             // Each item gets its own context: disposing them independently keeps one plugin's teardown from
@@ -46,16 +56,6 @@ internal sealed class PluginSessionHeaderHost : StackPanel
             var context = new PluginSessionContext(session);
             _contexts.Add(context);
             Children.Add(item.CreateView(context));
-        }
-
-        // One menu for everything plugins can *do* to this session. Two issue trackers used to mean two buttons that
-        // asked the same question and took up room whether or not anyone would answer them.
-        if (cockpit.PluginSessionHeaderActions.Count > 0)
-        {
-            var context = new PluginSessionContext(session);
-            _contexts.Add(context);
-
-            Children.Add(_ActionsMenu(cockpit, context));
         }
     }
 

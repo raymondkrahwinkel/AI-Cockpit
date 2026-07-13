@@ -332,11 +332,19 @@
                 ToolTip.Tip="{Binding ResourceDetail}"
                 ToolTip.Placement="Top">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Right"
-                           Text="{Binding ResourceSummary}"
-                           FontSize="11"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
+                <!-- The memory figure is its own TextBlock so it alone can change colour: amber as it climbs, red at
+                     the point where the system starts killing things. A number that turns while you work is something
+                     you can act on without being interrupted. -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ResourceCpu}"
+                               FontSize="11"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ResourceMemory}"
+                               FontSize="11"
+                               Foreground="{Binding ResourceMemoryBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
                 <TextBlock Text="{Binding ResourceSessions}"
                            FontSize="11"
                            Foreground="{StaticResource CockpitTextFaintBrush}"

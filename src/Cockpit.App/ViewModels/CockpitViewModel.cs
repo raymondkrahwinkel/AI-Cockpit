@@ -1062,6 +1062,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _resourceSummary = string.Empty;
 
+    /// <summary>The CPU half of the status-bar figure, up to and including "RAM " — split from the memory so the memory alone can change colour.</summary>
+    [ObservableProperty]
+    private string _resourceCpu = string.Empty;
+
+    [ObservableProperty]
+    private string _resourceMemory = string.Empty;
+
+    /// <summary>Which brush the memory figure reads in: quiet, amber as it climbs, red where the system starts killing things.</summary>
+    [ObservableProperty]
+    private string _resourceMemoryBrushKey = "CockpitTextSecondaryBrush";
+
     /// <summary>The same, broken down per session — what the status bar shows on hover.</summary>
     [ObservableProperty]
     private string _resourceDetail = string.Empty;
@@ -1133,6 +1144,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var usage = _resourceMonitor.Sample(processes);
 
         _WarnAboutMemory(usage);
+
+        ResourceCpu = $"CPU {usage.CpuPercent:0}%  ·  RAM ";
+        ResourceMemory = _Megabytes(usage.MemoryBytes);
+
+        // Amber before the toast, red at the point where macOS starts thinking about killing the app: a number that
+        // changes colour while you work is something you can act on without being interrupted.
+        ResourceMemoryBrushKey = MemoryPressure.Level(usage.MemoryBytes, MachineMemory.TotalBytes()) switch
+        {
+            MemoryPressureLevel.High => "CockpitStatusErrorBrush",
+            MemoryPressureLevel.Elevated => "CockpitStatusWaitingBrush",
+            _ => "CockpitTextSecondaryBrush",
+        };
 
         ResourceSummary = $"CPU {usage.CpuPercent:0}%  ·  RAM {_Megabytes(usage.MemoryBytes)}";
         ResourceSessions = usage.Sessions.Count switch

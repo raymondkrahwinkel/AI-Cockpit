@@ -28,6 +28,25 @@ public static class MemoryPressure
     public const long FloorBytes = 3L * 1024 * 1024 * 1024;
 
     /// <summary>
+    /// How the number should read in the status bar. The colour arrives before the warning does — a figure turning
+    /// amber while you work is a thing you can act on quietly; a toast is an interruption, and it is only worth one
+    /// when the machine is actually close to killing something.
+    /// </summary>
+    public static MemoryPressureLevel Level(long usedBytes, long totalBytes)
+    {
+        if (totalBytes <= 0 || usedBytes < FloorBytes)
+        {
+            return MemoryPressureLevel.Calm;
+        }
+
+        var share = (double)usedBytes / totalBytes;
+
+        return share >= WarnAtShare
+            ? MemoryPressureLevel.High
+            : share >= CalmAtShare ? MemoryPressureLevel.Elevated : MemoryPressureLevel.Calm;
+    }
+
+    /// <summary>
     /// Whether to warn now. <paramref name="warned"/> is whether the operator has already been told and not yet been
     /// let off the hook — the caller keeps that between calls.
     /// </summary>
@@ -61,3 +80,16 @@ public static class MemoryPressure
 /// <param name="Warn">Tell the operator now.</param>
 /// <param name="Warned">What to remember for the next sample.</param>
 public sealed record MemoryPressureDecision(bool Warn, bool Warned);
+
+/// <summary>How the memory figure in the status bar should read — quietly, or as something to look at.</summary>
+public enum MemoryPressureLevel
+{
+    /// <summary>Nothing to see.</summary>
+    Calm,
+
+    /// <summary>Climbing. Worth a colour, not worth a sentence: the operator can decide to close something before anyone asks them to.</summary>
+    Elevated,
+
+    /// <summary>The point at which the warning fires, and at which macOS starts thinking about killing us.</summary>
+    High,
+}

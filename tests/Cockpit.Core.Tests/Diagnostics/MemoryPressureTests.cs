@@ -69,4 +69,22 @@ public class MemoryPressureTests
     [Fact]
     public void AnIdleCockpit_SaysNothing() =>
         MemoryPressure.Decide(usedBytes: 300L * 1024 * 1024, totalBytes: 16 * Gb, warned: false).Warn.Should().BeFalse();
+
+    [Fact]
+    public void TheFigureTurnsAmberBeforeAnybodyIsInterrupted() =>
+        // A colour is something you can act on quietly. A toast is an interruption, and it is only worth one when the
+        // machine is actually close to killing something.
+        MemoryPressure.Level(usedBytes: 9 * Gb, totalBytes: 16 * Gb).Should().Be(MemoryPressureLevel.Elevated);
+
+    [Fact]
+    public void AtThePointTheWarningFires_TheFigureIsRed() =>
+        MemoryPressure.Level(usedBytes: 11 * Gb, totalBytes: 16 * Gb).Should().Be(MemoryPressureLevel.High);
+
+    [Fact]
+    public void AnIdleCockpit_ReadsAsCalm() =>
+        MemoryPressure.Level(usedBytes: 400L * 1024 * 1024, totalBytes: 16 * Gb).Should().Be(MemoryPressureLevel.Calm);
+
+    [Fact]
+    public void WithNoMachineToCompareAgainst_ItReadsAsCalm_RatherThanAsAlarm() =>
+        MemoryPressure.Level(usedBytes: 12 * Gb, totalBytes: 0).Should().Be(MemoryPressureLevel.Calm);
 }
