@@ -90,6 +90,9 @@ internal sealed class WorkflowCanvas : Border
     /// <summary>Raised when a step was dragged out of the picker and dropped, carrying its type and where it landed.</summary>
     public event EventHandler<(string TypeId, double X, double Y)>? DropRequested;
 
+    /// <summary>Raised when a step was double-clicked — the editor shows what it can be configured with.</summary>
+    public event EventHandler<WorkflowNode>? OpenRequested;
+
     public WorkflowNode? Selected { get; private set; }
 
     public event EventHandler? SelectionChanged;
@@ -169,6 +172,12 @@ internal sealed class WorkflowCanvas : Border
         Avalonia.Controls.Canvas.SetTop(control, node.Y);
 
         control.HeaderPressed += (_, e) => _BeginNodeDrag(control, e);
+        control.Opened += (_, _) =>
+        {
+            _Select(control.Node);
+            OpenRequested?.Invoke(this, control.Node);
+        };
+
         control.PinPressed += (_, pin, pointer) =>
         {
             _BeginWire(pin);
@@ -347,6 +356,7 @@ internal sealed class WorkflowCanvas : Border
 
             control.IsSelected = isTarget || (Selected is not null && id == Selected.Id);
             control.IsDropTarget = isTarget;
+            control.HighlightInput(isTarget);
         }
     }
 
@@ -365,6 +375,7 @@ internal sealed class WorkflowCanvas : Border
         foreach (var (id, control) in _nodes)
         {
             control.IsSelected = Selected is not null && id == Selected.Id;
+            control.HighlightInput(false);
         }
     }
 

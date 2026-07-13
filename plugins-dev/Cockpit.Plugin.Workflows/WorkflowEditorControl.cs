@@ -19,6 +19,7 @@ internal sealed class WorkflowEditorControl : UserControl
     private readonly Action _save;
     private readonly WorkflowCanvas _canvas;
     private readonly NodePicker _picker;
+    private readonly NodeSettingsPanel _settings;
     private readonly TextBlock _status;
     private readonly TextBlock _saved;
 
@@ -33,12 +34,19 @@ internal sealed class WorkflowEditorControl : UserControl
         _picker = new NodePicker();
         _picker.Picked += (_, picked) => _Add(picked);
 
+        // The settings take the picker's place while a step is open: one panel's worth of room, and the canvas
+        // keeps the rest.
+        _settings = new NodeSettingsPanel();
+        _settings.Changed += (_, _) => _Touched();
+        _settings.CloseRequested += (_, _) => _CloseSettings();
+
         _canvas = new WorkflowCanvas(workflow);
         _canvas.Changed += (_, _) => _Touched();
         _canvas.Refused += (_, reason) => _status.Text = reason;
         _canvas.SelectionChanged += (_, _) => _Describe();
         _canvas.AddRequested += (_, from) => _picker.AimAt(from.NodeId, from.Output);
         _canvas.DropRequested += (_, drop) => _Drop(drop.TypeId, drop.X, drop.Y);
+        _canvas.OpenRequested += (_, node) => _OpenSettings(node);
 
         var canvasArea = new Grid();
         canvasArea.Children.Add(_canvas);
@@ -56,6 +64,8 @@ internal sealed class WorkflowEditorControl : UserControl
 
         var root = new DockPanel();
         DockPanel.SetDock(_picker, Dock.Right);
+        DockPanel.SetDock(_settings, Dock.Right);
+        root.Children.Add(_settings);
         root.Children.Add(_picker);
         root.Children.Add(middle);
 
@@ -233,6 +243,21 @@ internal sealed class WorkflowEditorControl : UserControl
 
         _picker.AimAtNothing();
         _Describe();
+    }
+
+    // Double-clicking a step opens what it is configured with. The canvas is where a flow is shaped; this is where
+    // a step is told what to actually do.
+    private void _OpenSettings(WorkflowNode node)
+    {
+        _picker.IsVisible = false;
+        _settings.Show(node);
+    }
+
+    private void _CloseSettings()
+    {
+        _settings.Hide();
+        _picker.IsVisible = true;
+        _canvas.Rebuild();
     }
 
     private void _Rename(string? name)

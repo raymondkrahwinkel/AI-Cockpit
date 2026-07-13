@@ -92,6 +92,11 @@ internal sealed class WorkflowNodeControl : Border
         };
 
         _card.PointerPressed += (_, e) => HeaderPressed?.Invoke(this, e);
+        _card.DoubleTapped += (_, e) =>
+        {
+            Opened?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        };
         _card.Cursor = new Cursor(StandardCursorType.SizeAll);
         ToolTip.SetTip(_card, node.Type?.Description
             ?? $"This flow uses '{node.TypeId}', which this cockpit does not have — a plugin may be missing.");
@@ -138,6 +143,9 @@ internal sealed class WorkflowNodeControl : Border
 
     public event EventHandler<PointerPressedEventArgs>? HeaderPressed;
 
+    /// <summary>The step was double-clicked: open what it can be configured with. Double-click is the gesture people already try on a node.</summary>
+    public event EventHandler? Opened;
+
     /// <summary>An output pin was pressed: the canvas starts drawing a wire and captures the pointer, so the drop lands wherever the operator lets go.</summary>
     public event Action<WorkflowNodeControl, WorkflowPin, IPointer>? PinPressed;
 
@@ -167,6 +175,15 @@ internal sealed class WorkflowNodeControl : Border
     public WorkflowPin OutputPin(int index) => _outputs[Math.Clamp(index, 0, _outputs.Count - 1)];
 
     public WorkflowPin InputPin() => _input ?? _outputs[0];
+
+    /// <summary>Lights the pin a dragged wire would attach to — null clears it.</summary>
+    public void HighlightInput(bool lit)
+    {
+        if (_input is not null)
+        {
+            _input.IsHighlighted = lit;
+        }
+    }
 
     public IReadOnlyList<WorkflowPin> OutputPins => _outputs;
 
@@ -217,7 +234,7 @@ internal sealed class WorkflowPin : Ellipse
 
         Width = 10;
         Height = 10;
-        Fill = new SolidColorBrush(Color.Parse("#8A8A99"));
+        Fill = Idle;
         Cursor = new Cursor(StandardCursorType.Hand);
 
         var label = isInput ? null : owner.Node.Outputs.ElementAtOrDefault(outputIndex);
@@ -234,6 +251,26 @@ internal sealed class WorkflowPin : Ellipse
 
     /// <summary>Which way out this is (a decision has two); -1 for an input.</summary>
     public int OutputIndex { get; }
+
+    /// <summary>
+    /// Lit while a wire is being dragged onto this pin: it grows and takes the accent, so the exact point the wire
+    /// will attach to is visible before you let go. The card lighting up says <em>which step</em>; this says
+    /// <em>where</em>.
+    /// </summary>
+    public bool IsHighlighted
+    {
+        set
+        {
+            Width = Height = value ? 15 : 10;
+            Fill = value
+                ? Application.Current?.TryFindResource("CockpitAccentBrush", out var accent) == true && accent is IBrush brush
+                    ? brush
+                    : Brushes.Orange
+                : Idle;
+        }
+    }
+
+    private static IBrush Idle { get; } = new SolidColorBrush(Color.Parse("#8A8A99"));
 
     /// <summary>Where the wire attaches, in canvas coordinates — asked fresh on every redraw, because the pin moves with its step.</summary>
     public Point AnchorOn(Visual surface) => this.TranslatePoint(new Point(Width / 2, Height / 2), surface) ?? default;

@@ -1,7 +1,7 @@
 {
   "id": "workflows",
   "name": "Workflows",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "entryAssembly": "Cockpit.Plugin.Workflows.dll",
   "entryType": "Cockpit.Plugin.Workflows.WorkflowsPlugin",
   "abstractionsVersion": 1,
