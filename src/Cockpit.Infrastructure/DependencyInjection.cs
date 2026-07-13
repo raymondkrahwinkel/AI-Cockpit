@@ -114,8 +114,17 @@ public static class DependencyInjection
             services.AddSingleton<IPresenceDetector, WindowsPresenceDetector>();
             services.AddSingleton<IToastNotifier, WindowsToastNotifier>();
         }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            // #76: Linux used to get the no-op, so the "you are at the machine" half of the router delivered nothing
+            // on the machine this cockpit is mostly used from.
+            services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
+            services.AddSingleton<IToastNotifier, LinuxToastNotifier>();
+        }
         else
         {
+            // macOS keeps the no-op: there is no Mac here to try one on, and a notifier nobody has ever seen fire is
+            // a claim, not a feature.
             services.AddSingleton<IPresenceDetector, NoOpPresenceDetector>();
             services.AddSingleton<IToastNotifier, NoOpToastNotifier>();
         }

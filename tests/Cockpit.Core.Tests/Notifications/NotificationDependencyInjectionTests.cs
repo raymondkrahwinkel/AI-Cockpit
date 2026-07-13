@@ -43,6 +43,24 @@ public class NotificationDependencyInjectionTests
     }
 
     [Fact]
+    public async Task Container_ResolvesTheToastNotifierOfThisPlatform()
+    {
+        // #76: Linux resolved the no-op, so a session that needed Raymond never said so on the machine he uses. The
+        // container is the only place that can be wrong about this, which is why it is asked rather than the class.
+        await using var provider = BuildProvider();
+
+        var notifier = provider.GetRequiredService<IToastNotifier>();
+
+        var expected = OperatingSystem.IsWindows()
+            ? "WindowsToastNotifier"
+            : OperatingSystem.IsLinux()
+                ? "LinuxToastNotifier"
+                : "NoOpToastNotifier";
+
+        notifier.GetType().Name.Should().Be(expected);
+    }
+
+    [Fact]
     public async Task Container_ResolvesTheCockpitViewModel_WithNotificationDependencies()
     {
         // Async disposal: a resolved SessionViewModel is IAsyncDisposable-only, so the provider

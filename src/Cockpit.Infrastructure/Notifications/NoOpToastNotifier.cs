@@ -4,9 +4,10 @@ using Cockpit.Core.Notifications;
 namespace Cockpit.Infrastructure.Notifications;
 
 /// <summary>
-/// Non-Windows fallback toast. FOLLOW-UP / NOT IMPLEMENTED: a native Linux desktop notification
-/// (libnotify / D-Bus) is not built yet. Registered only on non-Windows platforms (see DI); does
-/// nothing rather than pretend a toast was shown. On Windows <c>WindowsToastNotifier</c> is used.
+/// The toast channel on a platform this build cannot deliver one on — macOS, today. It does nothing rather than
+/// pretend a notification was shown, which is the honest half of the arrangement; the other half is that nobody here
+/// has a Mac to try a real one on, and a notifier that has never been seen to fire is a claim rather than a feature.
+/// Windows has <c>WindowsToastNotifier</c>, Linux <c>LinuxToastNotifier</c> (#76).
 /// </summary>
 internal sealed class NoOpToastNotifier : IToastNotifier
 {
