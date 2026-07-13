@@ -57,6 +57,25 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
         set => storage.Set("maxItems", Math.Clamp(value, 1, 20));
     }
 
+    /// <summary>Whether a pull request that starts waiting for your review raises a toast (default on). GitHub CLI mode only — the single-repo HTTP mode has no review-requested search.</summary>
+    public bool NotifyOnReviewRequests
+    {
+        get => storage.Get<bool?>("notifyOnReviewRequests") ?? true;
+        set => storage.Set("notifyOnReviewRequests", value);
+    }
+
+    /// <summary>
+    /// The review requests already announced, as <c>owner/repo#number</c>. <c>null</c> means "never looked" —
+    /// the first load primes this quietly instead of announcing every request that was already waiting.
+    /// </summary>
+    public IReadOnlySet<string>? SeenReviewRequests
+    {
+        get => storage.Get<string>("seenReviewRequests") is { } stored
+            ? stored.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal)
+            : null;
+        set => storage.Set("seenReviewRequests", string.Join('\n', value ?? new HashSet<string>()));
+    }
+
     /// <summary>
     /// Optional repository filter — one <c>owner/repo</c> per line (or comma-separated). When set, only pull
     /// requests in those repositories are shown; blank means all repositories (the default).

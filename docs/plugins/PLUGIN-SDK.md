@@ -93,6 +93,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, and a stream of every session's output. (For one *specific* session, use a session header item's context instead.) |
 | Keyboard shortcut | `host.AddShortcut(shortcut)` | A gesture and a command-palette entry, listed in Options → Shortcuts alongside the app's own. |
+| Toast | `host.ShowToast(message, severity, actionLabel, onAction)` | A transient in-app notification with an optional single action button — how you tell the operator something happened while they were looking elsewhere. |
 | Persist settings | `host.Storage` | Per-plugin key/value storage in `cockpit.json`. |
 | Live-apply settings | `host.OnSettingsSaved(callback)` | Re-run a callback after your settings are saved, without needing an app restart. |
 | Register services | `plugin.ConfigureServices(services)` | Add your own services to the host DI container (phase 1). |
@@ -123,6 +124,8 @@ public interface ICockpitHost
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView); // a control in every session's header
     void AddConversationPicker(ConversationPickerRegistration picker);          // browse history for the New-session dialog
     void AddShortcut(PluginShortcut shortcut);                  // a gesture + command-palette entry
+    void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
+                   string? actionLabel = null, Action? onAction = null);      // an in-app notification
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state

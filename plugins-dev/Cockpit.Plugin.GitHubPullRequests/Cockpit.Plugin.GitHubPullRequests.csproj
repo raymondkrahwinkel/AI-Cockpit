@@ -41,4 +41,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets Cockpit.Plugin.GitHubPullRequests.Tests unit-test the internal review-request reconciliation and
+         the gh query it runs (#74), same pattern as Cockpit.Plugin.YouTrack's grant to its own Tests project. -->
+    <InternalsVisibleTo Include="Cockpit.Plugin.GitHubPullRequests.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -115,6 +116,19 @@ public interface ICockpitHost
     /// only the app's own host reads the real store.
     /// </summary>
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync() => Task.FromResult<IReadOnlyList<PluginProfileInfo>>([]);
+
+    /// <summary>
+    /// Shows a transient in-app toast in the cockpit (#61) — how a plugin tells the operator that something
+    /// happened while they were working elsewhere in the app (a review was requested on a pull request, say).
+    /// <paramref name="actionLabel"/> and <paramref name="onAction"/> are supplied together to give the toast a
+    /// single button ("Open in browser"); the toast auto-dismisses, so it announces rather than blocks — the
+    /// plugin's own surface (its side-menu section) stays the place where the thing itself lives. Default no-op
+    /// so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host shows it.
+    /// </summary>
+    void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null)
+    {
+    }
 
     /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds

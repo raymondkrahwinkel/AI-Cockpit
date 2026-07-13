@@ -2,10 +2,13 @@ using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -43,6 +46,9 @@ internal sealed class CockpitHost(
 
     public void AddShortcut(PluginShortcut shortcut) =>
         contributionSink.AddPluginShortcut(shortcut);
+
+    public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction) =>
+        services.GetRequiredService<IToastService>().Show(message, _ToToastSeverity(severity), actionLabel, onAction);
 
     public void AddSideMenuSection(string title, Func<Control> createView) =>
         contributionSink.AddPluginSideSection(title, createView);
@@ -114,6 +120,15 @@ internal sealed class CockpitHost(
 
         await store.SaveAsync(servers).ConfigureAwait(false);
     }
+
+    // Maps by name, not ordinal — same reasoning as _ToServerScope below.
+    private static ToastSeverity _ToToastSeverity(PluginToastSeverity severity) => severity switch
+    {
+        PluginToastSeverity.Success => ToastSeverity.Success,
+        PluginToastSeverity.Warning => ToastSeverity.Warning,
+        PluginToastSeverity.Error => ToastSeverity.Error,
+        _ => ToastSeverity.Information,
+    };
 
     private static McpServerAuth _ToAuth(string? bearerToken) =>
         string.IsNullOrEmpty(bearerToken) ? McpServerAuth.None : McpServerAuth.ApiKey;

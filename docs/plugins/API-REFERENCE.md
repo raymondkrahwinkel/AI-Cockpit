@@ -83,6 +83,8 @@ public interface ICockpitHost
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
+    void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
+                   string? actionLabel = null, Action? onAction = null);        // default no-op
 }
 ```
 
@@ -266,6 +268,24 @@ var profiles = await host.GetProfilesAsync();
 var claudeConfigDirs = profiles
     .Where(profile => profile.Provider == "ClaudeCli" && profile.ConfigDirectory.Length > 0)
     .Select(profile => profile.ConfigDirectory);
+```
+
+### `void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction)`
+A transient **in-app notification** in the cockpit — how you tell the operator that something happened while
+they were working somewhere else in the app. `actionLabel` and `onAction` are supplied together to give the
+toast one button.
+- The toast **auto-dismisses**, so it announces; it does not hold the news. Whatever it is about should still be
+  findable in your own surface (your side-menu section, say) after the toast is gone.
+- Safe to call from any thread — the host marshals onto the UI thread itself.
+- `PluginToastSeverity` is `Success` / `Warning` / `Information` / `Error`; it drives the colour and how long
+  the toast stays. Default no-op, same compatibility rationale as `AddSessionProvider`.
+
+```csharp
+host.ShowToast(
+    $"Review requested — #{pullRequest.Number} {pullRequest.Title}",
+    PluginToastSeverity.Information,
+    "Open in browser",
+    () => OpenInBrowser(pullRequest.Url));
 ```
 
 ---

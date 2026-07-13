@@ -23,6 +23,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     private readonly TextBox _template;
     private readonly NumericUpDown _maxItems;
     private readonly TextBox _repoFilter;
+    private readonly CheckBox _notifyOnReviewRequests;
 
     public GitHubPullRequestsSettingsControl(GitHubPullRequestsSettings settings)
     {
@@ -36,6 +37,11 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         var useGhRow = SettingsHelpRow.Build(_useGh, "Use the installed `gh` CLI (uses your existing gh login, no token) instead of a single-repo HTTP call.");
 
         _ghOwner = new TextBox { Text = settings.GhOwner, PlaceholderText = "@me (or an org / user)" };
+        _notifyOnReviewRequests = new CheckBox
+        {
+            Content = "Notify me when a pull request starts waiting for my review",
+            IsChecked = settings.NotifyOnReviewRequests,
+        };
         var ghPanel = new StackPanel
         {
             Spacing = 6,
@@ -44,6 +50,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                 _Label("Owner (whose repositories to search)"),
                 SettingsHelpRow.Build(_ghOwner, "Owner (user or org, e.g. \"octocat\" or \"@me\" for yourself) whose repositories to search — cross-repo, unlike the single owner/repo below."),
                 _Hint("Uses your existing gh login — no token needed."),
+                SettingsHelpRow.Build(_notifyOnReviewRequests, "Shows a toast with an \"Open in browser\" button the moment a pull request is assigned to you for review. The requests themselves are always listed under \"Review requested\" in the section, whether this is on or not."),
             },
         };
 
@@ -129,6 +136,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     {
         _settings.UseGitHubCli = _useGh.IsChecked == true;
         _settings.GhOwner = string.IsNullOrWhiteSpace(_ghOwner.Text) ? "@me" : _ghOwner.Text.Trim();
+        _settings.NotifyOnReviewRequests = _notifyOnReviewRequests.IsChecked == true;
         _settings.Owner = _owner.Text?.Trim() ?? string.Empty;
         _settings.Repo = _repo.Text?.Trim() ?? string.Empty;
         _settings.Token = _token.Text?.Trim() ?? string.Empty;

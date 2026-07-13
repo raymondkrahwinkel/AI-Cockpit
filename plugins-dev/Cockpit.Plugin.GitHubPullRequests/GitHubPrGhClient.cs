@@ -83,6 +83,44 @@ internal sealed class GitHubPrGhClient
         return result;
     }
 
+    /// <summary>
+    /// The open pull requests that are waiting for <em>your</em> review (<c>--review-requested @me</c>) —
+    /// across every repository, since a review request typically arrives on someone else's repo. Cached and
+    /// force-refreshed on the same terms as the other searches.
+    /// </summary>
+    public async Task<IReadOnlyList<GitHubPullRequest>> SearchReviewRequestedAsync(bool forceRefresh, CancellationToken cancellationToken)
+    {
+        const string cacheKey = "@me|review-requested";
+
+        if (!forceRefresh)
+        {
+            lock (CacheGate)
+            {
+                if (PullRequestCache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < PullRequestTtl)
+                {
+                    return cached.PullRequests;
+                }
+            }
+        }
+
+        var pullRequests = _ParsePullRequests(await _RunGhAsync(ReviewRequestedArguments, cancellationToken));
+
+        lock (CacheGate)
+        {
+            PullRequestCache[cacheKey] = (DateTimeOffset.UtcNow, pullRequests);
+        }
+
+        return pullRequests;
+    }
+
+    // Kept as a field rather than inlined so the review-requested query is assertable in a test without
+    // shelling out to gh.
+    internal static readonly string[] ReviewRequestedArguments =
+    [
+        "search", "prs", "--state", "open", "--review-requested", "@me", "--limit", "100",
+        "--json", "number,title,url,body,repository,author",
+    ];
+
     // The archived repos for the owner; "@me"/blank means the current gh user (no owner argument). Cached
     // longer than pull requests since archiving is rare.
     private static async Task<HashSet<string>> _GetArchivedReposAsync(string owner, bool forceRefresh, CancellationToken cancellationToken)

@@ -4,6 +4,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
@@ -39,6 +40,8 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
     private readonly TextBlock _status;
     private readonly StackPanel _list;
+    private readonly StackPanel _reviewList;
+    private readonly StackPanel _reviewPanel;
 
     public GitHubPullRequestsSideSectionControl(GitHubPullRequestsSettings settings, ICockpitHost host)
     {
@@ -47,6 +50,20 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
         _status = new TextBlock { FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         _list = new StackPanel { Spacing = 4, Margin = new Thickness(0, 4, 0, 4) };
+
+        // The pull requests waiting for your review sit apart from (and above) your own open PRs: they are the
+        // ones that are asking something of you. Hidden entirely when there are none, so the section stays quiet.
+        _reviewList = new StackPanel { Spacing = 4 };
+        _reviewPanel = new StackPanel
+        {
+            Spacing = 4,
+            IsVisible = false,
+            Children =
+            {
+                new TextBlock { Text = "Review requested", FontSize = 11, FontWeight = FontWeight.SemiBold },
+                _reviewList,
+            },
+        };
 
         var refresh = new Button { Content = "⟳", FontSize = 11, Padding = new Thickness(6, 2) };
         refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
@@ -73,7 +90,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         {
             Margin = new Thickness(4),
             Spacing = 6,
-            Children = { header, _list, viewAll },
+            Children = { header, _reviewPanel, _list, viewAll },
         };
 
         // Re-fetch with the just-saved settings (owner/repo, token, gh-CLI toggle) instead of leaving this
@@ -135,10 +152,15 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             IReadOnlyList<GitHubPullRequest> all;
             if (_settings.UseGitHubCli)
             {
+                await _LoadReviewRequestsAsync(forceRefresh);
                 all = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe: false, forceRefresh, CancellationToken.None);
             }
             else
             {
+                // The HTTP mode talks to one repository and has no review-requested search, so the group has
+                // nothing to show there.
+                _reviewPanel.IsVisible = false;
+
                 if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
                 {
                     _status.Text = "Set a repository in settings, or turn on the GitHub CLI.";
@@ -174,6 +196,66 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
                 _status.Text = $"Could not load pull requests: {exception.Message}";
             }
         }
+    }
+
+    private async Task _LoadReviewRequestsAsync(bool forceRefresh)
+    {
+        var reviewRequested = await _gh.SearchReviewRequestedAsync(forceRefresh, CancellationToken.None);
+
+        _reviewList.Children.Clear();
+        foreach (var pullRequest in reviewRequested)
+        {
+            _reviewList.Children.Add(_BuildReviewRow(pullRequest));
+        }
+
+        _reviewPanel.IsVisible = reviewRequested.Count > 0;
+        _AnnounceArrivals(reviewRequested);
+    }
+
+    // A review request that was already waiting when the plugin first looked is not news, so the first load
+    // only primes the seen-set (it has no stored one yet) and stays quiet. After that, every request that was
+    // not there last time is announced once.
+    private void _AnnounceArrivals(IReadOnlyList<GitHubPullRequest> reviewRequested)
+    {
+        var seen = _settings.SeenReviewRequests;
+        var inbox = ReviewRequestInbox.Reconcile(reviewRequested, seen ?? new HashSet<string>(StringComparer.Ordinal));
+        _settings.SeenReviewRequests = inbox.Seen;
+
+        if (seen is null || !_settings.NotifyOnReviewRequests)
+        {
+            return;
+        }
+
+        foreach (var pullRequest in inbox.Arrived)
+        {
+            _host.ShowToast(
+                $"Review requested — #{pullRequest.Number} {pullRequest.Title} ({pullRequest.Repository})",
+                PluginToastSeverity.Information,
+                "Open in browser",
+                () => _OpenInBrowser(pullRequest.Url));
+        }
+    }
+
+    // Same click-to-prompt behaviour as the rows below, plus the button you actually want on a review request:
+    // open it in the browser, where you review it.
+    private Control _BuildReviewRow(GitHubPullRequest pullRequest)
+    {
+        var open = new Button
+        {
+            Content = "Open",
+            FontSize = 11,
+            Padding = new Thickness(6, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        open.Click += (_, _) => _OpenInBrowser(pullRequest.Url);
+        ToolTip.SetTip(open, "Open this pull request in the browser");
+
+        var row = new DockPanel();
+        DockPanel.SetDock(open, Dock.Right);
+        row.Children.Add(open);
+        row.Children.Add(_BuildRow(pullRequest));
+
+        return row;
     }
 
     private Button _BuildRow(GitHubPullRequest pullRequest)
