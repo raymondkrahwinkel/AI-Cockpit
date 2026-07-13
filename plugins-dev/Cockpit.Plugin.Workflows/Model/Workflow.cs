@@ -1,9 +1,15 @@
 namespace Cockpit.Plugin.Workflows.Model;
 
 /// <summary>
-/// One workflow: its nodes and the wires between them (#69). The rules about what may be wired to what live here
-/// rather than in the canvas, so an engine, an importer or a plugin-contributed node all obey the same ones — and
-/// so they can be tested without a mouse.
+/// One workflow: its nodes and the wires between them (#69). The rules live here rather than in the canvas, so an
+/// engine, an importer and a plugin-contributed node all obey the same ones — and so they can be tested without a
+/// mouse.
+/// <para>
+/// The rules are deliberately few. An earlier version of this file refused fan-out (one way out feeding several
+/// steps) and loops, on the assumption that they were mistakes. They are not: in n8n both are ordinary, and a loop
+/// with a decision as its stop condition is a normal thing to draw. Refusing them made the editor wrong about
+/// workflows rather than strict about them.
+/// </para>
 /// </summary>
 public sealed class Workflow
 {
@@ -18,41 +24,39 @@ public sealed class Workflow
     public WorkflowNode? Node(string id) => Nodes.FirstOrDefault(node => node.Id == id);
 
     /// <summary>
-    /// Whether this wire may exist. Refusing is the point: a connection the engine could never follow is worse
-    /// than no connection, because the canvas would show a flow that does not do what it looks like it does.
+    /// Whether this wire may exist. Only three things are refused, and each is a wire the engine could never
+    /// follow: a node feeding itself, anything running <em>into</em> a trigger, and a wire that is already there.
+    /// Everything else — fan-out, merging several steps into one, a loop back to an earlier node — is a shape
+    /// workflows genuinely have.
     /// </summary>
     public WorkflowConnectionRule CanConnect(string fromNodeId, int fromOutput, string toNodeId)
     {
         if (fromNodeId == toNodeId)
         {
-            return WorkflowConnectionRule.Refuse("A node cannot feed itself.");
+            return WorkflowConnectionRule.Refuse("A step cannot feed itself.");
         }
 
         if (Node(fromNodeId) is not { } from || Node(toNodeId) is not { } to)
         {
-            return WorkflowConnectionRule.Refuse("That node is not in this workflow.");
+            return WorkflowConnectionRule.Refuse("That step is not in this workflow.");
         }
 
-        if (fromOutput < 0 || fromOutput >= from.OutputCount)
+        if (fromOutput < 0 || fromOutput >= from.Outputs.Count)
         {
-            return WorkflowConnectionRule.Refuse($"'{from.Title}' has no such way out.");
+            return WorkflowConnectionRule.Refuse($"'{from.Name}' has no such way out.");
         }
 
         if (!to.HasInput)
         {
-            return WorkflowConnectionRule.Refuse($"'{to.Title}' is a trigger: it starts a flow, so nothing runs into it.");
+            return WorkflowConnectionRule.Refuse($"'{to.Name}' is a trigger: it starts a flow, so nothing runs into it.");
         }
 
-        // One wire per way out. A step that ran two things at once would need the engine to say which came first,
-        // and a flow whose order you cannot read is not a flow you can trust.
-        if (Connections.Any(connection => connection.FromNodeId == fromNodeId && connection.FromOutput == fromOutput))
+        if (Connections.Any(connection =>
+                connection.FromNodeId == fromNodeId
+                && connection.FromOutput == fromOutput
+                && connection.ToNodeId == toNodeId))
         {
-            return WorkflowConnectionRule.Refuse($"'{from.Title}' already continues from there.");
-        }
-
-        if (_WouldCycle(fromNodeId, toNodeId))
-        {
-            return WorkflowConnectionRule.Refuse("That would make the flow loop back on itself.");
+            return WorkflowConnectionRule.Refuse("That connection is already there.");
         }
 
         return WorkflowConnectionRule.Allow();
@@ -70,39 +74,16 @@ public sealed class Workflow
         return rule;
     }
 
-    /// <summary>Removes a node and every wire that touched it — a wire to a node that is gone is not a wire.</summary>
+    /// <summary>Removes a node and every wire that touched it — a wire to a step that is gone is not a wire.</summary>
     public void Remove(string nodeId)
     {
         Nodes.RemoveAll(node => node.Id == nodeId);
         Connections.RemoveAll(connection => connection.FromNodeId == nodeId || connection.ToNodeId == nodeId);
     }
 
-    // Walking forward from the would-be target: if we can reach the source again, the wire closes a loop.
-    private bool _WouldCycle(string fromNodeId, string toNodeId)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var pending = new Stack<string>();
-        pending.Push(toNodeId);
+    public void Disconnect(WorkflowConnection connection) => Connections.Remove(connection);
 
-        while (pending.Count > 0)
-        {
-            var current = pending.Pop();
-            if (current == fromNodeId)
-            {
-                return true;
-            }
-
-            if (!seen.Add(current))
-            {
-                continue;
-            }
-
-            foreach (var next in Connections.Where(connection => connection.FromNodeId == current))
-            {
-                pending.Push(next.ToNodeId);
-            }
-        }
-
-        return false;
-    }
+    /// <summary>Whether this way out already leads somewhere — what decides if the canvas draws the "+" that adds the next step.</summary>
+    public bool HasConnectionFrom(string nodeId, int output) =>
+        Connections.Any(connection => connection.FromNodeId == nodeId && connection.FromOutput == output);
 }

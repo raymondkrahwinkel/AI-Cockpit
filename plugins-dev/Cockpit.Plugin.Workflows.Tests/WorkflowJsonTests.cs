@@ -18,16 +18,15 @@ public class WorkflowJsonTests
             Name = "PR review",
             Nodes =
             {
-                new WorkflowNode { Id = "t", TypeId = "github.pr-opened", Kind = WorkflowNodeKind.Trigger, Title = "PR opened", X = 60, Y = 40 },
+                new WorkflowNode { Id = "t", TypeId = "cockpit.event", Name = "PR opened", X = 60, Y = 40 },
                 new WorkflowNode
                 {
                     Id = "a",
                     TypeId = "cockpit.notify",
-                    Kind = WorkflowNodeKind.Action,
-                    Title = "Notify me",
+                    Name = "Notify me",
                     X = 380,
                     Y = 40,
-                    Settings = { ["message"] = "Review requested" },
+                    Parameters = { ["Message"] = "Review requested" },
                 },
             },
             Connections = { new WorkflowConnection { FromNodeId = "t", FromOutput = 0, ToNodeId = "a" } },
@@ -40,21 +39,21 @@ public class WorkflowJsonTests
         loaded.Nodes.Should().HaveCount(2);
         loaded.Node("t")!.Kind.Should().Be(WorkflowNodeKind.Trigger);
         loaded.Node("a")!.X.Should().Be(380);
-        loaded.Node("a")!.Settings["message"].Should().Be("Review requested");
+        loaded.Node("a")!.Parameters["Message"].Should().Be("Review requested");
         loaded.Connections.Should().ContainSingle(connection => connection.FromNodeId == "t" && connection.ToNodeId == "a");
     }
 
     [Fact]
-    public void Write_UsesTheNamesOfTheKinds_SoAHandEditedFlowStaysReadable()
+    public void Write_KeepsTheTypeId_SoAFlowStillMeansSomethingWhenReadByHand()
     {
         var workflow = new Workflow
         {
             Id = "w",
             Name = "Flow",
-            Nodes = { new WorkflowNode { Id = "t", TypeId = "cockpit.event", Kind = WorkflowNodeKind.Trigger, Title = "Trigger" } },
+            Nodes = { new WorkflowNode { Id = "t", TypeId = "cockpit.event", Name = "Trigger" } },
         };
 
-        WorkflowJson.Write(workflow).Should().Contain("\"Trigger\"").And.NotContain("\"Kind\": 0");
+        WorkflowJson.Write(workflow).Should().Contain("cockpit.event");
     }
 
     [Fact]

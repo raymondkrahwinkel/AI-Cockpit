@@ -2,32 +2,36 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Cockpit.Plugin.Workflows.Model;
 using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
 /// <summary>
-/// The flow editor's surface (#69): nodes you drag, pins you pull wires out of, pan and zoom. Written on plain
-/// Avalonia rather than on a node-editor library because none of them run on Avalonia 12 — every one depends on
-/// Avalonia.Xaml.Behaviors, which has no Avalonia 12 release (see the spike in spikes/spike-node-editor).
+/// The flow editor's surface (#69), in n8n's visual language and with the cockpit's own steps: square icon tiles
+/// on a dotted grid, wires with arrowheads, a labelled branch on a decision, and a <c>+</c> on every way out that
+/// leads nowhere yet — click it and the picker asks what happens next.
 /// <para>
-/// It renders a <see cref="Workflow"/> and writes straight back into it, so what you see and what gets saved
-/// cannot drift apart. The rules about what may be wired to what belong to the model, not here — the canvas
-/// merely asks, and reports the refusal.
+/// Plain Avalonia, no node-editor library: none of them run on Avalonia 12 (see spikes/spike-node-editor). It
+/// renders a <see cref="Workflow"/> and writes straight back into it, so what you see and what gets saved cannot
+/// drift apart. What may be wired to what is the model's business, not the canvas's — the canvas asks, and reports
+/// the refusal.
 /// </para>
 /// </summary>
 internal sealed class WorkflowCanvas : Border
 {
     private const double MinZoom = 0.3;
-    private const double MaxZoom = 3.0;
+    private const double MaxZoom = 2.5;
+    private const double GridStep = 16;
 
-    private readonly Avalonia.Controls.Canvas _surface = new() { Background = Brushes.Transparent };
+    private readonly Avalonia.Controls.Canvas _surface = new() { Background = Brushes.Transparent, Width = 4000, Height = 3000 };
     private readonly ScaleTransform _zoom = new(1, 1);
     private readonly TranslateTransform _pan = new();
 
     private readonly Dictionary<string, WorkflowNodeControl> _nodes = new(StringComparer.Ordinal);
     private readonly List<WorkflowWire> _wires = [];
+    private readonly List<Button> _plusButtons = [];
 
     private WorkflowNodeControl? _draggingNode;
     private Point _dragOffset;
@@ -42,7 +46,7 @@ internal sealed class WorkflowCanvas : Border
     {
         Workflow = workflow;
 
-        Background = _Brush("CockpitSecondaryBgBrush") ?? new SolidColorBrush(Color.Parse("#1B1B1F"));
+        Background = DotGrid.Brush;
         ClipToBounds = true;
         Focusable = true;
 
@@ -61,30 +65,57 @@ internal sealed class WorkflowCanvas : Border
 
     public Workflow Workflow { get; }
 
-    /// <summary>Raised when the canvas changed the workflow (a node moved, a wire was drawn or something was deleted) — the cue to save.</summary>
+    /// <summary>Raised when the canvas changed the workflow (a step moved, a wire was drawn, something was deleted) — the cue to save.</summary>
     public event EventHandler? Changed;
 
-    /// <summary>Raised when the model refused a wire, carrying the reason, so the dialog can say it out loud instead of the drag silently doing nothing.</summary>
+    /// <summary>Raised when the model refused a wire, carrying the reason, so it can be said out loud instead of the drag silently doing nothing.</summary>
     public event EventHandler<string>? Refused;
 
-    /// <summary>The node the operator last clicked, or null — what a properties panel and the Delete key both act on.</summary>
+    /// <summary>Raised when a "+" on an unconnected way out was clicked — the dialog opens the picker.</summary>
+    public event EventHandler<(string NodeId, int Output)>? AddRequested;
+
     public WorkflowNode? Selected { get; private set; }
 
     public event EventHandler? SelectionChanged;
 
-    public void Add(WorkflowNode node)
+    public double Zoom => _zoom.ScaleX;
+
+    /// <summary>Adds a step, optionally wired to the way out the "+" was clicked on — which is what makes the + worth having.</summary>
+    public void Add(WorkflowNode node, string? fromNodeId = null, int fromOutput = 0)
     {
         Workflow.Nodes.Add(node);
-        _AddControl(node);
+
+        if (fromNodeId is not null)
+        {
+            var rule = Workflow.Connect(fromNodeId, fromOutput, node.Id);
+            if (!rule.IsAllowed && rule.Reason is { } reason)
+            {
+                Refused?.Invoke(this, reason);
+            }
+        }
+
+        Rebuild();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Rebuilds every control from the workflow — used on load, and after a change that moves more than one thing.</summary>
+    /// <summary>A free spot for a new step: to the right of the step it follows, or on an empty patch of canvas.</summary>
+    public (double X, double Y) PlaceAfter(string? fromNodeId)
+    {
+        if (fromNodeId is not null && Workflow.Node(fromNodeId) is { } from)
+        {
+            return (from.X + 220, from.Y);
+        }
+
+        var count = Workflow.Nodes.Count;
+        return (80 + count % 4 * 220, 80 + count / 4 * 180);
+    }
+
     public void Rebuild()
     {
         _surface.Children.Clear();
         _nodes.Clear();
         _wires.Clear();
+        _plusButtons.Clear();
 
         foreach (var node in Workflow.Nodes)
         {
@@ -95,6 +126,24 @@ internal sealed class WorkflowCanvas : Border
         {
             _AddWire(connection);
         }
+
+        // The + buttons need the pins laid out to know where to sit, which has not happened yet — so they are
+        // placed once the layout pass has run.
+        Avalonia.Threading.Dispatcher.UIThread.Post(_RefreshPlusButtons, DispatcherPriority.Loaded);
+    }
+
+    public void ZoomBy(double factor)
+    {
+        var next = Math.Clamp(_zoom.ScaleX * factor, MinZoom, MaxZoom);
+        _zoom.ScaleX = _zoom.ScaleY = next;
+        _RefreshPlusButtons();
+    }
+
+    public void ResetView()
+    {
+        _zoom.ScaleX = _zoom.ScaleY = 1;
+        _pan.X = _pan.Y = 0;
+        _RefreshPlusButtons();
     }
 
     private void _AddControl(WorkflowNode node)
@@ -118,13 +167,77 @@ internal sealed class WorkflowCanvas : Border
             return;
         }
 
-        var wire = new WorkflowWire(connection, from.OutputPin(connection.FromOutput), to.InputPin());
+        var branch = from.Node.Outputs.ElementAtOrDefault(connection.FromOutput);
+        var wire = new WorkflowWire(connection, from.OutputPin(connection.FromOutput), to.InputPin(), branch);
         _wires.Add(wire);
 
         // Behind the nodes: a curve must never cover the thing it connects.
         _surface.Children.Insert(0, wire.Line);
-        wire.Redraw(_surface);
+        _surface.Children.Insert(1, wire.Arrow);
+        if (wire.Label is not null)
+        {
+            _surface.Children.Add(wire.Label);
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => wire.Redraw(_surface), DispatcherPriority.Loaded);
     }
+
+    // A "+" hangs off every way out that leads nowhere: the flow tells you where it is unfinished, and clicking it
+    // is how you continue — you never have to know that a step exists before you can reach for it.
+    private void _RefreshPlusButtons()
+    {
+        foreach (var button in _plusButtons)
+        {
+            _surface.Children.Remove(button);
+        }
+
+        _plusButtons.Clear();
+
+        foreach (var (nodeId, control) in _nodes)
+        {
+            for (var output = 0; output < control.OutputPins.Count; output++)
+            {
+                if (Workflow.HasConnectionFrom(nodeId, output))
+                {
+                    continue;
+                }
+
+                var anchor = control.OutputPin(output).AnchorOn(_surface);
+                var plus = _PlusButton(nodeId, output);
+
+                Avalonia.Controls.Canvas.SetLeft(plus, anchor.X + 26);
+                Avalonia.Controls.Canvas.SetTop(plus, anchor.Y - 9);
+                _surface.Children.Add(plus);
+                _plusButtons.Add(plus);
+
+                var stub = WorkflowWire.NewLine();
+                WorkflowWire.Draw(stub, anchor, new Point(anchor.X + 26, anchor.Y));
+                _surface.Children.Insert(0, stub);
+                _plusButtons.Add(_Invisible(stub));
+            }
+        }
+    }
+
+    private Button _PlusButton(string nodeId, int output)
+    {
+        var button = new Button
+        {
+            Content = "+",
+            Width = 18,
+            Height = 18,
+            Padding = new Thickness(0),
+            FontSize = 11,
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center,
+        };
+        ToolTip.SetTip(button, "Add the next step");
+        button.Click += (_, _) => AddRequested?.Invoke(this, (nodeId, output));
+
+        return button;
+    }
+
+    // The stub line is tracked alongside the + buttons so it is cleaned up with them; wrapping it keeps one list.
+    private static Button _Invisible(Control control) => new() { IsVisible = false, Content = control, Width = 0, Height = 0 };
 
     private void _BeginNodeDrag(WorkflowNodeControl control, PointerPressedEventArgs e)
     {
@@ -139,7 +252,7 @@ internal sealed class WorkflowCanvas : Border
 
     private void _BeginWire(WorkflowPin pin)
     {
-        // Wires are pulled from an output; dropping onto an input is what finishes them.
+        // Wires are pulled from a way out; dropping on an input is what finishes them.
         if (pin.IsInput)
         {
             return;
@@ -157,10 +270,13 @@ internal sealed class WorkflowCanvas : Border
             var rule = Workflow.Connect(source.Owner.Node.Id, source.OutputIndex, pin.Owner.Node.Id);
             if (rule.IsAllowed)
             {
-                _AddWire(Workflow.Connections[^1]);
+                _ClearPendingWire();
+                Rebuild();
                 Changed?.Invoke(this, EventArgs.Empty);
+                return;
             }
-            else if (rule.Reason is { } reason)
+
+            if (rule.Reason is { } reason)
             {
                 Refused?.Invoke(this, reason);
             }
@@ -195,7 +311,6 @@ internal sealed class WorkflowCanvas : Border
     {
         Focus();
 
-        // Pressing the empty canvas pans it, and clears the selection: the same gesture every canvas tool has.
         if (ReferenceEquals(e.Source, _surface) || ReferenceEquals(e.Source, this))
         {
             _Select(null);
@@ -211,13 +326,21 @@ internal sealed class WorkflowCanvas : Border
 
         if (_draggingNode is { } control)
         {
-            var x = onSurface.X - _dragOffset.X;
-            var y = onSurface.Y - _dragOffset.Y;
+            // Snapped to the grid the dots draw: a flow built by hand still lines up.
+            var x = Math.Round((onSurface.X - _dragOffset.X) / GridStep) * GridStep;
+            var y = Math.Round((onSurface.Y - _dragOffset.Y) / GridStep) * GridStep;
+
             Avalonia.Controls.Canvas.SetLeft(control, x);
             Avalonia.Controls.Canvas.SetTop(control, y);
             control.Node.X = x;
             control.Node.Y = y;
-            _RedrawWires(control.Node.Id);
+
+            foreach (var wire in _wires.Where(wire => wire.Touches(control.Node.Id)))
+            {
+                wire.Redraw(_surface);
+            }
+
+            _RefreshPlusButtons();
             return;
         }
 
@@ -238,7 +361,6 @@ internal sealed class WorkflowCanvas : Border
 
     private void _OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        // A wire dropped in empty space is not a wire.
         if (_pendingSource is not null)
         {
             _ClearPendingWire();
@@ -282,15 +404,4 @@ internal sealed class WorkflowCanvas : Border
         Changed?.Invoke(this, EventArgs.Empty);
         e.Handled = true;
     }
-
-    private void _RedrawWires(string nodeId)
-    {
-        foreach (var wire in _wires.Where(wire => wire.Touches(nodeId)))
-        {
-            wire.Redraw(_surface);
-        }
-    }
-
-    private static IBrush? _Brush(string key) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }

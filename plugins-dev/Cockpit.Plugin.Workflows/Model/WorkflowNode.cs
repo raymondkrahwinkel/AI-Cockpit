@@ -1,47 +1,36 @@
 namespace Cockpit.Plugin.Workflows.Model;
 
 /// <summary>
-/// One step in a workflow (#69). What a node <em>does</em> is decided by its <see cref="Kind"/> and its
-/// <see cref="TypeId"/> — "text-match", "notify", "delegate" — not by the class, because the whole point is that
-/// plugins contribute node types the editor has never heard of. The editor knows only that a node has a place, a
-/// name and pins.
+/// One step on the canvas (#69): an instance of a <see cref="NodeTypeDescriptor"/>, with its own name, its place
+/// and its parameter values. What it <em>does</em> lives in the type, not here — which is what lets a plugin one
+/// day contribute a type this editor has never heard of and have it draw and run like any other.
 /// </summary>
 public sealed class WorkflowNode
 {
     public required string Id { get; init; }
 
-    /// <summary>What the node type is called in its catalogue ("github.pr-opened", "cockpit.notify") — the key the engine will resolve to an implementation.</summary>
+    /// <summary>The type this is an instance of ("cockpit.notify").</summary>
     public required string TypeId { get; init; }
 
-    public required WorkflowNodeKind Kind { get; init; }
-
-    /// <summary>What the operator sees on the node. Defaults to the type's own name; they may rename it, since three "notify" nodes in one flow are otherwise indistinguishable.</summary>
-    public required string Title { get; set; }
+    /// <summary>What the operator called it. Three "Notify" nodes in one flow are otherwise indistinguishable.</summary>
+    public required string Name { get; set; }
 
     public double X { get; set; }
 
     public double Y { get; set; }
 
-    /// <summary>The node type's own settings (a regex to match, a message to send), kept as opaque key/value so the editor never needs to know what a node type stores.</summary>
-    public Dictionary<string, string> Settings { get; init; } = [];
+    /// <summary>The values for this type's parameters, by name. Opaque here on purpose: the editor never needs to know what a node type stores.</summary>
+    public Dictionary<string, string> Parameters { get; init; } = [];
 
-    /// <summary>A trigger is what starts a flow, so it takes nothing in; everything else does.</summary>
-    public bool HasInput => Kind != WorkflowNodeKind.Trigger;
+    /// <summary>A node the operator switched off: it stays on the canvas, drawn dimmed, and a run skips it. Deleting is not the only way to say "not now".</summary>
+    public bool IsDisabled { get; set; }
 
-    /// <summary>
-    /// How many ways out this node has. A decision has two — the branch where its condition held and the one
-    /// where it did not — which is exactly why the count lives here and not as a constant on the canvas.
-    /// </summary>
-    public int OutputCount => Kind switch
-    {
-        WorkflowNodeKind.Decision => 2,
-        _ => 1,
-    };
+    /// <summary>The type, or null when the flow refers to a type this build does not have (an uninstalled plugin's node) — which is shown as such rather than crashing the canvas.</summary>
+    public NodeTypeDescriptor? Type => NodeCatalog.Find(TypeId);
 
-    /// <summary>What each way out is called, shown on the pin so a branch is readable without opening the node.</summary>
-    public IReadOnlyList<string> OutputLabels => Kind switch
-    {
-        WorkflowNodeKind.Decision => ["yes", "no"],
-        _ => [""],
-    };
+    public WorkflowNodeKind Kind => Type?.Kind ?? WorkflowNodeKind.Action;
+
+    public bool HasInput => Type?.HasInput ?? true;
+
+    public IReadOnlyList<string> Outputs => Type?.Outputs ?? [""];
 }

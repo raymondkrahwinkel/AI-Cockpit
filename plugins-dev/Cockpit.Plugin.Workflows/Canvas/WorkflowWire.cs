@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Model;
 using Path = Avalonia.Controls.Shapes.Path;
@@ -6,27 +7,78 @@ using Path = Avalonia.Controls.Shapes.Path;
 namespace Cockpit.Plugin.Workflows.Canvas;
 
 /// <summary>
-/// A wire between two pins, drawn as the bezier every flow tool draws: the curve leaves a node sideways rather
-/// than diving at it. The only real geometry in the editor.
+/// A wire between two steps (#69): a bezier that leaves sideways, an arrowhead where it arrives, and — on a
+/// decision — the name of the branch on the line itself. The arrowhead is not decoration: with fan-out and loops
+/// allowed, "which way does this one run" stops being obvious from the shape alone.
 /// </summary>
-internal sealed class WorkflowWire(WorkflowConnection connection, WorkflowPin from, WorkflowPin to)
+internal sealed class WorkflowWire
 {
     private const double MinTangent = 40;
-    private const double MaxTangent = 160;
+    private const double MaxTangent = 140;
+    private const double ArrowSize = 7;
 
-    public Path Line { get; } = NewLine();
+    private readonly WorkflowConnection _connection;
+    private readonly WorkflowPin _from;
+    private readonly WorkflowPin _to;
+
+    public WorkflowWire(WorkflowConnection connection, WorkflowPin from, WorkflowPin to, string? branchLabel)
+    {
+        _connection = connection;
+        _from = from;
+        _to = to;
+
+        Line = NewLine();
+        Arrow = new Path { Fill = WireBrush, IsHitTestVisible = false };
+
+        // Only a branch that has a name gets a label: "true"/"false" on a decision means something, an empty
+        // label on every other wire is noise.
+        Label = string.IsNullOrEmpty(branchLabel)
+            ? null
+            : new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#22222A")),
+                BorderBrush = new SolidColorBrush(Color.Parse("#3C3C46")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(5, 1),
+                IsHitTestVisible = false,
+                Child = new TextBlock { Text = branchLabel, FontSize = 9, Opacity = 0.8 },
+            };
+    }
+
+    public Path Line { get; }
+
+    public Path Arrow { get; }
+
+    public Border? Label { get; }
+
+    public WorkflowConnection Connection => _connection;
 
     public bool Touches(string nodeId) =>
-        connection.FromNodeId == nodeId || connection.ToNodeId == nodeId;
+        _connection.FromNodeId == nodeId || _connection.ToNodeId == nodeId;
 
-    public void Redraw(Visual surface) => Draw(Line, from.AnchorOn(surface), to.AnchorOn(surface));
+    public void Redraw(Avalonia.Controls.Canvas surface)
+    {
+        var start = _from.AnchorOn(surface);
+        var end = _to.AnchorOn(surface);
+
+        Draw(Line, start, end);
+        _DrawArrow(end);
+
+        if (Label is not null)
+        {
+            // Near the source, where the branch splits — that is where the reader asks which way is which.
+            Avalonia.Controls.Canvas.SetLeft(Label, start.X + 12);
+            Avalonia.Controls.Canvas.SetTop(Label, start.Y - 9);
+        }
+    }
 
     public static Path NewLine() => new()
     {
-        Stroke = new SolidColorBrush(Color.Parse("#7A7A88")),
+        Stroke = WireBrush,
         StrokeThickness = 2,
-        // A wire is not something you click — clicking through it hits the canvas underneath, which is what an
-        // operator expects when they drag the background to pan.
+        // Clicking a wire hits the canvas underneath, which is what an operator expects when they drag the
+        // background to pan.
         IsHitTestVisible = false,
     };
 
@@ -48,4 +100,19 @@ internal sealed class WorkflowWire(WorkflowConnection connection, WorkflowPin fr
         geometry.Figures!.Add(figure);
         line.Data = geometry;
     }
+
+    // The curve arrives horizontally (its last tangent is flat), so the arrow always points right — no need to
+    // differentiate the bezier for an angle it cannot have.
+    private void _DrawArrow(Point end)
+    {
+        var geometry = new PathGeometry();
+        var figure = new PathFigure { StartPoint = end, IsClosed = true };
+        figure.Segments!.Add(new LineSegment { Point = new Point(end.X - ArrowSize, end.Y - ArrowSize / 1.6) });
+        figure.Segments!.Add(new LineSegment { Point = new Point(end.X - ArrowSize, end.Y + ArrowSize / 1.6) });
+        geometry.Figures!.Add(figure);
+
+        Arrow.Data = geometry;
+    }
+
+    private static IBrush WireBrush { get; } = new SolidColorBrush(Color.Parse("#6E6E7C"));
 }

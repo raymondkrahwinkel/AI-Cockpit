@@ -8,13 +8,12 @@ using Cockpit.Plugin.Workflows.Model;
 namespace Cockpit.Plugin.Workflows;
 
 /// <summary>
-/// The workflow editor (#69): the list of flows on the left, the canvas on the right, and a strip of buttons that
-/// drop a node onto it. Every change is saved as it happens — an editor that can lose your work to a closed
-/// window is not one you trust with a workflow.
+/// The workflow editor (#69): the flows on the left, the canvas in the middle, and the step picker sliding in from
+/// the right when you ask what happens next. Every change is saved as it happens — an editor that can lose your
+/// work to a closed window is not one you trust with a workflow.
 /// <para>
-/// This is the canvas half of #69. Nothing runs yet: the nodes are placed and wired, but no engine executes them.
-/// The dialog says so rather than implying otherwise, because a flow that looks live but is not is the worst
-/// thing this could be.
+/// Nothing runs yet. "Execute workflow" is there, disabled, saying why: the engine is next. A button that quietly
+/// did nothing would be worse than no button, and hiding it would hide where this is going.
 /// </para>
 /// </summary>
 internal sealed class WorkflowsDialogControl : UserControl
@@ -23,6 +22,7 @@ internal sealed class WorkflowsDialogControl : UserControl
     private readonly List<Workflow> _workflows;
     private readonly ListBox _list;
     private readonly Border _canvasHost;
+    private readonly NodePicker _picker;
     private readonly TextBlock _status;
 
     private WorkflowCanvas? _canvas;
@@ -32,16 +32,11 @@ internal sealed class WorkflowsDialogControl : UserControl
         _store = store;
         _workflows = [.. store.Load()];
 
-        _status = new TextBlock { FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+        _status = new TextBlock { FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(2, 8, 2, 0) };
+        _canvasHost = new Border { ClipToBounds = true };
 
-        // The canvas is the point of this dialog, so it gets a real frame and every pixel that is left over.
-        _canvasHost = new Border
-        {
-            BorderThickness = new Thickness(1),
-            BorderBrush = _Brush("CockpitHairlineBrush"),
-            CornerRadius = new CornerRadius(6),
-            ClipToBounds = true,
-        };
+        _picker = new NodePicker();
+        _picker.Picked += (_, picked) => _AddStep(picked);
 
         _list = new ListBox { ItemsSource = _workflows.Select(workflow => workflow.Name).ToList() };
         _list.SelectionChanged += (_, _) => _OpenSelected();
@@ -56,43 +51,36 @@ internal sealed class WorkflowsDialogControl : UserControl
         };
         newFlow.Click += (_, _) => _NewWorkflow();
 
-        var left = new DockPanel { Width = 200, Margin = new Thickness(0, 0, 12, 0) };
-        var flowsHeader = new TextBlock { Text = "Flows", FontWeight = FontWeight.SemiBold, FontSize = 11, Opacity = 0.7, Margin = new Thickness(2, 0, 0, 6) };
+        var left = new DockPanel { Width = 190, Margin = new Thickness(0, 0, 12, 0) };
+        var flowsHeader = new TextBlock { Text = "FLOWS", FontWeight = FontWeight.SemiBold, FontSize = 10, Opacity = 0.5, Margin = new Thickness(2, 0, 0, 6) };
         DockPanel.SetDock(flowsHeader, Dock.Top);
         DockPanel.SetDock(newFlow, Dock.Bottom);
         left.Children.Add(flowsHeader);
         left.Children.Add(newFlow);
         left.Children.Add(_list);
 
-        var toolbar = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            Margin = new Thickness(0, 0, 0, 10),
-            Children =
-            {
-                _AddButton("+ Trigger", WorkflowNodeKind.Trigger, "cockpit.event"),
-                _AddButton("+ Action", WorkflowNodeKind.Action, "cockpit.notify"),
-                _AddButton("+ Decision", WorkflowNodeKind.Decision, "cockpit.if"),
-            },
-        };
+        // The canvas fills, and the controls float over it — the flow is the thing, not the chrome around it.
+        var canvasArea = new Grid();
+        canvasArea.Children.Add(_canvasHost);
+        canvasArea.Children.Add(_ZoomControls());
+        canvasArea.Children.Add(_ExecuteButton());
 
-        // A Grid, not a DockPanel: the status line is a row of its own, so a long sentence pushes the canvas up
-        // instead of being drawn over it.
-        var right = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        Grid.SetRow(toolbar, 0);
-        Grid.SetRow(_canvasHost, 1);
-        Grid.SetRow(_status, 2);
-        _status.Margin = new Thickness(2, 8, 2, 0);
-        right.Children.Add(toolbar);
-        right.Children.Add(_canvasHost);
-        right.Children.Add(_status);
+        var middle = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        Grid.SetRow(canvasArea, 0);
+        Grid.SetRow(_status, 1);
+        middle.Children.Add(canvasArea);
+        middle.Children.Add(_status);
+
+        var withPicker = new DockPanel();
+        DockPanel.SetDock(_picker, Dock.Right);
+        withPicker.Children.Add(_picker);
+        withPicker.Children.Add(middle);
 
         var root = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(16) };
         Grid.SetColumn(left, 0);
-        Grid.SetColumn(right, 1);
+        Grid.SetColumn(withPicker, 1);
         root.Children.Add(left);
-        root.Children.Add(right);
+        root.Children.Add(withPicker);
 
         Content = root;
 
@@ -106,31 +94,77 @@ internal sealed class WorkflowsDialogControl : UserControl
         }
     }
 
-    private Button _AddButton(string label, WorkflowNodeKind kind, string typeId)
+    // Bottom-left, where every canvas tool keeps them.
+    private Control _ZoomControls()
     {
-        var button = new Button { Content = label, Classes = { "Compact" } };
-        button.Click += (_, _) =>
-        {
-            if (_canvas is null)
-            {
-                return;
-            }
+        var addStep = new Button { Content = "+ Add step", Classes = { "Compact", "Accent" } };
+        addStep.Click += (_, _) => _picker.ShowLoose();
 
-            // Dropped where there is room rather than always at the origin, so a second node does not land on
-            // top of the first.
-            var count = _canvas.Workflow.Nodes.Count;
-            _canvas.Add(new WorkflowNode
-            {
-                Id = Guid.NewGuid().ToString("n"),
-                TypeId = typeId,
-                Kind = kind,
-                Title = label[2..],
-                X = 60 + count % 3 * 240,
-                Y = 60 + count / 3 * 150,
-            });
+        var zoomIn = _IconButton("+", "Zoom in", () => _canvas?.ZoomBy(1.2));
+        var zoomOut = _IconButton("−", "Zoom out", () => _canvas?.ZoomBy(1 / 1.2));
+        var reset = _IconButton("⟲", "Reset the view", () => _canvas?.ResetView());
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Margin = new Thickness(12),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Children = { addStep, zoomIn, zoomOut, reset },
+        };
+    }
+
+    private Control _ExecuteButton()
+    {
+        var execute = new Button
+        {
+            Content = "▶  Execute workflow",
+            Classes = { "Accent" },
+            IsEnabled = false,
+            Margin = new Thickness(12),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
         };
 
+        // Disabled, with the reason on it: the editor draws and saves flows, but nothing executes them yet. A
+        // button that quietly did nothing would be the worst thing this could ship.
+        ToolTip.SetTip(execute, "Not yet: the cockpit can draw and save a flow, but nothing runs it. The engine is the next step.");
+        ToolTip.SetShowOnDisabled(execute, true);
+
+        return execute;
+    }
+
+    private static Button _IconButton(string glyph, string tip, Action onClick)
+    {
+        var button = new Button { Content = glyph, Classes = { "Compact" }, Width = 28 };
+        ToolTip.SetTip(button, tip);
+        button.Click += (_, _) => onClick();
+
         return button;
+    }
+
+    private void _AddStep(NodePicked picked)
+    {
+        if (_canvas is not { } canvas)
+        {
+            return;
+        }
+
+        var (x, y) = canvas.PlaceAfter(picked.FromNodeId);
+        canvas.Add(
+            new WorkflowNode
+            {
+                Id = Guid.NewGuid().ToString("n"),
+                TypeId = picked.Type.Id,
+                Name = picked.Type.Name,
+                X = x,
+                Y = y,
+            },
+            picked.FromNodeId,
+            picked.FromOutput);
+
+        _Describe();
     }
 
     private void _NewWorkflow()
@@ -155,9 +189,14 @@ internal sealed class WorkflowsDialogControl : UserControl
         }
 
         var canvas = new WorkflowCanvas(_workflows[_list.SelectedIndex]);
-        canvas.Changed += (_, _) => _Save();
+        canvas.Changed += (_, _) =>
+        {
+            _Save();
+            _Describe();
+        };
         canvas.Refused += (_, reason) => _status.Text = reason;
         canvas.SelectionChanged += (_, _) => _Describe();
+        canvas.AddRequested += (_, from) => _picker.ShowFor(from.NodeId, from.Output);
 
         _canvas = canvas;
         _canvasHost.Child = canvas;
@@ -171,12 +210,12 @@ internal sealed class WorkflowsDialogControl : UserControl
             return;
         }
 
-        var nodes = canvas.Workflow.Nodes.Count;
+        var steps = canvas.Workflow.Nodes.Count;
         var wires = canvas.Workflow.Connections.Count;
-        var selected = canvas.Selected is { } node ? $" · selected: {node.Title}" : string.Empty;
 
-        // Honest about what this is: the flow is drawn and saved, but nothing runs it yet.
-        _status.Text = $"{nodes} node(s), {wires} connection(s){selected} — drag a node by its header, pull a wire from an output pin, Delete removes the selected node. Nothing runs these yet: the engine comes next.";
+        _status.Text = steps == 0
+            ? "Empty. Add a step to begin — a flow starts with something that triggers it."
+            : $"{steps} step(s), {wires} connection(s) — drag a step to move it, pull a wire from a way out, or click a + to add what happens next. Delete removes the selected step. Nothing runs these yet: the engine comes next.";
     }
 
     private void _RefreshList()
@@ -187,7 +226,4 @@ internal sealed class WorkflowsDialogControl : UserControl
     }
 
     private void _Save() => _store.Save(_workflows);
-
-    private static IBrush? _Brush(string key) =>
-        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }

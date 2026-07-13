@@ -9,88 +9,110 @@ using Cockpit.Plugin.Workflows.Model;
 namespace Cockpit.Plugin.Workflows.Canvas;
 
 /// <summary>
-/// One node on the canvas: a titled box with its input pin on the left and its ways out on the right, labelled
-/// where a label means something (a decision's "yes" and "no"). It is an ordinary control, which is why the
-/// canvas needs no hit-testing of its own — a pin is clickable because it <em>is</em> a control.
+/// One step on the canvas (#69), in the shape that makes a flow readable at a glance: a square tile carrying the
+/// type's icon, the operator's name for it underneath, and the type itself under that in small print. What the
+/// step <em>is</em> you read from the icon; what it is <em>for</em> from the name you gave it.
+/// <para>
+/// A trigger is rounded on its left and wears a lightning bolt, so where a flow begins is visible without reading
+/// a word — the one piece of n8n's visual language worth copying outright, because it works.
+/// </para>
 /// </summary>
 internal sealed class WorkflowNodeControl : Border
 {
-    private const double NodeWidth = 190;
+    public const double TileSize = 88;
 
     private readonly List<WorkflowPin> _outputs = [];
     private readonly WorkflowPin? _input;
+    private readonly Border _tile;
 
     public WorkflowNodeControl(WorkflowNode node)
     {
         Node = node;
+        Background = Brushes.Transparent;
+        Width = 150;
 
-        Width = NodeWidth;
-        Background = _Brush("CockpitPanelBgBrush") ?? new SolidColorBrush(Color.Parse("#2A2A31"));
-        BorderBrush = _Brush("CockpitHairlineBrush") ?? new SolidColorBrush(Color.Parse("#3C3C46"));
-        BorderThickness = new Thickness(1);
-        CornerRadius = new CornerRadius(6);
+        var isTrigger = node.Kind == WorkflowNodeKind.Trigger;
 
-        var header = new Border
+        _tile = new Border
         {
-            Background = _KindBrush(node.Kind),
-            CornerRadius = new CornerRadius(5, 5, 0, 0),
-            Padding = new Thickness(10, 5),
+            Width = TileSize,
+            Height = TileSize,
+            Background = _Brush("CockpitPanelBgBrush") ?? new SolidColorBrush(Color.Parse("#2A2A31")),
+            BorderBrush = _Hairline,
+            BorderThickness = new Thickness(1),
+            // A trigger's left side is round: a flow visibly starts somewhere rather than just happening to have
+            // a leftmost box.
+            CornerRadius = isTrigger ? new CornerRadius(TileSize / 2, 8, 8, TileSize / 2) : new CornerRadius(8),
+            HorizontalAlignment = HorizontalAlignment.Center,
             Child = new TextBlock
             {
-                Text = node.Title,
-                FontWeight = FontWeight.SemiBold,
-                FontSize = 11,
-                TextTrimming = TextTrimming.CharacterEllipsis,
+                Text = node.Type?.Icon ?? "?",
+                FontSize = 30,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
             },
         };
-        header.PointerPressed += (_, e) => HeaderPressed?.Invoke(this, e);
-        header.Cursor = new Cursor(StandardCursorType.SizeAll);
+        _tile.PointerPressed += (_, e) => HeaderPressed?.Invoke(this, e);
+        _tile.Cursor = new Cursor(StandardCursorType.SizeAll);
+        ToolTip.SetTip(_tile, node.Type?.Description ?? $"This flow uses '{node.TypeId}', which this cockpit does not have — a plugin may be missing.");
 
-        var inputColumn = new StackPanel { Spacing = 6 };
+        var name = new TextBlock
+        {
+            Text = node.Name,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 6, 0, 0),
+        };
+
+        var subtitle = new TextBlock
+        {
+            Text = node.Type?.Name ?? node.TypeId,
+            FontSize = 9,
+            Opacity = 0.55,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+        };
+
+        // The lightning bolt sits outside the tile, to its left, exactly where a run enters the flow.
+        var bolt = new TextBlock
+        {
+            Text = "⚡",
+            FontSize = 13,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0),
+            IsVisible = isTrigger,
+        };
+
+        var inputColumn = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         if (node.HasInput)
         {
             _input = _BuildPin(isInput: true, outputIndex: -1);
             inputColumn.Children.Add(_input);
         }
 
-        var outputColumn = new StackPanel { Spacing = 6 };
-        for (var index = 0; index < node.OutputCount; index++)
+        var outputColumn = new StackPanel { Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+        for (var index = 0; index < node.Outputs.Count; index++)
         {
             var pin = _BuildPin(isInput: false, outputIndex: index);
             _outputs.Add(pin);
-
-            var label = node.OutputLabels.ElementAtOrDefault(index) ?? string.Empty;
-            outputColumn.Children.Add(label.Length == 0
-                ? pin
-                : new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 4,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    Children =
-                    {
-                        new TextBlock { Text = label, FontSize = 10, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center },
-                        pin,
-                    },
-                });
+            outputColumn.Children.Add(pin);
         }
 
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Margin = new Thickness(0, 8, 0, 10) };
-        Grid.SetColumn(inputColumn, 0);
-        Grid.SetColumn(outputColumn, 2);
-        body.Children.Add(inputColumn);
-        body.Children.Add(outputColumn);
-
-        var subtitle = new TextBlock
+        var row = new StackPanel
         {
-            Text = node.TypeId,
-            FontSize = 9,
-            Opacity = 0.55,
-            Margin = new Thickness(10, 0, 10, 6),
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Children = { bolt, inputColumn, _tile, outputColumn },
         };
 
-        Child = new StackPanel { Children = { header, subtitle, body } };
+        Child = new StackPanel
+        {
+            Opacity = node.IsDisabled ? 0.4 : 1,
+            Children = { row, name, subtitle },
+        };
     }
 
     public WorkflowNode Node { get; }
@@ -101,23 +123,27 @@ internal sealed class WorkflowNodeControl : Border
 
     public event EventHandler<WorkflowPin>? PinReleased;
 
+    /// <summary>Selection is a ring around the tile, not a colour change — the tile's own colour already says what kind of step it is.</summary>
     public bool IsSelected
     {
-        set => BorderBrush = value
-            ? _Brush("CockpitAccentBrush") ?? Brushes.Orange
-            : _Brush("CockpitHairlineBrush") ?? new SolidColorBrush(Color.Parse("#3C3C46"));
+        set
+        {
+            _tile.BorderBrush = value ? _Brush("CockpitAccentBrush") ?? Brushes.Orange : _Hairline;
+            _tile.BorderThickness = new Thickness(value ? 2 : 1);
+        }
     }
 
     public WorkflowPin OutputPin(int index) => _outputs[Math.Clamp(index, 0, _outputs.Count - 1)];
 
     public WorkflowPin InputPin() => _input ?? _outputs[0];
 
+    public IReadOnlyList<WorkflowPin> OutputPins => _outputs;
+
     private WorkflowPin _BuildPin(bool isInput, int outputIndex)
     {
         var pin = new WorkflowPin(this, isInput, outputIndex)
         {
-            HorizontalAlignment = isInput ? HorizontalAlignment.Left : HorizontalAlignment.Right,
-            Margin = isInput ? new Thickness(-6, 0, 0, 0) : new Thickness(0, 0, -6, 0),
+            Margin = isInput ? new Thickness(0, 0, -5, 0) : new Thickness(-5, 0, 0, 0),
         };
 
         pin.PointerPressed += (_, e) =>
@@ -130,19 +156,13 @@ internal sealed class WorkflowNodeControl : Border
         return pin;
     }
 
-    // A trigger, an action and a decision read differently at a glance, which is the only thing colour is for here.
-    private static IBrush _KindBrush(WorkflowNodeKind kind) => kind switch
-    {
-        WorkflowNodeKind.Trigger => new SolidColorBrush(Color.Parse("#3E5C3A")),
-        WorkflowNodeKind.Decision => new SolidColorBrush(Color.Parse("#5C4A33")),
-        _ => new SolidColorBrush(Color.Parse("#33333C")),
-    };
+    private static IBrush _Hairline => _Brush("CockpitHairlineBrush") ?? new SolidColorBrush(Color.Parse("#3C3C46"));
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }
 
-/// <summary>A connection point: a small circle you pull a wire out of (an output) or drop one onto (an input).</summary>
+/// <summary>A connection point: pull a wire out of an output, drop it on an input.</summary>
 internal sealed class WorkflowPin : Ellipse
 {
     public WorkflowPin(WorkflowNodeControl owner, bool isInput, int outputIndex)
@@ -151,11 +171,17 @@ internal sealed class WorkflowPin : Ellipse
         IsInput = isInput;
         OutputIndex = outputIndex;
 
-        Width = 11;
-        Height = 11;
-        Fill = new SolidColorBrush(Color.Parse(isInput ? "#6E9FEA" : "#E4A055"));
+        Width = 10;
+        Height = 10;
+        Fill = new SolidColorBrush(Color.Parse("#8A8A99"));
         Cursor = new Cursor(StandardCursorType.Hand);
-        ToolTip.SetTip(this, isInput ? "Where the flow comes in" : "Drag a wire from here to the next step");
+
+        var label = isInput ? null : owner.Node.Outputs.ElementAtOrDefault(outputIndex);
+        ToolTip.SetTip(this, isInput
+            ? "Where this step's input comes in"
+            : string.IsNullOrEmpty(label)
+                ? "Drag from here to the next step"
+                : $"The '{label}' branch — drag from here to the next step");
     }
 
     public WorkflowNodeControl Owner { get; }
@@ -165,6 +191,6 @@ internal sealed class WorkflowPin : Ellipse
     /// <summary>Which way out this is (a decision has two); -1 for an input.</summary>
     public int OutputIndex { get; }
 
-    /// <summary>Where the wire attaches, in the canvas's coordinates — asked fresh on every redraw, because the pin moves with its node.</summary>
+    /// <summary>Where the wire attaches, in canvas coordinates — asked fresh on every redraw, because the pin moves with its node.</summary>
     public Point AnchorOn(Visual surface) => this.TranslatePoint(new Point(Width / 2, Height / 2), surface) ?? default;
 }
