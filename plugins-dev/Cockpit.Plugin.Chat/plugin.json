@@ -1,0 +1,11 @@
+{
+  "id": "chat",
+  "name": "Chat",
+  "version": "1.0.0",
+  "entryAssembly": "Cockpit.Plugin.Chat.dll",
+  "entryType": "Cockpit.Plugin.Chat.ChatPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "1.0.0",
+  "description": "Send a message to Slack or Discord from a workflow. Channels are named in the plugin's settings — an incoming webhook per channel, so a flow says \"tell #releases\" rather than carrying a URL around. A message that the chat service refused fails the step: a notification nobody received is worse than an error nobody missed.",
+  "author": "Cockpit"
+}
