@@ -159,6 +159,27 @@ internal sealed class WorkflowNodeControl : Border
                 });
         }
 
+        // The way out a failure takes. Drawn in the colour of trouble and always last, so a flow's happy path reads
+        // straight across and the thing that goes wrong hangs below it. A trigger has none: it cannot fail, it either
+        // fires or it does not.
+        if (node.Kind != WorkflowNodeKind.Trigger)
+        {
+            var error = _BuildPin(isInput: false, outputIndex: node.ErrorOutput);
+            error.Fill = ErrorBrush;
+            _outputs.Add(error);
+
+            outputColumn.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 3,
+                Children =
+                {
+                    new TextBlock { Text = "error", FontSize = 9, Opacity = 0.5, Foreground = ErrorBrush, VerticalAlignment = VerticalAlignment.Center },
+                    error,
+                },
+            });
+        }
+
         Child = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -214,7 +235,13 @@ internal sealed class WorkflowNodeControl : Border
         }
     }
 
-    public WorkflowPin OutputPin(int index) => _outputs[Math.Clamp(index, 0, _outputs.Count - 1)];
+    public WorkflowPin OutputPin(int index) => _outputs.FirstOrDefault(pin => pin.OutputIndex == index) ?? _outputs[0];
+
+    /// <summary>The colour of a failure, on the pin and on the wire that leaves by it.</summary>
+    public static IBrush ErrorBrush { get; } =
+        Application.Current?.TryFindResource("CockpitStatusErrorBrush", out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse("#D64545"));
 
     public WorkflowPin InputPin() => _input ?? _outputs[0];
 
@@ -291,12 +318,16 @@ internal sealed class WorkflowPin : Ellipse
         Fill = Idle;
         Cursor = new Cursor(StandardCursorType.Hand);
 
+        var isError = !isInput && outputIndex == owner.Node.ErrorOutput;
         var label = isInput ? null : owner.Node.Outputs.ElementAtOrDefault(outputIndex);
+
         ToolTip.SetTip(this, isInput
             ? "Where this step's input comes in"
-            : string.IsNullOrEmpty(label)
-                ? "Drag from here onto the next step"
-                : $"The '{label}' branch — drag from here onto the next step");
+            : isError
+                ? "Where a failure goes. Wire it and this step failing does not stop the flow — it carries on here, with {error} and {step} to say what went wrong."
+                : string.IsNullOrEmpty(label)
+                    ? "Drag from here onto the next step"
+                    : $"The '{label}' branch — drag from here onto the next step");
     }
 
     public WorkflowNodeControl Owner { get; }

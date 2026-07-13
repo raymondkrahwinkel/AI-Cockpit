@@ -195,6 +195,21 @@ internal sealed class NodeDialog : Border
 
         // The debug switch. When a flow does the wrong thing, what you need is what a step actually handed on — and
         // the one-line summary in the run log is a summary, not the data.
+        // The blunt version of an error path, for when there is nowhere to send the failure. A wire from the step's
+        // red "error" pin says more and says it better — and it wins over this, because someone who drew a wire meant
+        // the failure to go somewhere.
+        if (node.Kind != WorkflowNodeKind.Trigger)
+        {
+            var carryOn = new CheckBox { Content = "Keep going if this fails", IsChecked = node.ContinueOnError, Margin = new Thickness(0, -4, 0, 0) };
+            ToolTip.SetTip(carryOn, "The flow continues down the ordinary wire instead of stopping. For steps whose failure is not the point — a notification nobody received should not stop a deploy that worked.");
+            carryOn.IsCheckedChanged += (_, _) =>
+            {
+                node.ContinueOnError = carryOn.IsChecked == true;
+                Changed?.Invoke(this, EventArgs.Empty);
+            };
+            _fields.Children.Add(carryOn);
+        }
+
         var traced = new CheckBox { Content = "Print what it produces", IsChecked = node.IsTraced, Margin = new Thickness(0, -4, 0, 0) };
         ToolTip.SetTip(traced, "Write everything this step hands on into the run log, in full.");
         traced.IsCheckedChanged += (_, _) =>

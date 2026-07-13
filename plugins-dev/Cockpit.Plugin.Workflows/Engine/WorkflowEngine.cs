@@ -97,10 +97,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
 
             if (step.Status == RunStatus.Failed)
             {
-                // The branch stops here; the rest of the flow, on other branches, still runs. What failed is in the
-                // run, and the run says so.
-                run.Status = RunStatus.Failed;
-                run.Error ??= $"'{node.Name}' failed: {step.Note}";
+                _AfterFailure(workflow, node, step, input, run, pending);
                 continue;
             }
 
@@ -169,6 +166,72 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
         }
     }
 
+    /// <summary>
+    /// What happens when a step fails. Three answers, in the order the operator meant them.
+    /// <para>
+    /// A wire from the step's <em>error</em> way out means the failure has somewhere to go — tell Slack, move the
+    /// ticket back, try something else. The failure flows down it, carrying what went wrong as data, and the run is not
+    /// a failed run: it is a run that handled one. That distinction is the whole point of an error path.
+    /// </para>
+    /// <para>
+    /// Failing that, "keep going if this fails" carries on down the ordinary wire — for the steps whose failure is not
+    /// the point, like a notification nobody received in the middle of a deploy that worked.
+    /// </para>
+    /// <para>
+    /// And failing that, the branch stops and the run says so. Which is what a failure should do when nobody said
+    /// otherwise: a flow that quietly walked past a step that did not work would be worse than one that stopped.
+    /// </para>
+    /// </summary>
+    private static void _AfterFailure(
+        Workflow workflow,
+        WorkflowNode node,
+        StepRun step,
+        IReadOnlyList<WorkflowItem> input,
+        WorkflowRun run,
+        Queue<(string, IReadOnlyList<WorkflowItem>)> pending)
+    {
+        var handlers = workflow.Connections
+            .Where(connection => connection.FromNodeId == node.Id && connection.FromOutput == node.ErrorOutput)
+            .ToList();
+
+        if (handlers.Count > 0)
+        {
+            // What went wrong, as data the next step can use: {error} in a Slack message says more than "a step
+            // failed" ever will.
+            var failure = new[]
+            {
+                WorkflowItem.Of(new Dictionary<string, string>
+                {
+                    ["error"] = step.Note ?? "the step failed",
+                    ["step"] = node.Name,
+                }),
+            };
+
+            step.Note = $"{step.Note} — handled by the error path.";
+
+            foreach (var connection in handlers)
+            {
+                pending.Enqueue((connection.ToNodeId, failure));
+            }
+
+            return;
+        }
+
+        if (node.ContinueOnError)
+        {
+            step.Note = $"{step.Note} — the flow was told to carry on.";
+
+            // The items it was handed flow on untouched: a step that failed produced nothing, and inventing something
+            // for it would be worse than passing on what it never changed.
+            _QueueNext(workflow, node, StepOutcome.Passing(input, string.Empty), pending);
+
+            return;
+        }
+
+        run.Status = RunStatus.Failed;
+        run.Error ??= $"'{node.Name}' failed: {step.Note}";
+    }
+
     // Which way out a step leaves by is the step's own business: a decision picks a branch by naming it in its
     // outcome; everything else leaves by its one way out.
     private static void _QueueNext(Workflow workflow, WorkflowNode node, StepOutcome outcome, Queue<(string, IReadOnlyList<WorkflowItem>)> pending)
@@ -177,6 +240,12 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
 
         foreach (var connection in workflow.Connections.Where(connection => connection.FromNodeId == node.Id))
         {
+            // The error way out is not one of the ordinary ones: a step that succeeded never leaves by it.
+            if (connection.FromOutput == node.ErrorOutput)
+            {
+                continue;
+            }
+
             if (branch is not null && connection.FromOutput != branch)
             {
                 continue;

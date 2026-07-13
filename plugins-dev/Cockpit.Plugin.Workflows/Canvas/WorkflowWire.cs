@@ -23,14 +23,17 @@ internal sealed class WorkflowWire
     private readonly WorkflowPin _from;
     private readonly WorkflowPin _to;
 
-    public WorkflowWire(WorkflowConnection connection, WorkflowPin from, WorkflowPin to, string? branchLabel)
+    public WorkflowWire(WorkflowConnection connection, WorkflowPin from, WorkflowPin to, string? branchLabel, bool isError = false)
     {
         _connection = connection;
         _from = from;
         _to = to;
 
+        var stroke = isError ? WorkflowNodeControl.ErrorBrush : WireBrush;
+
         Line = NewLine();
-        Arrow = new Path { Fill = WireBrush, IsHitTestVisible = false };
+        Line.Stroke = stroke;
+        Arrow = new Path { Fill = stroke, IsHitTestVisible = false };
 
         // A wire two pixels wide is a wire you cannot hit. This one is invisible, wide, and lies on top: it is what
         // the pointer actually meets, and it is the only reason a connection can be removed at all.

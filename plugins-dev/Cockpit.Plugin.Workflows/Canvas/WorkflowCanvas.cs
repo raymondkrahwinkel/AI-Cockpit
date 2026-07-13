@@ -224,8 +224,9 @@ internal sealed class WorkflowCanvas : Border
             return;
         }
 
-        var branch = from.Node.Outputs.ElementAtOrDefault(connection.FromOutput);
-        var wire = new WorkflowWire(connection, from.OutputPin(connection.FromOutput), to.InputPin(), branch);
+        var isError = connection.FromOutput == from.Node.ErrorOutput;
+        var branch = isError ? "error" : from.Node.Outputs.ElementAtOrDefault(connection.FromOutput);
+        var wire = new WorkflowWire(connection, from.OutputPin(connection.FromOutput), to.InputPin(), branch, isError);
         _wires.Add(wire);
 
         wire.RemoveRequested += (_, _) =>
