@@ -4,12 +4,14 @@
              xmlns:conv="using:Cockpit.App.Converters"
              x:Class="Cockpit.App.Controls.ToastOverlay"
              x:DataType="vm:CockpitViewModel"
-             IsHitTestVisible="True"
-             Background="Transparent">
+             Background="{x:Null}">
 
     <!-- The toasts (#61), stacked bottom-right. Pulled out of CockpitView so a plugin's modal dialog can show the
          same ones: a toast raised from a dialog used to appear on the window behind it, which is to say nowhere.
-         The overlay itself is transparent and only its toasts take the pointer, so it never blocks what is under it. -->
+
+         The overlay spans the whole window, so it must have no Background at all: a *transparent* background still
+         hit-tests in Avalonia, and the overlay then swallowed every click in the app. Null takes no pointer, while
+         the toasts themselves — which do have a background — still take theirs. -->
     <ItemsControl ItemsSource="{Binding Toasts}"
                   HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16">
         <ItemsControl.ItemsPanel>

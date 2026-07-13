@@ -53,7 +53,7 @@ public static class NodeCatalog
         new(
             "cockpit.notify",
             "Notify",
-            "A toast in the cockpit, or Discord when you are away.",
+            "A toast in the cockpit.",
             "🔔",
             NodeCategory.Notify,
             WorkflowNodeKind.Action,

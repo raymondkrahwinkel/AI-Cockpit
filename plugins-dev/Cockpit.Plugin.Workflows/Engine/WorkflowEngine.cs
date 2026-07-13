@@ -40,6 +40,16 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
             return run;
         }
 
+        // A trigger wired to nothing is not a flow that succeeded in zero work — it is a flow that was never
+        // finished, and reporting it green is how you end up trusting a run that did nothing.
+        if (!workflow.Connections.Any(connection => connection.FromNodeId == startNodeId))
+        {
+            run.Status = RunStatus.Failed;
+            run.Error = $"'{workflow.Node(startNodeId)!.Name}' is wired to nothing, so there was nothing to run. Draw a wire from it to the step that should follow.";
+            run.FinishedAt = DateTimeOffset.UtcNow;
+            return run;
+        }
+
         // Breadth-first from the trigger: each pending entry is a step and the items handed to it. Fan-out simply
         // means one step queues several.
         var pending = new Queue<(string NodeId, IReadOnlyList<WorkflowItem> Input)>();

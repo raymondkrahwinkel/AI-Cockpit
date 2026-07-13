@@ -132,6 +132,21 @@ public class WorkflowEngineTests
     }
 
     [Fact]
+    public async Task ATriggerWiredToNothing_FailsRatherThanReportingGreenForZeroWork()
+    {
+        // Pressing Execute on a trigger that leads nowhere used to produce a green run of one step — which reads
+        // exactly like a flow that worked.
+        var workflow = new Workflow { Id = "w", Name = "Flow" };
+        var trigger = new WorkflowNode { Id = "t", TypeId = "cockpit.manual", Name = "Run manually" };
+        workflow.Nodes.Add(trigger);
+
+        var run = await new WorkflowEngine([new ManualTriggerRunner()]).RunAsync(workflow, "t");
+
+        run.Status.Should().Be(RunStatus.Failed);
+        run.Error.Should().Contain("wired to nothing");
+    }
+
+    [Fact]
     public async Task RunningFromAStepThatIsNotInTheFlow_FailsRatherThanDoingNothingQuietly()
     {
         var run = await new WorkflowEngine([]).RunAsync(_Flow(out _, out _, out _), "nope");

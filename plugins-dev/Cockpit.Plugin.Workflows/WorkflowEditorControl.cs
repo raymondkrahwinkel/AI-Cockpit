@@ -222,8 +222,23 @@ internal sealed class WorkflowEditorControl : UserControl
         return execute;
     }
 
-    private WorkflowNode? _ManualTrigger() =>
-        _workflow.Nodes.FirstOrDefault(node => node.TypeId == "cockpit.manual" && !node.IsDisabled);
+    // Which "Run manually" the button starts from. A flow may hold several — one being built next to one that
+    // works — and picking the first in the list means pressing Execute on a step that leads nowhere and calling the
+    // result green. So: the one you have selected, else one that is actually wired to something, else the first.
+    private WorkflowNode? _ManualTrigger()
+    {
+        var manual = _workflow.Nodes
+            .Where(node => node.TypeId == "cockpit.manual" && !node.IsDisabled)
+            .ToList();
+
+        if (_canvas.Selected is { TypeId: "cockpit.manual", IsDisabled: false } selected)
+        {
+            return selected;
+        }
+
+        return manual.FirstOrDefault(node => _workflow.Connections.Any(connection => connection.FromNodeId == node.Id))
+            ?? manual.FirstOrDefault();
+    }
 
     private void _RefreshExecutable()
     {

@@ -65,7 +65,7 @@ internal sealed class WorkflowNodeControl : Border
                 },
                 new TextBlock
                 {
-                    Text = node.Type?.Name ?? node.TypeId,
+                    Text = _Subtitle(node),
                     FontSize = 9,
                     Opacity = 0.5,
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -246,6 +246,18 @@ internal sealed class WorkflowNodeControl : Border
     }
 
     // Cockpit colours, not n8n's: the accent for what starts a run, a cool stripe for work, amber for a fork.
+    // Under the name, what this step is actually set to do — the command it runs, the message it sends. Repeating
+    // the step's own name there (which is what a fresh step is called) said the same thing twice; a card should tell
+    // you what it does without being opened. An unconfigured step falls back to its type, which is the honest answer.
+    private static string _Subtitle(WorkflowNode node)
+    {
+        var configured = (node.Type?.Parameters ?? [])
+            .Select(parameter => node.Parameters.GetValueOrDefault(parameter))
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+        return configured ?? node.Type?.Name ?? node.TypeId;
+    }
+
     private static IBrush _KindBrush(WorkflowNodeKind kind) => kind switch
     {
         WorkflowNodeKind.Trigger => _Brush("CockpitAccentBrush") ?? new SolidColorBrush(Color.Parse("#E4874F")),
