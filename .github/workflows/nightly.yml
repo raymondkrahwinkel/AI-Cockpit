@@ -76,11 +76,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Ask MSBuild what the version is instead of grepping the XML for it: the first attempt matched the
+      # <VersionPrefix> mentioned in a comment rather than the property, and -P does not exist in macOS's grep
+      # at all. The build system already knows the answer.
       - name: Build the nightly version string
         id: version
         shell: bash
         run: |
-          base=$(grep -oPm1 '(?<=<VersionPrefix>)[^<]+' Directory.Build.props)
+          base=$(dotnet msbuild src/Cockpit.App/Cockpit.App.csproj -getProperty:VersionPrefix | tr -d '[:space:]')
           echo "version=${base}-nightly.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
