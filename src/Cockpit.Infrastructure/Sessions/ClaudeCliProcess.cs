@@ -44,6 +44,23 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
     private readonly IPermissionServerState _permissionServerState;
     private readonly IMcpServerStore _mcpServerStore;
     private Process? _process;
+
+    /// <summary>The spawned process's id once started (#78); null before Start and once it has exited.</summary>
+    public int? ProcessId
+    {
+        get
+        {
+            try
+            {
+                return _process is { HasExited: false } process ? process.Id : null;
+            }
+            catch (InvalidOperationException)
+            {
+                // Not started yet, or already reaped.
+                return null;
+            }
+        }
+    }
     private bool _started;
 
     public ClaudeCliProcess(

@@ -23,9 +23,14 @@ public partial class CockpitView : UserControl
     /// </summary>
     private static readonly TimeSpan IdleSweepInterval = TimeSpan.FromSeconds(30);
 
+    // Often enough that the number means something while you watch an agent work, rarely enough that reading the
+    // process table is not itself the thing burning the CPU.
+    private static readonly TimeSpan ResourceSampleInterval = TimeSpan.FromSeconds(2);
+
     private INotifyCollectionChanged? _observedSideSections;
     private INotifyCollectionChanged? _observedSideButtons;
     private DispatcherTimer? _idleSweepTimer;
+    private DispatcherTimer? _resourceTimer;
 
     public CockpitView()
     {
@@ -62,11 +67,21 @@ public partial class CockpitView : UserControl
             _idleSweepTimer = new DispatcherTimer { Interval = IdleSweepInterval };
             _idleSweepTimer.Tick += (_, _) => cockpit.SweepIdleSessions(DateTimeOffset.UtcNow);
             _idleSweepTimer.Start();
+
+            // The resource meter (#78) samples on the same principle: the timer lives here, the arithmetic in the
+            // view model, so a test can take a sample whenever it likes.
+            _resourceTimer = new DispatcherTimer { Interval = ResourceSampleInterval };
+            _resourceTimer.Tick += (_, _) => cockpit.SampleResources();
+            _resourceTimer.Start();
+            cockpit.SampleResources();
         }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _resourceTimer?.Stop();
+        _resourceTimer = null;
+
         if (_idleSweepTimer is not null)
         {
             _idleSweepTimer.Stop();

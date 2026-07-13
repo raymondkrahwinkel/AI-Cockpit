@@ -22,6 +22,9 @@ internal interface IClaudeCliProcess : IAsyncDisposable
     /// </summary>
     void Start(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectoryOverride = null, SessionResume? resume = null);
 
+    /// <summary>The spawned process's id once started, or null before that (#78).</summary>
+    int? ProcessId { get; }
+
     /// <summary>Writes a single line (without trailing newline) to the process's stdin and flushes.</summary>
     Task WriteLineAsync(string line, CancellationToken cancellationToken = default);
 

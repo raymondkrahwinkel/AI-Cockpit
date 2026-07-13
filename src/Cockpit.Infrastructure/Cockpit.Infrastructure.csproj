@@ -13,6 +13,10 @@
          Windows-only at runtime but restores/builds on any host, keeping Infrastructure a plain net10.0
          assembly (no Windows target framework needed). -->
     <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.9" />
+    <!-- Windows has no /proc and .NET exposes no parent-process id, so the resource meter (#78) reads
+         Win32_Process through WMI to see which processes a session spawned. The package restores everywhere;
+         only the Windows-gated reader touches it. -->
+    <PackageReference Include="System.Management" Version="10.0.9" />
     <!-- Multi-provider (#26): the local-LLM session driver (Ollama/LM Studio) talks to their
          OpenAI-compatible /v1 endpoints through Microsoft.Extensions.AI's IChatClient. The .OpenAI
          package brings the OpenAI SDK plus the AsIChatClient() adapter; a custom Endpoint points it at

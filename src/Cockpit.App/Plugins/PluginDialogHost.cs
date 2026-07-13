@@ -88,11 +88,20 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         }
 
         owner = main;
+
+        // The size a plugin asks for is a wish, not a law: a dialog that wants 1400px on a 1280px-wide cockpit
+        // opens with its content cut off, which is how a canvas ends up cropped. Fit it to the window it opens
+        // over, and let the operator resize from there — a canvas in particular is never big enough.
+        var maximum = new Size(main.Width * 0.94, main.Height * 0.94);
+
         window = new Window
         {
             Title = title,
-            Width = width,
-            Height = height,
+            Width = Math.Min(width, maximum.Width),
+            Height = Math.Min(height, maximum.Height),
+            MinWidth = Math.Min(720, maximum.Width),
+            MinHeight = Math.Min(480, maximum.Height),
+            CanResize = true,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
         };
         return true;

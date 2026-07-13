@@ -31,8 +31,10 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     {
         var store = new WorkflowStore(host.Storage);
 
+        // Ask big: a canvas is the one thing that is never too large, and the host clamps the request to the
+        // cockpit window anyway.
         void OpenEditor() =>
-            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store), 1100, 720);
+            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store), 1600, 1000);
 
         host.AddSideMenuButton("Workflows", OpenEditor);
         host.AddShortcut(new PluginShortcut("workflows.open", "Workflow editor", "Ctrl+Shift+W", OpenEditor));

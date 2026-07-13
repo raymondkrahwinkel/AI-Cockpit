@@ -63,6 +63,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IDebugSettingsStore? _debugSettingsStore;
+    private readonly ResourceMonitor? _resourceMonitor;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
@@ -712,7 +713,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAppRestartService? appRestartService = null,
         IShortcutSettingsStore? shortcutSettingsStore = null,
         DelegatedTasksViewModel? delegatedTasks = null,
-        IDebugSettingsStore? debugSettingsStore = null)
+        IDebugSettingsStore? debugSettingsStore = null,
+        ResourceMonitor? resourceMonitor = null)
     {
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _audioDeviceProvider = audioDeviceProvider;
@@ -739,6 +741,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _voiceSettingsStore = voiceSettingsStore;
         _terminalSettingsStore = terminalSettingsStore;
         _debugSettingsStore = debugSettingsStore;
+        _resourceMonitor = resourceMonitor;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
         Sessions.CollectionChanged += (_, _) =>
@@ -988,6 +991,49 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = AutoCloseOnExit });
         SessionBehaviorSettingsStatus = "✓ Saved";
     }
+
+    /// <summary>What the cockpit and its sessions are using, for the status bar (#78) — e.g. "CPU 12% · RAM 1.9 GB".</summary>
+    [ObservableProperty]
+    private string _resourceSummary = string.Empty;
+
+    /// <summary>The same, broken down per session — what the status bar shows on hover.</summary>
+    [ObservableProperty]
+    private string _resourceDetail = string.Empty;
+
+    /// <summary>
+    /// Takes one sample and updates the status bar (#78). Driven by a timer in the view, like the idle sweep —
+    /// the view model stays free of timers, and a test can tick it whenever it likes.
+    /// </summary>
+    internal void SampleResources()
+    {
+        if (_resourceMonitor is null)
+        {
+            return;
+        }
+
+        // A session with no process (an HTTP-backed provider) has nothing local to weigh; it is left out rather
+        // than shown as 0%, which would read as "idle" instead of "not measurable here".
+        var processes = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var session in Sessions.Where(session => session.ProcessId is not null))
+        {
+            processes[session.Title] = session.ProcessId!.Value;
+        }
+
+        var usage = _resourceMonitor.Sample(processes);
+
+        ResourceSummary = $"CPU {usage.CpuPercent:0}%  ·  RAM {_Megabytes(usage.MemoryBytes)}";
+        ResourceDetail = usage.Sessions.Count == 0
+            ? "The cockpit itself. A session that runs over HTTP (Ollama, LM Studio) has no local process to weigh."
+            : string.Join(
+                Environment.NewLine,
+                usage.Sessions.Select(session => $"{session.Title}: CPU {session.CpuPercent:0}%  ·  RAM {_Megabytes(session.MemoryBytes)}"));
+    }
+
+    // A session's number includes everything it spawned, so "RAM" here means the tree, not the parent.
+    private static string _Megabytes(long bytes) =>
+        bytes >= 1024L * 1024 * 1024
+            ? $"{bytes / 1024.0 / 1024 / 1024:0.0} GB"
+            : $"{bytes / 1024 / 1024} MB";
 
     partial void OnShowDebugControlsChanged(bool value)
     {

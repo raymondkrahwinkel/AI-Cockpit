@@ -28,6 +28,12 @@
     </UserControl.Styles>
 
     <Grid x:Name="RootGrid">
+        <!-- One row for the cockpit, one for the status bar (#78). Everything that was here before stays in
+             row 0 by default, so adding the bar did not have to touch a single existing panel. -->
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <!-- Width set from CockpitViewModel.SidebarWidth in code-behind (#49) — a GridLength column
                  can't compiled-bind straight to the VM's double, so CockpitView.axaml.cs applies it on
@@ -342,5 +348,22 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
+        <!-- Status bar (#78): what the cockpit is using right now. The total is the cockpit's own process tree,
+             so it already contains every session it spawned; hovering breaks that down per session. -->
+        <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
+                Padding="10,4">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right"
+                           Text="{Binding ResourceSummary}"
+                           FontSize="11"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           VerticalAlignment="Center"
+                           ToolTip.Tip="{Binding ResourceDetail}"
+                           ToolTip.Placement="Top"/>
+                <TextBlock Text="" />
+            </DockPanel>
+        </Border>
     </Grid>
 </UserControl>

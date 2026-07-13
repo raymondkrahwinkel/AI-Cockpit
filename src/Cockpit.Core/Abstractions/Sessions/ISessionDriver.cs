@@ -18,6 +18,13 @@ public interface ISessionDriver : IAsyncDisposable
     SessionCapabilities Capabilities { get; }
 
     /// <summary>
+    /// The process this session runs in, when it has one (#78) — what the resource meter measures, together with
+    /// everything that process spawned. Null for a provider that is an HTTP call rather than a process (Ollama,
+    /// LM Studio): there is nothing local to weigh, and reporting zero would be a claim, not a measurement.
+    /// </summary>
+    int? ProcessId => null;
+
+    /// <summary>
     /// The CLI session id once reported by the <c>system/init</c> event, or <see langword="null"/> before that.
     /// </summary>
     string? SessionId { get; }

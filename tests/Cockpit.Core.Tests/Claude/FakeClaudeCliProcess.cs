@@ -12,6 +12,9 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 internal sealed class FakeClaudeCliProcess : IClaudeCliProcess
 {
+    /// <summary>No real process behind the fake, so nothing for the resource meter to weigh (#78).</summary>
+    public int? ProcessId => null;
+
     private readonly Channel<string> _outputLines = Channel.CreateUnbounded<string>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
 

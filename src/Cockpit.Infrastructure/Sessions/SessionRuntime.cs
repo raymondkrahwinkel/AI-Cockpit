@@ -46,6 +46,9 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public SessionCapabilities? Capabilities => _driver?.Capabilities;
 
+    /// <summary>The process this session runs in, once its driver started one (#78) — null for a provider that is an HTTP call rather than a process.</summary>
+    public int? ProcessId => _driver?.ProcessId;
+
     public bool IsRunning => _pump is not null;
 
     public string? LastAssistantText { get; private set; }

@@ -411,7 +411,7 @@ public partial class ClaudeTtyView : UserControl
             // races from the app's own startup so they don't leave stacked partial renders behind.
             Terminal.PrepareForNewSession();
 
-            _pty = _pendingLaunch.Launcher.Launch(
+            var pty = _pendingLaunch.Launcher.Launch(
                 _pendingLaunch.Profile,
                 _pendingLaunch.PermissionMode,
                 _pendingLaunch.Model,
@@ -420,8 +420,14 @@ public partial class ClaudeTtyView : UserControl
                 (short)_lastRows,
                 _pendingLaunch.WorkingDirectory,
                 _pendingLaunch.Resume);
+            _pty = pty;
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;
+            // The pty owns the process, so the view is where the meter (#78) learns which one this session is.
+            if (_viewModel is not null)
+            {
+                _viewModel.ProcessId = pty.ProcessId;
+            }
             _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);
         }
         catch (Exception ex)

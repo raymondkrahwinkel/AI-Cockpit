@@ -314,6 +314,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
             await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume);
 
+            // The process the meter weighs (#78) exists only once the driver started it.
+            ProcessId = runtime.ProcessId;
+
             // Capabilities (notably SupportsTools) only settle once the driver has actually started — the
             // local (OpenAI-compatible) driver's SupportsTools flips true only after its MCP tool session
             // connects during StartAsync — so read them here rather than right after Create(), which would

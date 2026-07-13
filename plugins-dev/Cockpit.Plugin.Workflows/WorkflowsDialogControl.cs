@@ -32,22 +32,35 @@ internal sealed class WorkflowsDialogControl : UserControl
         _store = store;
         _workflows = [.. store.Load()];
 
-        _status = new TextBlock { FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-        _canvasHost = new Border();
+        _status = new TextBlock { FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
 
-        _list = new ListBox
+        // The canvas is the point of this dialog, so it gets a real frame and every pixel that is left over.
+        _canvasHost = new Border
         {
-            ItemsSource = _workflows.Select(workflow => workflow.Name).ToList(),
-            Width = 190,
-            Margin = new Thickness(0, 0, 8, 0),
+            BorderThickness = new Thickness(1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            CornerRadius = new CornerRadius(6),
+            ClipToBounds = true,
         };
+
+        _list = new ListBox { ItemsSource = _workflows.Select(workflow => workflow.Name).ToList() };
         _list.SelectionChanged += (_, _) => _OpenSelected();
 
-        var newFlow = new Button { Content = "New flow", Classes = { "Accent" }, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var newFlow = new Button
+        {
+            Content = "+ New flow",
+            Classes = { "Compact" },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 8, 0, 0),
+        };
         newFlow.Click += (_, _) => _NewWorkflow();
 
-        var left = new DockPanel { Width = 190 };
+        var left = new DockPanel { Width = 200, Margin = new Thickness(0, 0, 12, 0) };
+        var flowsHeader = new TextBlock { Text = "Flows", FontWeight = FontWeight.SemiBold, FontSize = 11, Opacity = 0.7, Margin = new Thickness(2, 0, 0, 6) };
+        DockPanel.SetDock(flowsHeader, Dock.Top);
         DockPanel.SetDock(newFlow, Dock.Bottom);
+        left.Children.Add(flowsHeader);
         left.Children.Add(newFlow);
         left.Children.Add(_list);
 
@@ -55,7 +68,7 @@ internal sealed class WorkflowsDialogControl : UserControl
         {
             Orientation = Orientation.Horizontal,
             Spacing = 6,
-            Margin = new Thickness(0, 0, 0, 8),
+            Margin = new Thickness(0, 0, 0, 10),
             Children =
             {
                 _AddButton("+ Trigger", WorkflowNodeKind.Trigger, "cockpit.event"),
@@ -64,18 +77,24 @@ internal sealed class WorkflowsDialogControl : UserControl
             },
         };
 
-        var right = new DockPanel();
-        DockPanel.SetDock(toolbar, Dock.Top);
-        DockPanel.SetDock(_status, Dock.Bottom);
+        // A Grid, not a DockPanel: the status line is a row of its own, so a long sentence pushes the canvas up
+        // instead of being drawn over it.
+        var right = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        Grid.SetRow(toolbar, 0);
+        Grid.SetRow(_canvasHost, 1);
+        Grid.SetRow(_status, 2);
+        _status.Margin = new Thickness(2, 8, 2, 0);
         right.Children.Add(toolbar);
-        right.Children.Add(_status);
         right.Children.Add(_canvasHost);
+        right.Children.Add(_status);
 
-        Content = new DockPanel
-        {
-            Margin = new Thickness(16),
-            Children = { left, right },
-        };
+        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Margin = new Thickness(16) };
+        Grid.SetColumn(left, 0);
+        Grid.SetColumn(right, 1);
+        root.Children.Add(left);
+        root.Children.Add(right);
+
+        Content = root;
 
         if (_workflows.Count == 0)
         {
@@ -168,4 +187,7 @@ internal sealed class WorkflowsDialogControl : UserControl
     }
 
     private void _Save() => _store.Save(_workflows);
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }

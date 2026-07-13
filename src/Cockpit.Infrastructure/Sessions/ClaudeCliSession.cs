@@ -61,6 +61,8 @@ internal sealed class ClaudeCliSession : ISessionDriver, ITransientService
         _logger = logger;
     }
 
+    public int? ProcessId => _process.ProcessId;
+
     public SessionCapabilities Capabilities => SessionCapabilities.ClaudeCli;
 
     public string? SessionId => _sessionId;

@@ -4,11 +4,13 @@ using Microsoft.Extensions.Hosting;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Notifications;
 using Cockpit.Infrastructure.Voice.GlobalHotkey;
 
@@ -27,6 +29,7 @@ public static class DependencyInjection
         services.AddSingleton<IPermissionServerState>(sp => sp.GetRequiredService<PermissionMcpServer>());
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<PermissionMcpServer>());
 
+        AddDiagnostics(services);
         AddNotifications(services);
         AddPtyHost(services);
         AddGlobalHotkey(services);
@@ -71,6 +74,29 @@ public static class DependencyInjection
         {
             services.AddSingleton<IPtyHostFactory, PortaPtyHostFactory>();
         }
+    }
+
+    // The process table is read a different way on every OS (#78): /proc on Linux, ps on macOS, WMI on
+    // Windows. Registered by platform for the same reason as the notifiers below — the Scrutor marker scan
+    // would otherwise bind all three everywhere.
+    private static void AddDiagnostics(IServiceCollection services)
+    {
+        // The analyzer cannot see that these branches are the platform check; the pragma says what the runtime
+        // check already guarantees.
+#pragma warning disable CA1416
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<IProcessTableReader, WmiProcessTableReader>();
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            services.AddSingleton<IProcessTableReader, PsProcessTableReader>();
+        }
+        else
+        {
+            services.AddSingleton<IProcessTableReader, ProcProcessTableReader>();
+        }
+#pragma warning restore CA1416
     }
 
     // Presence detection and the toast channel are OS-specific, so they are registered by platform
