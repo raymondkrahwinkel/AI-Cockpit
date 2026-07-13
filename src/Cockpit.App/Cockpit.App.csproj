@@ -56,11 +56,23 @@
        ReferenceOutputAssembly=false so they are *built* but never referenced — a bundled plugin must load
        through the plugin loader like any other, in its own load context, or shared types lose their identity.
        BundledPluginInstaller copies them into the operator's plugins directory on startup. -->
+  <!-- These plugins live outside Cockpit.slnx, so a solution build has no configuration mapping for them and
+       MSBuild — which by default strips Configuration/Platform when descending into a project reference — built
+       them as Debug even in a Release build, while CopyBundledPlugins below looks under $(Configuration). On a
+       machine with stale Debug output the copy quietly succeeded with yesterday's bytes; on a clean checkout
+       (CI) the Release build failed outright, which is how this was found. Keeping the parent configuration is
+       exactly what we want here: a bundled plugin is part of this build, not a separate one. -->
+  <PropertyGroup>
+    <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\Cockpit.Plugin.TranscriptSearch.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj"
-                      ReferenceOutputAssembly="false" Private="false" />
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <Target Name="CopyBundledPlugins" AfterTargets="Build;Publish">
