@@ -1,22 +1,61 @@
 name: Nightly
 
-# Every commit on main becomes a testable build (#71), published to one rolling pre-release tagged 'nightly'
-# that is overwritten each time. Opting in to nightlies is a choice about which channel you follow, so this is
-# deliberately a *pre-release*: the updater's stable channel never sees it.
+# A testable build of main (#71), published to one rolling pre-release tagged 'nightly' that is overwritten each
+# time. Opting in to nightlies is a choice about which channel you follow, so this is deliberately a
+# *pre-release*: a stable channel never sees it.
 #
-# A nightly has no version number to compare — that is the whole point of a rolling tag — so its identity is the
-# commit it was built from: 0.1.0-nightly.<run>+<sha>. "Is there something newer?" is answered by the run number,
-# and "which nightly am I running?" by the sha, which is the question you actually ask when one misbehaves.
+# It does not run on every push. It runs at night, and only when something actually changed since the last one —
+# a nightly that is byte-for-byte yesterday's is noise — or whenever you fire it by hand from the Actions tab.
+#
+# A nightly has no version number to compare (that is what a rolling tag means), so its identity is the commit it
+# was built from: 0.1.0-nightly.<run>+<sha>. "Is there something newer?" is answered by the run number; "which
+# nightly am I running?" by the sha, which is the question you actually ask when one misbehaves.
 on:
-  push:
-    branches: [main]
+  schedule:
+    # 02:00 UTC — the small hours in Amsterdam, whichever side of daylight saving we are on.
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  # Nothing new on main since the last nightly means there is nothing to build. A manual run always builds:
+  # firing it by hand is itself the statement that you want this commit built.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run — building this commit."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          published=$(gh release view nightly --json targetCommitish -q .targetCommitish 2>/dev/null || echo "")
+          head=$(git rev-parse HEAD)
+
+          if [ "$published" = "$head" ]; then
+            echo "main is unchanged since the last nightly ($head) — nothing to build."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "main moved since the last nightly (was '$published', now '$head')."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+
     strategy:
       fail-fast: false
       matrix:
@@ -45,6 +84,7 @@ jobs:
           echo "version=${base}-nightly.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Self-contained: nobody should have to install a .NET runtime to try a nightly.
       - name: Publish
         shell: bash
         run: |
@@ -72,7 +112,7 @@ jobs:
           tag_name: nightly
           name: Nightly ${{ steps.version.outputs.version }} (${{ steps.version.outputs.sha }})
           body: |
-            Rolling build of `main`, overwritten on every commit. Not a release: things here are expected to break.
+            Rolling build of `main`, overwritten whenever main moves. Not a release: things here are expected to break.
 
             Version: `${{ steps.version.outputs.version }}` · commit `${{ steps.version.outputs.sha }}`
           files: artifacts/*
