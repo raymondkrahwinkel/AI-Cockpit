@@ -22,6 +22,9 @@ internal sealed class CommandRunner : IStepRunner
             throw new InvalidOperationException("This step has no command to run. Open it and write one.");
         }
 
+        // A command can use what the step before it produced: "grep -c error {output}", say.
+        command = StepData.Resolve(command, input).Text;
+
         var workingDirectory = node.Parameters.GetValueOrDefault("Working directory");
         if (!string.IsNullOrWhiteSpace(workingDirectory) && !Directory.Exists(workingDirectory))
         {

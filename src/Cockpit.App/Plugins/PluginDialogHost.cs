@@ -25,7 +25,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
             return;
         }
 
-        window.Content = createContent();
+        window.Content = _WithToasts(createContent(), owner);
         CockpitWindowChrome.Apply(window, title);
         await window.ShowDialog(owner);
     }
@@ -72,10 +72,20 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         var root = new DockPanel();
         root.Children.Add(footer);
         root.Children.Add(new ScrollViewer { Content = view });
-        window.Content = root;
+        window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);
         await window.ShowDialog(owner);
+    }
+
+    // A dialog is modal, and the cockpit's toasts live on the window behind it — so a toast raised from inside a
+    // plugin's dialog (a workflow's Notify step, say) appeared nowhere at all. The same overlay goes on top of the
+    // dialog, bound to the same view model, so one toast shows in whichever window the operator is looking at.
+    private static Control _WithToasts(Control content, Window owner)
+    {
+        var overlay = new ToastOverlay { DataContext = owner.DataContext };
+
+        return new Panel { Children = { content, overlay } };
     }
 
     private static bool _TryCreateWindow(string title, double width, double height, out Window window, out Window owner)

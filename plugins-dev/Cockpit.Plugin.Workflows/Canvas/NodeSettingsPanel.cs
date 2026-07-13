@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
@@ -12,9 +13,9 @@ namespace Cockpit.Plugin.Workflows.Canvas;
 /// canvas keeps its space.
 /// <para>
 /// The fields come from the type (<see cref="NodeTypeDescriptor.Parameters"/>), and the values go straight into the
-/// step. They are plain text for now: what a parameter may refer to — the data the previous step produced — is a
-/// decision the cockpit has not made yet, and inventing an expression language before the engine exists would be
-/// inventing it twice.
+/// step. A value may refer to what the step before it produced by writing <c>{field}</c> (<see cref="StepData"/>);
+/// the fields actually available are listed above the parameters, taken from the last run, because a list of what a
+/// step <em>might</em> produce would be a guess.
 /// </para>
 /// </summary>
 internal sealed class NodeSettingsPanel : Border
@@ -81,7 +82,8 @@ internal sealed class NodeSettingsPanel : Border
 
     public event EventHandler? CloseRequested;
 
-    public void Show(WorkflowNode node)
+    /// <summary>Opens the step. <paramref name="incomingFields"/> are the fields the step before it produced in the last run — what it can actually refer to, rather than what it might.</summary>
+    public void Show(WorkflowNode node, IReadOnlyList<string> incomingFields)
     {
         _node = node;
         IsVisible = true;
@@ -105,6 +107,11 @@ internal sealed class NodeSettingsPanel : Border
 
         var parameters = node.Type?.Parameters ?? [];
         _empty.IsVisible = parameters.Count == 0;
+
+        if (parameters.Count > 0)
+        {
+            _fields.Children.Add(_DataHelp(incomingFields));
+        }
 
         foreach (var parameter in parameters)
         {
@@ -136,6 +143,41 @@ internal sealed class NodeSettingsPanel : Border
 
     /// <summary>The step currently open, or null — so the editor can tell whether a change concerns it.</summary>
     public WorkflowNode? Node => _node;
+
+    // How a step uses what came before it, said in the place where you would need to know it. The fields listed are
+    // the ones the previous step actually produced in the last run — a list of what it *might* produce would be a
+    // guess, and a guess in a help text is worse than no help text.
+    private static Control _DataHelp(IReadOnlyList<string> incomingFields)
+    {
+        var explanation = new TextBlock
+        {
+            Text = "Write {output} in any field below and it is replaced by what the step before produced.",
+            FontSize = 11,
+            Opacity = 0.75,
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var fields = new TextBlock
+        {
+            Text = incomingFields.Count == 0
+                ? "Nothing has flowed into this step yet. Run the flow once and the fields it receives appear here."
+                : "Available here: " + string.Join(", ", incomingFields.Select(field => $"{{{field}}}")),
+            FontSize = 11,
+            Opacity = 0.55,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0),
+        };
+
+        return new Border
+        {
+            Background = _Brush("CockpitPanelBgBrush"),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 8),
+            Child = new StackPanel { Children = { explanation, fields } },
+        };
+    }
 
     private static Control _Field(string label, string? value, Action<string?> onChanged)
     {

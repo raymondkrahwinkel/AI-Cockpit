@@ -118,6 +118,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
             var outcome = await runner.RunAsync(node, input, cancellationToken);
             step.Status = RunStatus.Succeeded;
             step.Output = outcome.Output;
+            step.Fields = StepData.FieldsOf(outcome.Items);
             return outcome;
         }
         catch (OperationCanceledException)

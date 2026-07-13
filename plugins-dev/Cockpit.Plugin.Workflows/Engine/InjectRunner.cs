@@ -21,7 +21,9 @@ internal sealed class InjectRunner(ICockpitHost host) : IStepRunner
             throw new InvalidOperationException("There is no session to send this to.");
         }
 
-        await host.Actions.InjectIntoActiveSessionAsync(text);
-        return StepOutcome.Passing(input, $"Sent to the session: {text}");
+        var resolved = StepData.Resolve(text, input);
+        await host.Actions.InjectIntoActiveSessionAsync(resolved.Text);
+
+        return StepOutcome.Passing(input, $"Sent to the session: {resolved.Text}");
     }
 }

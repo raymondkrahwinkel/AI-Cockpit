@@ -318,36 +318,9 @@
             </Border>
         </Grid>
 
-        <!-- Toast overlay (#61): stacked bottom-right, non-blocking, spans the whole window (not just the
-             main area) so a toast is visible regardless of which panel/dialog-less state is active. -->
-        <ItemsControl Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{Binding Toasts}"
-                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,16,16">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <StackPanel Spacing="8" HorizontalAlignment="Right"/>
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:ToastViewModel">
-                    <Border Width="320" Padding="12,10" CornerRadius="{StaticResource CockpitControlRadius}"
-                            Background="{StaticResource CockpitPanelBgBrush}" BorderThickness="1"
-                            BorderBrush="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}">
-                        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Glyph}" FontSize="14" FontWeight="Bold"
-                                       Foreground="{Binding BrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                                       Margin="0,0,8,0" VerticalAlignment="Top"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"/>
-                            <Button Grid.Row="0" Grid.Column="2" Content="✕" Classes="Subtle" Padding="4,0" FontSize="11"
-                                    Foreground="{StaticResource CockpitTextFaintBrush}"
-                                    Command="{Binding CloseCommand}" ToolTip.Tip="Dismiss"/>
-                            <Button Grid.Row="1" Grid.Column="1" Content="{Binding ActionLabel}" Classes="Compact"
-                                    HorizontalAlignment="Left" Margin="0,6,0,0" IsVisible="{Binding HasAction}"
-                                    Command="{Binding InvokeActionCommand}"/>
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <!-- The toasts (#61), now a control of their own so a plugin's modal dialog shows the same ones. -->
+        <controls:ToastOverlay Grid.Column="0" Grid.ColumnSpan="3"/>
+
         <!-- Status bar (#78): what the cockpit is using right now. The total is the cockpit's own process tree,
              so it already contains every session it spawned; hovering breaks that down per session. -->
         <!-- The tooltip hangs on the bar, not on the text: a TextBlock without a background catches no pointer,

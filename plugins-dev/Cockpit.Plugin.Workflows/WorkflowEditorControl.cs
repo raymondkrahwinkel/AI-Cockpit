@@ -22,6 +22,8 @@ internal sealed class WorkflowEditorControl : UserControl
     private readonly WorkflowEngine _engine;
     private readonly RunStore _runs;
     private readonly RunPanel _runPanel;
+
+    private WorkflowRun? _lastRun;
     private readonly Button _execute;
     private readonly WorkflowCanvas _canvas;
     private readonly NodePicker _picker;
@@ -67,7 +69,13 @@ internal sealed class WorkflowEditorControl : UserControl
         };
         _canvas.Refused += (_, reason) => _status.Text = reason;
         _canvas.SelectionChanged += (_, _) => _Describe();
-        _canvas.AddRequested += (_, from) => _picker.AimAt(from.NodeId, from.Output);
+        _canvas.AddRequested += (_, from) =>
+        {
+            // Asking what comes next is a different question from what this step is set to do: the settings step
+            // aside for the picker, rather than the + quietly doing nothing behind an open panel.
+            _CloseSettings();
+            _picker.AimAt(from.NodeId, from.Output);
+        };
         _canvas.DropRequested += (_, drop) => _Drop(drop.TypeId, drop.X, drop.Y);
         _canvas.OpenRequested += (_, node) => _OpenSettings(node);
 
@@ -240,6 +248,7 @@ internal sealed class WorkflowEditorControl : UserControl
         {
             var run = await _engine.RunAsync(_workflow, trigger.Id);
 
+            _lastRun = run;
             _runs.Add(run);
             _runPanel.Show(run);
             _canvas.ShowRun(run);
@@ -315,7 +324,28 @@ internal sealed class WorkflowEditorControl : UserControl
     private void _OpenSettings(WorkflowNode node)
     {
         _picker.IsVisible = false;
-        _settings.Show(node);
+        _settings.Show(node, _IncomingFields(node));
+    }
+
+    // What the step before this one produced, according to the last run. The names come from what actually flowed,
+    // not from what a type claims it might produce — a guess in a help text is worse than no help text.
+    private IReadOnlyList<string> _IncomingFields(WorkflowNode node)
+    {
+        if (_lastRun is not { } run)
+        {
+            return [];
+        }
+
+        var previousIds = _workflow.Connections
+            .Where(connection => connection.ToNodeId == node.Id)
+            .Select(connection => connection.FromNodeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return run.Steps
+            .Where(step => previousIds.Contains(step.NodeId))
+            .SelectMany(step => step.Fields)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     }
 
     private void _CloseSettings()
