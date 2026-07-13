@@ -40,14 +40,30 @@ public interface IWorkflowStep
     /// </summary>
     IReadOnlyList<string> Outputs => [string.Empty];
 
+    /// <summary>
+    /// This step <em>starts</em> a flow rather than doing work in one: a ticket was picked, a pull request wants a
+    /// review. Nothing flows into it, the engine never executes it, and <see cref="RunAsync"/> is never called —
+    /// the plugin fires it itself with <see cref="ICockpitHost.RaiseWorkflowTrigger"/>, handing over the data the
+    /// flow starts with.
+    /// <para>
+    /// A trigger is a promise that something will fire it. A trigger nobody fires is a step that can be drawn, wired
+    /// and armed and will sit there forever, which is the one thing worse than not offering it.
+    /// </para>
+    /// </summary>
+    bool IsTrigger => false;
+
     /// <summary>What it typically hands on, with an example value — shown before a flow has ever run, so a step can be configured against its input rather than against a guess. Optional.</summary>
     IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>();
 
     /// <summary>
     /// Runs the step. Throwing fails it, and the message is what the operator reads in the run — so write it as a
     /// sentence they can act on. Returning without doing the work is not a failure the run can see, so do not.
+    /// <para>
+    /// Never called on a trigger (<see cref="IsTrigger"/>): a trigger is fired, not run.
+    /// </para>
     /// </summary>
-    Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken);
+    Task<WorkflowStepResult> RunAsync(WorkflowStepContext context, CancellationToken cancellationToken) =>
+        throw new NotSupportedException($"'{TypeId}' is a trigger: it is fired, not run.");
 }
 
 /// <summary>

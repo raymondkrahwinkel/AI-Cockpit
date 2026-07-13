@@ -384,8 +384,9 @@ internal sealed class WorkflowEditorControl : UserControl
     private IReadOnlyList<JsonObject> _Produced(WorkflowNode node) =>
         _lastRun?.Steps.LastOrDefault(step => step.NodeId == node.Id)?.Items ?? [];
 
-    // Every step that ran before this one, and the fields it handed on — the data this step can reach by name.
-    // Taken from what actually flowed, not from what a type claims it might produce.
+    // The steps this one can actually reach: upstream through the wires, however far back. Not "everything that ran
+    // earlier" — a step in a parallel branch produced data that will never arrive here, and offering its fields is
+    // offering a placeholder that resolves to nothing in a run where nothing warns you.
     private IReadOnlyList<(string Name, IReadOnlyList<string> Fields)> _Earlier(WorkflowNode node)
     {
         if (_lastRun is not { } run)
@@ -393,8 +394,12 @@ internal sealed class WorkflowEditorControl : UserControl
             return [];
         }
 
+        var upstream = WorkflowGraph.Ancestors(_workflow, node.Id)
+            .Select(ancestor => ancestor.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
         return run.Steps
-            .TakeWhile(step => step.NodeId != node.Id)
+            .Where(step => upstream.Contains(step.NodeId))
             .Select(step => (step.NodeName, step.Fields))
             .ToList();
     }

@@ -22,10 +22,12 @@ internal sealed class ContributedStep(IWorkflowStep step) : IStepRunner
         step.Name,
         step.Description,
         step.Icon,
-        // A contributed step is an action or a decision by the shape of its ways out — a plugin does not get to say
-        // it is a trigger, because nothing in this build would ever fire it.
         NodeCategory.External,
-        step.Outputs.Count > 1 ? WorkflowNodeKind.Decision : WorkflowNodeKind.Action,
+        // A trigger starts a flow and takes nothing in; otherwise it is a decision when it has several ways out, and
+        // an action when it has one.
+        step.IsTrigger
+            ? WorkflowNodeKind.Trigger
+            : step.Outputs.Count > 1 ? WorkflowNodeKind.Decision : WorkflowNodeKind.Action,
         step.Outputs,
         step.Parameters,
         step.Produces.Count > 0 ? step.Produces : null,

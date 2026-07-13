@@ -17,10 +17,16 @@ internal sealed class SessionIssueLinks
     /// <summary>Raised (on the caller's thread — every mutation here happens on the UI thread) when a pane's link changes, so the header showing it can re-render.</summary>
     public event EventHandler<string>? Changed;
 
+    /// <summary>
+    /// Raised when a ticket is picked for a session — the act a workflow can start on (#69). Unlinking does not raise
+    /// it: a flow that ran when you *stopped* tracking a ticket would be doing work about work you just put down.
+    /// </summary>
+    public event EventHandler<IssueLinked>? Linked;
+
     public LinkedIssue? For(string paneId) =>
         _byPaneId.TryGetValue(paneId, out var link) ? link : null;
 
-    public void Link(string paneId, LinkedIssue link)
+    public void Link(string paneId, LinkedIssue link, string? workingDirectory = null)
     {
         if (string.IsNullOrEmpty(paneId))
         {
@@ -31,6 +37,7 @@ internal sealed class SessionIssueLinks
 
         _byPaneId[paneId] = link;
         Changed?.Invoke(this, paneId);
+        Linked?.Invoke(this, new IssueLinked(link, workingDirectory));
     }
 
     public void Unlink(string paneId)
@@ -41,3 +48,6 @@ internal sealed class SessionIssueLinks
         }
     }
 }
+
+/// <summary>A ticket was picked for a session: which ticket, and where that session is working.</summary>
+internal sealed record IssueLinked(LinkedIssue Link, string? WorkingDirectory);

@@ -13,6 +13,11 @@ public interface IWorkflowStepRegistry
     IReadOnlyList<IWorkflowStep> Steps { get; }
 
     void Register(IWorkflowStep step);
+
+    /// <summary>A plugin fired one of its triggers. The workflows plugin listens; nobody else has a reason to.</summary>
+    event EventHandler<WorkflowTriggerFired>? Fired;
+
+    void Raise(string typeId, IReadOnlyDictionary<string, string> data);
 }
 
 internal sealed class WorkflowStepRegistry : IWorkflowStepRegistry, ISingletonService
@@ -31,5 +36,19 @@ internal sealed class WorkflowStepRegistry : IWorkflowStepRegistry, ISingletonSe
         }
 
         _steps.Add(step);
+    }
+
+    public event EventHandler<WorkflowTriggerFired>? Fired;
+
+    // Fired for a type nobody contributed as a trigger is a bug in the plugin that fired it, and one that would
+    // otherwise show up as "my flow never runs". It says so instead.
+    public void Raise(string typeId, IReadOnlyDictionary<string, string> data)
+    {
+        if (!_steps.Any(step => step.IsTrigger && string.Equals(step.TypeId, typeId, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException($"'{typeId}' is not a registered workflow trigger, so nothing would ever start on it.");
+        }
+
+        Fired?.Invoke(this, new WorkflowTriggerFired(typeId, data));
     }
 }

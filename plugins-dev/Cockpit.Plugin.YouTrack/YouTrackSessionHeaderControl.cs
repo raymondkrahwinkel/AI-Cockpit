@@ -19,6 +19,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     private readonly ICockpitHost _host;
     private readonly IPluginSessionContext _session;
     private readonly SessionIssueLinks _links;
+    private readonly YouTrackSettings _settings;
     private readonly YouTrackClient _client = new();
 
     private readonly TextBlock _label;
@@ -27,11 +28,12 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     private YouTrackIssueFields? _fields;
     private int _loadToken;
 
-    public YouTrackSessionHeaderControl(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links)
+    public YouTrackSessionHeaderControl(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, YouTrackSettings settings)
     {
         _host = host;
         _session = session;
         _links = links;
+        _settings = settings;
 
         _label = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
         _row = new Button
@@ -48,10 +50,21 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
                 },
             },
         };
-        _row.Click += (_, _) => _ShowMenu();
+        _row.Click += (_, _) =>
+        {
+            // With an issue: the actions on it. Without: the question that comes first — which ticket is this session
+            // for. The header is where you are looking when you ask it, so it is where you answer it.
+            if (_links.For(_session.PaneId) is null)
+            {
+                _Pick();
+            }
+            else
+            {
+                _ShowMenu();
+            }
+        };
 
         Content = _row;
-        IsVisible = false;
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -81,10 +94,16 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     {
         if (_links.For(_session.PaneId) is not { } link)
         {
+            // No ticket yet: the badge is the way to pick one, not a thing that disappears until you have picked one
+            // somewhere else.
             _fields = null;
-            IsVisible = false;
+            _label.Text = "Track an issue";
+            _label.Opacity = 0.6;
+            ToolTip.SetTip(_row, "Pick the YouTrack issue this session is for.");
             return;
         }
+
+        _label.Opacity = 1;
 
         var token = ++_loadToken;
         _label.Text = link.Issue.IdReadable;
@@ -118,6 +137,28 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     {
         _label.Text = state is { Length: > 0 } ? $"{link.Issue.IdReadable} · {state}" : link.Issue.IdReadable;
         ToolTip.SetTip(_row, $"{link.Issue.Summary}\n{link.Instance.Label}\n\nClick for actions.");
+    }
+
+    // Opens the picker for *this* pane. Linking from the big dialog links to whichever session is selected, which is
+    // a guess as soon as four panes are open; the header knows which one it is.
+    private void _Pick() => _ = _host.ShowDialogAsync(
+        "Track an issue in this session",
+        () => new YouTrackIssuePickerControl(_settings, link =>
+        {
+            _links.Link(_session.PaneId, link, _session.WorkingDirectory);
+            _CloseDialog();
+        }),
+        720,
+        520);
+
+    private void _CloseDialog()
+    {
+        // The picker owns no window; the host does. Closing it from here means walking up to whatever window the host
+        // opened, which is the one thing a plugin control can do about a dialog it did not create.
+        if (TopLevel.GetTopLevel(this) is Window window && window.OwnedWindows.Count > 0)
+        {
+            window.OwnedWindows[^1].Close();
+        }
     }
 
     private void _ShowMenu()

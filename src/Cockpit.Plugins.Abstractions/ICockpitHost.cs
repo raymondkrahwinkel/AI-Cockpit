@@ -72,6 +72,26 @@ public interface ICockpitHost
     /// </summary>
     IReadOnlyList<IWorkflowStep> WorkflowSteps => [];
 
+    /// <summary>
+    /// Fires a trigger this plugin contributed (an <see cref="IWorkflowStep"/> whose <see cref="IWorkflowStep.IsTrigger"/>
+    /// is true): a ticket was picked for a session, a review was requested. Every active flow that begins with that
+    /// trigger runs, starting with <paramref name="data"/>.
+    /// <para>
+    /// Fire it when the thing actually happened, not when it might have. A trigger that fires on a poll which saw the
+    /// same state as last time turns an automation into a machine that repeats itself.
+    /// </para>
+    /// </summary>
+    void RaiseWorkflowTrigger(string typeId, IReadOnlyDictionary<string, string> data)
+    {
+    }
+
+    /// <summary>Raised when any plugin fires a trigger — what the workflows plugin listens to. No other plugin has a reason to.</summary>
+    event EventHandler<WorkflowTriggerFired>? WorkflowTriggerRaised
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 

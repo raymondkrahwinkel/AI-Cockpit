@@ -66,6 +66,15 @@ internal sealed class CockpitHost(
     public IReadOnlyList<IWorkflowStep> WorkflowSteps =>
         services.GetRequiredService<IWorkflowStepRegistry>().Steps;
 
+    public void RaiseWorkflowTrigger(string typeId, IReadOnlyDictionary<string, string> data) =>
+        services.GetRequiredService<IWorkflowStepRegistry>().Raise(typeId, data);
+
+    public event EventHandler<WorkflowTriggerFired>? WorkflowTriggerRaised
+    {
+        add => services.GetRequiredService<IWorkflowStepRegistry>().Fired += value;
+        remove => services.GetRequiredService<IWorkflowStepRegistry>().Fired -= value;
+    }
+
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
         dialogHost.ShowDialogAsync(title, createContent, width, height);
 

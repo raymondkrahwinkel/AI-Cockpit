@@ -22,6 +22,13 @@ internal sealed class GitHubIssuesSettings(IPluginStorage storage)
         set => storage.Set("ghOwner", value);
     }
 
+    /// <summary>The label this operator's repos use for work in flight ("in progress", "status: in progress"). Empty — the default — means the menus simply do not offer it: GitHub enforces no convention, and offering a label that does not exist would fail on the click.</summary>
+    public string InProgressLabel
+    {
+        get => storage.Get<string>("inProgressLabel") ?? string.Empty;
+        set => storage.Set("inProgressLabel", value);
+    }
+
     public string Owner
     {
         get => storage.Get<string>("owner") ?? string.Empty;

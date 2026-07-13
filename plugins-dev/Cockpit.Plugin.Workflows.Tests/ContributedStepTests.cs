@@ -81,6 +81,44 @@ public class ContributedStepTests
         ContributedStep.Describe(new BranchingStep()).Kind.Should().Be(WorkflowNodeKind.Decision);
     }
 
+    [Fact]
+    public void AContributedTrigger_IsATrigger_SoNothingFlowsIntoIt()
+    {
+        var type = ContributedStep.Describe(new PickedTrigger());
+
+        type.Kind.Should().Be(WorkflowNodeKind.Trigger);
+        type.HasInput.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AContributedTrigger_IsNeverRun_BecauseItIsFired()
+    {
+        // The engine seeds a run with what the plugin fired; calling RunAsync on a trigger would be asking a doorbell
+        // to answer the door.
+        IWorkflowStep trigger = new PickedTrigger();
+
+        var run = async () => await trigger.RunAsync(new WorkflowStepContext(new Dictionary<string, string>(), []), CancellationToken.None);
+
+        await run.Should().ThrowAsync<NotSupportedException>();
+    }
+
+    private sealed class PickedTrigger : IWorkflowStep
+    {
+        public string TypeId => "fake.picked";
+
+        public string Name => "Ticket picked";
+
+        public string Description => "Fires when a ticket is picked for a session.";
+
+        public string Icon => "🎫";
+
+        public string Category => "YouTrack";
+
+        public bool IsTrigger => true;
+
+        public IReadOnlyList<string> Parameters => [];
+    }
+
     private static readonly Dictionary<string, IReadOnlyList<WorkflowItem>> _Nothing = new(StringComparer.OrdinalIgnoreCase);
 
     private static WorkflowNode _Node(params (string Name, string Value)[] parameters)

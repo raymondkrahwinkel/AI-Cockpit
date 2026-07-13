@@ -23,6 +23,8 @@ internal static class EngineFactory
             new HttpRunner(),
             new IfRunner(),
             new ApproveRunner(host),
-            .. contributed.Select(step => new ContributedStep(step)),
+            // A contributed trigger is fired, not run: it seeds the flow and the engine hands its data straight on.
+            .. contributed.Where(step => step.IsTrigger).Select(step => new TriggerRunner(step.TypeId)),
+            .. contributed.Where(step => !step.IsTrigger).Select(step => new ContributedStep(step)),
         ]);
 }

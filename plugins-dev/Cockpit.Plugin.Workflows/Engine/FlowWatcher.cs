@@ -53,6 +53,7 @@ internal sealed class FlowWatcher : IDisposable
         _host = host;
 
         _host.Sessions.OutputProduced += _OnOutput;
+        _host.WorkflowTriggerRaised += _OnPluginTrigger;
 
         _timer = new DispatcherTimer { Interval = Tick };
         _timer.Tick += (_, _) => _OnClock(DateTimeOffset.Now);
@@ -68,7 +69,18 @@ internal sealed class FlowWatcher : IDisposable
 
         _disposed = true;
         _host.Sessions.OutputProduced -= _OnOutput;
+        _host.WorkflowTriggerRaised -= _OnPluginTrigger;
         _timer.Stop();
+    }
+
+    // A plugin fired one of its own triggers: a ticket was picked for a session, a review was requested. Every active
+    // flow that begins with that trigger runs, starting with the data the plugin handed over.
+    private void _OnPluginTrigger(object? sender, Cockpit.Plugins.Abstractions.Workflows.WorkflowTriggerFired fired)
+    {
+        foreach (var (workflow, trigger) in _Triggers(fired.TypeId))
+        {
+            _ = _FireAsync(workflow, trigger, [WorkflowItem.Of(fired.Data)]);
+        }
     }
 
     // A session said something. Every active flow watching for text gets a look at it.
