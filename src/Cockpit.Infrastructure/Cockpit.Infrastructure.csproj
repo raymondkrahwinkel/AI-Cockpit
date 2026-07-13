@@ -53,6 +53,14 @@
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
+  </ItemGroup>
+
+  <!-- The GPU runtimes are 1.4 GB of native libraries, and a self-contained publish ships every one of them to
+       every platform — including a Mac, which cannot use a single byte of CUDA or Vulkan. So they are left out
+       of a macOS publish and kept everywhere else, which is where they earn their weight (CUDA gives 33x
+       realtime on Raymond's RTX 4070; the CPU fallback does not).
+       An ordinary build has no RuntimeIdentifier, so the condition holds and a developer keeps GPU Whisper. -->
+  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('osx'))">
     <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.Cuda12" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />

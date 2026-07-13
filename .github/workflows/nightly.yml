@@ -41,7 +41,9 @@ jobs:
             exit 0
           fi
 
-          published=$(gh release view nightly --json targetCommitish -q .targetCommitish 2>/dev/null || echo "")
+          # The commit the nightly tag points at — not the release's targetCommitish, which reports the branch
+          # ("main") and would never equal a sha, quietly making this check always say "yes, build".
+          published=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly" -q .object.sha 2>/dev/null || echo "")
           head=$(git rev-parse HEAD)
 
           if [ "$published" = "$head" ]; then
