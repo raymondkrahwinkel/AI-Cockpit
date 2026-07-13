@@ -370,8 +370,20 @@ public interface ICockpitActions
     Task<bool> ConfirmAsync(string title, string message, string confirmLabel = "Confirm");  // default true
     Task<string> StartSessionAsync(string profileLabel, string? prompt = null,
                                    string? workingDirectory = null);                         // default throws
+    Task<string> DelegateAsync(string profileLabel, string prompt,
+                               string? workingDirectory = null, TimeSpan? timeout = null);   // default throws
 }
 ```
+
+### `Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null)`
+Hands work to another profile as a **background task** and waits for what it produces (#67) — the cockpit's own
+delegation, done for a plugin. Returns the profile's answer.
+
+It goes through the same delegation service an agent's `delegate` tool goes through, so it is refused by the same
+rules and it appears in the delegated-tasks view: a plugin does not get a quieter way to run an agent than an agent
+has. Throws when the profile refused the work, when it failed, and when the timeout passes — a caller that got no
+answer must not be handed an empty string and left to treat it as one. On timeout the task keeps running; it is real
+work, and discarding it because the caller grew impatient would throw away whatever it had done.
 
 ### `Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null)`
 Opens a session on the profile with that label and hands it `prompt` as its first input — the New-session dialog's act,

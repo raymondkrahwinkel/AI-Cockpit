@@ -35,4 +35,21 @@ public interface ICockpitActions
     /// </summary>
     Task<string> StartSessionAsync(string profileLabel, string? prompt = null, string? workingDirectory = null) =>
         throw new NotSupportedException("This host cannot start sessions.");
+
+    /// <summary>
+    /// Hands work to another profile as a background task and waits for what it produces (#67, #69) — the cockpit's
+    /// own delegation, done for a plugin. The task appears in the delegated-tasks view like any other, because an
+    /// agent working invisibly is exactly what this project does not do.
+    /// <para>
+    /// Returns what the profile answered. Throws when it refused the work, when it failed, or when
+    /// <paramref name="timeout"/> passes — a caller that got no answer must not be handed an empty string and left to
+    /// treat it as one.
+    /// </para>
+    /// </summary>
+    /// <param name="profileLabel">The profile to hand it to. It must have opted in as a delegation target.</param>
+    /// <param name="prompt">The work.</param>
+    /// <param name="workingDirectory">Where it runs, when the profile allows one to be named.</param>
+    /// <param name="timeout">How long to wait for an answer. Null waits as long as the host's own default.</param>
+    Task<string> DelegateAsync(string profileLabel, string prompt, string? workingDirectory = null, TimeSpan? timeout = null) =>
+        throw new NotSupportedException("This host cannot delegate work.");
 }

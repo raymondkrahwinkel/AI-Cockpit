@@ -18,6 +18,7 @@ internal static class EngineFactory
             new NotifyRunner(host),
             new InjectRunner(host),
             new StartSessionRunner(host),
+            new DelegateRunner(host),
             new CommandRunner(),
             new HttpRunner(),
             new IfRunner(),

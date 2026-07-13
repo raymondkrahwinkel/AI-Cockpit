@@ -84,6 +84,17 @@ public static class NodeCatalog
             new Dictionary<string, string> { ["session"] = "Eveworkbench" }),
 
         new(
+            "cockpit.delegate",
+            "Delegate",
+            "Hand the work to another profile as a background task, and wait for what it produces. It runs where you can see it, in the delegated tasks view.",
+            "🤝",
+            NodeCategory.Sessions,
+            WorkflowNodeKind.Action,
+            [""],
+            ["Profile", "Prompt", "Working directory"],
+            new Dictionary<string, string> { ["result"] = "Done — 3 files changed", ["profile"] = "reviewer" }),
+
+        new(
             "cockpit.command",
             "Run a command",
             "A shell command in a working directory. What it prints becomes the data the next step gets.",

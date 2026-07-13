@@ -9,6 +9,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Plugins;
@@ -87,7 +88,8 @@ public partial class App : Application
             cockpit,
             () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard,
             Program.Services.GetRequiredService<ISessionDialogService>(),
-            Program.Services.GetRequiredService<ISessionProfileStore>());
+            Program.Services.GetRequiredService<ISessionProfileStore>(),
+            Program.Services.GetRequiredService<IDelegationService>());
 
         // One shared read/observe surface across all plugins, mirroring the single shared actions surface.
         var sessionObserver = new PluginSessionObserver(cockpit);
