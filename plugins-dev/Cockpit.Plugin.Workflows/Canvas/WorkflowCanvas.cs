@@ -54,6 +54,11 @@ internal sealed class WorkflowCanvas : Border
         _surface.RenderTransformOrigin = RelativePoint.TopLeft;
         Child = _surface;
 
+        // A step dragged out of the picker lands where it is dropped: where you let go is where you meant it.
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, _OnDragOver);
+        AddHandler(DragDrop.DropEvent, _OnDrop);
+
         PointerPressed += _OnPointerPressed;
         PointerMoved += _OnPointerMoved;
         PointerReleased += _OnPointerReleased;
@@ -71,8 +76,11 @@ internal sealed class WorkflowCanvas : Border
     /// <summary>Raised when the model refused a wire, carrying the reason, so it can be said out loud instead of the drag silently doing nothing.</summary>
     public event EventHandler<string>? Refused;
 
-    /// <summary>Raised when a "+" on an unconnected way out was clicked — the dialog opens the picker.</summary>
+    /// <summary>Raised when a "+" on an unconnected way out was clicked — the dialog aims the picker at it.</summary>
     public event EventHandler<(string NodeId, int Output)>? AddRequested;
+
+    /// <summary>Raised when a step was dragged out of the picker and dropped, carrying its type and where it landed.</summary>
+    public event EventHandler<(string TypeId, double X, double Y)>? DropRequested;
 
     public WorkflowNode? Selected { get; private set; }
 
@@ -238,6 +246,28 @@ internal sealed class WorkflowCanvas : Border
 
     // The stub line is tracked alongside the + buttons so it is cleaned up with them; wrapping it keeps one list.
     private static Button _Invisible(Control control) => new() { IsVisible = false, Content = control, Width = 0, Height = 0 };
+
+    private void _OnDragOver(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = e.DataTransfer.Contains(NodePicker.DragFormat) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void _OnDrop(object? sender, DragEventArgs e)
+    {
+        if (e.DataTransfer.TryGetValue(NodePicker.DragFormat) is not { } typeId)
+        {
+            return;
+        }
+
+        // Snapped to the same grid the dots draw, so a dropped step lines up with the ones placed before it.
+        var point = e.GetPosition(_surface);
+        var x = Math.Round((point.X - WorkflowNodeControl.TileSize / 2) / GridStep) * GridStep;
+        var y = Math.Round((point.Y - WorkflowNodeControl.TileSize / 2) / GridStep) * GridStep;
+
+        DropRequested?.Invoke(this, (typeId, x, y));
+        e.Handled = true;
+    }
 
     private void _BeginNodeDrag(WorkflowNodeControl control, PointerPressedEventArgs e)
     {

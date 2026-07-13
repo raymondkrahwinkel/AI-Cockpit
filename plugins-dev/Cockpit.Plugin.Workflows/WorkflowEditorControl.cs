@@ -27,7 +27,7 @@ internal sealed class WorkflowEditorControl : UserControl
         _workflow = workflow;
         _save = save;
 
-        _status = new TextBlock { FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(2, 8, 2, 0) };
+        _status = new TextBlock { FontSize = 11, Opacity = 0.65, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12, 6, 12, 6) };
         _saved = new TextBlock { FontSize = 11, Opacity = 0.5, VerticalAlignment = VerticalAlignment.Center, Text = "Saved" };
 
         _picker = new NodePicker();
@@ -38,6 +38,7 @@ internal sealed class WorkflowEditorControl : UserControl
         _canvas.Refused += (_, reason) => _status.Text = reason;
         _canvas.SelectionChanged += (_, _) => _Describe();
         _canvas.AddRequested += (_, from) => _picker.AimAt(from.NodeId, from.Output);
+        _canvas.DropRequested += (_, drop) => _Drop(drop.TypeId, drop.X, drop.Y);
 
         var canvasArea = new Grid();
         canvasArea.Children.Add(_canvas);
@@ -78,9 +79,13 @@ internal sealed class WorkflowEditorControl : UserControl
         {
             Text = _workflow.Name,
             FontWeight = FontWeight.SemiBold,
-            MinWidth = 220,
-            Margin = new Thickness(8, 0),
+            FontSize = 13,
+            MinWidth = 240,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
         };
+        ToolTip.SetTip(name, "The flow's name — type to change it");
         name.LostFocus += (_, _) => _Rename(name.Text);
         name.KeyDown += (_, e) =>
         {
@@ -113,17 +118,27 @@ internal sealed class WorkflowEditorControl : UserControl
             Children = { _saved, active },
         };
 
-        var bar = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
+        var bar = new DockPanel();
         DockPanel.SetDock(right, Dock.Right);
         bar.Children.Add(right);
         bar.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
+            Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { back, name },
+            Children = { back, _Separator(), name },
         });
 
-        return bar;
+        // An actual bar: it has a floor and a background, so it reads as the flow's own strip rather than as
+        // controls floating above the canvas.
+        return new Border
+        {
+            Background = _Brush("CockpitPanelBgBrush"),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(10, 8),
+            Child = bar,
+        };
     }
 
     private Control _ViewControls()
@@ -161,6 +176,16 @@ internal sealed class WorkflowEditorControl : UserControl
         return execute;
     }
 
+    private static Control _Separator() => new Border
+    {
+        Width = 1,
+        Margin = new Thickness(2, 4),
+        Background = _Brush("CockpitHairlineBrush"),
+    };
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+
     private static Button _IconButton(string glyph, string tip, Action onClick)
     {
         var button = new Button { Content = glyph, Classes = { "Compact" }, Width = 28 };
@@ -185,6 +210,28 @@ internal sealed class WorkflowEditorControl : UserControl
             picked.FromNodeId,
             picked.FromOutput);
 
+        _Describe();
+    }
+
+    // A step dragged out of the picker: it lands where it was dropped, wired to nothing — you drew it there
+    // because that is where you want it, not because it follows from something.
+    private void _Drop(string typeId, double x, double y)
+    {
+        if (NodeCatalog.Find(typeId) is not { } type)
+        {
+            return;
+        }
+
+        _canvas.Add(new WorkflowNode
+        {
+            Id = Guid.NewGuid().ToString("n"),
+            TypeId = type.Id,
+            Name = type.Name,
+            X = x,
+            Y = y,
+        });
+
+        _picker.AimAtNothing();
         _Describe();
     }
 
