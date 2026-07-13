@@ -2,7 +2,7 @@ using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Threading;
 
-namespace Cockpit.Core.Tests.Views;
+namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// An Avalonia runtime without a screen. A control cannot be constructed without a platform to ask for a cursor, so

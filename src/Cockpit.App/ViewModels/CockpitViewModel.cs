@@ -328,6 +328,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _backupStatus = string.Empty;
 
+    /// <summary>The plugins this backup will carry — their binaries and everything they saved. All of them, unless the operator unticks one.</summary>
+    public ObservableCollection<BackupPluginViewModel> BackupPlugins { get; } = [];
+
     /// <summary>The build this cockpit is (#71): the version, and the commit — which is a nightly's only identity.</summary>
     [ObservableProperty]
     private string _currentBuild = string.Empty;
@@ -1239,9 +1242,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             BackupStatus = "Backing up…";
 
+            var chosen = BackupPlugins.Where(plugin => plugin.Selected).Select(plugin => plugin.Id).ToList();
+
             var manifest = await backups.WriteAsync(
                 archivePath,
-                new BackupOptions(BackupIncludesCredentials, BackupIncludesProfiles));
+                new BackupOptions(BackupIncludesCredentials, BackupIncludesProfiles, chosen));
 
             var stripped = manifest.RemovedSecrets.Count == 0
                 ? string.Empty
@@ -1256,13 +1261,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
-    /// Puts the cockpit back from an archive (#70). Asks first, and says what the archive is before it does: this
-    /// replaces every setting, profile and plugin the cockpit currently has. What is here now is moved aside rather
-    /// than deleted, and the app restarts afterwards to read what it now finds on disk.
+    /// Puts the cockpit back from an archive (#70). The archive is read first and the operator is shown what it
+    /// carries — the cockpit's own settings, and which plugins — so they choose what comes back rather than
+    /// discovering it afterwards. What is replaced is moved aside, not deleted, and the app restarts to read what it
+    /// now finds on disk.
     /// </summary>
-    public async Task RestoreBackupAsync(string archivePath)
+    /// <param name="archivePath">The backup.</param>
+    /// <param name="choose">Asks the operator what to restore; null means they cancelled.</param>
+    public async Task RestoreBackupAsync(string archivePath, Func<BackupManifest, Task<RestoreOptions?>> choose)
     {
-        if (_backupService is not { } backups || _dialogService is not { } dialogs)
+        if (_backupService is not { } backups)
         {
             return;
         }
@@ -1271,23 +1279,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             var manifest = await backups.ReadManifestAsync(archivePath);
 
-            var carried = manifest.IncludesCredentials
-                ? "It carries its own keys and tokens."
-                : "It carries none of its keys or tokens — you will have to enter them again.";
-
-            var confirmed = await dialogs.ShowConfirmationDialogAsync(
-                "Restore this backup?",
-                $"Made {manifest.CreatedUtc.ToLocalTime():d MMMM yyyy, HH:mm} by cockpit {manifest.AppVersion}. {carried}\n\n" +
-                "This replaces every setting, profile and plugin in this cockpit. What is here now is moved aside, not deleted, and the cockpit restarts afterwards.",
-                "Restore");
-
-            if (!confirmed)
+            if (await choose(manifest) is not { } options)
             {
                 return;
             }
 
             BackupStatus = "Restoring…";
-            await backups.RestoreAsync(archivePath);
+            await backups.RestoreAsync(archivePath, options);
 
             BackupStatus = "Restored. Restarting the cockpit to read it.";
             _appRestart?.Restart();
@@ -1295,6 +1293,34 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         catch (Exception exception)
         {
             BackupStatus = $"Nothing was restored: {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Fills the backup tab's plugin list from what is installed (#70). Called when the Options dialog opens: a plugin
+    /// installed since the app started should not be missing from its own backup.
+    /// </summary>
+    public IReadOnlyList<string> InstalledPluginIds =>
+        Plugins.Plugins.Select(plugin => plugin.Discovered.FolderId).ToList();
+
+    public void RefreshBackupPlugins()
+    {
+        var selected = BackupPlugins
+            .Where(plugin => !plugin.Selected)
+            .Select(plugin => plugin.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        BackupPlugins.Clear();
+
+        foreach (var plugin in Plugins.Plugins)
+        {
+            var id = plugin.Discovered.FolderId;
+
+            BackupPlugins.Add(new BackupPluginViewModel(id, plugin.Discovered.Manifest.Name is { Length: > 0 } name ? name : id)
+            {
+                // An operator who unticked something and reopened the dialog meant it.
+                Selected = !selected.Contains(id),
+            });
         }
     }
 

@@ -164,10 +164,12 @@ internal sealed class YouTrackIssuePickerControl : UserControl
         return control;
     }
 
-    // What a row shows: the id and the summary, which is how a person recognises their own ticket. The state is not
-    // here — every open issue in this list is one you could pick up, and a column of "Open / Open / Open" is noise.
+    // The id, the status, and the summary. The status is what tells you whether this is a ticket you are about to
+    // start or one you are already halfway through, and that is the difference the picker exists to show.
     private sealed record IssueRow(YouTrackInstance Instance, YouTrackIssue Issue)
     {
-        public override string ToString() => $"{Issue.IdReadable} · {Issue.Summary}";
+        public override string ToString() => Issue.State is { Length: > 0 } state
+            ? $"{Issue.IdReadable} · {state} · {Issue.Summary}"
+            : $"{Issue.IdReadable} · {Issue.Summary}";
     }
 }

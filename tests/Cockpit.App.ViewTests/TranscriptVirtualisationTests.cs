@@ -5,7 +5,7 @@ using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using FluentAssertions;
 
-namespace Cockpit.Core.Tests.Views;
+namespace Cockpit.App.ViewTests;
 
 /// <summary>
 /// The transcript builds only the rows on screen. Without this, every row a session ever produced stays alive as a
@@ -25,6 +25,10 @@ public class TranscriptVirtualisationTests
             session.Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, $"row {index}"));
         }
 
+        // A real window, because virtualisation needs a real viewport: without a scroll owner the panel has nothing to
+        // fit rows into and builds none. Safe here, and only here — a window brings a compositor that the garbage
+        // collector tears down on a thread that does not own it, which kills the test host rather than failing a test.
+        // That is why this assembly exists.
         var window = new Window
         {
             Width = 800,
@@ -38,6 +42,8 @@ public class TranscriptVirtualisationTests
         var rows = window.GetVisualDescendants()
             .OfType<Border>()
             .Count(border => border.Classes.Contains("transcriptRow"));
+
+        window.Close();
 
         // A 600px-tall window cannot show four hundred rows. Anything close to four hundred means the panel is
         // building the whole history again.

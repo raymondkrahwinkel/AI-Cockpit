@@ -1,0 +1,57 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        x:Class="Cockpit.App.Views.RestoreSelectionDialog"
+        x:DataType="vm:RestoreSelectionViewModel"
+        Title="Restore from a backup"
+        Width="520" Height="560"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button Grid.Column="0" Content="Cancel" Click="OnCancel"/>
+                <Button Grid.Column="2" Content="Restore" Classes="Accent" Click="OnRestore"
+                        IsEnabled="{Binding HasSelection}"/>
+            </Grid>
+        </Border>
+
+        <ScrollViewer>
+            <StackPanel Margin="16" Spacing="8">
+                <TextBlock Text="{Binding MadeOn}" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding Credentials}" TextWrapping="Wrap" FontSize="11"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                <TextBlock Text="Choose what to put back. What is not ticked is left exactly as it is now, and whatever is replaced is moved aside rather than deleted."
+                           TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
+
+                <CheckBox Content="Settings, profiles, shortcuts and permissions" IsChecked="{Binding RestoreSettings}"/>
+                <TextBlock Text="The cockpit's own half. Restoring it replaces the profiles and settings you have now."
+                           TextWrapping="Wrap" FontSize="11" Margin="24,-4,0,0"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+                <TextBlock Text="Plugins in this backup" FontWeight="SemiBold" Margin="0,10,0,0"
+                           IsVisible="{Binding HasPlugins}"/>
+                <TextBlock Text="This backup carries no plugins." FontSize="11" IsVisible="{Binding !HasPlugins}"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+                <ItemsControl ItemsSource="{Binding Plugins}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RestorePluginViewModel">
+                            <CheckBox IsChecked="{Binding Selected}" Margin="0,2">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Id}"/>
+                                    <TextBlock Text="{Binding Detail}" FontSize="11"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                </StackPanel>
+                            </CheckBox>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

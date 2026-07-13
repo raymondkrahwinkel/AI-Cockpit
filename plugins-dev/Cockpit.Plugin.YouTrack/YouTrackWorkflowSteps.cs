@@ -60,7 +60,7 @@ internal static class YouTrackWorkflowSteps
 
         public string Name => "Set ticket status";
 
-        public string Description => "Move a ticket to a status its own board allows. Leave the status empty for whatever that board calls in progress. Optionally assigns it to you.";
+        public string Description => "Move a ticket to a status its own board allows. Write \"forward\" or \"back\" to follow the board's own order, a status by name, or leave it empty for whatever that board calls in progress. Optionally assigns it to you.";
 
         public string Icon => "↦";
 
@@ -125,8 +125,9 @@ internal static class YouTrackWorkflowSteps
                 said + ".");
         }
 
-        // Empty means "whatever this board calls in progress" — the thing every flow starts with, and the reason a
-        // separate "Start a ticket" node existed. A named status must be one the board actually allows: YouTrack would
+        // Four ways to say where it goes. Empty means "whatever this board calls in progress" — the thing every flow
+        // starts with. "forward" and "back" follow the board's own column order, so a flow written once works on a
+        // board whose columns are called something else. A name must be one the board actually allows: YouTrack would
         // refuse anything else anyway, and saying so here says it better.
         private static string _Target(string wanted, YouTrackIssue issue, YouTrackStateField state)
         {
@@ -134,6 +135,18 @@ internal static class YouTrackWorkflowSteps
             {
                 return YouTrackWorkflow.FindStartTarget(state)
                     ?? throw new InvalidOperationException($"{issue.IdReadable}'s board has no status that means \"in progress\", so this step cannot guess one. Name the status you want.");
+            }
+
+            if (wanted.Equals("forward", StringComparison.OrdinalIgnoreCase))
+            {
+                return StateFlow.Forward(state)
+                    ?? throw new InvalidOperationException($"{issue.IdReadable} is at the end of its board ({state.CurrentValue}), so there is nowhere forward to go.");
+            }
+
+            if (wanted.Equals("back", StringComparison.OrdinalIgnoreCase))
+            {
+                return StateFlow.Back(state)
+                    ?? throw new InvalidOperationException($"{issue.IdReadable} is at the start of its board ({state.CurrentValue}), so there is nowhere back to go.");
             }
 
             var allowed = state.AvailableTargets;

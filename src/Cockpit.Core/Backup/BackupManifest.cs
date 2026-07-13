@@ -11,13 +11,15 @@ namespace Cockpit.Core.Backup;
 /// <param name="IncludesCredentials">Whether the settings in it still carry their keys and tokens.</param>
 /// <param name="RemovedSecrets">The fields that were emptied when it was made — what the operator must type in again after restoring, named rather than left to be discovered one broken plugin at a time.</param>
 /// <param name="ProfileConfigDirectories">The profile config directories archived alongside the cockpit's own, by label. Empty when the operator did not include them.</param>
+/// <param name="Plugins">The plugins in this archive — their id and the version that was installed. Read before a restore, so the operator chooses what comes back rather than discovering it afterwards.</param>
 public sealed record BackupManifest(
     int Schema,
     string AppVersion,
     DateTimeOffset CreatedUtc,
     bool IncludesCredentials,
     IReadOnlyList<string> RemovedSecrets,
-    IReadOnlyDictionary<string, string> ProfileConfigDirectories)
+    IReadOnlyDictionary<string, string> ProfileConfigDirectories,
+    IReadOnlyDictionary<string, string> Plugins)
 {
     /// <summary>The archive layout this build writes and reads.</summary>
     public const int CurrentSchema = 1;

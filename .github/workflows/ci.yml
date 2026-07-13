@@ -29,6 +29,11 @@ jobs:
       - name: Test
         run: dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --verbosity minimal
 
+      # The view tests run in their own process: Avalonia's dispatcher is global and belongs to one thread, so a
+      # headless platform in the same process as everything else kills the test host rather than failing a test.
+      - name: View tests
+        run: dotnet test tests/Cockpit.App.ViewTests/Cockpit.App.ViewTests.csproj --configuration Release --no-build --verbosity minimal
+
   # The plugins live outside the solution (plugins-dev/), so the solution build above never sees them — and a
   # contract change in Cockpit.Plugins.Abstractions breaks them silently until someone rebuilds one by hand.
   plugins:

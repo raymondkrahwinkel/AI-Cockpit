@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Backup;
 
 namespace Cockpit.App.Views;
 
@@ -19,6 +20,10 @@ public partial class OptionsDialog : Window
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
+
+        // The plugin list is built when the dialog opens rather than when the app started: a plugin installed since
+        // then should not be missing from its own backup.
+        Opened += (_, _) => (DataContext as CockpitViewModel)?.RefreshBackupPlugins();
     }
 
     /// <summary>Opens straight to the Plugins tab. Looked up by header text rather than a hardcoded index, so a future tab reorder can't silently select the wrong one.</summary>
@@ -86,7 +91,17 @@ public partial class OptionsDialog : Window
 
         if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
         {
-            await cockpit.RestoreBackupAsync(path);
+            // The archive says what it carries; the operator says what of it comes back. Reading first and asking
+            // second is the whole difference between a restore and a surprise.
+            await cockpit.RestoreBackupAsync(path, async manifest =>
+            {
+                var dialog = new RestoreSelectionDialog
+                {
+                    DataContext = new RestoreSelectionViewModel(manifest, cockpit.InstalledPluginIds),
+                };
+
+                return await dialog.ShowDialog<RestoreOptions?>(this);
+            });
         }
     }
 }

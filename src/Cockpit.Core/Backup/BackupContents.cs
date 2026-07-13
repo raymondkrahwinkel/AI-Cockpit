@@ -39,7 +39,24 @@ public static class BackupContents
     }
 }
 
-/// <summary>What the operator chose to put in this backup. Both are off by default, and both are said out loud in the dialog rather than assumed.</summary>
+/// <summary>What the operator chose to put in this backup. The two flags are off by default, and both are said out loud in the dialog rather than assumed.</summary>
 /// <param name="IncludeCredentials">Keep the API keys, tokens and webhooks in <c>cockpit.json</c>. Off: they are stripped, and the restore says what is missing.</param>
 /// <param name="IncludeProfileConfigs">Also archive the profiles' own config directories (<c>~/.claude</c> and friends), which hold the logins of the agents themselves — outside the cockpit directory, and never a default.</param>
-public sealed record BackupOptions(bool IncludeCredentials = false, bool IncludeProfileConfigs = false);
+/// <param name="Plugins">Which plugins go in — their binaries <em>and</em> everything they saved. Null means all of them, which is what a backup is for; a list is for the operator who wants one plugin's setup and not the rest.</param>
+public sealed record BackupOptions(
+    bool IncludeCredentials = false,
+    bool IncludeProfileConfigs = false,
+    IReadOnlyList<string>? Plugins = null)
+{
+    /// <summary>Whether a plugin's folder and stored settings belong in this archive.</summary>
+    public bool Includes(string pluginId) =>
+        Plugins is null || Plugins.Contains(pluginId, StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>What the operator chose to put <em>back</em>. A restore replaces things that took a day to set up, so it says what it will touch and touches nothing else.</summary>
+/// <param name="Settings">The cockpit's own half: settings, profiles, shortcuts, permissions. False leaves this cockpit's exactly as they are.</param>
+/// <param name="Plugins">Which plugins to restore, by id. Empty restores none — a plugin the archive carries is not one the operator necessarily wants back.</param>
+public sealed record RestoreOptions(bool Settings, IReadOnlyList<string> Plugins)
+{
+    public bool Includes(string pluginId) => Plugins.Contains(pluginId, StringComparer.OrdinalIgnoreCase);
+}

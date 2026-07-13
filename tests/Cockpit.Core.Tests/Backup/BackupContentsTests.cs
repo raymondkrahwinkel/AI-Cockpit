@@ -37,7 +37,8 @@ public class BackupContentsTests
             DateTimeOffset.UtcNow,
             IncludesCredentials: false,
             RemovedSecrets: [],
-            ProfileConfigDirectories: new Dictionary<string, string>());
+            ProfileConfigDirectories: new Dictionary<string, string>(),
+            Plugins: new Dictionary<string, string>());
 
         manifest.CanRestore.Should().BeFalse();
     }

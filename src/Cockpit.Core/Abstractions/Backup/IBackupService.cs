@@ -14,6 +14,10 @@ public interface IBackupService
     /// <summary>Reads a backup's manifest without restoring it, so the operator can be shown what they are about to overwrite themselves with.</summary>
     Task<BackupManifest> ReadManifestAsync(string archivePath, CancellationToken cancellationToken = default);
 
-    /// <summary>Puts the cockpit back as the archive has it. Destructive, and all-or-nothing: nothing on disk moves until the whole archive has been read and found sound.</summary>
-    Task RestoreAsync(string archivePath, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Puts back what <paramref name="options"/> asks for, and nothing else: the cockpit's own settings, and whichever
+    /// plugins the operator chose from the ones the archive carries. What it replaces is set aside rather than deleted
+    /// — a restore is the one act here that can cost someone a day.
+    /// </summary>
+    Task RestoreAsync(string archivePath, RestoreOptions options, CancellationToken cancellationToken = default);
 }

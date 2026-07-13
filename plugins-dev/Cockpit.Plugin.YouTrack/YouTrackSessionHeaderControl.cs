@@ -171,13 +171,43 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
         var menu = new ContextMenu();
         var items = new List<MenuItem>();
 
-        // Only the moves this board allows — a state-machine project refuses anything else, and an ordinary one
-        // has no such value. Offering them anyway would be a control that does nothing.
-        foreach (var target in _fields?.State?.AvailableTargets ?? [])
+        // The board's own order, read from the project: forward is the next column, back is the previous one. A
+        // state-machine board answers for itself and has neither — its events *are* the moves.
+        if (_fields?.State is { } state)
         {
-            var item = new MenuItem { Header = $"Move to {target}" };
-            item.Click += async (_, _) => await _SetStateAsync(link, target);
-            items.Add(item);
+            if (StateFlow.Forward(state) is { } forward)
+            {
+                var item = new MenuItem { Header = $"Move forward → {forward}" };
+                item.Click += async (_, _) => await _SetStateAsync(link, forward);
+                items.Add(item);
+            }
+
+            if (StateFlow.Back(state) is { } back)
+            {
+                var item = new MenuItem { Header = $"Move back ← {back}" };
+                item.Click += async (_, _) => await _SetStateAsync(link, back);
+                items.Add(item);
+            }
+
+            // Everything else the board allows. Hidden a level down rather than left out: YouTrack lets you jump, so
+            // a menu that pretended otherwise would be lying about what you can do — but the two moves above are the
+            // ones you want nine times in ten.
+            var elsewhere = StateFlow.Elsewhere(state);
+            if (elsewhere.Count > 0)
+            {
+                var others = new MenuItem { Header = items.Count > 0 ? "Move somewhere else" : "Move to" };
+                var targets = new List<MenuItem>();
+
+                foreach (var target in elsewhere)
+                {
+                    var item = new MenuItem { Header = target };
+                    item.Click += async (_, _) => await _SetStateAsync(link, target);
+                    targets.Add(item);
+                }
+
+                others.ItemsSource = targets;
+                items.Add(others);
+            }
         }
 
         if (items.Count > 0)

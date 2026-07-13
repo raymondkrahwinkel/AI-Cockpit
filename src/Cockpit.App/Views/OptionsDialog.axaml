@@ -353,6 +353,17 @@
                         <TextBlock Text="These hold the agents' logins. Needed to move a machine; not needed to undo a mistake."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
 
+                        <TextBlock Text="Plugins to include" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                        <TextBlock Text="A plugin's binaries and everything it stored travel together, or not at all. All of them unless you say otherwise."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <ItemsControl ItemsSource="{Binding BackupPlugins}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:BackupPluginViewModel">
+                                    <CheckBox Content="{Binding Name}" IsChecked="{Binding Selected}" Margin="0,1"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                             <Button Content="Create backup…" Classes="Accent" Click="OnCreateBackup" IsEnabled="{Binding CanBackUp}"/>
                             <Button Content="Restore from a backup…" Click="OnRestoreBackup" IsEnabled="{Binding CanBackUp}"/>
