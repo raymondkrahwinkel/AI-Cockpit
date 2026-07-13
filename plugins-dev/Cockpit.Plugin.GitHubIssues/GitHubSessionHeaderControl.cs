@@ -51,15 +51,13 @@ internal sealed class GitHubSessionHeaderControl : UserControl
             },
         };
 
+        // The badge says what this session is working on, and says nothing when it is not working on an issue: picking
+        // one is an action, and actions live in the header's own menu.
         _row.Click += (_, _) =>
         {
             if (_links.For(_session.PaneId) is { } issue)
             {
                 _ShowMenu(issue);
-            }
-            else
-            {
-                _Pick();
             }
         };
 
@@ -92,34 +90,22 @@ internal sealed class GitHubSessionHeaderControl : UserControl
     {
         if (_links.For(_session.PaneId) is not { } issue)
         {
-            _label.Text = "Track an issue";
-            _label.Opacity = 0.6;
-            ToolTip.SetTip(_row, "Pick the GitHub issue this session is for.");
+            IsVisible = false;
             return;
         }
 
-        _label.Opacity = 1;
+        IsVisible = true;
         _label.Text = $"#{issue.Number} · {issue.Repository}";
         ToolTip.SetTip(_row, $"{issue.Title}\n{issue.Repository}#{issue.Number}\n\nClick for actions.");
     }
 
-    private void _Pick() => _ = _host.ShowDialogAsync(
-        "Track an issue in this session",
-        () => new GitHubIssuePickerControl(_settings, issue =>
-        {
-            _links.Link(_session.PaneId, issue, _session.WorkingDirectory);
-            _CloseDialog();
-        }),
-        720,
-        520);
-
-    private void _CloseDialog()
-    {
-        if (TopLevel.GetTopLevel(this) is Window window && window.OwnedWindows.Count > 0)
-        {
-            window.OwnedWindows[^1].Close();
-        }
-    }
+    /// <summary>Opens the picker for one pane — what the header menu's "Track a GitHub issue" runs.</summary>
+    public static void Pick(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, GitHubIssuesSettings settings) =>
+        _ = host.ShowDialogAsync(
+            "Track an issue in this session",
+            () => new GitHubIssuePickerControl(settings, issue => links.Link(session.PaneId, issue, session.WorkingDirectory)),
+            720,
+            520);
 
     private void _ShowMenu(GitHubIssue issue)
     {

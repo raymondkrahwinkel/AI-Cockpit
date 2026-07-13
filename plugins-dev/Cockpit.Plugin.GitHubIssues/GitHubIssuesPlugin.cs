@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
@@ -15,7 +16,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-issues",
         DisplayName: "GitHub Issues",
-        Version: "1.6.0",
+        Version: "1.7.0",
         Author: "Cockpit",
         Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. The prompt template is editable in settings.");
 
@@ -35,6 +36,11 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         // The issue this session is working on, in its own header — and, before one is picked, the way to pick it.
         var links = new SessionIssueLinks();
         host.AddSessionHeaderItem(session => new GitHubSessionHeaderControl(host, session, links, settings));
+
+        host.AddSessionHeaderAction(new PluginSessionAction(
+            "Track a GitHub issue…",
+            "🐙",
+            session => GitHubSessionHeaderControl.Pick(host, session, links, settings)));
 
         // What a flow can do with an issue (#77). A GitHub issue has no status, so there is no "move to In Progress"
         // here — starting one means assigning it to yourself and, if your repo uses one, labelling it.

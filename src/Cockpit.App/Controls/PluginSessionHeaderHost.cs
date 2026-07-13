@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,9 +47,53 @@ internal sealed class PluginSessionHeaderHost : StackPanel
             _contexts.Add(context);
             Children.Add(item.CreateView(context));
         }
+
+        // One menu for everything plugins can *do* to this session. Two issue trackers used to mean two buttons that
+        // asked the same question and took up room whether or not anyone would answer them.
+        if (cockpit.PluginSessionHeaderActions.Count > 0)
+        {
+            var context = new PluginSessionContext(session);
+            _contexts.Add(context);
+
+            Children.Add(_ActionsMenu(cockpit, context));
+        }
     }
 
     // Detaching without this leaves every context subscribed to a session panel that is on its way out.
+    private static Control _ActionsMenu(CockpitViewModel cockpit, PluginSessionContext context)
+    {
+        var button = new Button
+        {
+            Content = "⋯",
+            Padding = new Thickness(7, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        ToolTip.SetTip(button, "What the plugins can do with this session");
+
+        button.Click += (_, _) =>
+        {
+            var items = cockpit.PluginSessionHeaderActions
+                .Select(action =>
+                {
+                    var item = new MenuItem
+                    {
+                        Header = action.Icon is { Length: > 0 } icon ? $"{icon}  {action.Title}" : action.Title,
+                    };
+
+                    item.Click += (_, _) => action.Invoke(context);
+
+                    return item;
+                })
+                .ToList();
+
+            var menu = new ContextMenu { ItemsSource = items, PlacementTarget = button };
+            menu.Open(button);
+        };
+
+        return button;
+    }
+
     private void _Clear()
     {
         foreach (var context in _contexts)

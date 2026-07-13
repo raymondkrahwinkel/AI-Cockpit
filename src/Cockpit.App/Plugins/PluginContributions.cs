@@ -28,6 +28,9 @@ public interface IPluginContributionSink
     /// <summary>Registers a control shown in every session's header, built per session from that session's own context.</summary>
     void AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView);
 
+    /// <summary>Registers an action in every session header's menu — one menu for all plugins, rather than a button each.</summary>
+    void AddPluginSessionHeaderAction(PluginSessionAction action);
+
     /// <summary>Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.</summary>
     void AddPluginShortcut(PluginShortcut shortcut);
 

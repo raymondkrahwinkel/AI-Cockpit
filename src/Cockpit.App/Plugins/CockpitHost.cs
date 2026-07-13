@@ -54,6 +54,9 @@ internal sealed class CockpitHost(
     public void AddSideMenuSection(string title, Func<Control> createView) =>
         contributionSink.AddPluginSideSection(pluginId, title, createView);
 
+    public void AddSessionHeaderAction(PluginSessionAction action) =>
+        contributionSink.AddPluginSessionHeaderAction(action);
+
     public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         contributionSink.AddPluginSessionHeaderItem(createView);
 

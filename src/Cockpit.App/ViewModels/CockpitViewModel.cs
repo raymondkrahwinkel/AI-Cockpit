@@ -102,6 +102,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Controls contributed by plugins to every session's header bar, each built per session from that session's own context. Empty = nothing rendered.</summary>
     public ObservableCollection<PluginSessionHeaderItem> PluginSessionHeaderItems { get; } = [];
 
+    /// <summary>What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's header, rather than a button each.</summary>
+    public ObservableCollection<PluginSessionAction> PluginSessionHeaderActions { get; } = [];
+
     /// <summary>
     /// The operator's left-menu preference per plugin (#72): where it sits, and whether it shows there at all.
     /// Read from the plugin registrations at startup and refreshed when the manager changes one. A plugin the
@@ -194,6 +197,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
+
+    void IPluginContributionSink.AddPluginSessionHeaderAction(PluginSessionAction action) =>
+        _OnUiThread(() => PluginSessionHeaderActions.Add(action));
 
     void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
         _OnUiThread(() => PluginShortcuts.Add(shortcut));

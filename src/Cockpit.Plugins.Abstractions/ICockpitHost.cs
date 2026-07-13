@@ -45,6 +45,22 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Adds an action to the menu in <em>every session's header</em> — "Track a YouTrack issue…", "Open this repo on
+    /// GitHub". Handed the session it was invoked from, so it acts on that pane rather than on whichever one happens
+    /// to be selected.
+    /// <para>
+    /// Prefer this to <see cref="AddSessionHeaderItem"/> for anything the operator <em>does</em>. A header item is a
+    /// control that is always there; two plugins offering the same act meant two buttons in a strip that has room for
+    /// neither. Keep header items for what a session has to <em>say</em> — a badge, an indicator — and let it hide
+    /// itself when it has nothing.
+    /// </para>
+    /// Default no-op so existing hosts keep compiling untouched.
+    /// </summary>
+    void AddSessionHeaderAction(PluginSessionAction action)
+    {
+    }
+
+    /// <summary>
     /// Registers a way to pick an earlier conversation to resume — see <see cref="ConversationPickerRegistration"/>.
     /// The New-session dialog can resume a conversation by id; with a picker registered it also shows a search
     /// button that runs yours, so the operator chooses a conversation instead of typing an id. Default no-op so
