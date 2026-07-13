@@ -40,4 +40,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets Cockpit.Plugin.GitHubIssues.Tests unit-test the issue reference and the branch name it hands on (#77),
+         same pattern as the pull-requests and YouTrack plugins. -->
+    <InternalsVisibleTo Include="Cockpit.Plugin.GitHubIssues.Tests" />
+  </ItemGroup>
+
 </Project>

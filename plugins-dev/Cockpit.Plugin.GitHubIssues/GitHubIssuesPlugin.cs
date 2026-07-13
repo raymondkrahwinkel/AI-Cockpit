@@ -15,7 +15,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-issues",
         DisplayName: "GitHub Issues",
-        Version: "1.2.0",
+        Version: "1.3.0",
         Author: "Cockpit",
         Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. The prompt template is editable in settings.");
 
@@ -31,6 +31,13 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         host.AddSideMenuButton(
             "GitHub Issues",
             () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host.Actions), 1040, 700));
+
+        // What a flow can do with an issue (#77). A GitHub issue has no status, so there is no "move to In Progress"
+        // here — starting one means assigning it to yourself and, if your repo uses one, labelling it.
+        foreach (var step in GitHubWorkflowSteps.All())
+        {
+            host.AddWorkflowStep(step);
+        }
     }
 
     public void Dispose()
