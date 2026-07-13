@@ -42,7 +42,7 @@ internal sealed class CockpitHost(
         contributionSink.AddPluginSettings(pluginId, createView);
 
     public void AddSideMenuButton(string title, Action onInvoke) =>
-        contributionSink.AddPluginSideButton(title, onInvoke);
+        contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
 
     public void AddShortcut(PluginShortcut shortcut) =>
         contributionSink.AddPluginShortcut(shortcut);
@@ -51,7 +51,7 @@ internal sealed class CockpitHost(
         services.GetRequiredService<IToastService>().Show(message, _ToToastSeverity(severity), actionLabel, onAction);
 
     public void AddSideMenuSection(string title, Func<Control> createView) =>
-        contributionSink.AddPluginSideSection(title, createView);
+        contributionSink.AddPluginSideSection(pluginId, title, createView);
 
     public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         contributionSink.AddPluginSessionHeaderItem(createView);

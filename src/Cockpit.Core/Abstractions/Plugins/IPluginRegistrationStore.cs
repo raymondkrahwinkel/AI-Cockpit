@@ -11,8 +11,15 @@ public interface IPluginRegistrationStore
 {
     Task<IReadOnlyDictionary<string, PluginRegistration>> LoadAllAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Persists a plugin's enabled + pinned-hash state, preserving its stored <see cref="LoadDataAsync"/> key/value data.</summary>
+    /// <summary>Persists a plugin's enabled + pinned-hash state, preserving its stored <see cref="LoadDataAsync"/> key/value data and its left-menu preference.</summary>
     Task SaveAsync(string folderId, PluginRegistration registration, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists where this plugin's contributions sit in the left menu and whether they are shown at all (#72),
+    /// leaving the enable/consent state and the plugin's own data untouched — a separate write, because moving a
+    /// plugin down the menu says nothing about whether it may run.
+    /// </summary>
+    Task SaveMenuPreferenceAsync(string folderId, int menuOrder, bool hiddenInMenu, CancellationToken cancellationToken = default);
 
     Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
 

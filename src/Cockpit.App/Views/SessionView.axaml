@@ -3,6 +3,7 @@
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:views="using:Cockpit.App.Views"
              xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:conv="using:Cockpit.App.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
@@ -46,9 +47,12 @@
                               VerticalAlignment="Center"
                               IsVisible="{Binding Capabilities.SupportsThinking}"
                               ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
-                    <ToggleButton Content="Read aloud" IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
+                    <!-- A speaker, struck through when off (#73): the header is a strip, and the word cost more
+                         room than the thing it names. The tooltip carries what the icon cannot say. -->
+                    <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
                                   VerticalAlignment="Center"
-                                  ToolTip.Tip="Read each completed reply aloud, sentence by sentence (voice model downloads on first use)"/>
+                                  Content="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
+                                  ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}"/>
                     <ToggleButton Content="Allow all tools" IsChecked="{Binding AutoApproveTools}" Classes="Compact"
                                   VerticalAlignment="Center"
                                   IsVisible="{Binding ShowToolAutoApprove}"

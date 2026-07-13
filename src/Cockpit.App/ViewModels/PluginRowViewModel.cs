@@ -7,9 +7,20 @@ namespace Cockpit.App.ViewModels;
 /// plugin's <see cref="PluginLoadDecision"/>. The manager owns the enable/disable/remove commands and
 /// takes the row as their parameter, so the row itself stays a passive projection of a discovered plugin.
 /// </summary>
-public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, string? failureError = null)
+public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSettings = false, string? failureError = null, bool hiddenInMenu = false)
 {
     public DiscoveredPlugin Discovered => discovered;
+
+    /// <summary>Whether this plugin's left-menu contributions are hidden (#72). The plugin still runs — its shortcut and command-palette entry keep working — which is what separates this from disabling it.</summary>
+    public bool HiddenInMenu => hiddenInMenu;
+
+    /// <summary>The eye toggle's label, which has to name the action rather than the state: a toggle that reads "Hidden" leaves you guessing what clicking it does.</summary>
+    public string MenuVisibilityLabel => hiddenInMenu ? "Show in menu" : "Hide from menu";
+
+    /// <summary>Spells out what hiding does and does not do, since "hidden" reading as "off" is the trap here.</summary>
+    public string MenuVisibilityTip => hiddenInMenu
+        ? "Show this plugin's buttons and sections in the left menu again."
+        : "Keep this plugin's buttons and sections out of the left menu. The plugin keeps running: its shortcut and command-palette entry still work — that is the difference with disabling it.";
 
     /// <summary>True when the loaded plugin registered a settings view (#14) — the manager shows a gear to open it.</summary>
     public bool HasSettings => hasSettings;

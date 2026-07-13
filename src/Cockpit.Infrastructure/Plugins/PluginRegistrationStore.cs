@@ -51,6 +51,17 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
             file.Plugins[folderId] = entry;
         }, cancellationToken);
 
+    public Task SaveMenuPreferenceAsync(string folderId, int menuOrder, bool hiddenInMenu, CancellationToken cancellationToken = default) =>
+        _configFile.UpdateAsync(file =>
+        {
+            // Mirror of SaveAsync: this write owns only the menu preference and leaves the enable/consent state
+            // and the plugin's own data as they were.
+            var entry = file.Plugins.TryGetValue(folderId, out var existing) ? existing : new PluginRegistrationEntry();
+            entry.MenuOrder = menuOrder;
+            entry.HiddenInMenu = hiddenInMenu;
+            file.Plugins[folderId] = entry;
+        }, cancellationToken);
+
     public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(file => file.Plugins.Remove(folderId), cancellationToken);
 

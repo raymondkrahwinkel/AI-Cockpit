@@ -27,6 +27,9 @@ internal sealed class CockpitConfigFile
 
     public LayoutSettingsEntry? Layout { get; set; }
 
+    /// <summary>Whether the diagnostic controls are shown (#73); owned by the debug-settings store.</summary>
+    public DebugSettingsEntry? Debug { get; set; }
+
     public VoiceSettingsEntry? Voice { get; set; }
 
     /// <summary>Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.</summary>

@@ -9,6 +9,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Audio;
+using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
@@ -19,6 +20,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Audio;
+using Cockpit.Core.Debugging;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
 using Cockpit.Core.SessionBehavior;
@@ -60,6 +62,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
+    private readonly IDebugSettingsStore? _debugSettingsStore;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
@@ -86,6 +89,39 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Controls contributed by plugins to every session's header bar, each built per session from that session's own context. Empty = nothing rendered.</summary>
     public ObservableCollection<PluginSessionHeaderItem> PluginSessionHeaderItems { get; } = [];
+
+    /// <summary>
+    /// The operator's left-menu preference per plugin (#72): where it sits, and whether it shows there at all.
+    /// Read from the plugin registrations at startup and refreshed when the manager changes one. A plugin the
+    /// operator never touched is absent, which is what keeps discovery order the default.
+    /// </summary>
+    private readonly Dictionary<string, PluginMenuPreference> _pluginMenuPreferences = new(StringComparer.Ordinal);
+
+    /// <summary>Raised when the left-menu order or visibility changed (#72) — the cue for the sidebar to rebuild.</summary>
+    public event EventHandler? PluginMenuChanged;
+
+    /// <summary>The plugin's left-menu contributions in the order and visibility the operator chose (#72); ties keep the order the plugins were discovered in.</summary>
+    public IReadOnlyList<PluginSideButton> VisibleSideButtons =>
+        PluginSideButtons.Where(button => !_IsHiddenInMenu(button.PluginId)).OrderBy(button => _MenuOrderOf(button.PluginId)).ToList();
+
+    /// <inheritdoc cref="VisibleSideButtons"/>
+    public IReadOnlyList<PluginSideSection> VisibleSideSections =>
+        PluginSideSections.Where(section => !_IsHiddenInMenu(section.PluginId)).OrderBy(section => _MenuOrderOf(section.PluginId)).ToList();
+
+    /// <summary>Applies a menu preference the plugin manager just persisted, and tells the sidebar to rebuild (#72).</summary>
+    public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu)
+    {
+        _pluginMenuPreferences[pluginId] = new PluginMenuPreference(menuOrder, hiddenInMenu);
+        PluginMenuChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private int _MenuOrderOf(string pluginId) =>
+        _pluginMenuPreferences.TryGetValue(pluginId, out var preference) ? preference.Order : 0;
+
+    private bool _IsHiddenInMenu(string pluginId) =>
+        _pluginMenuPreferences.TryGetValue(pluginId, out var preference) && preference.Hidden;
+
+    private sealed record PluginMenuPreference(int Order, bool Hidden);
 
     /// <summary>Keyboard shortcuts contributed by plugins (#: shortcuts), dispatched alongside the built-in app-action shortcuts.</summary>
     public ObservableCollection<PluginShortcut> PluginShortcuts { get; } = [];
@@ -138,11 +174,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void DismissPluginFailures() => HasPluginFailures = false;
 
-    void IPluginContributionSink.AddPluginSideSection(string title, Func<Control> createView) =>
-        _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(title, createView)));
+    void IPluginContributionSink.AddPluginSideSection(string pluginId, string title, Func<Control> createView) =>
+        _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(pluginId, title, createView)));
 
-    void IPluginContributionSink.AddPluginSideButton(string title, Action onInvoke) =>
-        _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(title, onInvoke)));
+    void IPluginContributionSink.AddPluginSideButton(string pluginId, string title, Action onInvoke) =>
+        _OnUiThread(() => PluginSideButtons.Add(new PluginSideButton(pluginId, title, onInvoke)));
 
     void IPluginContributionSink.AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         _OnUiThread(() => PluginSessionHeaderItems.Add(new PluginSessionHeaderItem(createView)));
@@ -253,6 +289,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
+
+    /// <summary>
+    /// Mirrors <see cref="Cockpit.Core.Debugging.DebugSettings.ShowDebugControls"/> (#73): show the controls
+    /// that exist to investigate the cockpit itself — the TTY header's Redraw — rather than to do the work.
+    /// Off by default; pushed to open sessions so a change takes effect without reopening them.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showDebugControls;
+
+    [ObservableProperty]
+    private string _debugSettingsStatus = string.Empty;
 
     /// <summary>
     /// Global TTY terminal font family (#40) — one setting for every TTY session, not per-profile or
@@ -664,7 +711,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IAudioDeviceProvider? audioDeviceProvider = null,
         IAppRestartService? appRestartService = null,
         IShortcutSettingsStore? shortcutSettingsStore = null,
-        DelegatedTasksViewModel? delegatedTasks = null)
+        DelegatedTasksViewModel? delegatedTasks = null,
+        IDebugSettingsStore? debugSettingsStore = null)
     {
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _audioDeviceProvider = audioDeviceProvider;
@@ -690,6 +738,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _layoutSettingsStore = layoutSettingsStore;
         _voiceSettingsStore = voiceSettingsStore;
         _terminalSettingsStore = terminalSettingsStore;
+        _debugSettingsStore = debugSettingsStore;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
         Sessions.CollectionChanged += (_, _) =>
@@ -707,6 +756,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadVoiceSettingsAsync();
         _ = LoadTerminalSettingsAsync();
         _ = LoadShortcutSettingsAsync();
+        _ = LoadDebugSettingsAsync();
+        _ = LoadPluginMenuPreferencesAsync(pluginRegistrationStore);
 
         // Plugin shortcuts arrive as plugins initialize; each changes the active bindings and the Options list.
         PluginShortcuts.CollectionChanged += (_, _) =>
@@ -936,6 +987,56 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = AutoCloseOnExit });
         SessionBehaviorSettingsStatus = "✓ Saved";
+    }
+
+    partial void OnShowDebugControlsChanged(bool value)
+    {
+        foreach (var session in Sessions)
+        {
+            session.ShowDebugControls = value;
+        }
+    }
+
+    // The saved left-menu order/visibility per plugin (#72). Plugins register their contributions during phase-2
+    // init, which can beat this read; the rebuild below covers that, since the sidebar re-sorts on the event.
+    private async Task LoadPluginMenuPreferencesAsync(IPluginRegistrationStore? registrationStore)
+    {
+        if (registrationStore is null)
+        {
+            return;
+        }
+
+        var registrations = await registrationStore.LoadAllAsync();
+        foreach (var (folderId, registration) in registrations)
+        {
+            _pluginMenuPreferences[folderId] = new PluginMenuPreference(registration.MenuOrder, registration.HiddenInMenu);
+        }
+
+        PluginMenuChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task LoadDebugSettingsAsync()
+    {
+        if (_debugSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _debugSettingsStore.LoadAsync();
+        ShowDebugControls = settings.ShowDebugControls;
+    }
+
+    /// <summary>Persists the debug settings edited in the Options dialog to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveDebugSettingsAsync()
+    {
+        if (_debugSettingsStore is null)
+        {
+            return;
+        }
+
+        await _debugSettingsStore.SaveAsync(new DebugSettings { ShowDebugControls = ShowDebugControls });
+        DebugSettingsStatus = "✓ Saved";
     }
 
     private async Task LoadLayoutSettingsAsync()
@@ -1415,6 +1516,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
         await SaveTerminalSettingsCommand.ExecuteAsync(null);
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
+        await SaveDebugSettingsCommand.ExecuteAsync(null);
         AllSettingsStatus = "✓ Saved";
     }
 
@@ -1430,6 +1532,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Same for the auto-close-on-exit behaviour (T10); the session raises CloseRequested when an
         // "exit" turn completes and the cockpit runs its normal close flow.
         session.AutoCloseOnExit = AutoCloseOnExit;
+        // Seed the diagnostic-controls preference (#73); OnShowDebugControlsChanged keeps it live afterwards.
+        session.ShowDebugControls = ShowDebugControls;
         // Seed a TTY session with the current global terminal-appearance preference (#40); further
         // changes reach it live via OnTerminalFontFamilyChanged/OnTerminalFontSizeChanged. No effect on
         // SDK sessions — the setting is TTY-only.

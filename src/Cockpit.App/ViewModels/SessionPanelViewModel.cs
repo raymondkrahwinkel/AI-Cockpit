@@ -25,6 +25,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _title = "Session";
 
+    /// <summary>
+    /// Mirrors <see cref="Cockpit.Core.Debugging.DebugSettings.ShowDebugControls"/> (#73): whether this
+    /// session's header shows the controls that exist to investigate the cockpit (the TTY's Redraw) rather than
+    /// to do the work. Seeded by <see cref="CockpitViewModel"/> and kept live from Options.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showDebugControls;
+
     /// <summary>True while the sidebar row is showing its inline rename text box (context-menu → Rename).</summary>
     [ObservableProperty]
     private bool _isRenaming;

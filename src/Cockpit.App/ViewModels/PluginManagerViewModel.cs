@@ -139,13 +139,20 @@ public partial class PluginManagerViewModel : ViewModelBase
         if (_bootstrap is not null)
         {
             var discovered = await _bootstrap.DiscoverAsync(AbstractionsContract.Version);
+            var registrations = _registrationStore is null
+                ? new Dictionary<string, PluginRegistration>()
+                : (await _registrationStore.LoadAllAsync()).ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
+
             Plugins.Clear();
-            foreach (var plugin in discovered)
+            // The manager lists plugins in the order they appear in the left menu (#72), so moving one up here
+            // moves it up there — a list ordered differently from the thing it reorders is a puzzle, not a tool.
+            foreach (var plugin in discovered.OrderBy(plugin => registrations.TryGetValue(plugin.FolderId, out var registration) ? registration.MenuOrder : 0))
             {
                 Plugins.Add(new PluginRowViewModel(
                     plugin,
                     _settingsRegistry?.ContainsKey(plugin.FolderId) ?? false,
-                    _diagnostics?.ForFolder(plugin.FolderId)?.Error));
+                    _diagnostics?.ForFolder(plugin.FolderId)?.Error,
+                    registrations.TryGetValue(plugin.FolderId, out var menuRegistration) && menuRegistration.HiddenInMenu));
             }
 
             HasPlugins = Plugins.Count > 0;
@@ -222,6 +229,66 @@ public partial class PluginManagerViewModel : ViewModelBase
             640,
             560,
             onSaved: () => _contributionSink?.NotifySettingsSaved(row.FolderId));
+    }
+
+    /// <summary>Moves the plugin up the left menu (#72) — and up this list, which is ordered the same way.</summary>
+    [RelayCommand]
+    private Task MovePluginUpAsync(PluginRowViewModel row) => _MovePluginAsync(row, -1);
+
+    /// <summary>Moves the plugin down the left menu (#72).</summary>
+    [RelayCommand]
+    private Task MovePluginDownAsync(PluginRowViewModel row) => _MovePluginAsync(row, +1);
+
+    // Reordering writes every plugin's position, not just the two that swapped: the stored order is only
+    // meaningful as a whole, and a plugin that was never moved has no position of its own yet.
+    private async Task _MovePluginAsync(PluginRowViewModel row, int offset)
+    {
+        if (_registrationStore is null)
+        {
+            return;
+        }
+
+        var index = Plugins.IndexOf(row);
+        var target = index + offset;
+        if (index < 0 || target < 0 || target >= Plugins.Count)
+        {
+            return;
+        }
+
+        Plugins.Move(index, target);
+
+        for (var position = 0; position < Plugins.Count; position++)
+        {
+            var plugin = Plugins[position];
+            await _registrationStore.SaveMenuPreferenceAsync(plugin.FolderId, position, plugin.HiddenInMenu);
+            _contributionSink?.ApplyPluginMenuPreference(plugin.FolderId, position, plugin.HiddenInMenu);
+        }
+
+        StatusMessage = $"'{row.DisplayName}' moved {(offset < 0 ? "up" : "down")} in the left menu.";
+    }
+
+    /// <summary>
+    /// Hides or shows the plugin's left-menu contributions (#72). The plugin keeps running either way — its
+    /// shortcut and command-palette entry still work — so this is emphatically not a quieter way to disable it.
+    /// </summary>
+    [RelayCommand]
+    private async Task TogglePluginMenuVisibilityAsync(PluginRowViewModel row)
+    {
+        if (_registrationStore is null)
+        {
+            return;
+        }
+
+        var hidden = !row.HiddenInMenu;
+        var order = Math.Max(Plugins.IndexOf(row), 0);
+
+        await _registrationStore.SaveMenuPreferenceAsync(row.FolderId, order, hidden);
+        _contributionSink?.ApplyPluginMenuPreference(row.FolderId, order, hidden);
+        await LoadAsync();
+
+        StatusMessage = hidden
+            ? $"'{row.DisplayName}' hidden from the left menu — it still runs, and its shortcut still works."
+            : $"'{row.DisplayName}' shown in the left menu again.";
     }
 
     [RelayCommand]

@@ -4,11 +4,11 @@ using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
 
-/// <summary>A left-menu accordion section a plugin contributes, shown under the session list: its title and a factory that builds the section content.</summary>
-public sealed record PluginSideSection(string Title, Func<Control> CreateView);
+/// <summary>A left-menu accordion section a plugin contributes, shown under the session list: which plugin it came from (#72 — the operator orders and hides the menu per plugin), its title, and a factory that builds the section content.</summary>
+public sealed record PluginSideSection(string PluginId, string Title, Func<Control> CreateView);
 
-/// <summary>A left-menu launcher button a plugin contributes: its title and the action run on click (typically opening a dialog).</summary>
-public sealed record PluginSideButton(string Title, Action OnInvoke);
+/// <summary>A left-menu launcher button a plugin contributes: which plugin it came from (#72), its title, and the action run on click (typically opening a dialog).</summary>
+public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke);
 
 /// <summary>A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).</summary>
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
@@ -21,9 +21,9 @@ public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control
 /// </summary>
 public interface IPluginContributionSink
 {
-    void AddPluginSideSection(string title, Func<Control> createView);
+    void AddPluginSideSection(string pluginId, string title, Func<Control> createView);
 
-    void AddPluginSideButton(string title, Action onInvoke);
+    void AddPluginSideButton(string pluginId, string title, Action onInvoke);
 
     /// <summary>Registers a control shown in every session's header, built per session from that session's own context.</summary>
     void AddPluginSessionHeaderItem(Func<IPluginSessionContext, Control> createView);
@@ -38,4 +38,7 @@ public interface IPluginContributionSink
 
     /// <summary>Runs every callback registered via <see cref="AddSettingsSavedHandler"/> for <paramref name="pluginId"/> (#52) — called once that plugin's settings dialog Save() has returned true.</summary>
     void NotifySettingsSaved(string pluginId);
+
+    /// <summary>Applies the left-menu order/visibility the plugin manager just persisted for <paramref name="pluginId"/> (#72), so the sidebar re-renders without a restart.</summary>
+    void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu);
 }

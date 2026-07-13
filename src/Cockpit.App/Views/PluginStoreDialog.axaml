@@ -161,6 +161,18 @@
                                                 <Button Content="Disable" Classes="Compact" IsVisible="{Binding CanDisable}"
                                                         Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).DisablePluginCommand}"
                                                         CommandParameter="{Binding}"/>
+                                                <!-- Left-menu order and visibility (#72). This list is ordered
+                                                     the way the menu is, so moving a row moves the menu entry. -->
+                                                <Button Content="↑" Classes="Compact Subtle" ToolTip.Tip="Move this plugin up in the left menu"
+                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).MovePluginUpCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="↓" Classes="Compact Subtle" ToolTip.Tip="Move this plugin down in the left menu"
+                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).MovePluginDownCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="{Binding MenuVisibilityLabel}" Classes="Compact Subtle"
+                                                        ToolTip.Tip="{Binding MenuVisibilityTip}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).TogglePluginMenuVisibilityCommand}"
+                                                        CommandParameter="{Binding}"/>
                                                 <Button Content="Remove" Classes="Compact Subtle"
                                                         Foreground="{StaticResource CockpitTextFaintBrush}"
                                                         Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).RemovePluginCommand}"

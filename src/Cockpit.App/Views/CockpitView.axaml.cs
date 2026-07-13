@@ -159,10 +159,15 @@ public partial class CockpitView : UserControl
         _observedSideSections.CollectionChanged += OnPluginContributionsChanged;
         _observedSideButtons = cockpit.PluginSideButtons;
         _observedSideButtons.CollectionChanged += OnPluginContributionsChanged;
+        // The operator's own order/visibility (#72) changes without the collections changing, so the sidebar
+        // listens for that too.
+        cockpit.PluginMenuChanged += OnPluginMenuChanged;
         _RebuildPluginSections();
     }
 
     private void OnPluginContributionsChanged(object? sender, NotifyCollectionChangedEventArgs e) => _RebuildPluginSections();
+
+    private void OnPluginMenuChanged(object? sender, EventArgs e) => _RebuildPluginSections();
 
     private void _RebuildPluginSections()
     {
@@ -171,8 +176,11 @@ public partial class CockpitView : UserControl
             return;
         }
 
+        var buttons = cockpit.VisibleSideButtons;
+        var sections = cockpit.VisibleSideSections;
+
         PluginSectionsHost.Children.Clear();
-        if (cockpit.PluginSideButtons.Count == 0 && cockpit.PluginSideSections.Count == 0)
+        if (buttons.Count == 0 && sections.Count == 0)
         {
             PluginSectionsHost.IsVisible = false;
             return;
@@ -184,7 +192,7 @@ public partial class CockpitView : UserControl
             PluginSectionsHost.Children.Add(new Border { Height = 1, Background = brush, Margin = new Thickness(0, 4) });
         }
 
-        foreach (var launcher in cockpit.PluginSideButtons)
+        foreach (var launcher in buttons)
         {
             var button = new Button
             {
@@ -197,7 +205,7 @@ public partial class CockpitView : UserControl
             PluginSectionsHost.Children.Add(button);
         }
 
-        foreach (var section in cockpit.PluginSideSections)
+        foreach (var section in sections)
         {
             PluginSectionsHost.Children.Add(new PluginSectionControl(section.Title, section.CreateView()));
         }

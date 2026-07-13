@@ -307,6 +307,18 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="Debug">
+                <ScrollViewer>
+                    <StackPanel Spacing="8" Margin="16">
+                        <TextBlock Text="Diagnostics" FontWeight="SemiBold"/>
+                        <TextBlock Text="Controls that exist to investigate the cockpit itself, rather than to do the work. They are hidden by default: a session header is a strip, and a button you never need does not belong in it."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <CheckBox Content="Show debug controls" IsChecked="{Binding ShowDebugControls}"
+                                  ToolTip.Tip="Adds the Redraw button to every TTY session's header — it forces the terminal to repaint when a resize or focus change left the TUI misaligned"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
     </DockPanel>
 </Window>

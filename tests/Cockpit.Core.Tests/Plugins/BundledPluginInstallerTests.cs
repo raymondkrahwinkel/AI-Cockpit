@@ -154,6 +154,15 @@ public class BundledPluginInstallerTests : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task SaveMenuPreferenceAsync(string folderId, int menuOrder, bool hiddenInMenu, CancellationToken cancellationToken = default)
+        {
+            Saved[folderId] = Saved.TryGetValue(folderId, out var existing)
+                ? existing with { MenuOrder = menuOrder, HiddenInMenu = hiddenInMenu }
+                : new PluginRegistration(Enabled: true, PinnedSha256: string.Empty, menuOrder, hiddenInMenu);
+
+            return Task.CompletedTask;
+        }
+
         public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default)
         {
             Saved.Remove(folderId);
