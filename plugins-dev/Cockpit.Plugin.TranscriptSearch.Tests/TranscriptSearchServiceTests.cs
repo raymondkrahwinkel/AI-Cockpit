@@ -109,6 +109,38 @@ public class TranscriptSearchServiceTests : IDisposable
         }
     }
 
+    // The dialog opens on these, so a session is summarised by what you opened it with — an id and a folder name
+    // are not something anyone recognises a conversation by.
+    [Fact]
+    public async Task RecentAsync_SummarisesEachSessionByItsOpeningPrompt_NewestFirst()
+    {
+        _WriteSession("proj", "old",
+            """{"type":"user","message":{"role":"user","content":"fix the login bug"}}""",
+            """{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done"}]}}""");
+        _WriteSession("proj", "new",
+            """{"type":"user","message":{"role":"user","content":"add the export button"}}""");
+        File.SetLastWriteTimeUtc(Path.Combine(_root, "proj", "old.jsonl"), new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        File.SetLastWriteTimeUtc(Path.Combine(_root, "proj", "new.jsonl"), new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var recent = await new TranscriptSearchService([_root]).RecentAsync();
+
+        recent.Select(hit => hit.SessionId).Should().Equal("new", "old");
+        recent[0].Snippet.Should().Be("add the export button");
+    }
+
+    [Fact]
+    public async Task RecentAsync_ReturnsAtMostTheRequestedNumber()
+    {
+        for (var i = 0; i < 5; i++)
+        {
+            _WriteSession("proj", $"s{i}", $$$"""{"type":"user","message":{"role":"user","content":"prompt {{{i}}}"}}""");
+        }
+
+        var recent = await new TranscriptSearchService([_root]).RecentAsync(limit: 3);
+
+        recent.Should().HaveCount(3);
+    }
+
     private void _WriteSession(string project, string sessionId, params string[] lines)
     {
         var dir = Path.Combine(_root, project);

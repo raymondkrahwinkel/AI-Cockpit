@@ -21,6 +21,9 @@ internal sealed class TranscriptSearchDialogControl : UserControl
 {
     private const int MinQueryLength = 2;
 
+    /// <summary>How many recent conversations the dialog opens on — enough to recognise the one you want, few enough to read at a glance.</summary>
+    private const int RecentSessionCount = 10;
+
     private readonly TranscriptSearchService _search;
     private readonly ICockpitActions _actions;
 
@@ -86,7 +89,11 @@ internal sealed class TranscriptSearchDialogControl : UserControl
         root.Children.Add(new ScrollViewer { Content = hits });
         Content = root;
 
-        Loaded += (_, _) => _query.Focus();
+        Loaded += async (_, _) =>
+        {
+            _query.Focus();
+            await _ShowRecentAsync();
+        };
     }
 
     private Control _HitCard(TranscriptSearchHit hit)
@@ -191,9 +198,41 @@ internal sealed class TranscriptSearchDialogControl : UserControl
         };
     }
 
+    // What the dialog opens on: the conversations you worked on last, so resuming one is a click rather than a
+    // search for a word you have to remember first.
+    private async Task _ShowRecentAsync()
+    {
+        _status.Text = "Loading…";
+        try
+        {
+            var recent = await _search.RecentAsync(RecentSessionCount);
+            _results.Clear();
+            foreach (var hit in recent)
+            {
+                _results.Add(hit);
+            }
+
+            _status.Text = recent.Count == 0
+                ? "No sessions yet."
+                : $"Your {recent.Count} most recent session(s). Search to look further back.";
+        }
+        catch (Exception exception)
+        {
+            _status.Text = $"Could not read your recent sessions: {exception.Message}";
+        }
+    }
+
     private async Task _SearchAsync()
     {
         var query = _query.Text?.Trim() ?? string.Empty;
+
+        // Clearing the box takes you back to where the dialog started, rather than to an empty list.
+        if (query.Length == 0)
+        {
+            await _ShowRecentAsync();
+            return;
+        }
+
         _results.Clear();
 
         if (query.Length < MinQueryLength)

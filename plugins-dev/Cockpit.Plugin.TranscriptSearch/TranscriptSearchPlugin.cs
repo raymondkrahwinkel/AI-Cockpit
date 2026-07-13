@@ -15,7 +15,7 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "transcript-search",
         DisplayName: "Claude Transcript Search",
-        Version: "1.1.0",
+        Version: "1.2.0",
         Author: "Cockpit",
         Description: "Search everything you and the agent ever wrote in a Claude CLI session, across every Claude profile you have configured.");
 

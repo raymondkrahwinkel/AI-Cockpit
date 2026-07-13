@@ -41,6 +41,66 @@ internal sealed class TranscriptSearchService
         _projectRootsOverride = projectRoots;
     }
 
+    /// <summary>
+    /// The conversations you worked on most recently, newest first — what the dialog shows before you have typed
+    /// anything, since "pick up where I left off" is usually a matter of the last few sessions rather than of
+    /// searching for a word. Each is summarised by its opening prompt: what you asked is what makes a session
+    /// recognisable, far more than its id or its folder.
+    /// </summary>
+    public async Task<IReadOnlyList<TranscriptSearchHit>> RecentAsync(int limit = 10, CancellationToken cancellationToken = default)
+    {
+        var roots = await _ResolveProjectRootsAsync();
+        var files = roots
+            .SelectMany(_EnumerateTranscripts)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Take(limit)
+            .ToList();
+
+        var recent = new List<TranscriptSearchHit>();
+        foreach (var file in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await _OpeningPromptAsync(file, cancellationToken) is { } opening)
+            {
+                recent.Add(opening);
+            }
+        }
+
+        return recent;
+    }
+
+    // The first thing you said in a session, as a hit. A transcript whose prose we cannot read (a session that
+    // never got past a tool call, say) yields nothing rather than an empty row.
+    private static async Task<TranscriptSearchHit?> _OpeningPromptAsync(FileInfo file, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var line in File.ReadLinesAsync(file.FullName, cancellationToken))
+            {
+                if (TranscriptTextExtractor.Extract(line) is not { Role: "user" } entry)
+                {
+                    continue;
+                }
+
+                return new TranscriptSearchHit(
+                    Path.GetFileNameWithoutExtension(file.Name),
+                    file.Directory?.Name ?? string.Empty,
+                    entry.Role,
+                    TranscriptSnippet.Build(entry.Text, string.Empty),
+                    file.FullName,
+                    file.LastWriteTimeUtc);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A transcript that is locked or mid-write is skipped, exactly as it is during a search.
+        }
+
+        return null;
+    }
+
     public async Task<IReadOnlyList<TranscriptSearchHit>> SearchAsync(string query, int maxResults = 200, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
