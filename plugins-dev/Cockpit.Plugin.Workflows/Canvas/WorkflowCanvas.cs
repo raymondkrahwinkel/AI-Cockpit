@@ -25,19 +25,27 @@ internal sealed class WorkflowCanvas : Border
     private const double MaxZoom = 2.5;
     private const double GridStep = 16;
 
+    // How far the + sits from the pin it belongs to: far enough to click without hitting the pin, close enough to
+    // read as the same thing.
+    private const double PlusDistance = 26;
+
     private readonly Avalonia.Controls.Canvas _surface = new() { Background = Brushes.Transparent, Width = 4000, Height = 3000 };
     private readonly ScaleTransform _zoom = new(1, 1);
     private readonly TranslateTransform _pan = new();
 
     private readonly Dictionary<string, WorkflowNodeControl> _nodes = new(StringComparer.Ordinal);
     private readonly List<WorkflowWire> _wires = [];
-    private readonly List<Button> _plusButtons = [];
+    // Everything the canvas draws around the flow rather than as part of it: the + buttons and the little stubs
+    // that lead to them. Tracked so they can all be removed — an earlier version removed the buttons and left the
+    // stubs behind, so every mouse move during a drag painted another one and the canvas filled with trails.
+    private readonly List<Control> _decorations = [];
 
     private WorkflowNodeControl? _draggingNode;
     private Point _dragOffset;
 
     private WorkflowPin? _pendingSource;
     private Path? _pendingWire;
+    private bool _pendingDragged;
 
     private bool _isPanning;
     private Point _panOrigin;
@@ -123,7 +131,7 @@ internal sealed class WorkflowCanvas : Border
         _surface.Children.Clear();
         _nodes.Clear();
         _wires.Clear();
-        _plusButtons.Clear();
+        _decorations.Clear();
 
         foreach (var node in Workflow.Nodes)
         {
@@ -161,8 +169,11 @@ internal sealed class WorkflowCanvas : Border
         Avalonia.Controls.Canvas.SetTop(control, node.Y);
 
         control.HeaderPressed += (_, e) => _BeginNodeDrag(control, e);
-        control.PinPressed += (_, pin) => _BeginWire(pin);
-        control.PinReleased += (_, pin) => _CompleteWire(pin);
+        control.PinPressed += (_, pin, pointer) =>
+        {
+            _BeginWire(pin);
+            pointer.Capture(this);
+        };
 
         _nodes[node.Id] = control;
         _surface.Children.Add(control);
@@ -194,12 +205,12 @@ internal sealed class WorkflowCanvas : Border
     // is how you continue — you never have to know that a step exists before you can reach for it.
     private void _RefreshPlusButtons()
     {
-        foreach (var button in _plusButtons)
+        foreach (var decoration in _decorations)
         {
-            _surface.Children.Remove(button);
+            _surface.Children.Remove(decoration);
         }
 
-        _plusButtons.Clear();
+        _decorations.Clear();
 
         foreach (var (nodeId, control) in _nodes)
         {
@@ -210,42 +221,34 @@ internal sealed class WorkflowCanvas : Border
                     continue;
                 }
 
-                var anchor = control.OutputPin(output).AnchorOn(_surface);
-                var plus = _PlusButton(nodeId, output);
-
-                Avalonia.Controls.Canvas.SetLeft(plus, anchor.X + 26);
-                Avalonia.Controls.Canvas.SetTop(plus, anchor.Y - 9);
-                _surface.Children.Add(plus);
-                _plusButtons.Add(plus);
+                var pin = control.OutputPin(output);
+                var anchor = pin.AnchorOn(_surface);
 
                 var stub = WorkflowWire.NewLine();
-                WorkflowWire.Draw(stub, anchor, new Point(anchor.X + 26, anchor.Y));
+                WorkflowWire.Draw(stub, anchor, new Point(anchor.X + PlusDistance, anchor.Y));
                 _surface.Children.Insert(0, stub);
-                _plusButtons.Add(_Invisible(stub));
+                _decorations.Add(stub);
+
+                var plus = _PlusHandle(pin);
+                Avalonia.Controls.Canvas.SetLeft(plus, anchor.X + PlusDistance);
+                Avalonia.Controls.Canvas.SetTop(plus, anchor.Y - 9);
+                _surface.Children.Add(plus);
+                _decorations.Add(plus);
             }
         }
     }
 
-    private Button _PlusButton(string nodeId, int output)
+    private PlusHandle _PlusHandle(WorkflowPin pin)
     {
-        var button = new Button
+        var handle = new PlusHandle(pin);
+        handle.Pressed += (_, e) =>
         {
-            Content = "+",
-            Width = 18,
-            Height = 18,
-            Padding = new Thickness(0),
-            FontSize = 11,
-            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-            VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center,
+            _BeginWire(pin);
+            e.Pointer.Capture(this);
         };
-        ToolTip.SetTip(button, "Add the next step");
-        button.Click += (_, _) => AddRequested?.Invoke(this, (nodeId, output));
 
-        return button;
+        return handle;
     }
-
-    // The stub line is tracked alongside the + buttons so it is cleaned up with them; wrapping it keeps one list.
-    private static Button _Invisible(Control control) => new() { IsVisible = false, Content = control, Width = 0, Height = 0 };
 
     private void _OnDragOver(object? sender, DragEventArgs e)
     {
@@ -262,8 +265,8 @@ internal sealed class WorkflowCanvas : Border
 
         // Snapped to the same grid the dots draw, so a dropped step lines up with the ones placed before it.
         var point = e.GetPosition(_surface);
-        var x = Math.Round((point.X - WorkflowNodeControl.TileSize / 2) / GridStep) * GridStep;
-        var y = Math.Round((point.Y - WorkflowNodeControl.TileSize / 2) / GridStep) * GridStep;
+        var x = Math.Round((point.X - WorkflowNodeControl.CardWidth / 2) / GridStep) * GridStep;
+        var y = Math.Round((point.Y - WorkflowNodeControl.CardHeight / 2) / GridStep) * GridStep;
 
         DropRequested?.Invoke(this, (typeId, x, y));
         e.Handled = true;
@@ -282,37 +285,69 @@ internal sealed class WorkflowCanvas : Border
 
     private void _BeginWire(WorkflowPin pin)
     {
-        // Wires are pulled from a way out; dropping on an input is what finishes them.
+        // Wires are pulled from a way out; dropping on a step is what finishes them.
         if (pin.IsInput)
         {
             return;
         }
 
+        _pendingDragged = false;
         _pendingSource = pin;
         _pendingWire = WorkflowWire.NewLine();
         _surface.Children.Insert(0, _pendingWire);
     }
 
-    private void _CompleteWire(WorkflowPin pin)
-    {
-        if (_pendingSource is { } source && pin.IsInput)
+    // Dropping is on the step, not on its pin: a 10-pixel circle is a target you have to aim at, and connecting
+    // two steps should not be a test of the mouse hand.
+    private WorkflowNodeControl? _NodeAt(Point onSurface) =>
+        _nodes.Values.FirstOrDefault(control =>
         {
-            var rule = Workflow.Connect(source.Owner.Node.Id, source.OutputIndex, pin.Owner.Node.Id);
-            if (rule.IsAllowed)
-            {
-                _ClearPendingWire();
-                Rebuild();
-                Changed?.Invoke(this, EventArgs.Empty);
-                return;
-            }
+            var left = Avalonia.Controls.Canvas.GetLeft(control);
+            var top = Avalonia.Controls.Canvas.GetTop(control);
 
-            if (rule.Reason is { } reason)
-            {
-                Refused?.Invoke(this, reason);
-            }
+            return onSurface.X >= left
+                && onSurface.X <= left + control.Bounds.Width
+                && onSurface.Y >= top
+                && onSurface.Y <= top + control.Bounds.Height;
+        });
+
+    private void _CompleteWire(WorkflowNodeControl target)
+    {
+        if (_pendingSource is not { } source)
+        {
+            return;
+        }
+
+        var rule = Workflow.Connect(source.Owner.Node.Id, source.OutputIndex, target.Node.Id);
+        if (rule.IsAllowed)
+        {
+            _ClearPendingWire();
+            Rebuild();
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        if (rule.Reason is { } reason)
+        {
+            Refused?.Invoke(this, reason);
         }
 
         _ClearPendingWire();
+    }
+
+    // The step a wire would land on lights up before you let go: a drop with no feedback is a guess.
+    private void _HighlightDropTarget(WorkflowNodeControl? target, WorkflowNodeControl source)
+    {
+        foreach (var (id, control) in _nodes)
+        {
+            var isTarget = target is not null
+                && !ReferenceEquals(target, source)
+                && ReferenceEquals(control, target)
+                && (Workflow.Node(id)?.HasInput ?? false);
+
+            control.IsSelected = isTarget || (Selected is not null && id == Selected.Id);
+            control.IsDropTarget = isTarget;
+        }
     }
 
     private void _ClearPendingWire()
@@ -324,6 +359,13 @@ internal sealed class WorkflowCanvas : Border
 
         _pendingWire = null;
         _pendingSource = null;
+        _pendingDragged = false;
+
+        // Drop-target rings go with the wire that was being dragged.
+        foreach (var (id, control) in _nodes)
+        {
+            control.IsSelected = Selected is not null && id == Selected.Id;
+        }
     }
 
     private void _Select(WorkflowNode? node)
@@ -376,7 +418,9 @@ internal sealed class WorkflowCanvas : Border
 
         if (_pendingSource is { } source && _pendingWire is { } line)
         {
+            _pendingDragged = true;
             WorkflowWire.Draw(line, source.AnchorOn(_surface), onSurface);
+            _HighlightDropTarget(_NodeAt(onSurface), source.Owner);
             return;
         }
 
@@ -391,9 +435,30 @@ internal sealed class WorkflowCanvas : Border
 
     private void _OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (_pendingSource is not null)
+        if (_pendingSource is { } source)
         {
-            _ClearPendingWire();
+            var target = _NodeAt(e.GetPosition(_surface));
+
+            if (_pendingDragged && target is not null && !ReferenceEquals(target, source.Owner))
+            {
+                _CompleteWire(target);
+            }
+            else if (!_pendingDragged)
+            {
+                // Pressed and let go without moving: that is a click on the +, and it asks what comes next.
+                _ClearPendingWire();
+                AddRequested?.Invoke(this, (source.Owner.Node.Id, source.OutputIndex));
+            }
+            else
+            {
+                // Dropped on empty canvas, or back on the step it came from: not a wire.
+                _ClearPendingWire();
+            }
+
+            e.Pointer.Capture(null);
+            _draggingNode = null;
+            _isPanning = false;
+            return;
         }
 
         if (_draggingNode is not null)

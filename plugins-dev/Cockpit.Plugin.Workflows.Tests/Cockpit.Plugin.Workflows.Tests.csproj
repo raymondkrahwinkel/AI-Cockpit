@@ -10,6 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The + and the node cards are controls, and the bug they exist to prevent is a control-level one (a Button
+         swallowing the pointer press). Headless Avalonia lets that be tested without a screen. -->
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="FluentAssertions" Version="8.10.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

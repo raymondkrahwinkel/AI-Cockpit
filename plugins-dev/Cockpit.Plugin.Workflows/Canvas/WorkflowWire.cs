@@ -114,5 +114,9 @@ internal sealed class WorkflowWire
         Arrow.Data = geometry;
     }
 
-    private static IBrush WireBrush { get; } = new SolidColorBrush(Color.Parse("#6E6E7C"));
+    // The cockpit's own hairline, so a wire belongs to this app rather than to the one we borrowed the shape from.
+    private static IBrush WireBrush { get; } =
+        Application.Current?.TryFindResource("CockpitTextFaintBrush", out var value) == true && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse("#6E6E7C"));
 }
