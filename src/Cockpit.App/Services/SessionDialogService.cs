@@ -204,7 +204,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
+        var pluginProviders = _pluginProviderRegistry.Registrations.Select(registration => registration.DisplayName);
+        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), pluginProviders);
         var dialog = new AboutDialog { DataContext = info };
         await dialog.ShowDialog(owner);
     }

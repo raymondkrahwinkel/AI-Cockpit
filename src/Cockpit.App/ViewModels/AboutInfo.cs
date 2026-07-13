@@ -3,9 +3,11 @@ using System.Reflection;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// Static content for the About dialog (#46): app identity, the running build's version, a short
-/// description, which providers a session can run under, the licence, and the links to the public
-/// GitHub repo, the issue tracker and the plugin store.
+/// Content for the About dialog (#46): app identity, the running build's version, a short description, which
+/// providers a session can actually run under <em>on this install</em>, the licence, and the links to the public
+/// GitHub repo, the issue tracker and the plugin store. The provider line is built from the live plugin registry
+/// rather than a hard-coded list — naming providers the operator has not installed would be advertising, not
+/// information.
 /// </summary>
 public sealed record AboutInfo(
     string AppName,
@@ -21,19 +23,31 @@ public sealed record AboutInfo(
     public const string DefaultIssuesUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit/issues";
     public const string DefaultPluginStoreUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins";
 
+    /// <summary>The providers the app ships with itself, always available regardless of what is installed.</summary>
+    private static readonly string[] BuiltInProviders = ["Claude Code", "Ollama", "LM Studio"];
+
     /// <summary>
     /// Builds the About info from <paramref name="assembly"/>'s version metadata, preferring the
     /// informational version (carries a semver/build suffix when set) over the plain assembly version.
     /// </summary>
-    public static AboutInfo FromAssembly(Assembly assembly) => new(
+    /// <param name="pluginProviderNames">
+    /// Display names of the provider plugins actually installed and enabled right now. Empty is the normal case
+    /// for a fresh install and simply leaves the built-in providers standing.
+    /// </param>
+    public static AboutInfo FromAssembly(Assembly assembly, IEnumerable<string>? pluginProviderNames = null) => new(
         "AI-Cockpit",
         _VersionText(assembly),
         "Run several AI coding sessions side by side — each in its own profile, with its own provider, permissions and transcript.",
-        "Claude Code · Ollama · LM Studio · plus any provider a plugin adds (Gemini, OpenAI, GitHub Models, Codex CLI).",
+        _ProviderText(pluginProviderNames),
         "Apache 2.0 with the Commons Clause · © 2026 Raymond Krahwinkel / Krahwinkel-IT",
         DefaultGitHubUrl,
         DefaultIssuesUrl,
         DefaultPluginStoreUrl);
+
+    // Built-ins first, then whatever provider plugins are installed — one flat list, because from where the
+    // operator sits they are all just providers a session can run under.
+    private static string _ProviderText(IEnumerable<string>? pluginProviderNames) =>
+        string.Join(" · ", BuiltInProviders.Concat(pluginProviderNames ?? []));
 
     private static string _VersionText(Assembly assembly)
     {

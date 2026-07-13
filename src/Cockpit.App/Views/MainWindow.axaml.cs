@@ -22,6 +22,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this, "Cockpit", includeMinimize: true, includeMaximize: true, closeOnEscape: false);
+
+        Activated += (_, _) => _SetWindowActive(true);
+        Deactivated += (_, _) => _SetWindowActive(false);
     }
 
     protected override void OnOpened(EventArgs e)
@@ -46,6 +49,17 @@ public partial class MainWindow : Window
             {
                 WindowState = WindowState.Maximized;
             }
+        }
+    }
+
+    // Whether this window is the active one is something only the window knows, and the finished-session
+    // notification needs it: a session you are looking at has already told you it is done. Window activation,
+    // not keyboard focus — a click in the terminal moves focus around inside a window that stayed active.
+    private void _SetWindowActive(bool isActive)
+    {
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.IsWindowActive = isActive;
         }
     }
 

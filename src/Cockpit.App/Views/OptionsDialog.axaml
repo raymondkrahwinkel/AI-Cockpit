@@ -63,6 +63,25 @@
                         </StackPanel>
                         <TextBlock Text="How long without keyboard/mouse before you count as away (used for the Discord channel)."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                        <TextBlock Text="Sessions finishing and falling quiet" FontWeight="SemiBold"/>
+                        <CheckBox Content="Tell me when a session is done (only when I'm not looking at it)"
+                                  IsChecked="{Binding NotifyOnSessionFinished}"/>
+                        <CheckBox Content="Tell me when a session goes idle"
+                                  IsChecked="{Binding NotifyOnSessionIdle}"/>
+                        <CheckBox Content="Tell me when every session is idle — nothing is running any more"
+                                  IsChecked="{Binding NotifyWhenAllSessionsIdle}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="Session goes idle after (minutes)"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding SessionIdleMinutes}" Minimum="0" Maximum="240"
+                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="How long a finished session stays &quot;done&quot; before it counts as idle. 0 leaves it on &quot;done&quot;. This is about a session having nothing to do — not about you being away."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

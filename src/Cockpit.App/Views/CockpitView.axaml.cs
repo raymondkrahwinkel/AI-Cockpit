@@ -18,8 +18,16 @@ namespace Cockpit.App.Views;
 
 public partial class CockpitView : UserControl
 {
+    /// <summary>
+    /// How often finished sessions are checked against the idle threshold. A sweep is cheap (a comparison per
+    /// session), and the threshold is in minutes, so half a minute of slack in when a session turns grey is
+    /// invisible — where a timer per session would not be.
+    /// </summary>
+    private static readonly TimeSpan IdleSweepInterval = TimeSpan.FromSeconds(30);
+
     private INotifyCollectionChanged? _observedSideSections;
     private INotifyCollectionChanged? _observedSideButtons;
+    private DispatcherTimer? _idleSweepTimer;
 
     public CockpitView()
     {
@@ -50,11 +58,23 @@ public partial class CockpitView : UserControl
         if (DataContext is CockpitViewModel cockpit)
         {
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
+
+            // The idle sweep lives here rather than in the view model so the view model stays free of timers
+            // (and testable by calling the sweep with a time of the test's choosing).
+            _idleSweepTimer = new DispatcherTimer { Interval = IdleSweepInterval };
+            _idleSweepTimer.Tick += (_, _) => cockpit.SweepIdleSessions(DateTimeOffset.UtcNow);
+            _idleSweepTimer.Start();
         }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        if (_idleSweepTimer is not null)
+        {
+            _idleSweepTimer.Stop();
+            _idleSweepTimer = null;
+        }
+
         if (e.RootVisual is InputElement root)
         {
             root.RemoveHandler(KeyDownEvent, OnRootKeyDown);

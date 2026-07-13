@@ -17,6 +17,8 @@ public class AttentionNotifierTests
     private readonly IWebhookNotifier _webhookNotifier = Substitute.For<IWebhookNotifier>();
 
     private static readonly AttentionNotification Notification = new("Claude 1", "Needs attention");
+    private static readonly AttentionNotification Done = new("Claude 1", "Done");
+    private static readonly AttentionNotification Idle = new("Claude 1", "Idle for 5 minute(s)");
 
     private AttentionNotifier NewSut() =>
         new(_settingsStore, _presenceDetector, _toastNotifier, _webhookNotifier);
@@ -55,5 +57,70 @@ public class AttentionNotifierTests
 
         await _toastNotifier.DidNotReceiveWithAnyArgs().NotifyAsync(default!, default);
         await _webhookNotifier.DidNotReceiveWithAnyArgs().NotifyAsync(default!, default!, default);
+    }
+
+    [Fact]
+    public async Task SessionFinished_WhileWatchingThatSession_DeliversNothing()
+    {
+        _settingsStore.LoadAsync().Returns(new NotificationSettings());
+        _presenceDetector.GetPresence(Arg.Any<TimeSpan>()).Returns(PresenceState.Present);
+
+        await NewSut().NotifySessionFinishedAsync(Done, isSelected: true, isWindowActive: true);
+
+        await _toastNotifier.DidNotReceiveWithAnyArgs().NotifyAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task SessionFinished_WhileLookingElsewhere_DeliversToast()
+    {
+        _settingsStore.LoadAsync().Returns(new NotificationSettings());
+        _presenceDetector.GetPresence(Arg.Any<TimeSpan>()).Returns(PresenceState.Present);
+
+        await NewSut().NotifySessionFinishedAsync(Done, isSelected: false, isWindowActive: true);
+
+        await _toastNotifier.Received(1).NotifyAsync(Done, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SessionFinished_WithTheSettingOff_DeliversNothing()
+    {
+        _settingsStore.LoadAsync().Returns(new NotificationSettings { NotifyOnSessionFinished = false });
+        _presenceDetector.GetPresence(Arg.Any<TimeSpan>()).Returns(PresenceState.Present);
+
+        await NewSut().NotifySessionFinishedAsync(Done, isSelected: false, isWindowActive: false);
+
+        await _toastNotifier.DidNotReceiveWithAnyArgs().NotifyAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task SessionIdle_OnlyDeliversWhenAskedFor()
+    {
+        _settingsStore.LoadAsync().Returns(new NotificationSettings { NotifyOnSessionIdle = false });
+        _presenceDetector.GetPresence(Arg.Any<TimeSpan>()).Returns(PresenceState.Present);
+
+        await NewSut().NotifySessionIdleAsync(Idle);
+        await _toastNotifier.DidNotReceiveWithAnyArgs().NotifyAsync(default!, default);
+
+        _settingsStore.LoadAsync().Returns(new NotificationSettings { NotifyOnSessionIdle = true });
+
+        await NewSut().NotifySessionIdleAsync(Idle);
+        await _toastNotifier.Received(1).NotifyAsync(Idle, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AllSessionsIdle_OnlyDeliversWhenAskedFor()
+    {
+        _settingsStore.LoadAsync().Returns(new NotificationSettings { NotifyWhenAllSessionsIdle = false });
+        _presenceDetector.GetPresence(Arg.Any<TimeSpan>()).Returns(PresenceState.Present);
+
+        await NewSut().NotifyAllSessionsIdleAsync();
+        await _toastNotifier.DidNotReceiveWithAnyArgs().NotifyAsync(default!, default);
+
+        _settingsStore.LoadAsync().Returns(new NotificationSettings { NotifyWhenAllSessionsIdle = true });
+
+        await NewSut().NotifyAllSessionsIdleAsync();
+        await _toastNotifier.Received(1).NotifyAsync(
+            Arg.Is<AttentionNotification>(notification => notification.Body == "All sessions are idle"),
+            Arg.Any<CancellationToken>());
     }
 }

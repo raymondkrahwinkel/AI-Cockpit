@@ -34,6 +34,23 @@ public class AboutInfoTests
     }
 
     [Fact]
+    public void FromAssembly_WithNoProviderPluginsInstalled_NamesOnlyTheBuiltInOnes()
+    {
+        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
+
+        // Naming Gemini or Codex on an install that has neither would be advertising, not information.
+        info.Providers.Should().Be("Claude Code · Ollama · LM Studio");
+    }
+
+    [Fact]
+    public void FromAssembly_ListsTheProviderPluginsThatAreActuallyInstalled()
+    {
+        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), ["Gemini (OpenAI-compatible)"]);
+
+        info.Providers.Should().Be("Claude Code · Ollama · LM Studio · Gemini (OpenAI-compatible)");
+    }
+
+    [Fact]
     public void FromAssembly_UsesTheInformationalVersion_WithoutItsBuildMetadata()
     {
         var assembly = Assembly.GetExecutingAssembly();

@@ -18,12 +18,25 @@ internal sealed class NotificationSettingsEntry
 
     public int IdleThresholdMinutes { get; set; } = (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
 
+    public bool NotifyOnSessionFinished { get; set; } = true;
+
+    public bool NotifyOnSessionIdle { get; set; }
+
+    public bool NotifyWhenAllSessionsIdle { get; set; }
+
+    /// <summary>Minutes a finished session stays "done" before it counts as idle. 0 turns the idle transition off, so it round-trips as written rather than falling back to the default.</summary>
+    public int SessionIdleMinutes { get; set; } = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
+
     public static NotificationSettingsEntry FromDomain(NotificationSettings settings) => new()
     {
         LocalEnabled = settings.LocalEnabled,
         DiscordEnabled = settings.DiscordEnabled,
         WebhookUrl = settings.WebhookUrl,
         IdleThresholdMinutes = (int)settings.IdleThreshold.TotalMinutes,
+        NotifyOnSessionFinished = settings.NotifyOnSessionFinished,
+        NotifyOnSessionIdle = settings.NotifyOnSessionIdle,
+        NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle,
+        SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes,
     };
 
     public NotificationSettings ToDomain() => new()
@@ -34,5 +47,11 @@ internal sealed class NotificationSettingsEntry
         IdleThreshold = IdleThresholdMinutes > 0
             ? TimeSpan.FromMinutes(IdleThresholdMinutes)
             : NotificationSettings.DefaultIdleThreshold,
+        NotifyOnSessionFinished = NotifyOnSessionFinished,
+        NotifyOnSessionIdle = NotifyOnSessionIdle,
+        NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
+        SessionIdleThreshold = SessionIdleMinutes > 0
+            ? TimeSpan.FromMinutes(SessionIdleMinutes)
+            : TimeSpan.Zero,
     };
 }

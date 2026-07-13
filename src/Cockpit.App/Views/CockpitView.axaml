@@ -58,44 +58,46 @@
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
                     <!-- Runtime open-mic toggle: listens continuously and types into the selected session.
                          Disabled until Voice is enabled in Options (open-mic needs the mic pipeline). -->
-                    <ToggleButton Content="🎙 Open mic" HorizontalAlignment="Stretch"
+                    <ToggleButton Content="Open mic" HorizontalAlignment="Stretch"
                                   IsChecked="{Binding OpenMic.IsListening, Mode=OneWay}"
                                   Command="{Binding OpenMic.ToggleOpenMicCommand}"
                                   IsEnabled="{Binding OpenMic.IsAvailable}"
                                   ToolTip.ShowOnDisabled="True"
                                   ToolTip.Tip="Toggle open-mic dictation on/off — listens continuously and types into the selected session (enable Voice in Options first)"/>
-                    <Button Content="Profiles" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding ManageProfilesCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Add, edit or remove session profiles"/>
-                    <Button Content="MCP servers" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding OpenMcpServersCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Add, edit or remove shared MCP servers"/>
-                    <Button Content="Plugin store" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding Plugins.OpenStoreDialogCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Browse, install, update and manage plugins — all in one place"/>
                     <!-- Delegated work runs as sessions without a tab, so this is where it stays visible (#67).
-                         Hidden until something has actually been delegated, rather than sitting there dead. -->
+                         Hidden until something has actually been delegated, rather than sitting there dead — and
+                         kept out of the menu below because it carries live state (how many are running). -->
                     <Button HorizontalAlignment="Stretch" Classes="Subtle"
                             Command="{Binding ShowDelegatedTasksCommand}"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
                             IsVisible="{Binding DelegatedTasks.Tasks.Count}"
                             Content="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks ({0} active)'}"
                             ToolTip.Tip="Work other sessions handed to a profile — read what they produced, or stop them"/>
-                    <Button Content="⌘ Command palette" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding ShowCommandPaletteCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Run any app or plugin command by name (Ctrl+K)"/>
-                    <Button Content="Options" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding OptionsCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="Configure notifications, sessions, and voice"/>
-                    <Button Content="About" HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding AboutCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            ToolTip.Tip="App version and links"/>
+                    <!-- Everything you configure or look up once, behind one menu: the sidebar is for sessions,
+                         and six permanent text rows of setup drowned that out. -->
+                    <Button Content="⋯  Menu" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Classes="Subtle" Foreground="{StaticResource CockpitTextFaintBrush}"
+                            ToolTip.Tip="Profiles, MCP servers, plugins, options and about">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="TopEdgeAlignedLeft">
+                                <MenuItem Header="Profiles" Command="{Binding ManageProfilesCommand}"
+                                          ToolTip.Tip="Add, edit or remove session profiles"/>
+                                <MenuItem Header="MCP servers" Command="{Binding OpenMcpServersCommand}"
+                                          ToolTip.Tip="Add, edit or remove shared MCP servers"/>
+                                <MenuItem Header="Plugin store" Command="{Binding Plugins.OpenStoreDialogCommand}"
+                                          ToolTip.Tip="Browse, install, update and manage plugins"/>
+                                <MenuItem Header="Command palette" Command="{Binding ShowCommandPaletteCommand}"
+                                          InputGesture="Ctrl+K"
+                                          ToolTip.Tip="Run any app or plugin command by name"/>
+                                <Separator/>
+                                <MenuItem Header="Options" Command="{Binding OptionsCommand}"
+                                          InputGesture="Ctrl+O"
+                                          ToolTip.Tip="Configure notifications, sessions, and voice"/>
+                                <MenuItem Header="About" Command="{Binding AboutCommand}"
+                                          ToolTip.Tip="App version and links"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                 </StackPanel>
 
                 <!-- Plugin-contributed left-menu sections (#14), docked above the footer and below the

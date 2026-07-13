@@ -22,5 +22,21 @@ public sealed record NotificationSettings
     /// <summary>Idle time before "away" (when unlocked). Defaults to <see cref="DefaultIdleThreshold"/>.</summary>
     public TimeSpan IdleThreshold { get; init; } = DefaultIdleThreshold;
 
+    /// <summary>Whether a session that finished its turn announces itself when you are not watching it (see <see cref="FinishedNotificationDecision"/>).</summary>
+    public bool NotifyOnSessionFinished { get; init; } = true;
+
+    /// <summary>Whether a session that has been finished and quiet for <see cref="SessionIdleThreshold"/> announces that it went idle. Off by default — the interesting moment is usually the answer, not the silence after it.</summary>
+    public bool NotifyOnSessionIdle { get; init; }
+
+    /// <summary>Whether one message is sent the moment the last session goes idle, i.e. nothing is running any more.</summary>
+    public bool NotifyWhenAllSessionsIdle { get; init; }
+
+    /// <summary>
+    /// How long a finished session stays "done" before it counts as idle. Distinct from <see cref="IdleThreshold"/>,
+    /// which is about <em>you</em> being away from the PC — this is about a <em>session</em> having nothing to do.
+    /// <see cref="TimeSpan.Zero"/> turns the idle transition off.
+    /// </summary>
+    public TimeSpan SessionIdleThreshold { get; init; } = SessionIdleDecision.DefaultIdleThreshold;
+
     public bool HasWebhookUrl => !string.IsNullOrWhiteSpace(WebhookUrl);
 }

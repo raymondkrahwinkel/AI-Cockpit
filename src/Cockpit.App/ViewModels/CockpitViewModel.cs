@@ -71,6 +71,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private CancellationTokenSource? _recordingCancellation;
     private int _sessionCounter;
 
+    // "Everything is quiet" is edge-triggered too: announced when the last working session falls idle, and armed
+    // again only once something starts working, so a cockpit left alone does not repeat itself every sweep.
+    private bool _allSessionsIdleNotified = true;
+
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
     /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
@@ -407,6 +411,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private int _idleThresholdMinutes = (int)NotificationSettings.DefaultIdleThreshold.TotalMinutes;
 
+    /// <summary>Minutes a finished session stays "done" before it falls back to idle. 0 leaves it on "done" forever. Distinct from <see cref="IdleThresholdMinutes"/>, which is about the operator being away.</summary>
+    [ObservableProperty]
+    private int _sessionIdleMinutes = (int)SessionIdleDecision.DefaultIdleThreshold.TotalMinutes;
+
+    /// <summary>Whether a session that finished its turn announces itself when the operator is not watching it.</summary>
+    [ObservableProperty]
+    private bool _notifyOnSessionFinished = true;
+
+    /// <summary>Whether a session announces that it has gone idle.</summary>
+    [ObservableProperty]
+    private bool _notifyOnSessionIdle;
+
+    /// <summary>Whether one message is sent when the last session goes idle — nothing is running any more.</summary>
+    [ObservableProperty]
+    private bool _notifyWhenAllSessionsIdle;
+
+    /// <summary>
+    /// Whether the cockpit window is the focused one. Set by the window itself (it is the only thing that knows),
+    /// and read by the finished-session notification: a session you are looking at does not need to announce itself.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isWindowActive = true;
+
     [ObservableProperty]
     private string _notificationSettingsStatus = string.Empty;
 
@@ -694,6 +721,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DiscordNotificationsEnabled = settings.DiscordEnabled;
         WebhookUrl = settings.WebhookUrl ?? string.Empty;
         IdleThresholdMinutes = (int)settings.IdleThreshold.TotalMinutes;
+        SessionIdleMinutes = (int)settings.SessionIdleThreshold.TotalMinutes;
+        NotifyOnSessionFinished = settings.NotifyOnSessionFinished;
+        NotifyOnSessionIdle = settings.NotifyOnSessionIdle;
+        NotifyWhenAllSessionsIdle = settings.NotifyWhenAllSessionsIdle;
     }
 
     /// <summary>Persists the notification settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
@@ -715,6 +746,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             DiscordEnabled = DiscordNotificationsEnabled,
             WebhookUrl = string.IsNullOrWhiteSpace(WebhookUrl) ? null : WebhookUrl.Trim(),
             IdleThreshold = TimeSpan.FromMinutes(minutes),
+            NotifyOnSessionFinished = NotifyOnSessionFinished,
+            NotifyOnSessionIdle = NotifyOnSessionIdle,
+            NotifyWhenAllSessionsIdle = NotifyWhenAllSessionsIdle,
+            // 0 is a real choice here ("never let a session go idle"), so it is saved as written rather than
+            // being nudged back to the default the way the away-threshold is.
+            SessionIdleThreshold = SessionIdleMinutes > 0 ? TimeSpan.FromMinutes(SessionIdleMinutes) : TimeSpan.Zero,
         };
 
         await _notificationSettingsStore.SaveAsync(settings);
@@ -1426,6 +1463,48 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             NotifyAttention(session);
         }
+
+        // A turn just finished. Worth saying out loud only when you are not looking at that session — the
+        // notifier makes that call, since it is the one that knows whether you are even at the PC.
+        if (session.SessionStatus == SessionStatus.Done && previous == SessionStatus.Busy)
+        {
+            NotifySessionFinished(session);
+        }
+
+        // Anything other than idle means there is work in the cockpit again, so the next fall to complete
+        // silence is news once more.
+        if (session.SessionStatus != SessionStatus.Idle)
+        {
+            _allSessionsIdleNotified = false;
+        }
+    }
+
+    /// <summary>
+    /// Lets finished sessions fall back to idle once they have been quiet for the configured time, and announces
+    /// that — per session, and once more when the last of them goes quiet so the cockpit as a whole is idle.
+    /// Driven by a periodic sweep rather than a timer per session: one tick decides for all of them.
+    /// </summary>
+    /// <param name="now">The current time, injected so the sweep is testable without waiting for it.</param>
+    internal void SweepIdleSessions(DateTimeOffset now)
+    {
+        var threshold = SessionIdleMinutes > 0 ? TimeSpan.FromMinutes(SessionIdleMinutes) : TimeSpan.Zero;
+
+        foreach (var session in Sessions)
+        {
+            if (!SessionIdleDecision.BecomesIdle(session.SessionStatus == SessionStatus.Done, session.LastActivityUtc, now, threshold))
+            {
+                continue;
+            }
+
+            session.SessionStatus = SessionStatus.Idle;
+            NotifySessionIdle(session, threshold);
+        }
+
+        if (!_allSessionsIdleNotified && Sessions.Count > 0 && Sessions.All(session => session.SessionStatus == SessionStatus.Idle))
+        {
+            _allSessionsIdleNotified = true;
+            _ = _attentionNotifier?.NotifyAllSessionsIdleAsync();
+        }
     }
 
     /// <summary>A session asked to close itself (T10: an "exit" turn finished) — run the normal close flow.</summary>
@@ -1448,6 +1527,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Fire-and-forget: notification delivery must not block the UI thread that raised the status
         // change. The notifier swallows and logs its own transport failures.
         _ = _attentionNotifier.NotifyAttentionAsync(notification);
+    }
+
+    private void NotifySessionFinished(SessionPanelViewModel session)
+    {
+        if (_attentionNotifier is null)
+        {
+            return;
+        }
+
+        var notification = new AttentionNotification(session.Title, "Done");
+        _ = _attentionNotifier.NotifySessionFinishedAsync(notification, ReferenceEquals(session, SelectedSession), IsWindowActive);
+    }
+
+    private void NotifySessionIdle(SessionPanelViewModel session, TimeSpan threshold)
+    {
+        if (_attentionNotifier is null)
+        {
+            return;
+        }
+
+        var minutes = (int)threshold.TotalMinutes;
+        var notification = new AttentionNotification(session.Title, $"Idle for {minutes} minute(s)");
+        _ = _attentionNotifier.NotifySessionIdleAsync(notification);
     }
 
     [RelayCommand]

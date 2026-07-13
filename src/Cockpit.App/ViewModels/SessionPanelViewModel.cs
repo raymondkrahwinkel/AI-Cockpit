@@ -71,6 +71,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private SessionStatus _sessionStatus = SessionStatus.Idle;
 
+    /// <summary>
+    /// When this session last did anything — every status change stamps it. The cockpit's idle sweep measures
+    /// against this to let a finished session fall back to <see cref="SessionStatus.Idle"/> once it has been
+    /// quiet long enough.
+    /// </summary>
+    public DateTimeOffset LastActivityUtc { get; private set; } = DateTimeOffset.UtcNow;
+
     /// <summary>Label of the profile the running session was started under, once known.</summary>
     [ObservableProperty]
     private string? _activeProfileLabel;
@@ -422,9 +429,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _ => "CockpitTextFaintBrush",
     };
 
-    /// <summary>Keeps the derived status label/brush in sync whenever <see cref="SessionStatus"/> changes.</summary>
+    /// <summary>Keeps the derived status label/brush in sync whenever <see cref="SessionStatus"/> changes, and
+    /// records the moment as this session's last activity so the cockpit can tell how long it has been quiet.</summary>
     partial void OnSessionStatusChanged(SessionStatus value)
     {
+        LastActivityUtc = DateTimeOffset.UtcNow;
         OnPropertyChanged(nameof(SessionStatusLabel));
         OnPropertyChanged(nameof(SessionStatusBrushKey));
         OnPropertyChanged(nameof(RequiresCloseConfirmation));

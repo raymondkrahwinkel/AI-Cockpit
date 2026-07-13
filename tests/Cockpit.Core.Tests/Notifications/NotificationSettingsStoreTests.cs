@@ -45,12 +45,29 @@ public class NotificationSettingsStoreTests : IDisposable
             DiscordEnabled = true,
             WebhookUrl = "https://discord.com/api/webhooks/123/abc",
             IdleThreshold = TimeSpan.FromMinutes(30),
+            NotifyOnSessionFinished = false,
+            NotifyOnSessionIdle = true,
+            NotifyWhenAllSessionsIdle = true,
+            SessionIdleThreshold = TimeSpan.FromMinutes(12),
         };
 
         await store.SaveAsync(settings);
         var loaded = await store.LoadAsync();
 
         loaded.Should().BeEquivalentTo(settings);
+    }
+
+    // 0 minutes means "never let a session go idle" — a real choice, so it must survive the round-trip instead of
+    // being read back as the default the way an empty away-threshold is.
+    [Fact]
+    public async Task SaveAsync_ZeroSessionIdleMinutes_RoundTripsAsOff()
+    {
+        var store = new NotificationSettingsStore(_configFilePath);
+
+        await store.SaveAsync(new NotificationSettings { SessionIdleThreshold = TimeSpan.Zero });
+        var loaded = await store.LoadAsync();
+
+        loaded.SessionIdleThreshold.Should().Be(TimeSpan.Zero);
     }
 
     [Fact]
