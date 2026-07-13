@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spike for #69: can the cockpit host a node-graph editor at all, and on which library?
+       Deliberately outside Cockpit.slnx (like the other spikes) so a failed experiment cannot break the app
+       build. The question this answers is not "is it pretty" but "does it restore and compile against the
+       Avalonia the cockpit actually runs (12.0.5), and does its model carry what a workflow needs — nodes with
+       typed pins, connections, and serialisation". -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- The spike is throwaway; it does not have to meet the repo's zero-warning bar. -->
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.5" />
+    <!-- The candidate: wieslawsoltes/NodeEditor. Alone among the node editors it is published for Avalonia 12
+         (12.0.0, April 2026); NodifyAvalonia is still on Avalonia 11.1 and FlowGraph — the one the research
+         recommended — is not on NuGet at all. -->
+    <PackageReference Include="NodeEditorAvalonia" Version="12.0.0" />
+    <PackageReference Include="NodeEditorAvalonia.Mvvm" Version="12.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,12 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:editor="using:NodeEditor.Controls"
+        x:Class="NodeEditorSpike.MainWindow"
+        Title="Node editor spike (#69)" Width="1000" Height="700">
+
+  <DockPanel>
+    <TextBlock x:Name="Status" DockPanel.Dock="Bottom" Margin="8" FontSize="12"/>
+    <!-- The library's own editor control, bound to the workflow graph the code-behind builds. -->
+    <editor:DrawingNode x:Name="Drawing"/>
+  </DockPanel>
+</Window>
