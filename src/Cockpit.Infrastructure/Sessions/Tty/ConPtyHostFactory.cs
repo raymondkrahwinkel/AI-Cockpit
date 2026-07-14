@@ -28,21 +28,64 @@ internal sealed class ConPtyHostFactory : IPtyHostFactory
     /// </summary>
     internal static string BuildCommandLine(string executablePath, IReadOnlyList<string> arguments)
     {
-        var commandLine = new StringBuilder(QuoteIfNeeded(executablePath));
+        var commandLine = new StringBuilder(QuoteArgument(executablePath));
         foreach (var argument in arguments)
         {
-            commandLine.Append(' ').Append(QuoteIfNeeded(argument));
+            commandLine.Append(' ').Append(QuoteArgument(argument));
         }
 
         return commandLine.ToString();
     }
 
     /// <summary>
-    /// Wraps a token in quotes when it contains spaces (the bundled path lives under
-    /// <c>%APPDATA%\Claude\claude-code\&lt;version&gt;\claude.exe</c>). The launch arguments TTY mode
-    /// builds (mode/model/effort values) never contain spaces, so this naive check — not a full argv
-    /// escaping algorithm — covers every token this factory ever quotes.
+    /// Escapes a single token the way <c>CommandLineToArgvW</c> (which is how the child parses argv back
+    /// out of the one string <c>CreateProcessW</c> receives) expects — Microsoft's canonical algorithm.
+    /// A token is left bare when it needs no quoting; otherwise it is wrapped in quotes, embedded
+    /// <c>"</c> are escaped as <c>\"</c>, and any run of backslashes that precedes a quote (or the
+    /// closing quote) is doubled. This is not optional prettiness: TTY arguments now include
+    /// <c>--settings &lt;json&gt;</c> (the statusline relay) and <c>--append-system-prompt</c>, whose
+    /// values carry spaces <em>and</em> double quotes. The old "quote only when it has a space" check
+    /// split that JSON at its first space and handed the child broken argv, which exited on the spot.
     /// </summary>
-    internal static string QuoteIfNeeded(string value) =>
-        value.Contains(' ') && !value.StartsWith('"') ? $"\"{value}\"" : value;
+    internal static string QuoteArgument(string value)
+    {
+        // A non-empty token with nothing the parser treats specially needs no quoting at all.
+        if (value.Length > 0 && value.IndexOfAny(new[] { ' ', '\t', '\n', '\v', '"' }) < 0)
+        {
+            return value;
+        }
+
+        var builder = new StringBuilder();
+        builder.Append('"');
+        for (var i = 0; i < value.Length; i++)
+        {
+            var backslashes = 0;
+            while (i < value.Length && value[i] == '\\')
+            {
+                i++;
+                backslashes++;
+            }
+
+            if (i == value.Length)
+            {
+                // Backslashes just before the closing quote are doubled so they stay literal.
+                builder.Append('\\', backslashes * 2);
+                break;
+            }
+
+            if (value[i] == '"')
+            {
+                // Double the run and add one more to escape the quote itself.
+                builder.Append('\\', backslashes * 2 + 1).Append('"');
+            }
+            else
+            {
+                // Backslashes not before a quote are literal; leave the run untouched.
+                builder.Append('\\', backslashes).Append(value[i]);
+            }
+        }
+
+        builder.Append('"');
+        return builder.ToString();
+    }
 }
