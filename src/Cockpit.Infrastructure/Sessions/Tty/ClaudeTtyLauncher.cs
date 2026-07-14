@@ -24,19 +24,25 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
     private readonly IPtyHostFactory _ptyHostFactory;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly IStatusLineRelay? _statusLineRelay;
 
     public ClaudeTtyLauncher(
         IOptions<CockpitOptions> options,
         IClaudeExecutableLocator executableLocator,
         WorkspaceTrustWriter workspaceTrustWriter,
         IPtyHostFactory ptyHostFactory,
-        IMcpServerStore mcpServerStore)
+        IMcpServerStore mcpServerStore,
+        // Optional so a unit test can launch without one: installing the relay writes a script and a snapshot
+        // file, and a test of the argument building has no business leaving anything in the operator's config
+        // directory. Absent, the session simply reports no limits.
+        IStatusLineRelay? statusLineRelay = null)
     {
         _options = options.Value;
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
         _ptyHostFactory = ptyHostFactory;
         _mcpServerStore = mcpServerStore;
+        _statusLineRelay = statusLineRelay;
     }
 
     public IConPtyProcess Launch(
@@ -74,17 +80,33 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             ?? _executableLocator.FindBundledExecutable()
             ?? cli.ExecutablePath;
 
-        var environment = TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome);
+        var environment = new Dictionary<string, string>(
+            TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome),
+            StringComparer.OrdinalIgnoreCase);
+
         var mcpConfigPath = _WriteRegistryMcpConfig();
-        var arguments = BuildArguments(permissionMode, model, effort, mcpConfigPath, _CanDelegate(), resume);
+
+        // Claude's own limits — how full the context window is, and how much of the five-hour and weekly
+        // allowance is gone — reach the cockpit only through the statusline it hands its JSON to. The session
+        // gets a statusline of ours (which still runs the operator's own) and a file of its own to write to; the
+        // env var is how the script, a grandchild of this process, knows which file is its.
+        var (statusFile, statusLineSettings) = _statusLineRelay?.Install(profile, userHome, environment) ?? (null, null);
+        var arguments = BuildArguments(
+            permissionMode,
+            model,
+            effort,
+            mcpConfigPath,
+            _CanDelegate(),
+            resume,
+            statusLineSettings);
 
         var process = _ptyHostFactory.Start(executablePath, arguments, resolvedWorkingDirectory, environment, columns, rows);
 
-        // The config file holds the registry's bearer headers, so it lives exactly as long as the session that
-        // needs it: the CLI reads it at startup, and disposing the session takes it off disk.
-        return mcpConfigPath is null
+        // Both files live exactly as long as the session that needs them — the MCP config holds the registry's
+        // bearer headers, and the limits of a session that has ended are nobody's business.
+        return mcpConfigPath is null && statusFile is null
             ? process
-            : new TtyProcessOwningMcpConfig(process, mcpConfigPath);
+            : new TtyProcessOwningMcpConfig(process, mcpConfigPath, statusFile);
     }
 
     /// <summary>
@@ -137,9 +159,25 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     /// session and does not persist a transcript under that id) — the cockpit instead locates the live
     /// transcript as the new file that appears after launch (see <c>ISessionTranscriptReader</c>).
     /// </summary>
-    internal static List<string> BuildArguments(string? permissionMode, string? model, string? effort, string? mcpConfigPath = null, bool canDelegate = false, SessionResume? resume = null)
+    internal static List<string> BuildArguments(
+        string? permissionMode,
+        string? model,
+        string? effort,
+        string? mcpConfigPath = null,
+        bool canDelegate = false,
+        SessionResume? resume = null,
+        string? settingsJson = null)
     {
         var arguments = new List<string>();
+
+        // Settings for this process only — the statusline relay (StatusLineRelay). Passed as JSON rather than a
+        // file so it never lands on disk to be forgotten, and merged by the CLI over the operator's own settings,
+        // which stay untouched.
+        if (!string.IsNullOrWhiteSpace(settingsJson))
+        {
+            arguments.Add("--settings");
+            arguments.Add(settingsJson);
+        }
 
         // Pick up an earlier conversation rather than starting cold — the same two CLI flags the SDK spawn uses.
         // --resume without an id would open the CLI's own interactive picker, which the cockpit does not want:

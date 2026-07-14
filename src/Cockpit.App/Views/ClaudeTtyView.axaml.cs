@@ -428,6 +428,13 @@ public partial class ClaudeTtyView : UserControl
             _pty = pty;
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;
+
+            // The session's own limits (context window, five-hour and weekly allowance) land in the file its
+            // statusline writes; the launched process is what knows which file that is.
+            if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is ClaudeTtyViewModel viewModel)
+            {
+                viewModel.TrackLimits(statusFile);
+            }
             // The pty owns the process, so the view is where the meter (#78) learns which one this session is.
             if (_viewModel is not null)
             {

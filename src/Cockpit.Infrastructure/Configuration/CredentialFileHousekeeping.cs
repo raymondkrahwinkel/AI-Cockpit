@@ -23,6 +23,10 @@ public static class CredentialFileHousekeeping
             CockpitConfigPath.RestrictExistingFile(Path.Combine(CockpitConfigPath.Root, "mcp-permission.json"));
 
             TtyMcpConfigFile.SweepStale();
+
+            // The statusline snapshots of sessions that were killed rather than closed. Not credentials, but a
+            // session's spending is nobody's business once it is over.
+            StatusLineRelay.SweepStale();
         }
         catch (Exception)
         {

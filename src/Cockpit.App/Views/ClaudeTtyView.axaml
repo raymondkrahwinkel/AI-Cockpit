@@ -42,6 +42,13 @@
                            Foreground="{StaticResource CockpitTextFaintBrush}"
                            TextTrimming="CharacterEllipsis" MaxWidth="300"
                            ToolTip.Tip="{Binding WorkingPath}"/>
+                <!-- What the session is spending: how full its context window is, and how much of the five-hour
+                     and weekly allowance is gone. Hidden until Claude has said — it reports none of it before the
+                     first response, and a header showing "0%" would be a number we made up. -->
+                <TextBlock Text="{Binding Limits}" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           IsVisible="{Binding Limits, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           ToolTip.Tip="Context window used · five-hour allowance · weekly allowance, as Claude reports them to its statusline"/>
                 <!-- Plugin-contributed header items (#: session header items) — same contribution point the SDK
                      header renders, so a plugin writes its indicator once and it shows in both session kinds. -->
                 <controls:PluginSessionHeaderHost/>

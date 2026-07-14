@@ -104,11 +104,23 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     [ObservableProperty]
     private bool _isVerticalLayout;
 
+    /// <summary>
+    /// What this session is spending, as the header shows it: <c>ctx 42% · 5h 18% · wk 7%</c>. Empty until Claude
+    /// has said — it reports none of it before the first response, and a header claiming "0%" would be inventing
+    /// a number. Fed by the statusline relay (<c>StatusLineRelay</c>), which is the only place the five-hour and
+    /// weekly allowances are readable at all.
+    /// </summary>
+    [ObservableProperty]
+    private string _limits = string.Empty;
+
+    private CancellationTokenSource? _limitsPollCancellation;
+
     // Parameterless constructor for the Avalonia previewer/Screenshotter design-time context.
     public ClaudeTtyViewModel()
     {
         ActiveProfileLabel = "work";
         Status = "TTY mode (experiment).";
+        Limits = "ctx 42% · 5h 18% · wk 7%";
     }
 
     public ClaudeTtyViewModel(
@@ -363,6 +375,74 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         }
     }
 
+    /// <summary>
+    /// Starts reading this session's limits from the file Claude's statusline writes (see <c>StatusLineRelay</c>).
+    /// Polled rather than watched: the file is rewritten whole every few seconds by a shell script, and a
+    /// filesystem watcher on a write-then-rename fires more often than it tells you anything.
+    /// </summary>
+    public void TrackLimits(string? statusFile)
+    {
+        if (string.IsNullOrWhiteSpace(statusFile))
+        {
+            return;
+        }
+
+        _limitsPollCancellation = new CancellationTokenSource();
+        var cancellation = _limitsPollCancellation.Token;
+
+        _ = Task.Run(
+            async () =>
+            {
+                while (!cancellation.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (File.Exists(statusFile)
+                            && SessionLimits.TryParse(await File.ReadAllTextAsync(statusFile, cancellation)) is { HasAny: true } limits)
+                        {
+                            var text = FormatLimits(limits);
+                            await Dispatcher.UIThread.InvokeAsync(() => Limits = text);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // A file caught mid-rename, a session that just ended. The next tick sorts it out; a status
+                        // bar must never be a reason for a session to fall over.
+                    }
+
+                    await Task.Delay(TimeSpan.FromSeconds(3), cancellation).ConfigureAwait(false);
+                }
+            },
+            cancellation);
+    }
+
+    /// <summary>The header line: only the numbers Claude actually reported, so nothing here is invented.</summary>
+    internal static string FormatLimits(SessionLimits limits)
+    {
+        var parts = new List<string>(3);
+
+        if (limits.ContextUsedPercent is { } context)
+        {
+            parts.Add($"ctx {Percent(context)}%");
+        }
+
+        if (limits.FiveHourUsedPercent is { } fiveHour)
+        {
+            parts.Add($"5h {Percent(fiveHour)}%");
+        }
+
+        if (limits.SevenDayUsedPercent is { } sevenDay)
+        {
+            parts.Add($"wk {Percent(sevenDay)}%");
+        }
+
+        return string.Join(" · ", parts);
+
+        // Away from zero, not .NET's default banker's rounding — which turns 42.5% into 42% and would have the
+        // header quietly under-report exactly on the halves.
+        static double Percent(double value) => Math.Round(value, MidpointRounding.AwayFromZero);
+    }
+
     protected override ValueTask DisposeCoreAsync()
     {
         // The terminal control owns the pty lifetime (it created it via the launcher); it disposes
@@ -372,6 +452,9 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         _transcriptTailCancellation?.Cancel();
         _transcriptTailCancellation?.Dispose();
         _transcriptTailCancellation = null;
+        _limitsPollCancellation?.Cancel();
+        _limitsPollCancellation?.Dispose();
+        _limitsPollCancellation = null;
         _StopStatusTracking();
         return ValueTask.CompletedTask;
     }
