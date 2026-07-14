@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -26,6 +27,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
     private readonly GitHubPrGhClient _gh = new();
 
     private readonly CheckBox _assignedToMe;
+    private readonly ToggleButton _showIgnored;
     private readonly TextBox _search;
     private readonly TextBlock _status;
     private readonly ProgressBar _loading = LoadingBar.Build();
@@ -102,10 +104,35 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         _grid.SelectionChanged += (_, _) => _ShowDetail(_grid.SelectedItem as GitHubPullRequest);
         _grid.DoubleTapped += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubPullRequest);
 
+        // Right-click a row to set it aside — this one, or everything from its repository. The menu is built when it
+        // opens, because whether a row is ignored is a thing that changes while the dialog is open.
+        _grid.ContextRequested += (_, args) =>
+        {
+            if (_grid.SelectedItem is not GitHubPullRequest pullRequest)
+            {
+                return;
+            }
+
+            _grid.ContextMenu = _RowMenu(pullRequest);
+            _grid.ContextMenu.Open(_grid);
+            args.Handled = true;
+        };
+
+        _showIgnored = new ToggleButton
+        {
+            Content = "Show ignored",
+            IsVisible = false,
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _showIgnored.IsCheckedChanged += (_, _) => _ApplyFilter();
+
         var topBar = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(refresh, Dock.Right);
+        DockPanel.SetDock(_showIgnored, Dock.Right);
         DockPanel.SetDock(_assignedToMe, Dock.Left);
         topBar.Children.Add(refresh);
+        topBar.Children.Add(_showIgnored);
         topBar.Children.Add(_assignedToMe);
         topBar.Children.Add(_search);
 
@@ -294,11 +321,30 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
 
     private void _ApplyFilter()
     {
+        var ignored = _settings.IgnoredPullRequests;
+        var ignoredRepositories = _settings.IgnoredRepositories;
+
+        bool IsIgnored(GitHubPullRequest pullRequest) =>
+            ignored.Contains(pullRequest.Url) || ignoredRepositories.Contains(pullRequest.Repository);
+
+        // Set aside, not deleted: the toggle in the top bar puts them back, and it says how many there are — a list
+        // that quietly shrinks with no way to see what left it is one you stop trusting.
+        var ignoredCount = _all.Count(IsIgnored);
+        _showIgnored.IsVisible = ignoredCount > 0;
+        _showIgnored.Content = _showIgnored.IsChecked == true
+            ? $"Hide {ignoredCount} ignored"
+            : $"Show {ignoredCount} ignored";
+
         var query = _search.Text?.Trim();
-        IEnumerable<GitHubPullRequest> filtered = _all;
+        IEnumerable<GitHubPullRequest> filtered = _showIgnored.IsChecked == true
+            ? _all
+            : _all.Where(pullRequest => !IsIgnored(pullRequest));
+
         if (!string.IsNullOrEmpty(query))
         {
-            filtered = _all.Where(pullRequest =>
+            // Searching narrows what is shown; it does not undo what was set aside. Filtering from _all here would
+            // have brought every ignored pull request back the moment the operator typed a letter.
+            filtered = filtered.Where(pullRequest =>
                 pullRequest.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || pullRequest.Repository.Contains(query, StringComparison.OrdinalIgnoreCase)
                 || pullRequest.Author.Contains(query, StringComparison.OrdinalIgnoreCase)
@@ -309,6 +355,56 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         // why the same list is arranged two ways. The grid's own column sorting still overrules this on a click.
         _grid.ItemsSource = new ObservableCollection<GitHubPullRequest>(
             filtered.OrderByDescending(pullRequest => pullRequest.UpdatedAt ?? DateTimeOffset.MinValue));
+    }
+
+    /// <summary>The row's own menu: add it to the prompt, open it, or set it aside — this pull request, or every one from its repository.</summary>
+    private ContextMenu _RowMenu(GitHubPullRequest pullRequest)
+    {
+        var addToPrompt = new MenuItem { Header = "Add to prompt" };
+        addToPrompt.Click += (_, _) => _AddToPrompt(pullRequest);
+
+        var openInBrowser = new MenuItem { Header = "Open in browser" };
+        openInBrowser.Click += (_, _) => _OpenInBrowser(pullRequest);
+
+        var isIgnored = _settings.IgnoredPullRequests.Contains(pullRequest.Url);
+        var ignore = new MenuItem { Header = isIgnored ? "Show again" : "Ignore this pull request" };
+        ignore.Click += (_, _) =>
+        {
+            var urls = _settings.IgnoredPullRequests.ToHashSet(StringComparer.Ordinal);
+            if (!urls.Remove(pullRequest.Url))
+            {
+                urls.Add(pullRequest.Url);
+            }
+
+            _settings.IgnoredPullRequests = urls;
+            _ApplyFilter();
+        };
+
+        // The repository-wide one, because a repository whose pull requests are never your business keeps opening
+        // new ones — setting them aside one at a time is a chore that never ends.
+        var repositoryIgnored = _settings.IgnoredRepositories.Contains(pullRequest.Repository);
+        var ignoreRepository = new MenuItem
+        {
+            Header = repositoryIgnored
+                ? $"Show {pullRequest.Repository} again"
+                : $"Ignore everything in {pullRequest.Repository}",
+        };
+        ignoreRepository.Click += (_, _) =>
+        {
+            var repositories = _settings.IgnoredRepositories.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!repositories.Remove(pullRequest.Repository))
+            {
+                repositories.Add(pullRequest.Repository);
+            }
+
+            _settings.IgnoredRepositories = repositories;
+            _ApplyFilter();
+        };
+
+        return new ContextMenu
+        {
+            ItemsSource = new Control[] { addToPrompt, openInBrowser, new Separator(), ignore, ignoreRepository },
+        };
     }
 
     private void _ShowDetail(GitHubPullRequest? pullRequest)

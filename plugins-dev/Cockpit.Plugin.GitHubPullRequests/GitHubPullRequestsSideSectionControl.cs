@@ -303,20 +303,27 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
     private void _Render()
     {
         var ignored = _settings.IgnoredPullRequests;
+        var ignoredRepositories = _settings.IgnoredRepositories;
+
+        // Two ways to be set aside — this one pull request, or everything from this repository. They behave the
+        // same everywhere afterwards, so the operator never has to remember which of the two they used.
+        bool IsIgnored(GitHubPullRequest pullRequest) =>
+            ignored.Contains(pullRequest.Url) || ignoredRepositories.Contains(pullRequest.Repository);
+
         var showing = _loaded
-            .Where(pullRequest => _showIgnored || !ignored.Contains(pullRequest.Url))
+            .Where(pullRequest => _showIgnored || !IsIgnored(pullRequest))
             .Take(_settings.MaxItems)
             .ToList();
 
         _rows.Children.Clear();
         foreach (var pullRequest in showing)
         {
-            _rows.Children.Add(_BuildRow(pullRequest, isIgnored: ignored.Contains(pullRequest.Url)));
+            _rows.Children.Add(_BuildRow(pullRequest, isIgnored: IsIgnored(pullRequest)));
         }
 
-        var open = _loaded.Count(pullRequest => !ignored.Contains(pullRequest.Url));
-        var waiting = _loaded.Count(pullRequest => !ignored.Contains(pullRequest.Url) && _reviewRequested.Contains(pullRequest.Url));
-        var ignoredHere = _loaded.Count(pullRequest => ignored.Contains(pullRequest.Url));
+        var open = _loaded.Count(pullRequest => !IsIgnored(pullRequest));
+        var waiting = _loaded.Count(pullRequest => !IsIgnored(pullRequest) && _reviewRequested.Contains(pullRequest.Url));
+        var ignoredHere = _loaded.Count(IsIgnored);
 
         _counts.Text = open == 1 ? "1 open" : $"{open} open";
         _waiting.Text = waiting == 1 ? "1 waiting on you" : $"{waiting} waiting on you";
@@ -436,16 +443,43 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         var openInBrowser = new MenuItem { Header = "Open in browser" };
         openInBrowser.Click += (_, _) => _OpenInBrowser(pullRequest.Url);
 
-        var ignore = new MenuItem { Header = isIgnored ? "Show again" : "Ignore" };
+        var ignore = new MenuItem { Header = isIgnored ? "Show again" : "Ignore this pull request" };
         ToolTip.SetTip(ignore, isIgnored
             ? "Put this pull request back in the list"
             : "Set this one aside — for the ones that stay open and live in a todo somewhere");
         ignore.Click += (_, _) => _SetIgnored(pullRequest, !isIgnored);
 
+        // A repository whose pull requests are never your business keeps opening new ones, so ignoring them one by
+        // one is a chore that never ends.
+        var repositoryIgnored = _settings.IgnoredRepositories.Contains(pullRequest.Repository);
+        var ignoreRepository = new MenuItem
+        {
+            Header = repositoryIgnored
+                ? $"Show {pullRequest.Repository} again"
+                : $"Ignore everything in {pullRequest.Repository}",
+        };
+        ignoreRepository.Click += (_, _) => _SetRepositoryIgnored(pullRequest.Repository, !repositoryIgnored);
+
         return new ContextMenu
         {
-            ItemsSource = new Control[] { addToPrompt, openInBrowser, new Separator(), ignore },
+            ItemsSource = new Control[] { addToPrompt, openInBrowser, new Separator(), ignore, ignoreRepository },
         };
+    }
+
+    private void _SetRepositoryIgnored(string repository, bool ignored)
+    {
+        var repositories = _settings.IgnoredRepositories.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (ignored)
+        {
+            repositories.Add(repository);
+        }
+        else
+        {
+            repositories.Remove(repository);
+        }
+
+        _settings.IgnoredRepositories = repositories;
+        _Render();
     }
 
     private void _SetIgnored(GitHubPullRequest pullRequest, bool ignored)

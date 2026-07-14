@@ -90,6 +90,26 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
     }
 
     /// <summary>
+    /// Repositories set aside entirely: no pull request from them appears, whoever opened it.
+    /// <para>
+    /// The per-pull-request ignore is for one thing you have decided about. This is for a repository that is
+    /// never your business — a fork, an archive-in-waiting, a dependency bot's playground — and ignoring its
+    /// pull requests one at a time is a chore that never ends, because it opens new ones.
+    /// </para>
+    /// <para>
+    /// Kept, not deleted: the count offers them back, the same way a single ignored pull request comes back.
+    /// </para>
+    /// </summary>
+    public IReadOnlySet<string> IgnoredRepositories
+    {
+        get => storage.Get<string>("ignoredRepositories") is { } stored
+            ? stored.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        set => storage.Set("ignoredRepositories", string.Join('\n', value));
+    }
+
+    /// <summary>
     /// Optional repository filter — one <c>owner/repo</c> per line (or comma-separated). When set, only pull
     /// requests in those repositories are shown; blank means all repositories (the default).
     /// </summary>
