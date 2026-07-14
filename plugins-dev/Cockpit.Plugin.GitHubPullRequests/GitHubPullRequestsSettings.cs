@@ -155,6 +155,29 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
         set => storage.Set("watchInvolved", value);
     }
 
+    /// <summary>
+    /// The last list that loaded, kept so the section has something to show the moment it appears.
+    /// <para>
+    /// Fetching this takes seconds — gh is a process spawn and a round trip per query — and an empty panel for
+    /// those seconds reads as "no open pull requests", which is a lie the operator acts on. So the last answer is
+    /// shown at once and replaced when the fresh one lands. It is a cache of a public list, not a credential.
+    /// </para>
+    /// </summary>
+    public string CachedPullRequests
+    {
+        get => storage.Get<string>("cachedPullRequests") ?? string.Empty;
+        set => storage.Set("cachedPullRequests", value);
+    }
+
+    /// <summary>When <see cref="CachedPullRequests"/> was written. Older than a day and it is not worth showing — a list that stale is misinformation, not a head start.</summary>
+    public DateTimeOffset? CachedAt
+    {
+        get => storage.Get<string>("cachedAt") is { Length: > 0 } stored && DateTimeOffset.TryParse(stored, out var at)
+            ? at
+            : null;
+        set => storage.Set("cachedAt", value?.ToString("o") ?? string.Empty);
+    }
+
     /// <summary><see cref="WatchedRepos"/>, parsed.</summary>
     public IReadOnlyList<string> WatchedReposList =>
         [.. WatchedRepos

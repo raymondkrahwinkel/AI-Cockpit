@@ -19,7 +19,8 @@ internal sealed class GitHubPrGhClient
     private static readonly TimeSpan PullRequestTtl = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ArchivedTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan RepositoriesTtl = TimeSpan.FromMinutes(30);
-    private static (DateTimeOffset At, HashSet<string> Repositories)? RepositoryCache;
+    /// <summary>Every repository the operator is involved with, and whether it is archived — one gh call answers both.</summary>
+    private static (DateTimeOffset At, Dictionary<string, bool> Repositories)? RepositoryCache;
     private static readonly object CacheGate = new();
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubPullRequest> PullRequests)> PullRequestCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
@@ -140,45 +141,65 @@ internal sealed class GitHubPrGhClient
             }
         }
 
+        // The repositories, and which of them are archived — from the one call that already knows both. Asking gh
+        // for the archived list of every owner separately cost 3 seconds each, up to fourteen times, for an answer
+        // that was sitting in this response all along.
         var repositories = await _MyRepositoriesAsync(forceRefresh, cancellationToken);
         if (repositories.Count == 0)
         {
             return [];
         }
 
-        var owners = repositories
+        var live = repositories
+            .Where(repository => !repository.Value)
+            .Select(repository => repository.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var owners = live
             .Select(repository => repository.Split('/', 2)[0])
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // The chunks run at once. Each one is a process spawn and a round trip to GitHub — three seconds apiece,
+        // and they do not depend on each other, so waiting for them in turn was three seconds spent three times.
+        // Well within the search API's 30-requests-a-minute: an operator with a hundred owners would issue twenty.
+        var searches = owners
+            .Chunk(OwnersPerSearch)
+            .Select(batch =>
+            {
+                var args = new List<string>
+                {
+                    "search", "prs", "--state", "open", "--limit", "100",
+                    "--json", "number,title,url,body,repository,author,updatedAt",
+                };
+
+                foreach (var owner in batch)
+                {
+                    args.Add("--owner");
+                    args.Add(owner);
+                }
+
+                return _RunGhAsync(args.ToArray(), cancellationToken);
+            })
+            .ToList();
+
         var found = new List<GitHubPullRequest>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var batch in owners.Chunk(OwnersPerSearch))
+        foreach (var json in await Task.WhenAll(searches))
         {
-            var args = new List<string>
-            {
-                "search", "prs", "--state", "open", "--limit", "100",
-                "--json", "number,title,url,body,repository,author,updatedAt",
-            };
-
-            foreach (var owner in batch)
-            {
-                args.Add("--owner");
-                args.Add(owner);
-            }
-
-            foreach (var pullRequest in _ParsePullRequests(await _RunGhAsync(args.ToArray(), cancellationToken)))
+            foreach (var pullRequest in _ParsePullRequests(json))
             {
                 // The owner search is wider than the operator's involvement — an organisation's other repositories
-                // come back with it. The repository list is what makes the answer theirs.
-                if (repositories.Contains(pullRequest.Repository) && seen.Add(pullRequest.Url))
+                // come back with it, and so do its archived ones. The repository list is what makes the answer
+                // theirs, and it carries the archived flag, so no separate lookup is needed.
+                if (live.Contains(pullRequest.Repository) && seen.Add(pullRequest.Url))
                 {
                     found.Add(pullRequest);
                 }
             }
         }
 
-        var result = await _WithoutArchivedAsync(found, forceRefresh, cancellationToken);
+        IReadOnlyList<GitHubPullRequest> result = found;
 
         lock (CacheGate)
         {
@@ -188,8 +209,15 @@ internal sealed class GitHubPrGhClient
         return result;
     }
 
-    /// <summary>The repositories the operator owns, collaborates on, or reaches through an organisation. Cached far longer than pull requests: joining a repository is not an hourly event.</summary>
-    private static async Task<HashSet<string>> _MyRepositoriesAsync(bool forceRefresh, CancellationToken cancellationToken)
+    /// <summary>
+    /// The repositories the operator owns, collaborates on, or reaches through an organisation, each with whether it
+    /// is archived. Cached far longer than pull requests: joining a repository is not an hourly event.
+    /// <para>
+    /// The archived flag comes from this same response. It used to be asked of gh per owner — three seconds a
+    /// call, up to fourteen of them, for something that was already in this payload.
+    /// </para>
+    /// </summary>
+    private static async Task<Dictionary<string, bool>> _MyRepositoriesAsync(bool forceRefresh, CancellationToken cancellationToken)
     {
         if (!forceRefresh)
         {
@@ -202,20 +230,24 @@ internal sealed class GitHubPrGhClient
             }
         }
 
-        var repositories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var repositories = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         try
         {
             var json = await _RunGhAsync(
                 [
                     "api", "--paginate",
                     "user/repos?affiliation=owner,collaborator,organization_member&per_page=100",
-                    "-q", ".[].full_name",
+                    "-q", """.[] | .full_name + " " + (.archived | tostring)""",
                 ],
                 cancellationToken);
 
             foreach (var line in json.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                repositories.Add(line);
+                var parts = line.Split(' ', 2);
+                if (parts.Length == 2)
+                {
+                    repositories[parts[0]] = bool.TryParse(parts[1], out var archived) && archived;
+                }
             }
         }
         catch (Exception)

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -32,6 +33,9 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
     // without the operator clicking ⟳. A quiet, force-refreshing background poll — its interval is comfortably
     // above the gh client's own 60s cache TTL, and it only runs while the section is on screen.
     private static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(60);
+
+    /// <summary>How old the remembered list may be and still be worth showing while the fresh one loads.</summary>
+    private static readonly TimeSpan CacheLifetime = TimeSpan.FromDays(1);
 
     // On top of the periodic poll, the section refreshes near-instantly when it sees a PR signal in session
     // output (a pull url, a merged/closed line) via the read/observe surface. A short debounce coalesces the
@@ -171,6 +175,10 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         // already-built section showing data loaded under the old configuration until an app restart (#52).
         host.OnSettingsSaved(() => _ = _LoadAsync(forceRefresh: true));
 
+        // Yesterday's list, now, while today's is on its way. Fetching takes seconds — every gh query is a process
+        // spawn and a round trip — and an empty panel for those seconds does not read as "loading", it reads as
+        // "no open pull requests", which is a lie the operator acts on.
+        _ShowCached();
         _ = _LoadAsync(forceRefresh: false);
 
         _autoRefresh = new DispatcherTimer { Interval = AutoRefreshInterval };
@@ -281,6 +289,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
             _Say(null);
             _Render();
+            _RememberForNextTime();
         }
         catch (Exception exception)
         {
@@ -296,6 +305,43 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             // In a finally: a bar still moving after a failure says the thing is still coming, which is the one
             // message it must never send.
             _loading.IsVisible = false;
+        }
+    }
+
+    /// <summary>The list from last time, drawn at once. Nothing is shown if it is older than a day: a list that stale is misinformation, not a head start.</summary>
+    private void _ShowCached()
+    {
+        try
+        {
+            if (_settings.CachedAt is not { } at || DateTimeOffset.UtcNow - at > CacheLifetime)
+            {
+                return;
+            }
+
+            if (JsonSerializer.Deserialize<List<GitHubPullRequest>>(_settings.CachedPullRequests) is { Count: > 0 } cached)
+            {
+                _loaded = cached;
+                _Render();
+            }
+        }
+        catch (Exception)
+        {
+            // A cache written by an older version of this plugin, in a shape this one does not read. Not worth a
+            // word to the operator: the fresh list is already on its way.
+        }
+    }
+
+    /// <summary>Keeps what was loaded, so the next start has something to show while it fetches.</summary>
+    private void _RememberForNextTime()
+    {
+        try
+        {
+            _settings.CachedPullRequests = JsonSerializer.Serialize(_loaded);
+            _settings.CachedAt = DateTimeOffset.UtcNow;
+        }
+        catch (Exception)
+        {
+            // A cache that cannot be written costs the next start a few seconds. It is not worth failing a load over.
         }
     }
 
