@@ -32,6 +32,18 @@ internal sealed class ConPtyProcess : IConPtyProcess
     private readonly SafeFileHandle _inputWriteHandle;
     private readonly SafeFileHandle _outputReadHandle;
 
+    // Guards _pseudoConsole against a double close: it is closed either when the child exits (the wait
+    // callback below) or on Dispose, whichever comes first, and both run on unrelated threads.
+    private readonly object _closeLock = new();
+
+    // Watches the child process handle so the pseudo console is closed the moment the child exits. This
+    // is the whole Windows-only fix for the hung TTY panel: unlike a Unix pty master (which EOFs its
+    // reader when the child dies), ConPTY keeps the output pipe's write end open after the child exits,
+    // so a reader would block forever and the panel would never learn the process is gone. Closing the
+    // pseudo console on exit signals that EOF, exactly as the Unix side gets for free.
+    private RegisteredWaitHandle? _exitWait;
+    private readonly ProcessWaitHandle? _processWaitHandle;
+
     public Stream InputStream { get; }
 
     public Stream OutputStream { get; }
@@ -52,6 +64,34 @@ internal sealed class ConPtyProcess : IConPtyProcess
         _processInfo = processInfo;
         InputStream = new FileStream(inputWriteHandle, FileAccess.Write);
         OutputStream = new FileStream(outputReadHandle, FileAccess.Read);
+
+        // A Windows process handle becomes signaled when the process terminates; wait on it and close the
+        // pseudo console (EOF to the reader) when it fires. ownsHandle:false — Dispose owns _processInfo.Process
+        // and closes it itself, after unregistering this wait.
+        _processWaitHandle = new ProcessWaitHandle(processInfo.Process);
+        _exitWait = ThreadPool.RegisterWaitForSingleObject(
+            _processWaitHandle, OnChildExited, null, Timeout.Infinite, executeOnlyOnce: true);
+    }
+
+    /// <summary>
+    /// Fired by the thread pool once the child process terminates. Closes the pseudo console so the
+    /// output pipe reaches EOF and the output pump stops (which is how the panel learns to close). On
+    /// Windows this is the only signal of the exit — the reader never sees EOF on its own while ConPTY
+    /// holds the pipe's write end open.
+    /// </summary>
+    private void OnChildExited(object? state, bool timedOut) => ClosePseudoConsole();
+
+    private void ClosePseudoConsole()
+    {
+        lock (_closeLock)
+        {
+            if (_pseudoConsole != IntPtr.Zero)
+            {
+                // Closing the pseudo console signals EOF to the child and to our output pipe reader.
+                NativeMethods.ClosePseudoConsole(_pseudoConsole);
+                _pseudoConsole = IntPtr.Zero;
+            }
+        }
     }
 
     /// <summary>
@@ -145,15 +185,18 @@ internal sealed class ConPtyProcess : IConPtyProcess
 
     public void Dispose()
     {
+        // Stop watching the child before the process handle it waits on is closed below. Unregister does
+        // not block here; the close is idempotent (guarded by _closeLock) if the callback fires concurrently.
+        _exitWait?.Unregister(null);
+        _exitWait = null;
+        _processWaitHandle?.Dispose();
+
         InputStream.Dispose();
         OutputStream.Dispose();
 
-        if (_pseudoConsole != IntPtr.Zero)
-        {
-            // Closing the pseudo console signals EOF to the child; it then exits on its own.
-            NativeMethods.ClosePseudoConsole(_pseudoConsole);
-            _pseudoConsole = IntPtr.Zero;
-        }
+        // Closing the pseudo console signals EOF to the child; it then exits on its own. Shared with the
+        // exit-watch path so a child that is still running when the panel closes is torn down the same way.
+        ClosePseudoConsole();
 
         if (_attributeList != IntPtr.Zero)
         {
@@ -217,6 +260,20 @@ internal sealed class ConPtyProcess : IConPtyProcess
 
         builder.Append('\0');
         return Encoding.Unicode.GetBytes(builder.ToString());
+    }
+
+    /// <summary>
+    /// A <see cref="WaitHandle"/> over a raw Windows process handle, which the OS signals when the process
+    /// terminates. Wraps the handle with <c>ownsHandle: false</c> so disposing this (on Dispose) never
+    /// closes the process handle — <see cref="ConPtyProcess"/> owns it in <c>_processInfo.Process</c> and
+    /// closes it separately after the wait is unregistered.
+    /// </summary>
+    private sealed class ProcessWaitHandle : WaitHandle
+    {
+        public ProcessWaitHandle(IntPtr processHandle)
+        {
+            SafeWaitHandle = new SafeWaitHandle(processHandle, ownsHandle: false);
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
