@@ -62,18 +62,7 @@ internal sealed class GitHubPrGhClient
         }
 
         var pullRequests = _ParsePullRequests(await _RunGhAsync(searchArgs.ToArray(), cancellationToken));
-
-        // The archived-repo exclusion only makes sense for a concrete owner's repos; an @me search spans many
-        // owners, so it is left unfiltered (your own PRs show regardless of which repo they live in).
-        var result = pullRequests;
-        if (!isMe)
-        {
-            var archived = await _GetArchivedReposAsync(trimmedOwner!, forceRefresh, cancellationToken);
-            if (archived.Count > 0)
-            {
-                result = pullRequests.Where(pullRequest => !archived.Contains(pullRequest.Repository)).ToList();
-            }
-        }
+        var result = await _WithoutArchivedAsync(pullRequests, forceRefresh, cancellationToken);
 
         lock (CacheGate)
         {
@@ -103,7 +92,10 @@ internal sealed class GitHubPrGhClient
             }
         }
 
-        var pullRequests = _ParsePullRequests(await _RunGhAsync(ReviewRequestedArguments, cancellationToken));
+        var pullRequests = await _WithoutArchivedAsync(
+            _ParsePullRequests(await _RunGhAsync(ReviewRequestedArguments, cancellationToken)),
+            forceRefresh,
+            cancellationToken);
 
         lock (CacheGate)
         {
@@ -111,6 +103,44 @@ internal sealed class GitHubPrGhClient
         }
 
         return pullRequests;
+    }
+
+    /// <summary>
+    /// Drops the pull requests that live in an archived repository.
+    /// <para>
+    /// The exclusion used to apply only when the operator had scoped the view to one owner, on the reasoning that
+    /// an <c>@me</c> search spans owners and has no single repo list to check against. But a pull request in an
+    /// archived repository cannot be merged, reviewed or closed — it is not open work, and a list of open work
+    /// that contains it is wrong regardless of how the list was asked for. So the owners are taken from the
+    /// results themselves (a repository is <c>owner/name</c>) and each one's archived repos are looked up — a
+    /// handful of lookups, cached far longer than the pull requests, since archiving is rare.
+    /// </para>
+    /// </summary>
+    private static async Task<IReadOnlyList<GitHubPullRequest>> _WithoutArchivedAsync(
+        IReadOnlyList<GitHubPullRequest> pullRequests,
+        bool forceRefresh,
+        CancellationToken cancellationToken)
+    {
+        if (pullRequests.Count == 0)
+        {
+            return pullRequests;
+        }
+
+        var owners = pullRequests
+            .Select(pullRequest => pullRequest.Repository.Split('/', 2)[0])
+            .Where(owner => owner.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var archived = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var owner in owners)
+        {
+            archived.UnionWith(await _GetArchivedReposAsync(owner, forceRefresh, cancellationToken));
+        }
+
+        return archived.Count == 0
+            ? pullRequests
+            : pullRequests.Where(pullRequest => !archived.Contains(pullRequest.Repository)).ToList();
     }
 
     /// <summary>
