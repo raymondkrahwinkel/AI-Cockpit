@@ -5,7 +5,7 @@
   "entryAssembly": "Cockpit.Plugin.GitHubIssues.dll",
   "entryType": "Cockpit.Plugin.GitHubIssues.GitHubIssuesPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "1.0.0",
+  "minHostVersion": "0.1.0",
   "description": "Browse open GitHub issues across your repos (via the gh CLI) or one repo in a searchable, sortable dialog, with an \"Assigned to me\" filter; click one to drop a prompt asking the agent to open and review it. The prompt template is editable in settings.",
   "author": "Cockpit"
 }

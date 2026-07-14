@@ -5,7 +5,7 @@
   "entryAssembly": "Cockpit.Plugin.Workflows.dll",
   "entryType": "Cockpit.Plugin.Workflows.WorkflowsPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "1.0.0",
-  "description": "A visual editor for cockpit workflows, and an engine that runs them: drop triggers, actions and decisions on a canvas, wire them together, configure each step, and press Run. Every run is kept \u2014 which step got what, what it produced, how long it took \u2014 because \"it did not work\" is not something you can act on. A step this build cannot execute is passed by with a reason, never counted as a success.",
+  "minHostVersion": "0.1.0",
+  "description": "A visual editor for cockpit workflows, and an engine that runs them: drop triggers, actions and decisions on a canvas, wire them together, configure each step, and press Run. Every run is kept — which step got what, what it produced, how long it took — because \"it did not work\" is not something you can act on. A step this build cannot execute is passed by with a reason, never counted as a success.",
   "author": "Cockpit"
 }

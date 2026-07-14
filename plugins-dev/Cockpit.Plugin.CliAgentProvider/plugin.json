@@ -5,7 +5,7 @@
   "entryAssembly": "Cockpit.Plugin.CliAgentProvider.dll",
   "entryType": "Cockpit.Plugin.CliAgentProvider.CliAgentProviderPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "1.0.0",
+  "minHostVersion": "0.1.0",
   "description": "Experimental (fase B1): adds Codex CLI as a selectable session provider, driven as a subprocess per turn (`codex exec --json`, resumed via `codex exec resume <threadId>` for follow-up turns). No in-band tool-permission channel — configure the codex sandbox/approval mode per profile. Requires the codex CLI installed and authenticated (CODEX_API_KEY or `codex login`) on the machine running Cockpit.",
   "author": "Cockpit"
 }

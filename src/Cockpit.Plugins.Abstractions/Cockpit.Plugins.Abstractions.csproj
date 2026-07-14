@@ -13,8 +13,13 @@
          so it can be published as a NuGet for out-of-repo authoring; its Version's major must equal
          AbstractionsContract.Version (the manifest's abstractionsVersion the host gates on). XML docs
          ship for author IntelliSense; CS1591 is not enforced (the SDK guide is the reference). -->
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <!-- 1.1.0: members were added since 1.0.0 (AddWorkflowTemplate, ShowSettingsAsync, SuggestAsync, SetSecret/
+         GetSecret) and nothing was taken away or changed. Additions are a minor — including the ones carrying a
+         default implementation, which is precisely what keeps an existing plugin compiling. The major stays 1
+         because AbstractionsContract.Version (the manifest's abstractionsVersion, which the host gates on) counts
+         breaking changes, and there have been none. -->
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>
