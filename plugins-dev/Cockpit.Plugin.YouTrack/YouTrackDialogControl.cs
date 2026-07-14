@@ -43,6 +43,7 @@ internal sealed class YouTrackDialogControl : UserControl
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
     private readonly TextBlock _status;
+    private readonly ProgressBar _loading = LoadingBar.Build();
     private readonly Button _configure;
     private readonly DataGrid _grid;
 
@@ -267,10 +268,16 @@ internal sealed class YouTrackDialogControl : UserControl
             Child = new Panel { Children = { _detailPlaceholder, _detailContent } },
         };
 
+        // The loading bar sits over the top edge of the list rather than replacing it: a refresh keeps the previous
+        // results readable, and a fetch that takes a second reads as an empty list without it.
+        var listWithLoading = new Panel();
+        listWithLoading.Children.Add(_grid);
+        listWithLoading.Children.Add(_loading);
+
         var split = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,*") };
-        Grid.SetColumn(_grid, 0);
+        Grid.SetColumn(listWithLoading, 0);
         Grid.SetColumn(detailPanel, 1);
-        split.Children.Add(_grid);
+        split.Children.Add(listWithLoading);
         split.Children.Add(detailPanel);
 
         var statusBar = new StackPanel
@@ -366,6 +373,7 @@ internal sealed class YouTrackDialogControl : UserControl
         }
 
         _SetStatus("Loading…");
+        _loading.IsVisible = true;
         try
         {
             if (string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token))
@@ -387,6 +395,12 @@ internal sealed class YouTrackDialogControl : UserControl
         catch (Exception exception)
         {
             _SetStatus($"Could not load issues: {exception.Message}");
+        }
+        finally
+        {
+            // In a finally: a bar still moving after a failure says the thing is still coming, which is the one
+            // message it must never send.
+            _loading.IsVisible = false;
         }
     }
 

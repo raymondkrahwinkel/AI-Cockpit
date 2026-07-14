@@ -24,6 +24,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     private readonly NumericUpDown _maxItems;
     private readonly TextBox _repoFilter;
     private readonly TextBox _watchedRepos;
+    private readonly CheckBox _watchInvolved;
     private readonly CheckBox _notifyOnReviewRequests;
 
     public GitHubPullRequestsSettingsControl(GitHubPullRequestsSettings settings)
@@ -111,6 +112,12 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             PlaceholderText = "owner or owner/repo per line — blank = only what is mine",
         };
 
+        _watchInvolved = new CheckBox
+        {
+            Content = "Watch every repository I'm involved with",
+            IsChecked = settings.WatchEverythingIAmInvolvedWith,
+        };
+
         _template = new TextBox
         {
             Text = settings.Template,
@@ -132,8 +139,11 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                     httpPanel,
                     _Label("Show how many pull requests inline (the dialog lists them all)"),
                     SettingsHelpRow.Build(_maxItems, "How many pull requests the inline section shows under the session list (1–20). The \"View all open PRs\" dialog always lists every one."),
-                    _Label("Watch these repositories — every open pull request in them, whoever opened it"),
-                    SettingsHelpRow.Build(_watchedRepos, "One owner (EVE-Workbench: every repo of that user or org) or owner/repo (just the one) per line. The rest of this list is about pull requests that are yours — authored by you, assigned to you, waiting on your review. A repository you are responsible for asks a different question: what is open here, whoever opened it."),
+                    _Label("Beyond your own pull requests"),
+                    SettingsHelpRow.Build(_watchInvolved, "Every open pull request in every repository you own, collaborate on, or reach through one of your organisations — whoever opened it. gh works out which repositories those are, so there is no list to keep up to date. Off by default: it is a wider net than \"what is mine\"."),
+                    _Hint("The rest of this list answers \"which pull requests are mine\" — authored by you, assigned to you, waiting on your review. A project you are responsible for asks a different question: what is open here, whoever opened it."),
+                    _Label("Watch these repositories as well (optional)"),
+                    SettingsHelpRow.Build(_watchedRepos, "For repositories you are NOT involved with. One owner (EVE-Workbench: every repo of that user or org) or owner/repo (just the one) per line. Unnecessary when the box above is ticked."),
                     _Label("Only these repositories (optional)"),
                     SettingsHelpRow.Build(_repoFilter, "Limit the list to specific repositories — one owner/repo per line (or comma-separated), e.g. octocat/hello-world. Leave blank to show pull requests from all your repositories."),
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body} {author}"),
@@ -155,6 +165,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         _settings.MaxItems = (int)(_maxItems.Value ?? 5);
         _settings.RepoFilter = _repoFilter.Text?.Trim() ?? string.Empty;
         _settings.WatchedRepos = _watchedRepos.Text?.Trim() ?? string.Empty;
+        _settings.WatchEverythingIAmInvolvedWith = _watchInvolved.IsChecked == true;
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         return true;
     }

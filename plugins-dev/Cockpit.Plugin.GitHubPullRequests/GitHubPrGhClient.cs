@@ -13,8 +13,13 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 /// </summary>
 internal sealed class GitHubPrGhClient
 {
+    /// <summary>GitHub's search accepts at most five owner qualifiers; ask for more and it answers with an empty list rather than an error.</summary>
+    private const int OwnersPerSearch = 5;
+
     private static readonly TimeSpan PullRequestTtl = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan ArchivedTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan RepositoriesTtl = TimeSpan.FromMinutes(30);
+    private static (DateTimeOffset At, HashSet<string> Repositories)? RepositoryCache;
     private static readonly object CacheGate = new();
     private static readonly Dictionary<string, (DateTimeOffset At, IReadOnlyList<GitHubPullRequest> PullRequests)> PullRequestCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (DateTimeOffset At, HashSet<string> Archived)> ArchivedCache = new(StringComparer.OrdinalIgnoreCase);
@@ -103,6 +108,127 @@ internal sealed class GitHubPrGhClient
         }
 
         return pullRequests;
+    }
+
+    /// <summary>
+    /// Every open pull request in every repository the operator is involved with — theirs, the ones they
+    /// collaborate on, and the ones in their organisations — whoever opened it, and without a list to maintain.
+    /// <para>
+    /// Three things make this awkward, and each shapes what happens below. GitHub's search has no "everything I
+    /// can reach": without a scope it searches the whole of GitHub. Its scopes are owners, not repositories, and
+    /// it accepts <b>at most five owner qualifiers</b> — ask for fourteen and it returns an empty list rather than
+    /// an error, which is the kind of silence that reads as "no open pull requests". And an owner is coarser than
+    /// the truth: being in an organisation does not mean every repository in it is any of your business.
+    /// </para>
+    /// <para>
+    /// So: ask gh which repositories the operator is actually involved with, search their owners five at a time,
+    /// and keep only the pull requests that landed in one of those repositories. The repository list is what makes
+    /// the result exact; the owners are only how the search is reached.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<GitHubPullRequest>> SearchInvolvedAsync(bool forceRefresh, CancellationToken cancellationToken)
+    {
+        const string cacheKey = "involved";
+        if (!forceRefresh)
+        {
+            lock (CacheGate)
+            {
+                if (PullRequestCache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < PullRequestTtl)
+                {
+                    return cached.PullRequests;
+                }
+            }
+        }
+
+        var repositories = await _MyRepositoriesAsync(forceRefresh, cancellationToken);
+        if (repositories.Count == 0)
+        {
+            return [];
+        }
+
+        var owners = repositories
+            .Select(repository => repository.Split('/', 2)[0])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var found = new List<GitHubPullRequest>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var batch in owners.Chunk(OwnersPerSearch))
+        {
+            var args = new List<string>
+            {
+                "search", "prs", "--state", "open", "--limit", "100",
+                "--json", "number,title,url,body,repository,author",
+            };
+
+            foreach (var owner in batch)
+            {
+                args.Add("--owner");
+                args.Add(owner);
+            }
+
+            foreach (var pullRequest in _ParsePullRequests(await _RunGhAsync(args.ToArray(), cancellationToken)))
+            {
+                // The owner search is wider than the operator's involvement — an organisation's other repositories
+                // come back with it. The repository list is what makes the answer theirs.
+                if (repositories.Contains(pullRequest.Repository) && seen.Add(pullRequest.Url))
+                {
+                    found.Add(pullRequest);
+                }
+            }
+        }
+
+        var result = await _WithoutArchivedAsync(found, forceRefresh, cancellationToken);
+
+        lock (CacheGate)
+        {
+            PullRequestCache[cacheKey] = (DateTimeOffset.UtcNow, result);
+        }
+
+        return result;
+    }
+
+    /// <summary>The repositories the operator owns, collaborates on, or reaches through an organisation. Cached far longer than pull requests: joining a repository is not an hourly event.</summary>
+    private static async Task<HashSet<string>> _MyRepositoriesAsync(bool forceRefresh, CancellationToken cancellationToken)
+    {
+        if (!forceRefresh)
+        {
+            lock (CacheGate)
+            {
+                if (RepositoryCache is { } cached && DateTimeOffset.UtcNow - cached.At < RepositoriesTtl)
+                {
+                    return cached.Repositories;
+                }
+            }
+        }
+
+        var repositories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var json = await _RunGhAsync(
+                [
+                    "api", "--paginate",
+                    "user/repos?affiliation=owner,collaborator,organization_member&per_page=100",
+                    "-q", ".[].full_name",
+                ],
+                cancellationToken);
+
+            foreach (var line in json.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                repositories.Add(line);
+            }
+        }
+        catch (Exception)
+        {
+            // No gh, no login, no network. The operator's own pull requests still load; this list simply stays empty.
+        }
+
+        lock (CacheGate)
+        {
+            RepositoryCache = (DateTimeOffset.UtcNow, repositories);
+        }
+
+        return repositories;
     }
 
     /// <summary>

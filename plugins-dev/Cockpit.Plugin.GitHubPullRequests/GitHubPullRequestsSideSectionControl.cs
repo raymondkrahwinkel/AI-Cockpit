@@ -51,6 +51,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
     private readonly Button _ignoredToggle;
     private readonly TextBlock _status;
     private readonly StackPanel _rows;
+    private readonly ProgressBar _loading = LoadingBar.Build();
 
     // What the last load produced, so ignoring one (or showing the ignored ones) re-renders without re-querying
     // GitHub: neither is news from GitHub, and a round trip to redraw a list you already have is a stall.
@@ -156,11 +157,14 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             1040,
             700);
 
+        // Under the counts, above the list: this section refreshes on a timer and whenever a session touches a pull
+        // request, so it is often working while nobody asked it to. Without this the list simply looks stale — or,
+        // on the first load, empty.
         Content = new StackPanel
         {
             Margin = new Thickness(4),
             Spacing = 4,
-            Children = { countsRow, _status, _rows, viewAll },
+            Children = { countsRow, _loading, _status, _rows, viewAll },
         };
 
         // Re-fetch with the just-saved settings (owner/repo, token, gh-CLI toggle) instead of leaving this
@@ -212,6 +216,9 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
     private async Task _LoadAsync(bool forceRefresh, bool quiet = false)
     {
+        // A background poll that nobody asked for does not announce itself: the bar is for a load the operator is
+        // waiting on (the first one, or a Refresh they clicked), not for the timer ticking behind their back.
+        _loading.IsVisible = !quiet;
         try
         {
             IReadOnlyList<GitHubPullRequest> all;
@@ -227,6 +234,11 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
                 // all ask "which of these are mine", which is the wrong question for a project you are responsible
                 // for: five open pull requests in a repo of yours, none of them yours, showed nothing at all.
                 var watched = new List<GitHubPullRequest>();
+                if (_settings.WatchEverythingIAmInvolvedWith)
+                {
+                    watched.AddRange(await _gh.SearchInvolvedAsync(forceRefresh, CancellationToken.None));
+                }
+
                 foreach (var scope in _settings.WatchedReposList)
                 {
                     watched.AddRange(await _gh.SearchWatchedAsync(scope, forceRefresh, CancellationToken.None));
@@ -270,6 +282,12 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             {
                 _Say($"Could not load pull requests: {exception.Message}");
             }
+        }
+        finally
+        {
+            // In a finally: a bar still moving after a failure says the thing is still coming, which is the one
+            // message it must never send.
+            _loading.IsVisible = false;
         }
     }
 

@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -27,31 +26,76 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         Converters = { new JsonStringEnumConverter() },
     };
 
+    /// <summary>The last version that read cleanly, written by every save — and what a damaged config is recovered from.</summary>
+    private const string BackupSuffix = ".bak";
+
     private readonly ISecretKeyHolder _keyHolder = keyHolder ?? SecretKeyHolder.Shared;
 
     public string ConfigFilePath => configFilePath;
 
     public async Task<CockpitConfigFile?> ReadAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(configFilePath))
+        if (await TryReadAsync(configFilePath, cancellationToken).ConfigureAwait(false) is { } configFile)
+        {
+            return configFile;
+        }
+
+        // The file exists and does not parse. There is no honest way to read on: an operator's settings are not a
+        // thing to guess at, and the danger is not the failed read but what comes after it — a caller that treats
+        // an unreadable config as an absent one starts with an empty document and writes that emptiness back over
+        // everything on the next save. So the last known-good copy (kept by every write) is tried first, and only a
+        // genuinely missing file returns null.
+        if (File.Exists(configFilePath)
+            && await TryReadAsync(configFilePath + BackupSuffix, cancellationToken).ConfigureAwait(false) is { } recovered)
+        {
+            var damaged = $"{configFilePath}.damaged-{DateTimeOffset.Now:yyyyMMdd-HHmmss}";
+            File.Move(configFilePath, damaged, overwrite: true);
+            File.Copy(configFilePath + BackupSuffix, configFilePath, overwrite: true);
+            CockpitConfigPath.RestrictExistingFile(configFilePath);
+
+            return recovered;
+        }
+
+        if (File.Exists(configFilePath))
+        {
+            // Neither the file nor its backup reads. Refusing beats starting empty and overwriting what is there —
+            // the operator can look at the file, and whatever is in it is still in it.
+            throw new InvalidOperationException(
+                $"The cockpit configuration at {configFilePath} is unreadable, and so is its backup. It has been left "
+                + "untouched rather than started over.");
+        }
+
+        return null;
+    }
+
+    private async Task<CockpitConfigFile?> TryReadAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path))
         {
             return null;
         }
 
-        var json = await File.ReadAllTextAsync(configFilePath, cancellationToken).ConfigureAwait(false);
-        var document = JsonNode.Parse(json);
-        if (document is null)
+        try
+        {
+            var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+            var document = JsonNode.Parse(json);
+            if (document is null)
+            {
+                return null;
+            }
+
+            if (_keyHolder.Protector is { } protector)
+            {
+                SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) =>
+                    SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
+            }
+
+            return document.Deserialize<CockpitConfigFile>(SerializerOptions);
+        }
+        catch (JsonException)
         {
             return null;
         }
-
-        if (_keyHolder.Protector is { } protector)
-        {
-            SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) =>
-                SecretProtector.IsProtected(value) ? protector.Unprotect(path, value) : null);
-        }
-
-        return document.Deserialize<CockpitConfigFile>(SerializerOptions);
     }
 
     /// <summary>
@@ -71,11 +115,19 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
             SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) => protector.Protect(path, value));
         }
 
-        // Owner-only: this file holds provider API keys, MCP bearer headers and the plugins' tokens. A plain
-        // File.Create leaves it at the umask, which on a stock Fedora means every account on the machine can
-        // read them. CockpitConfigPath owns that rule for every credential-bearing file the cockpit writes.
-        await using var stream = CockpitConfigPath.CreatePrivateFile(configFilePath);
-        await stream.WriteAsync(Encoding.UTF8.GetBytes(document.ToJsonString(SerializerOptions)), cancellationToken)
-            .ConfigureAwait(false);
+        // Written whole and renamed into place, never streamed over the live file.
+        //
+        // Truncating the config and then streaming the new one into it means that for the length of that write the
+        // operator's settings exist nowhere: a crash, a kill or the power going leaves a half file — and the next
+        // start, finding it unreadable, would have begun with an empty config and saved that emptiness over
+        // everything. Two writers at once (a second instance, a script) can leave the tail of the longer document
+        // behind the shorter one, which is exactly what happened to Raymond's config on 2026-07-14.
+        //
+        // A rename is atomic: the file is either entirely the old one or entirely the new one. The previous version
+        // is kept as .bak, which is what ReadAsync falls back to. Owner-only either way — this file holds provider
+        // API keys, MCP bearer headers and the plugins' tokens.
+        CockpitConfigPath.ReplaceAtomicallyPrivate(configFilePath, document.ToJsonString(SerializerOptions));
+
+        await Task.CompletedTask.ConfigureAwait(false);
     }
 }

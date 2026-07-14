@@ -80,11 +80,21 @@ internal static class CockpitConfigPath
     }
 
     /// <summary>Writes <paramref name="contents"/> to an owner-only file. See <see cref="CreatePrivateFile"/>.</summary>
-    public static void WriteAllTextPrivate(string path, string contents)
+    public static void WriteAllTextPrivate(string path, string contents, bool flushToDisk = false)
     {
         using var stream = CreatePrivateFile(path);
-        using var writer = new StreamWriter(stream);
-        writer.Write(contents);
+        using (var writer = new StreamWriter(stream, leaveOpen: true))
+        {
+            writer.Write(contents);
+        }
+
+        if (flushToDisk)
+        {
+            // The bytes reach the disk before anything renames this file over the operator's config. Without it the
+            // rename can outlive its own content across a power cut: the directory entry points at a file the disk
+            // has not written yet, and "atomic" becomes a promise the hardware never made.
+            stream.Flush(flushToDisk: true);
+        }
     }
 
     /// <summary>
@@ -97,7 +107,7 @@ internal static class CockpitConfigPath
     public static void ReplaceAtomicallyPrivate(string path, string contents)
     {
         var temporaryPath = path + ".new";
-        WriteAllTextPrivate(temporaryPath, contents);
+        WriteAllTextPrivate(temporaryPath, contents, flushToDisk: true);
 
         if (File.Exists(path))
         {

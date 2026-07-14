@@ -120,6 +120,21 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
         set => storage.Set("watchedRepos", value);
     }
 
+    /// <summary>
+    /// Watch every repository the operator is involved with — owned, collaborated on, or reached through an
+    /// organisation — whoever opened the pull request, with no list to keep up to date.
+    /// <para>
+    /// Off by default: it is a wider net than "what is mine", and an operator with a hundred repositories should
+    /// choose that rather than discover it. Once on, <see cref="WatchedRepos"/> becomes unnecessary — it is for
+    /// watching something you are <em>not</em> involved with.
+    /// </para>
+    /// </summary>
+    public bool WatchEverythingIAmInvolvedWith
+    {
+        get => storage.Get<bool>("watchInvolved");
+        set => storage.Set("watchInvolved", value);
+    }
+
     /// <summary><see cref="WatchedRepos"/>, parsed.</summary>
     public IReadOnlyList<string> WatchedReposList =>
         [.. WatchedRepos
