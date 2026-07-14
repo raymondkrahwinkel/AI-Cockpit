@@ -345,6 +345,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private double _sidebarWidth = LayoutSettings.DefaultSidebarWidth;
 
+    /// <summary>When true the left sidebar is collapsed out of view; the session content takes its space. Toggled by the chevron in the sidebar header (and the floating one that appears when collapsed), persisted immediately.</summary>
+    [ObservableProperty]
+    private bool _sidebarCollapsed;
+
     [ObservableProperty]
     private string _layoutSettingsStatus = string.Empty;
 
@@ -659,15 +663,40 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Whether a transcript is passed through the local Ollama cleanup step before injection.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowLocalLlmServerPicker))]
+    [NotifyPropertyChangedFor(nameof(ShowManualLlmFields))]
     private bool _voiceCleanupEnabled = true;
 
-    /// <summary>Ollama model tag used for the cleanup step (see <see cref="VoiceCleanupEnabled"/>).</summary>
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.AutoDetectLocalLlm"/>: auto-detect the running Ollama/LM Studio server and its model. On by default; when off, the server is set by hand below.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowLocalLlmServerPicker))]
+    [NotifyPropertyChangedFor(nameof(ShowManualLlmFields))]
+    private bool _voiceAutoDetectLocalLlm = true;
+
+    /// <summary>Which detected server auto-detect prefers when both are running (Options combo box).</summary>
+    public IReadOnlyList<LocalLlmPreferenceOption> LocalLlmPreferences { get; } =
+    [
+        new("Auto-detect", LocalLlmPreference.Auto),
+        new("Ollama", LocalLlmPreference.Ollama),
+        new("LM Studio", LocalLlmPreference.LmStudio),
+    ];
+
+    [ObservableProperty]
+    private LocalLlmPreferenceOption _selectedLocalLlmPreference = new("Auto-detect", LocalLlmPreference.Auto);
+
+    /// <summary>The server-preference combo box is only meaningful while cleanup is on and auto-detect is choosing the server.</summary>
+    public bool ShowLocalLlmServerPicker => VoiceCleanupEnabled && VoiceAutoDetectLocalLlm;
+
+    /// <summary>The manual model + URL fields are shown only when cleanup is on and auto-detect is off — otherwise Cockpit decides both, and the two would contradict the picker above.</summary>
+    public bool ShowManualLlmFields => VoiceCleanupEnabled && !VoiceAutoDetectLocalLlm;
+
+    /// <summary>Model id the cleanup step asks the local LLM for (see <see cref="VoiceCleanupEnabled"/>).</summary>
     [ObservableProperty]
     private string _voiceCleanupModel = "qwen2.5:3b-instruct";
 
-    /// <summary>Base URL of the local Ollama daemon used for cleanup.</summary>
+    /// <summary>Base URL of the local OpenAI-compatible LLM server (Ollama/LM Studio) used for cleanup, without the <c>/v1</c> suffix.</summary>
     [ObservableProperty]
-    private string _voiceOllamaBaseUrl = "http://localhost:11434";
+    private string _voiceCleanupBaseUrl = "http://localhost:11434";
 
     /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
     [ObservableProperty]
@@ -1199,7 +1228,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Raised on the host this view model owns: ToastService is built *from* it, and injecting the service back in
         // is a circle the container walks forever.
         ToastHost.Add(
-            $"The cockpit and its sessions are using {_Megabytes(usage.MemoryBytes)} of {_Megabytes(MachineMemory.TotalBytes())}. On macOS the system kills the whole app when memory gets tight — sessions and all.{advice}",
+            $"AI-Cockpit and its sessions are using {_Megabytes(usage.MemoryBytes)} of {_Megabytes(MachineMemory.TotalBytes())}. On macOS the system kills the whole app when memory gets tight — sessions and all.{advice}",
             ToastSeverity.Warning,
             actionLabel: null,
             onAction: null);
@@ -1310,13 +1339,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 _Megabytes(session.MemoryBytes),
                 _Share(session.MemoryBytes, usage.MemoryBytes)))
             .Append(new ResourceRowViewModel(
-                "The cockpit itself",
+                "AI-Cockpit itself",
                 "the app, its windows and its transcripts",
                 _Megabytes(usage.Parts.OwnBytes),
                 _Share(usage.Parts.OwnBytes, usage.MemoryBytes)))
             .Concat(usage.Parts.Children.Select(child => new ResourceRowViewModel(
                 child.Name,
-                "a tool server the cockpit started",
+                "a tool server AI-Cockpit started",
                 _Megabytes(child.MemoryBytes),
                 _Share(child.MemoryBytes, usage.MemoryBytes))));
 
@@ -1540,7 +1569,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             BackupStatus = "Restoring…";
             await backups.RestoreAsync(archivePath, options);
 
-            BackupStatus = "Restored. Restarting the cockpit to read it.";
+            BackupStatus = "Restored. Restarting AI-Cockpit to read it.";
             _appRestart?.Restart();
         }
         catch (Exception exception)
@@ -1639,6 +1668,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         StackSessionsVertically = settings.StackSessionsVertically;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         SidebarWidth = settings.SidebarWidth;
+        SidebarCollapsed = settings.SidebarCollapsed;
     }
 
     /// <summary>Persists the layout settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
@@ -1656,6 +1686,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             StackSessionsVertically = StackSessionsVertically,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
+            SidebarCollapsed = SidebarCollapsed,
         });
         LayoutSettingsStatus = "✓ Saved";
     }
@@ -1682,6 +1713,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             StackSessionsVertically = StackSessionsVertically,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
+            SidebarCollapsed = SidebarCollapsed,
+        });
+    }
+
+    /// <summary>
+    /// Collapses or expands the left sidebar and persists it immediately — a direct-manipulation setting like
+    /// the width drag, so it survives a restart without waiting for the Options dialog's Save.
+    /// </summary>
+    [RelayCommand]
+    private async Task ToggleSidebar()
+    {
+        SidebarCollapsed = !SidebarCollapsed;
+
+        if (_layoutSettingsStore is null)
+        {
+            return;
+        }
+
+        await _layoutSettingsStore.SaveAsync(new LayoutSettings
+        {
+            SingleSessionLayout = SingleSessionLayout,
+            StackSessionsVertically = StackSessionsVertically,
+            MinimizeToTrayOnClose = MinimizeToTrayOnClose,
+            SidebarWidth = SidebarWidth,
+            SidebarCollapsed = SidebarCollapsed,
         });
     }
 
@@ -1731,8 +1787,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == settings.BackendPreference)
                                          ?? VoiceBackendPreferences[0];
         VoiceCleanupEnabled = settings.CleanupEnabled;
+        VoiceAutoDetectLocalLlm = settings.AutoDetectLocalLlm;
+        SelectedLocalLlmPreference = LocalLlmPreferences.FirstOrDefault(option => option.Value == settings.LocalLlmPreference)
+                                     ?? LocalLlmPreferences[0];
         VoiceCleanupModel = settings.CleanupModel;
-        VoiceOllamaBaseUrl = settings.OllamaBaseUrl;
+        VoiceCleanupBaseUrl = settings.CleanupBaseUrl;
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
         VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
@@ -1803,8 +1862,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ModelName = string.IsNullOrWhiteSpace(VoiceModelName) ? "large-v3-turbo" : VoiceModelName.Trim(),
             BackendPreference = SelectedVoiceBackendPreference.Value,
             CleanupEnabled = VoiceCleanupEnabled,
+            AutoDetectLocalLlm = VoiceAutoDetectLocalLlm,
+            LocalLlmPreference = SelectedLocalLlmPreference.Value,
             CleanupModel = string.IsNullOrWhiteSpace(VoiceCleanupModel) ? "qwen2.5:3b-instruct" : VoiceCleanupModel.Trim(),
-            OllamaBaseUrl = string.IsNullOrWhiteSpace(VoiceOllamaBaseUrl) ? "http://localhost:11434" : VoiceOllamaBaseUrl.Trim(),
+            CleanupBaseUrl = string.IsNullOrWhiteSpace(VoiceCleanupBaseUrl) ? "http://localhost:11434" : VoiceCleanupBaseUrl.Trim(),
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,
             AutoSubmitAfterVoice = VoiceAutoSubmit,
