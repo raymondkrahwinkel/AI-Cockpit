@@ -78,7 +78,13 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         var mcpConfigPath = _WriteRegistryMcpConfig();
         var arguments = BuildArguments(permissionMode, model, effort, mcpConfigPath, _CanDelegate(), resume);
 
-        return _ptyHostFactory.Start(executablePath, arguments, resolvedWorkingDirectory, environment, columns, rows);
+        var process = _ptyHostFactory.Start(executablePath, arguments, resolvedWorkingDirectory, environment, columns, rows);
+
+        // The config file holds the registry's bearer headers, so it lives exactly as long as the session that
+        // needs it: the CLI reads it at startup, and disposing the session takes it off disk.
+        return mcpConfigPath is null
+            ? process
+            : new TtyProcessOwningMcpConfig(process, mcpConfigPath);
     }
 
     /// <summary>
@@ -114,9 +120,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
                 return null;
             }
 
-            var path = Path.Combine(Path.GetTempPath(), $"cockpit-tty-mcp-{Guid.NewGuid():N}.json");
-            File.WriteAllText(path, json);
-            return path;
+            return TtyMcpConfigFile.Write(json);
         }
         catch (Exception)
         {

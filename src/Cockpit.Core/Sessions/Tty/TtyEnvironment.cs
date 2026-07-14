@@ -41,8 +41,9 @@ public static class TtyEnvironment
     /// (setting it to the default dir is not a no-op — see
     /// <see cref="ClaudeConfigDirectory.ResolveSpawnOverride"/>). A profile-less session leaves any
     /// inherited value untouched, since the transcript tailers resolve the dir through that same variable.
-    /// Never sets <c>ANTHROPIC_API_KEY</c> (that would switch the CLI to API-key billing instead of the
-    /// subscription route — same rule as the SDK spawn).
+    /// Never passes <c>ANTHROPIC_API_KEY</c> (that would switch the CLI to API-key billing instead of the
+    /// subscription route — same rule as the SDK spawn): not setting it was never enough, since an inherited
+    /// one reached the child anyway, so it is now stripped (see <see cref="IsAnthropicCredentialMarker"/>).
     /// </summary>
     public static IReadOnlyDictionary<string, string> Build(
         IReadOnlyDictionary<string, string> baseEnvironment,
@@ -66,6 +67,12 @@ public static class TtyEnvironment
             // Drop the host terminal emulator's self-identification (see IsHostTerminalIdentityMarker) —
             // the pty child is rendered by Exclr8, not by whatever terminal Cockpit itself runs in.
             if (IsHostTerminalIdentityMarker(key))
+            {
+                continue;
+            }
+
+            // Drop an inherited Anthropic credential (see IsAnthropicCredentialMarker).
+            if (IsAnthropicCredentialMarker(key))
             {
                 continue;
             }
@@ -161,4 +168,16 @@ public static class TtyEnvironment
         key.Equals("TERM_PROGRAM", StringComparison.OrdinalIgnoreCase)
         || key.Equals("TERM_PROGRAM_VERSION", StringComparison.OrdinalIgnoreCase)
         || key.StartsWith("GHOSTTY_", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True for an Anthropic credential in the environment (<c>ANTHROPIC_API_KEY</c>, <c>ANTHROPIC_AUTH_TOKEN</c>,
+    /// and the rest of the <c>ANTHROPIC_*</c> family). Two reasons to strip them rather than merely not set them:
+    /// a key that reaches the CLI switches the session from the operator's subscription to API-key billing —
+    /// silently, and on someone else's invoice — and a credential that the cockpit inherited from whatever
+    /// launched it has no business being handed on to a child it did not come from. A normal desktop launch has
+    /// none of these set, so this is a no-op there; it bites exactly when the cockpit is started from a shell
+    /// that exports one.
+    /// </summary>
+    public static bool IsAnthropicCredentialMarker(string key) =>
+        key.StartsWith("ANTHROPIC_", StringComparison.OrdinalIgnoreCase);
 }

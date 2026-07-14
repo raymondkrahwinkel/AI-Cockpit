@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Configuration;
+using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Sessions.Permissions;
 
@@ -104,13 +105,11 @@ internal sealed class PermissionMcpServer : IHostedService, IPermissionServerSta
 
     private static string WriteConfigFile(string json)
     {
-        var directory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Cockpit");
-        Directory.CreateDirectory(directory);
+        // Owner-only, through the same seam as the rest of the cockpit's state: this file names the local
+        // permission server, and the registry's config alongside it carries bearer headers.
+        var path = Path.Combine(CockpitConfigPath.Root, "mcp-permission.json");
+        CockpitConfigPath.WriteAllTextPrivate(path, json);
 
-        var path = Path.Combine(directory, "mcp-permission.json");
-        File.WriteAllText(path, json);
         return path;
     }
 

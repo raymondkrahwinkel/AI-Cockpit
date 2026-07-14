@@ -40,13 +40,10 @@ internal sealed class CockpitConfigFileAccess(string configFilePath)
         var configFile = await ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
         mutate(configFile);
 
-        var directory = Path.GetDirectoryName(configFilePath);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        await using var stream = File.Create(configFilePath);
+        // Owner-only: this file holds provider API keys, MCP bearer headers and the plugins' tokens. A plain
+        // File.Create leaves it at the umask, which on a stock Fedora means every account on the machine can
+        // read them. CockpitConfigPath owns that rule for every credential-bearing file the cockpit writes.
+        await using var stream = CockpitConfigPath.CreatePrivateFile(configFilePath);
         await JsonSerializer.SerializeAsync(stream, configFile, SerializerOptions, cancellationToken).ConfigureAwait(false);
     }
 }

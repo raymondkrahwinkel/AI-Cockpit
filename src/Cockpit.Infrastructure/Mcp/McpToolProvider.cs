@@ -99,6 +99,7 @@ internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer
             Name = server.Name,
             Command = server.Command ?? string.Empty,
             Arguments = [.. server.Args],
+            EnvironmentVariables = StdioServerEnvironment.Build(),
         }),
         McpTransport.Http => new HttpClientTransport(new HttpClientTransportOptions
         {

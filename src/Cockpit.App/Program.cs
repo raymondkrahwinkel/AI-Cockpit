@@ -7,6 +7,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core;
 using Cockpit.Infrastructure;
+using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Plugins.Abstractions;
 
@@ -29,6 +30,12 @@ sealed class Program
         // from this process's own environment before Avalonia starts — the same markers TtyEnvironment already
         // scrubs for the claude pty (#58), so the pty inherits a clean environment too.
         ScrubHostTerminalIdentity();
+
+        // Before anything reads or writes the cockpit's state: restrict the files an older version left
+        // world-readable, and delete the --mcp-config files (bearer headers and all) that a crash or that same
+        // older version left behind. Both must happen on every start, not when some lazily-built service
+        // happens to be constructed.
+        CredentialFileHousekeeping.Run();
 
         var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "logs", "cockpit.log");

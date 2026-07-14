@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
@@ -137,9 +138,19 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             startInfo.ArgumentList.Add(arg);
         }
 
+        // Real user env (HOME/USERPROFILE, PATH, ...) is inherited by default (UseShellExecute=false) — including,
+        // until now, an ANTHROPIC_API_KEY exported by whatever shell launched the cockpit. Inheriting one silently
+        // moves the session off the operator's subscription and onto API-key billing, so it is dropped rather than
+        // merely never set (the same rule TtyEnvironment applies to the pty spawn).
+        foreach (var key in startInfo.EnvironmentVariables.Keys.Cast<string>()
+                     .Where(TtyEnvironment.IsAnthropicCredentialMarker)
+                     .ToList())
+        {
+            startInfo.EnvironmentVariables.Remove(key);
+        }
+
         if (profile is not null)
         {
-            // Real user env (HOME/USERPROFILE, PATH, ...) is inherited by default (UseShellExecute=false).
             // A non-default profile dir is exported as CLAUDE_CONFIG_DIR; a default-dir profile clears any
             // inherited value so the CLI uses its native home-root config/login (setting it to ~/.claude is
             // not a no-op — see ClaudeConfigDirectory.ResolveSpawnOverride).
