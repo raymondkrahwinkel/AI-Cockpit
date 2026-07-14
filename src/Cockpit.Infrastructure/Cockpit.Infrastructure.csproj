@@ -63,8 +63,19 @@
        every platform — including a Mac, which cannot use a single byte of CUDA or Vulkan. So they are left out
        of a macOS publish and kept everywhere else, which is where they earn their weight (CUDA gives 33x
        realtime on Raymond's RTX 4070; the CPU fallback does not).
-       An ordinary build has no RuntimeIdentifier, so the condition holds and a developer keeps GPU Whisper. -->
-  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('osx'))">
+       An ordinary build has no RuntimeIdentifier, so the condition holds and a developer keeps GPU Whisper.
+
+       BundleGpuWhisperRuntimes (default true) is the opt-out for a slim, CPU-only publish: build with
+       -p:BundleGpuWhisperRuntimes=false and the ~1.4 GB of CUDA/Vulkan natives are dropped, leaving the
+       CPU runtime (Whisper.net.Runtime + NoAvx) that ships on every platform anyway. Voice still works,
+       transcription just runs on the CPU. This is the build-time half of the on-demand-runtime plan; the
+       runtime half (detect the GPU, fetch only the matching runtime on first use, cache and keep it
+       current — the same lazy pattern WhisperModelCache already uses for the model) is designed in
+       docs/binary-size-and-on-demand-runtimes.md. Default true keeps today's behaviour byte-for-byte. -->
+  <PropertyGroup>
+    <BundleGpuWhisperRuntimes Condition="'$(BundleGpuWhisperRuntimes)' == ''">true</BundleGpuWhisperRuntimes>
+  </PropertyGroup>
+  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('osx')) And '$(BundleGpuWhisperRuntimes)' == 'true'">
     <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.Cuda12" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
