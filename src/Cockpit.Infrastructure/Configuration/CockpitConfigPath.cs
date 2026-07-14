@@ -106,21 +106,71 @@ internal static class CockpitConfigPath
     /// </summary>
     public static void ReplaceAtomicallyPrivate(string path, string contents)
     {
-        var temporaryPath = path + ".new";
-        WriteAllTextPrivate(temporaryPath, contents, flushToDisk: true);
-
-        if (File.Exists(path))
+        // A sidecar of its own, never a shared name. Two writers on one fixed "<path>.new" is how the operator's
+        // config was destroyed on 2026-07-14: the second writer truncated the first one's half-written file and
+        // wrote its shorter document into it, and the first went on writing at its own offsets — leaving a valid
+        // document with the tail of a longer one behind it. Then one of them renamed that into place. The rename
+        // was atomic all along; the file it renamed was the problem. (The other writer, finding its sidecar gone,
+        // threw FileNotFoundException — the same race, wearing a different mask.)
+        var temporaryPath = $"{path}.{Guid.NewGuid():N}.new";
+        try
         {
-            // Replace() is the atomic swap, and it writes the backup as part of the same operation.
-            File.Replace(temporaryPath, path, path + ".bak", ignoreMetadataErrors: true);
-            RestrictExistingFile(path + ".bak");
+            WriteAllTextPrivate(temporaryPath, contents, flushToDisk: true);
+
+            if (File.Exists(path))
+            {
+                // Replace() is the atomic swap, and it writes the backup as part of the same operation.
+                File.Replace(temporaryPath, path, path + ".bak", ignoreMetadataErrors: true);
+                RestrictExistingFile(path + ".bak");
+            }
+            else
+            {
+                File.Move(temporaryPath, path);
+            }
+
+            RestrictExistingFile(path);
         }
-        else
+        finally
         {
-            File.Move(temporaryPath, path);
+            // A failed write must not leave its sidecar behind: a unique name means a crash would otherwise litter
+            // the config directory with one file per attempt, forever.
+            if (File.Exists(temporaryPath))
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (IOException)
+                {
+                    // Swept on the next start (SweepStaleSidecars) — a locked leftover is not worth failing a save over.
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Removes the sidecars a killed or crashed write left behind. Called once at startup: they are dead weight,
+    /// they hold the same secrets as the config, and nothing reads them.
+    /// </summary>
+    public static void SweepStaleSidecars(string path)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+        {
+            return;
         }
 
-        RestrictExistingFile(path);
+        foreach (var stale in Directory.EnumerateFiles(directory, $"{Path.GetFileName(path)}.*.new"))
+        {
+            try
+            {
+                File.Delete(stale);
+            }
+            catch (IOException)
+            {
+                // Best effort: a leftover we cannot remove is untidy, not dangerous.
+            }
+        }
     }
 
     /// <summary>
