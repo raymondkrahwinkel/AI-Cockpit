@@ -51,6 +51,7 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
         PluginLoadDecision.Disabled => "Disabled",
         PluginLoadDecision.NeedsConsent => "Needs your consent",
         PluginLoadDecision.AbstractionsMajorMismatch => "Incompatible — built for another contract version",
+        PluginLoadDecision.HostTooOld => $"Needs a newer cockpit (version {discovered.Manifest.MinHostVersion} or later)",
         _ => string.Empty,
     };
 
@@ -61,7 +62,8 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
     public bool CanDisable => discovered.Decision is PluginLoadDecision.Load;
 
     /// <summary>A version-incompatible plugin cannot be enabled at all — the manager shows why instead of an Enable button.</summary>
-    public bool IsIncompatible => discovered.Decision is PluginLoadDecision.AbstractionsMajorMismatch;
+    public bool IsIncompatible =>
+        discovered.Decision is PluginLoadDecision.AbstractionsMajorMismatch or PluginLoadDecision.HostTooOld;
 
     public string EnableLabel => discovered.Decision is PluginLoadDecision.NeedsConsent ? "Review & enable" : "Enable";
 

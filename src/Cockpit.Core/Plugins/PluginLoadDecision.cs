@@ -14,4 +14,7 @@ public enum PluginLoadDecision
 
     /// <summary>Built against a different Cockpit.Plugins.Abstractions major than the host — refuse with a clear message.</summary>
     AbstractionsMajorMismatch,
+
+    /// <summary>Needs a newer cockpit than this one (its <c>minHostVersion</c>) — refuse rather than load something that will fail where nobody can see it.</summary>
+    HostTooOld,
 }
