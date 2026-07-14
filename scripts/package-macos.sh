@@ -83,19 +83,18 @@ fi
 identity="${CODESIGN_IDENTITY:--}"
 echo "Signing with identity: $identity"
 
-# Every Mach-O file, found by what it *is* rather than by whether someone set its executable bit. The .NET
-# publish ships its native libraries (.dylib) without that bit, so signing only the executables left them
-# unsigned — and one unsigned Mach-O inside the bundle is enough for `codesign --verify --strict` to reject the
-# whole thing ("In subcomponent: …"), which is exactly how this was found.
-find "$contents/MacOS" -type f -print0 |
-    while IFS= read -r -d '' candidate; do
-        if file -b "$candidate" | grep -q "Mach-O"; then
-            codesign --force --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$candidate"
-        fi
-    done
-
-codesign --force --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$app"
-codesign --verify --strict --verbose=2 "$app"
+# --deep, because a .NET publish is not the layout codesign expects. Everything in Contents/MacOS counts as code
+# to it — the native .dylib files (which the publish ships without an executable bit, so signing "the
+# executables" missed them) and the managed .dll assemblies alike, and one unsigned item among them is enough for
+# --verify --strict to reject the whole bundle ("code object is not signed at all / In subcomponent: …"). Signing
+# the pieces by hand means enumerating what counts as code, which is a thing Apple's tooling already knows.
+#
+# Apple discourages --deep for a *distributed* app: it signs nested code with the same options, which is wrong
+# for a bundle carrying frameworks or helpers with their own entitlements. This one carries neither — it is a
+# flat payload — and for the ad-hoc signature that makes the app testable it is exactly right. A Developer ID
+# build that gets notarised should sign each Mach-O deliberately, and that is the day to revisit this.
+codesign --force --deep --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$app"
+codesign --verify --deep --strict --verbose=2 "$app"
 
 echo
 echo "Done: $app"
