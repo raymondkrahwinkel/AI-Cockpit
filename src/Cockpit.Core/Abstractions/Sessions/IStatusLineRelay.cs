@@ -23,5 +23,5 @@ public interface IStatusLineRelay
     (string? StatusFile, string? SettingsJson) Install(
         SessionProfile? profile,
         string userProfileDirectory,
-        IDictionary<string, string> environment);
+        IDictionary<string, string?> environment);
 }

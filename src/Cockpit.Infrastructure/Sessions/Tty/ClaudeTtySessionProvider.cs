@@ -1,4 +1,3 @@
-using System.Collections;
 using Microsoft.Extensions.Options;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
@@ -8,80 +7,79 @@ using Cockpit.Core.Delegation;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Configuration;
-using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
 /// <summary>
-/// Default <see cref="IClaudeTtyLauncher"/>: spawns the interactive <c>claude</c> TUI inside a
-/// pseudo console/pty, reusing the SDK-mode profile/executable/trust plumbing. Platform-agnostic —
-/// the actual pty host (ConPTY on Windows, Porta.Pty on Linux/macOS) is <see cref="IPtyHostFactory"/>.
+/// The <c>claude</c> CLI as a TTY provider: resolves the executable, pre-marks the working directory trusted,
+/// composes the CLI's flags, and writes the session-scoped files it needs (the shared MCP registry, the
+/// statusline relay that is the only machine-readable route to Claude's limits).
+/// <para>
+/// Everything Claude-specific about a TTY session lives here. What is left in <see cref="TtyLauncher"/> — the
+/// pty, the base environment, the cleanup — is what every TUI needs identically. Unlike SDK mode this never
+/// adds <c>-p</c>/stream-json flags, so the genuine interactive TUI runs; once running, the TUI itself owns any
+/// live switching (<c>/model</c>, Shift+Tab), since TTY mode has no control channel.
+/// </para>
 /// </summary>
-internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
+internal sealed class ClaudeTtySessionProvider : ITtySessionProvider, ISingletonService
 {
+    /// <summary>Stable id, also the key the New-session dialog stores on a session. Not a display name.</summary>
+    public const string Id = "claude";
+
     private readonly CockpitOptions _options;
     private readonly IClaudeExecutableLocator _executableLocator;
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
-    private readonly IPtyHostFactory _ptyHostFactory;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IStatusLineRelay? _statusLineRelay;
 
-    public ClaudeTtyLauncher(
+    public ClaudeTtySessionProvider(
         IOptions<CockpitOptions> options,
         IClaudeExecutableLocator executableLocator,
         WorkspaceTrustWriter workspaceTrustWriter,
-        IPtyHostFactory ptyHostFactory,
         IMcpServerStore mcpServerStore,
-        // Optional so a unit test can launch without one: installing the relay writes a script and a snapshot
-        // file, and a test of the argument building has no business leaving anything in the operator's config
-        // directory. Absent, the session simply reports no limits.
+        // Optional so a unit test can build a launch without one: installing the relay writes a script and a
+        // snapshot file, and a test of the argument building has no business leaving anything in the operator's
+        // config directory. Absent, the session simply reports no limits.
         IStatusLineRelay? statusLineRelay = null)
     {
         _options = options.Value;
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
-        _ptyHostFactory = ptyHostFactory;
         _mcpServerStore = mcpServerStore;
         _statusLineRelay = statusLineRelay;
     }
 
-    public IConPtyProcess Launch(
-        SessionProfile? profile,
-        string? permissionMode,
-        string? model,
-        string? effort,
-        short columns,
-        short rows,
-        string? workingDirectory = null,
-        SessionResume? resume = null)
+    public string ProviderId => Id;
+
+    public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
         var cli = _options.Claude;
-        // Per-session override (New-session dialog) wins over the global option, which wins over the process cwd.
-        var resolvedWorkingDirectory = !string.IsNullOrWhiteSpace(workingDirectory)
-            ? workingDirectory
-            : string.IsNullOrWhiteSpace(cli.WorkingDirectory)
-                ? Directory.GetCurrentDirectory()
-                : cli.WorkingDirectory;
+
+        // The launcher resolved the per-session/global/process-cwd precedence, except for the one step it cannot
+        // know about: Claude's own configured working directory sits between them.
+        var workingDirectory = string.IsNullOrWhiteSpace(cli.WorkingDirectory)
+            ? context.WorkingDirectory
+            : Path.GetFullPath(cli.WorkingDirectory);
 
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-        if (profile is not null)
+        if (context.Profile is not null)
         {
             // Same rule as SDK mode: trust must land before the process starts, or the TUI blocks on its
-            // interactive trust dialog on first render. It must land in the .claude.json the CLI actually
-            // reads for this spawn — the profile dir for a non-default profile, the home root for a
-            // default-dir profile (whose CLAUDE_CONFIG_DIR stays unset).
+            // interactive trust dialog on first render. It must land in the .claude.json the CLI actually reads
+            // for this spawn — the profile dir for a non-default profile, the home root for a default-dir profile
+            // (whose CLAUDE_CONFIG_DIR stays unset).
             _workspaceTrustWriter.MarkWorkingDirectoryTrusted(
-                ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, userHome),
-                Path.GetFullPath(resolvedWorkingDirectory));
+                ClaudeConfigDirectory.ResolveConfigJsonDirectory(context.Profile, userHome),
+                workingDirectory);
         }
 
-        var executablePath = profile?.ExecutablePath
+        var executablePath = context.Profile?.ExecutablePath
             ?? _executableLocator.FindBundledExecutable()
             ?? cli.ExecutablePath;
 
-        var environment = new Dictionary<string, string>(
-            TtyEnvironment.Build(CurrentProcessEnvironment(), profile, userHome),
+        var environmentOverlay = new Dictionary<string, string?>(
+            ClaudeTtyEnvironment.BuildOverlay(context.BaseEnvironment, context.Profile, userHome),
             StringComparer.OrdinalIgnoreCase);
 
         var mcpConfigPath = _WriteRegistryMcpConfig();
@@ -90,32 +88,26 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         // allowance is gone — reach the cockpit only through the statusline it hands its JSON to. The session
         // gets a statusline of ours (which still runs the operator's own) and a file of its own to write to; the
         // env var is how the script, a grandchild of this process, knows which file is its.
-        var (statusFile, statusLineSettings) = _statusLineRelay?.Install(profile, userHome, environment) ?? (null, null);
+        var (statusFile, statusLineSettings) = _statusLineRelay?.Install(context.Profile, userHome, environmentOverlay) ?? (null, null);
+
         var arguments = BuildArguments(
-            permissionMode,
-            model,
-            effort,
+            context.Options.GetValueOrDefault(TtyLaunchOption.PermissionMode),
+            context.Options.GetValueOrDefault(TtyLaunchOption.Model),
+            context.Options.GetValueOrDefault(TtyLaunchOption.Effort),
             mcpConfigPath,
             _CanDelegate(),
-            resume,
+            context.Resume,
             statusLineSettings);
 
-        var process = _ptyHostFactory.Start(executablePath, arguments, resolvedWorkingDirectory, environment, columns, rows);
-
-        // Both files live exactly as long as the session that needs them — the MCP config holds the registry's
-        // bearer headers, and the limits of a session that has ended are nobody's business.
-        return mcpConfigPath is null && statusFile is null
-            ? process
-            : new TtyProcessOwningMcpConfig(process, mcpConfigPath, statusFile);
+        return new TtyLaunchSpec(
+            executablePath,
+            arguments,
+            environmentOverlay,
+            workingDirectory,
+            mcpConfigPath is null ? [] : [mcpConfigPath],
+            statusFile);
     }
 
-    /// <summary>
-    /// Fans the shared MCP registry (#26) into the interactive TUI by writing a registry-only
-    /// <c>--mcp-config</c> file (no cockpit permission server — the TUI prompts for permission itself) and
-    /// returning its path, or <see langword="null"/> when the registry has no Claude-eligible server. Sync
-    /// (matching <see cref="Launch"/>'s synchronous spawn path) and best-effort: any failure just launches the
-    /// session without the shared servers rather than blocking it.
-    /// </summary>
     /// <summary>True when the operator enabled the orchestrator (#67), so this TUI session may hand work to another profile.</summary>
     private bool _CanDelegate()
     {
@@ -131,18 +123,21 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         }
     }
 
+    /// <summary>
+    /// Fans the shared MCP registry (#26) into the interactive TUI by writing a registry-only
+    /// <c>--mcp-config</c> file (no cockpit permission server — the TUI prompts for permission itself) and
+    /// returning its path, or <see langword="null"/> when the registry has no Claude-eligible server. Sync
+    /// (matching the synchronous spawn path) and best-effort: any failure just launches the session without the
+    /// shared servers rather than blocking it.
+    /// </summary>
     private string? _WriteRegistryMcpConfig()
     {
         try
         {
             var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
             var json = McpConfigFile.SerializeRegistryOnly(registry);
-            if (json is null)
-            {
-                return null;
-            }
 
-            return TtyMcpConfigFile.Write(json);
+            return json is null ? null : TtyMcpConfigFile.Write(json);
         }
         catch (Exception)
         {
@@ -151,13 +146,13 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     }
 
     /// <summary>
-    /// Builds the launch-only start-default flags for the TTY spawn. Extracted (and <c>internal</c>)
-    /// so the flag construction is unit-testable without a real pty. Deliberately narrower than
-    /// <c>ClaudeCliProcess.BuildArguments</c> — no <c>-p</c>/stream-json/permission-prompt-tool wiring,
-    /// since TTY mode runs the genuine interactive TUI (it prompts for permission itself). The session id
-    /// is deliberately <em>not</em> forced (<c>--session-id</c> is undocumented for a new interactive
-    /// session and does not persist a transcript under that id) — the cockpit instead locates the live
-    /// transcript as the new file that appears after launch (see <c>ISessionTranscriptReader</c>).
+    /// Builds the launch-only start-default flags for the TTY spawn. Extracted (and <c>internal</c>) so the flag
+    /// construction is unit-testable without a real pty. Deliberately narrower than
+    /// <c>ClaudeCliProcess.BuildArguments</c> — no <c>-p</c>/stream-json/permission-prompt-tool wiring, since TTY
+    /// mode runs the genuine interactive TUI (it prompts for permission itself). The session id is deliberately
+    /// <em>not</em> forced (<c>--session-id</c> is undocumented for a new interactive session and does not persist
+    /// a transcript under that id) — the cockpit instead locates the live transcript as the new file that appears
+    /// after launch (see <c>ISessionTranscriptReader</c>).
     /// </summary>
     internal static List<string> BuildArguments(
         string? permissionMode,
@@ -192,9 +187,9 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
             arguments.Add(sessionId.Trim());
         }
 
-        // Bypass is a launch-only synonym for --dangerously-skip-permissions; the CLI does not accept
-        // both flags together, so the two are mutually exclusive here (mirrors ClaudeCliProcess's
-        // bypass handling, which likewise skips --permission-mode in that case).
+        // Bypass is a launch-only synonym for --dangerously-skip-permissions; the CLI does not accept both flags
+        // together, so the two are mutually exclusive here (mirrors ClaudeCliProcess's bypass handling, which
+        // likewise skips --permission-mode in that case).
         if (string.Equals(permissionMode, "bypassPermissions", StringComparison.Ordinal))
         {
             arguments.Add("--dangerously-skip-permissions");
@@ -219,8 +214,8 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
 
         // Fan the shared MCP registry (#26) into the interactive TUI. Deliberately without --strict-mcp-config:
         // --mcp-config adds the cockpit-configured servers on top of the CLI's own user/project config, so the
-        // TTY session gains the registry's servers without losing the user's own .mcp.json (strict would
-        // replace them). No permission server here — the TUI handles permission prompts itself.
+        // TTY session gains the registry's servers without losing the user's own .mcp.json (strict would replace
+        // them). No permission server here — the TUI handles permission prompts itself.
         if (!string.IsNullOrWhiteSpace(mcpConfigPath))
         {
             arguments.Add("--mcp-config");
@@ -236,25 +231,5 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         }
 
         return arguments;
-    }
-
-    /// <summary>
-    /// Snapshots the cockpit process's own environment as the base the pty child inherits from —
-    /// a ConPTY child gets no environment unless we hand it one (HOME/USERPROFILE, PATH, APPDATA, ...);
-    /// Porta.Pty inherits automatically but we still want the base explicit here so both platforms
-    /// go through the identical <see cref="TtyEnvironment.Build"/> composition.
-    /// </summary>
-    private static IReadOnlyDictionary<string, string> CurrentProcessEnvironment()
-    {
-        var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
-        {
-            if (entry.Key is string key && entry.Value is string value)
-            {
-                environment[key] = value;
-            }
-        }
-
-        return environment;
     }
 }

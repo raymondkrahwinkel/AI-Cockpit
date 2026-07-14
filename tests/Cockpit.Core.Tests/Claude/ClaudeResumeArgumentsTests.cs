@@ -63,7 +63,7 @@ public class ClaudeResumeArgumentsTests
     [Fact]
     public void TtySpawn_MostRecent_PassesContinue()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(null, null, null, resume: SessionResume.MostRecent);
+        var arguments = ClaudeTtySessionProvider.BuildArguments(null, null, null, resume: SessionResume.MostRecent);
 
         arguments.Should().Contain("--continue");
     }
@@ -71,7 +71,7 @@ public class ClaudeResumeArgumentsTests
     [Fact]
     public void TtySpawn_BySessionId_PassesResumeWithThatId()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(null, null, null, resume: SessionResume.BySessionId("abc-123"));
+        var arguments = ClaudeTtySessionProvider.BuildArguments(null, null, null, resume: SessionResume.BySessionId("abc-123"));
 
         arguments.Should().ContainInOrder("--resume", "abc-123");
     }
@@ -79,7 +79,7 @@ public class ClaudeResumeArgumentsTests
     [Fact]
     public void TtySpawn_NewConversation_PassesNoResumeFlag()
     {
-        var arguments = ClaudeTtyLauncher.BuildArguments(null, null, null, resume: SessionResume.New);
+        var arguments = ClaudeTtySessionProvider.BuildArguments(null, null, null, resume: SessionResume.New);
 
         arguments.Should().NotContain("--continue").And.NotContain("--resume");
     }

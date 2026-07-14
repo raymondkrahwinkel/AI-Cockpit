@@ -62,7 +62,7 @@ public static class DependencyInjection
     // TTY mode's pty host (#9) is OS-specific for the same reason presence/toast are: it is
     // registered by platform here rather than via the Scrutor marker scan, which would otherwise
     // bind whichever of ConPtyHostFactory/PortaPtyHostFactory the assembly scan happened to see last
-    // to the single IPtyHostFactory registration. ClaudeTtyLauncher itself stays cross-platform and
+    // to the single IPtyHostFactory registration. TtyLauncher itself stays cross-platform and
     // just depends on whichever factory lands here.
     private static void AddPtyHost(IServiceCollection services)
     {

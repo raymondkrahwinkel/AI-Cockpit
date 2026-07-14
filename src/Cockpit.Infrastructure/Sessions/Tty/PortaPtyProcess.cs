@@ -34,7 +34,7 @@ internal sealed class PortaPtyProcess : IConPtyProcess
     /// </summary>
     /// <remarks>
     /// <see cref="PtyProvider.SpawnAsync"/> is only genuinely asynchronous on its Windows path; the
-    /// Linux/macOS <c>forkpty()</c> syscall it wraps is synchronous. <see cref="IClaudeTtyLauncher.Launch"/>
+    /// Linux/macOS <c>forkpty()</c> syscall it wraps is synchronous. <see cref="ITtyLauncher.Launch"/>
     /// is itself a synchronous contract (mirrors <see cref="ConPtyProcess.Start"/>, called from a UI
     /// event handler before the terminal control exists to await anything), so we block on the
     /// already-fast spawn here rather than threading <c>Task</c> through the whole call chain.

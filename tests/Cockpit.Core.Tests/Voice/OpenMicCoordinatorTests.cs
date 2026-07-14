@@ -136,6 +136,6 @@ public class OpenMicCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>(), voiceSettingsStore: voiceSettingsStore);
+        return new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voiceSettingsStore: voiceSettingsStore);
     }
 }

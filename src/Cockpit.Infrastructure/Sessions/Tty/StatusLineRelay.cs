@@ -40,7 +40,7 @@ internal sealed class StatusLineRelay : IStatusLineRelay, ISingletonService
     public (string? StatusFile, string? SettingsJson) Install(
         SessionProfile? profile,
         string userProfileDirectory,
-        IDictionary<string, string> environment)
+        IDictionary<string, string?> environment)
     {
         try
         {

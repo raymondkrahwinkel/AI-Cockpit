@@ -1,18 +1,20 @@
-using Cockpit.Core.Profiles;
-
 namespace Cockpit.Core.Sessions.Tty;
 
 /// <summary>
-/// Composes the environment block for a <c>claude</c> process spawned inside a ConPTY (TTY mode).
-/// Pure and side-effect-free so the composition rules are unit-testable without reading the real
-/// process environment.
+/// Composes the environment block for any CLI spawned inside a pseudo console (TTY mode): the host's base
+/// (<see cref="BuildBase"/>) plus a provider's overlay (<see cref="Compose"/>). Pure and side-effect-free so
+/// the composition rules are unit-testable without reading the real process environment.
 /// </summary>
 /// <remarks>
 /// Unlike the SDK-mode spawn (<c>ClaudeCliProcess</c>, which uses <c>Process</c> and inherits the
 /// parent environment automatically), a ConPTY child receives <em>only</em> the environment block
 /// we hand it — there is no implicit inheritance. So the base map must start from the parent
-/// process's own variables (HOME/USERPROFILE, PATH, APPDATA, ...) or <c>claude</c> loses the very
-/// things it needs to find its config, credentials and node runtime.
+/// process's own variables (HOME/USERPROFILE, PATH, APPDATA, ...) or the CLI loses the very
+/// things it needs to find its config, credentials and runtime.
+/// <para>
+/// What each provider adds on top lives with that provider (<c>ClaudeTtyEnvironment</c> for <c>claude</c>) —
+/// the base and the scrub are the host's, and stay in one place.
+/// </para>
 /// </remarks>
 public static class TtyEnvironment
 {
@@ -34,45 +36,28 @@ public static class TtyEnvironment
     public const string Utf8LocaleValue = "C.UTF-8";
 
     /// <summary>
-    /// Builds the environment for the pty child: everything in <paramref name="baseEnvironment"/>
-    /// (the inherited parent environment), then <c>TERM</c>, then the profile's <c>CLAUDE_CONFIG_DIR</c>.
-    /// A profile on a non-default directory exports it; a profile pinned to the CLI's default
-    /// (<c>~/.claude</c>) clears any inherited value so the CLI uses its native home-root config/login
-    /// (setting it to the default dir is not a no-op — see
-    /// <see cref="ClaudeConfigDirectory.ResolveSpawnOverride"/>). A profile-less session leaves any
-    /// inherited value untouched, since the transcript tailers resolve the dir through that same variable.
-    /// Never passes <c>ANTHROPIC_API_KEY</c> (that would switch the CLI to API-key billing instead of the
-    /// subscription route — same rule as the SDK spawn): not setting it was never enough, since an inherited
-    /// one reached the child anyway, so it is now stripped (see <see cref="IsAnthropicCredentialMarker"/>).
+    /// The environment every pty child starts from, whichever CLI it runs: the inherited parent environment
+    /// minus what must not be handed down, plus <c>TERM</c> and a UTF-8 locale.
+    /// <para>
+    /// What it strips is a host rule, not a provider's: the markers of the agent session the cockpit itself was
+    /// launched from, the host terminal's self-identification, and any inherited Anthropic credential (which
+    /// would silently move a session onto API-key billing — see <see cref="IsAnthropicCredentialMarker"/>).
+    /// A provider adds to this map through <see cref="Abstractions.Sessions.TtyLaunchSpec.EnvironmentOverlay"/>;
+    /// it cannot take away from it, because a scrub that each provider could opt out of is not a scrub.
+    /// </para>
     /// </summary>
-    public static IReadOnlyDictionary<string, string> Build(
-        IReadOnlyDictionary<string, string> baseEnvironment,
-        SessionProfile? profile,
-        string userProfileDirectory)
+    public static IReadOnlyDictionary<string, string> BuildBase(IReadOnlyDictionary<string, string> parentEnvironment)
     {
         var environment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (key, value) in baseEnvironment)
+        foreach (var (key, value) in parentEnvironment)
         {
-            // Drop the markers of the Claude Code session the cockpit itself was launched from. When the
-            // cockpit is started from inside a Claude Code session (a claude terminal, an agent), the
-            // inherited CLAUDE_CODE_SESSION_ID would make the spawned CLI adopt that session id — writing
-            // its turns into the parent's transcript instead of its own, so the read-aloud/status tailers
-            // (which look for the session's own new transcript) never find one. A normal launch has none
-            // of these set, so this is a no-op there.
-            if (IsNestedClaudeCodeMarker(key))
-            {
-                continue;
-            }
-
-            // Drop the host terminal emulator's self-identification (see IsHostTerminalIdentityMarker) —
-            // the pty child is rendered by Exclr8, not by whatever terminal Cockpit itself runs in.
-            if (IsHostTerminalIdentityMarker(key))
-            {
-                continue;
-            }
-
-            // Drop an inherited Anthropic credential (see IsAnthropicCredentialMarker).
-            if (IsAnthropicCredentialMarker(key))
+            // What the host owns is never handed down: the markers of the agent session the cockpit was launched
+            // from (an inherited CLAUDE_CODE_SESSION_ID would make the child adopt that session id and write its
+            // turns into the parent's transcript), the host terminal's self-identification (the child is rendered
+            // by Exclr8, not by whatever terminal launched Cockpit), and any Anthropic credential (which would
+            // move the session onto API-key billing). A normal desktop launch has none of these, so this is a
+            // no-op there; it bites exactly when the cockpit is started from a shell that exports one.
+            if (IsHostControlled(key))
             {
                 continue;
             }
@@ -91,28 +76,59 @@ public static class TtyEnvironment
             environment["LANG"] = Utf8LocaleValue;
         }
 
-        if (profile is not null)
+        return environment;
+    }
+
+    /// <summary>
+    /// Lays a provider's overlay over the base: a value sets, <see langword="null"/> removes.
+    /// <para>
+    /// A provider cannot reinstate what the host stripped. Keys the host owns (<see cref="IsHostControlled"/>)
+    /// are ignored in an overlay — otherwise the scrub would be advisory, and a provider could hand the child an
+    /// <c>ANTHROPIC_API_KEY</c> that silently moves the session onto API-key billing. Removing them stays
+    /// allowed, because removing something already absent asks for nothing.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Compose(
+        IReadOnlyDictionary<string, string> baseEnvironment,
+        IReadOnlyDictionary<string, string?> overlay)
+    {
+        var environment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in overlay)
         {
-            var configDirOverride = ClaudeConfigDirectory.ResolveSpawnOverride(profile, userProfileDirectory);
-            if (configDirOverride is not null)
+            if (value is null)
             {
-                environment[ClaudeConfigDirectory.EnvironmentVariable] = configDirOverride;
-            }
-            else
-            {
-                environment.Remove(ClaudeConfigDirectory.EnvironmentVariable);
+                environment.Remove(key);
+                continue;
             }
 
-            // A memory ceiling, when the profile asks for one. Off unless it does: a capped session that needs more
-            // memory than the cap does not slow down, it dies mid-turn.
-            if (SessionMemoryLimit.NodeOptions(environment.GetValueOrDefault("NODE_OPTIONS"), profile.MemoryLimitMb) is { } options)
+            if (IsHostControlled(key))
             {
-                environment["NODE_OPTIONS"] = options;
+                continue;
             }
+
+            environment[key] = value;
         }
 
         return environment;
     }
+
+    /// <summary>
+    /// The keys an overlay tried to set but does not get to (<see cref="IsHostControlled"/>). Pure, so the
+    /// composition stays testable; the launcher logs them, because a security rule that fires silently is one
+    /// nobody finds out about until it matters.
+    /// </summary>
+    public static IReadOnlyList<string> RejectedOverlayKeys(IReadOnlyDictionary<string, string?> overlay) =>
+        [.. overlay.Where(entry => entry.Value is not null && IsHostControlled(entry.Key)).Select(entry => entry.Key)];
+
+    /// <summary>
+    /// True for a variable the host decides about, not a provider: the markers of the agent session the cockpit
+    /// was launched from, the host terminal's self-identification, and any Anthropic credential. These are
+    /// stripped from the inherited environment and cannot be put back by an overlay.
+    /// </summary>
+    public static bool IsHostControlled(string key) =>
+        IsNestedClaudeCodeMarker(key)
+        || IsHostTerminalIdentityMarker(key)
+        || IsAnthropicCredentialMarker(key);
 
     /// <summary>
     /// True when the effective ctype locale is UTF-8. The C library resolves the ctype category as

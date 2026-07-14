@@ -417,10 +417,9 @@ public partial class ClaudeTtyView : UserControl
             Terminal.PrepareForNewSession();
 
             var pty = _pendingLaunch.Launcher.Launch(
+                _pendingLaunch.Provider,
                 _pendingLaunch.Profile,
-                _pendingLaunch.PermissionMode,
-                _pendingLaunch.Model,
-                _pendingLaunch.Effort,
+                _pendingLaunch.Options,
                 (short)_lastColumns,
                 (short)_lastRows,
                 _pendingLaunch.WorkingDirectory,

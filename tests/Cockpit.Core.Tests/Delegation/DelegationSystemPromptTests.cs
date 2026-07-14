@@ -30,8 +30,8 @@ public class DelegationSystemPromptTests
     [Fact]
     public void TheTtySpawn_TellsASessionItCanDelegate_OnlyWhenItActuallyGetsTheTools()
     {
-        var withTools = ClaudeTtyLauncher.BuildArguments("acceptEdits", "sonnet", "medium", "/tmp/mcp.json", canDelegate: true);
-        var without = ClaudeTtyLauncher.BuildArguments("acceptEdits", "sonnet", "medium", "/tmp/mcp.json", canDelegate: false);
+        var withTools = ClaudeTtySessionProvider.BuildArguments("acceptEdits", "sonnet", "medium", "/tmp/mcp.json", canDelegate: true);
+        var without = ClaudeTtySessionProvider.BuildArguments("acceptEdits", "sonnet", "medium", "/tmp/mcp.json", canDelegate: false);
 
         withTools.Should().Contain("--append-system-prompt");
         without.Should().NotContain("--append-system-prompt");

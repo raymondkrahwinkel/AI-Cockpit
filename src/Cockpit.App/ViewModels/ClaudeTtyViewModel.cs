@@ -15,7 +15,7 @@ namespace Cockpit.App.ViewModels;
 /// by <c>ClaudeTtyView</c>'s terminal control. The profile and start defaults (permission mode/model/
 /// effort) are chosen up front in the New-session dialog (#31) and handed in via
 /// <see cref="LaunchConfigured"/>; the view owns the terminal size, so the VM raises
-/// <see cref="LaunchRequested"/> and the view launches the carried <see cref="IClaudeTtyLauncher"/>
+/// <see cref="LaunchRequested"/> and the view launches the carried <see cref="ITtyLauncher"/>
 /// with its current columns/rows once it has a size.
 /// </summary>
 /// <remarks>
@@ -25,7 +25,8 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientService
 {
-    private readonly IClaudeTtyLauncher? _launcher;
+    private readonly ITtyLauncher? _launcher;
+    private readonly ITtySessionProvider? _provider;
     private readonly ISessionTranscriptReader? _transcriptReader;
     private SessionProfile? _configuredProfile;
     private string? _effectiveConfigDir;
@@ -76,7 +77,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     [ObservableProperty]
     private string _diagnostics = string.Empty;
 
-    /// <summary>The working directory the <c>claude</c> TUI runs in (the configured <c>Claude:WorkingDirectory</c>, else the process cwd — same resolution as <c>ClaudeTtyLauncher</c>), shown compactly in the header so it is clear which project a session is operating on.</summary>
+    /// <summary>The working directory the <c>claude</c> TUI runs in (the configured <c>Claude:WorkingDirectory</c>, else the process cwd — same resolution as <c>ClaudeTtySessionProvider</c>), shown compactly in the header so it is clear which project a session is operating on.</summary>
     [ObservableProperty]
     private string _workingPath = string.Empty;
 
@@ -138,7 +139,8 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     }
 
     public ClaudeTtyViewModel(
-        IClaudeTtyLauncher launcher,
+        ITtyLauncher launcher,
+        ITtySessionProvider provider,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
@@ -147,6 +149,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         IOptions<CockpitOptions>? options = null)
     {
         _launcher = launcher;
+        _provider = provider;
         _transcriptReader = transcriptReader;
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
@@ -156,7 +159,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     }
 
     // The effective TTY working directory — the configured Claude:WorkingDirectory when set, else the process
-    // cwd. Mirrors ClaudeTtyLauncher's own resolution so the header shows exactly where the TUI runs.
+    // cwd. Mirrors ClaudeTtySessionProvider's own resolution so the header shows exactly where the TUI runs.
     private static string ResolveWorkingPath(IOptions<CockpitOptions>? options)
     {
         var configured = options?.Value.Claude.WorkingDirectory;
@@ -217,13 +220,41 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         // Only commit the launch once there is a subscriber to receive it: if the profile is configured
         // before the view exists, LaunchRequested is still null, so we must not mark it launched yet —
         // the view calls this again once subscribed.
-        if (_launched || !_isLaunchConfigured || _launcher is null || LaunchRequested is null)
+        if (_launched || !_isLaunchConfigured || _launcher is null || _provider is null || LaunchRequested is null)
         {
             return;
         }
 
         _launched = true;
-        LaunchRequested.Invoke(new TtyLaunchRequest(_launcher, _configuredProfile, _configuredPermissionMode, _configuredModel, _configuredEffort, _configuredWorkingDirectory, _configuredResume));
+        LaunchRequested.Invoke(new TtyLaunchRequest(
+            _launcher,
+            _provider,
+            _configuredProfile,
+            _LaunchOptions(),
+            _configuredWorkingDirectory,
+            _configuredResume));
+    }
+
+    /// <summary>
+    /// The start defaults in the provider's vocabulary. A blank knob is left out rather than passed as an empty
+    /// string: "no model chosen" and "model set to nothing" are different things, and only the first is true here.
+    /// </summary>
+    private Dictionary<string, string> _LaunchOptions()
+    {
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        Add(TtyLaunchOption.PermissionMode, _configuredPermissionMode);
+        Add(TtyLaunchOption.Model, _configuredModel);
+        Add(TtyLaunchOption.Effort, _configuredEffort);
+
+        return options;
+
+        void Add(string key, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                options[key] = value;
+            }
+        }
     }
 
     /// <summary>

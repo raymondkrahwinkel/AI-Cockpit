@@ -152,7 +152,7 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>(), voicePushToTalk, voiceSettingsStore);
+        return new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voicePushToTalk, voiceSettingsStore);
     }
 
     private static VoicePushToTalkCoordinator _CreateCoordinator(

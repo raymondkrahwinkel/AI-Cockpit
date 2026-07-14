@@ -22,18 +22,14 @@ public class ClaudeTtyViewModelTests
     public void LaunchConfigured_WhenAlreadySubscribed_RaisesLaunchWithTheProfileAndOptions()
     {
         SessionProfile? launchedProfile = null;
-        string? launchedMode = null;
-        string? launchedModel = null;
-        string? launchedEffort = null;
+        IReadOnlyDictionary<string, string>? launchedOptions = null;
         string? launchedWorkingDirectory = null;
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
+        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>());
         vm.LaunchRequested += request =>
         {
             launchedProfile = request.Profile;
-            launchedMode = request.PermissionMode;
-            launchedModel = request.Model;
-            launchedEffort = request.Effort;
+            launchedOptions = request.Options;
             launchedWorkingDirectory = request.WorkingDirectory;
             launchCount++;
         };
@@ -42,9 +38,10 @@ public class ClaudeTtyViewModelTests
 
         launchCount.Should().Be(1);
         launchedProfile.Should().Be(Work);
-        launchedMode.Should().Be("acceptEdits");
-        launchedModel.Should().Be("opus");
-        launchedEffort.Should().Be("high");
+        launchedOptions.Should().NotBeNull();
+        launchedOptions![TtyLaunchOption.PermissionMode].Should().Be("acceptEdits");
+        launchedOptions[TtyLaunchOption.Model].Should().Be("opus");
+        launchedOptions[TtyLaunchOption.Effort].Should().Be("high");
         launchedWorkingDirectory.Should().Be("D:/Projects/demo");
         vm.WorkingDirectory.Should().Be("D:/Projects/demo");
         vm.ActiveProfileLabel.Should().Be("work");
@@ -55,7 +52,7 @@ public class ClaudeTtyViewModelTests
     public void LaunchConfigured_BeforeTheViewSubscribes_LaunchesOnTryRaiseLaunch()
     {
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
+        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>());
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");   // configured before any subscriber exists
         vm.LaunchRequested += _ => launchCount++;
@@ -70,7 +67,7 @@ public class ClaudeTtyViewModelTests
     public void TryRaiseLaunch_RaisesAtMostOnce()
     {
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
+        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>());
         vm.LaunchRequested += _ => launchCount++;
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
@@ -84,7 +81,7 @@ public class ClaudeTtyViewModelTests
     public void TryRaiseLaunch_WithoutAConfiguredProfile_DoesNothing()
     {
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
+        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>());
         vm.LaunchRequested += _ => launchCount++;
 
         vm.TryRaiseLaunch();
@@ -95,7 +92,7 @@ public class ClaudeTtyViewModelTests
     [Fact]
     public void OnProcessExited_MarksTheSessionDone()
     {
-        var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
+        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>());
 
         vm.OnProcessExited();
 
@@ -105,7 +102,7 @@ public class ClaudeTtyViewModelTests
     [Fact]
     public void OnLaunchSucceeded_ClearsTheLaunchingStatus()
     {
-        var vm = new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>());
+        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>());
         vm.LaunchConfigured(profile: null, permissionMode: null, model: null, effort: null);
         vm.Status.Should().Contain("Launching");
 
