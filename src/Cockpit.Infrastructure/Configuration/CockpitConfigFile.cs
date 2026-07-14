@@ -12,6 +12,13 @@ namespace Cockpit.Infrastructure.Configuration;
 /// </summary>
 internal sealed class CockpitConfigFile
 {
+    /// <summary>
+    /// How the credentials in this file are protected: whether encryption is on, and the salt/iterations the
+    /// key is derived from. Not a secret itself, and deliberately readable before the app is unlocked — without
+    /// it there is no way to derive the key that reads the rest.
+    /// </summary>
+    public SecretProtectionEntry? Security { get; set; }
+
     public List<SessionProfileEntry> Profiles { get; set; } = [];
 
     public NotificationSettingsEntry? Notifications { get; set; }

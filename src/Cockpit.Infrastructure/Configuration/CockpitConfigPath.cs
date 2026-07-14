@@ -88,6 +88,32 @@ internal static class CockpitConfigPath
     }
 
     /// <summary>
+    /// Replaces <paramref name="path"/> with <paramref name="contents"/> in one step, keeping a <c>.bak</c> of what
+    /// was there. Used by the encryption migration, which rewrites every credential in the file at once: a crash
+    /// halfway through a plain write leaves a truncated config, and a truncated config is the operator's
+    /// credentials gone. Writing a sibling file and renaming it means the file is either entirely the old one or
+    /// entirely the new one — a rename is atomic — and the backup is the way back if the new one is wrong.
+    /// </summary>
+    public static void ReplaceAtomicallyPrivate(string path, string contents)
+    {
+        var temporaryPath = path + ".new";
+        WriteAllTextPrivate(temporaryPath, contents);
+
+        if (File.Exists(path))
+        {
+            // Replace() is the atomic swap, and it writes the backup as part of the same operation.
+            File.Replace(temporaryPath, path, path + ".bak", ignoreMetadataErrors: true);
+            RestrictExistingFile(path + ".bak");
+        }
+        else
+        {
+            File.Move(temporaryPath, path);
+        }
+
+        RestrictExistingFile(path);
+    }
+
+    /// <summary>
     /// Applies <paramref name="mode"/> to an existing file or directory. A no-op on Windows, which has no Unix
     /// mode bits — there the equivalent protection is the per-user profile directory itself, and pretending
     /// otherwise by throwing would break the platform that does not need this.
