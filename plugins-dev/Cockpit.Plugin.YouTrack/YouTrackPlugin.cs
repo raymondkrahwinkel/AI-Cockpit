@@ -20,9 +20,9 @@ public sealed class YouTrackPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.10.0",
+        Version: "1.12.0",
         Author: "Cockpit",
-        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools, and contributes two workflow steps — start a ticket, move a ticket — so a flow can run the ticket half of your working day.");
+        Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools, and contributes three workflow steps — a ticket picked for a session, a ticket whose status you moved, and a step that moves one — so a flow can run the ticket half of your working day.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -36,10 +36,13 @@ public sealed class YouTrackPlugin : ICockpitPlugin
         // (each of which shows the issue linked to its own session) — see SessionIssueLinks.
         var links = new SessionIssueLinks();
 
+        // And one bus for the moves themselves, shared by the two places a ticket can be moved from — see IssueStateChanges.
+        var stateChanges = new IssueStateChanges();
+
         host.AddSettings(() => new YouTrackSettingsControl(settings));
 
         void OpenIssues() =>
-            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links), 1040, 700);
+            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links, stateChanges), 1040, 700);
 
         host.AddSideMenuButton("YouTrack", OpenIssues);
 
@@ -48,6 +51,13 @@ public sealed class YouTrackPlugin : ICockpitPlugin
         foreach (var step in YouTrackWorkflowSteps.All(settings))
         {
             host.AddWorkflowStep(step);
+        }
+
+        // And the flows those steps are for: how they fit together is knowledge this plugin has and an empty canvas
+        // does not.
+        foreach (var template in YouTrackWorkflowTemplates.All)
+        {
+            host.AddWorkflowTemplate(template);
         }
 
         // And the trigger is fired by the act it names: you picked a ticket for a session. A trigger nobody fires is
@@ -62,7 +72,21 @@ public sealed class YouTrackPlugin : ICockpitPlugin
                 ["state"] = linked.Link.Issue.State ?? string.Empty,
                 ["directory"] = linked.WorkingDirectory ?? string.Empty,
             });
-        host.AddSessionHeaderItem(session => new YouTrackSessionHeaderControl(host, session, links, settings));
+
+        // The same rule for the second trigger: it fires on the move itself, wherever the operator made it.
+        stateChanges.Changed += (_, moved) => host.RaiseWorkflowTrigger(
+            YouTrackWorkflowSteps.StatusChangedTrigger,
+            new Dictionary<string, string>
+            {
+                ["ticket"] = moved.Issue.IdReadable,
+                ["summary"] = moved.Issue.Summary,
+                ["state"] = moved.NewState,
+                ["previous_state"] = moved.PreviousState,
+                ["branch"] = BranchName.From(moved.Issue.IdReadable, moved.Issue.Summary, settings.BranchPattern),
+                ["directory"] = moved.WorkingDirectory ?? string.Empty,
+            });
+
+        host.AddSessionHeaderItem(session => new YouTrackSessionHeaderControl(host, session, links, settings, stateChanges));
 
         // Picking a ticket is an action, so it lives in the header's one menu rather than in a button of its own — two
         // issue trackers meant two buttons asking the same question of a strip with room for neither.

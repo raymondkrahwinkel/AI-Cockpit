@@ -20,9 +20,13 @@ internal static class YouTrackWorkflowSteps
     /// <summary>The trigger's type id, fired when an issue is linked to a session — see <see cref="SessionIssueLinks"/>.</summary>
     public const string PickedTrigger = "youtrack.picked";
 
+    /// <summary>The type id of the trigger fired when a ticket's status is moved from the cockpit — see <see cref="IssueStateChanges"/>.</summary>
+    public const string StatusChangedTrigger = "youtrack.status-changed";
+
     public static IEnumerable<IWorkflowStep> All(YouTrackSettings settings) =>
     [
         new TicketPickedTrigger(),
+        new TicketStatusChangedTrigger(),
         new SetStatusStep(settings),
     ];
 
@@ -53,6 +57,38 @@ internal static class YouTrackWorkflowSteps
         };
     }
 
+    /// <summary>
+    /// Fires when you move a ticket's status from the cockpit — the issues dialog, or a session's header. It hands over
+    /// where the ticket came from as well as where it went, because a flow that runs "when a ticket reaches Review"
+    /// needs to know it is Review; a flow that runs on any move at all is a flow that runs all day.
+    /// </summary>
+    private sealed class TicketStatusChangedTrigger : IWorkflowStep
+    {
+        public string TypeId => StatusChangedTrigger;
+
+        public string Name => "Ticket status changed";
+
+        public string Description => "Fires when you move a YouTrack ticket to another status from the cockpit. Produces the status it moved to and the one it came from, so a flow can act on the move that matters (a ticket reaching Review, say) rather than on every move. A status set by the \"Set ticket status\" step does not fire it — a flow does not trigger itself.";
+
+        public string Icon => "↻";
+
+        public string Category => "YouTrack";
+
+        public bool IsTrigger => true;
+
+        public IReadOnlyList<string> Parameters => [];
+
+        public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
+        {
+            ["ticket"] = "EVE-14",
+            ["summary"] = "Fix the login redirect",
+            ["state"] = "Review",
+            ["previous_state"] = "In Progress",
+            ["branch"] = "eve-14-fix-the-login-redirect",
+            ["directory"] = "/home/raymond/RiderProjects/Eveworkbench",
+        };
+    }
+
     /// <summary>Sets a ticket's status to one its board allows — In Progress, Review, Done. The one node that moves a ticket.</summary>
     private sealed class SetStatusStep(YouTrackSettings settings) : IWorkflowStep
     {
@@ -67,6 +103,51 @@ internal static class YouTrackWorkflowSteps
         public string Category => "YouTrack";
 
         public IReadOnlyList<string> Parameters => ["Ticket", "Status", "Assign to me", "Instance"];
+
+        /// <summary>
+        /// The statuses a board actually has, read from YouTrack rather than typed from memory: "In Progres" is a flow
+        /// that fails at run time over a letter, and nothing on the canvas would say why. Read from the open issues of
+        /// the configured instance — the states they are in are the states this board uses — plus the two words this
+        /// step understands that are not statuses at all.
+        /// <para>
+        /// Suggestions, not a closed list: the value is as often <c>{state}</c> from the step before as it is one of
+        /// these. And a failure is silence — an unconfigured instance leaves a field you can still type in.
+        /// </para>
+        /// </summary>
+        public async Task<IReadOnlyList<string>> SuggestAsync(string parameter, CancellationToken cancellationToken = default)
+        {
+            if (!string.Equals(parameter, "Status", StringComparison.Ordinal))
+            {
+                return [];
+            }
+
+            var configured = settings.Instances.FirstOrDefault(instance =>
+                instance.InstanceUrl.Length > 0 && instance.Token.Length > 0);
+
+            if (configured is null)
+            {
+                return [];
+            }
+
+            var issues = await new YouTrackClient().GetOpenIssuesAsync(
+                configured.InstanceUrl,
+                configured.Token,
+                projectTag: null,
+                extraFilter: null,
+                assignedToMe: false,
+                top: 100,
+                cancellationToken);
+
+            var states = issues
+                .Select(issue => issue.State)
+                .Where(state => !string.IsNullOrWhiteSpace(state))
+                .Select(state => state!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(state => state, StringComparer.OrdinalIgnoreCase);
+
+            // "forward" and "back" follow the board's own order — they are what this step understands besides a name.
+            return ["forward", "back", .. states];
+        }
 
         public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
         {

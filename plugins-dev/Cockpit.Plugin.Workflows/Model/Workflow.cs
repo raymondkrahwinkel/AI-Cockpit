@@ -93,6 +93,79 @@ public sealed class Workflow
 
     public void Disconnect(WorkflowConnection connection) => Connections.Remove(connection);
 
+    /// <summary>
+    /// Keeps a node's wires on the ways out they were drawn to, after those ways out changed — which only a switch's
+    /// do (its pins are the cases written into it, see <see cref="SwitchCases"/>). A wire remembers its way out by
+    /// <em>position</em>, so inserting a case in front of the others would silently hand every wire below it to the
+    /// wrong branch, and the error wire — which sits one past the last ordinary pin — would become an ordinary one.
+    /// A wire drawn from "Review" belongs to "Review", so they are matched up again by name.
+    /// <para>
+    /// A wire whose case no longer exists is removed and its label returned: the operator deleted that case, and a
+    /// wire from a pin that is gone is not a wire. Saying which ones went is the point — silently dropping them is how
+    /// a flow quietly stops doing something it used to do.
+    /// </para>
+    /// </summary>
+    /// <param name="nodeId">The node whose ways out changed.</param>
+    /// <param name="before">What its ways out were called before the change, in their old order.</param>
+    /// <returns>The labels of the wires that had nowhere left to go, in the order they were dropped.</returns>
+    public IReadOnlyList<string> RewireOutputs(string nodeId, IReadOnlyList<string> before)
+    {
+        if (Node(nodeId) is not { } node)
+        {
+            return [];
+        }
+
+        var after = node.Outputs;
+        var dropped = new List<string>();
+
+        foreach (var connection in Connections.Where(connection => connection.FromNodeId == nodeId).ToList())
+        {
+            // The error pin is not in Outputs — it sits one past them — so it is named here rather than looked up.
+            var label = connection.FromOutput == before.Count
+                ? "error"
+                : before.ElementAtOrDefault(connection.FromOutput);
+
+            var moved = label switch
+            {
+                null => -1,
+                "error" => after.Count,
+                _ => _IndexOf(after, label),
+            };
+
+            if (moved < 0)
+            {
+                Connections.Remove(connection);
+                dropped.Add(label ?? "a way out that no longer exists");
+                continue;
+            }
+
+            if (moved != connection.FromOutput)
+            {
+                Connections[Connections.IndexOf(connection)] = new WorkflowConnection
+                {
+                    FromNodeId = connection.FromNodeId,
+                    FromOutput = moved,
+                    ToNodeId = connection.ToNodeId,
+                };
+            }
+        }
+
+        return dropped;
+    }
+
+    private static int _IndexOf(IReadOnlyList<string> labels, string label)
+    {
+        for (var index = 0; index < labels.Count; index++)
+        {
+            if (string.Equals(labels[index], label, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>Whether this way out already leads somewhere — what decides if the canvas draws the "+" that adds the next step.</summary>
     public bool HasConnectionFrom(string nodeId, int output) =>
         Connections.Any(connection => connection.FromNodeId == nodeId && connection.FromOutput == output);

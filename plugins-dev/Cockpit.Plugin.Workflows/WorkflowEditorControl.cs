@@ -26,6 +26,11 @@ internal sealed class WorkflowEditorControl : UserControl
     private readonly RunPanel _runPanel;
 
     private WorkflowRun? _lastRun;
+
+    // The step whose dialog is open, and what its ways out were called when it opened — a switch's change as its
+    // cases are typed, and the wires already drawn have to follow them.
+    private WorkflowNode? _openNode;
+    private IReadOnlyList<string>? _outputsWhenOpened;
     private readonly Button _execute;
     private readonly WorkflowCanvas _canvas;
     private readonly NodePicker _picker;
@@ -79,6 +84,7 @@ internal sealed class WorkflowEditorControl : UserControl
         {
             // A renamed step is a step other steps refer to by a different name, and its card now says something
             // else — so the canvas is redrawn as you type, not once you close.
+            _RewireOpenNode();
             _Touched();
             _canvas.Rebuild();
         };
@@ -349,7 +355,41 @@ internal sealed class WorkflowEditorControl : UserControl
         // The picker steps aside: it sits outside the dialog, and a list of steps you can see but not reach (the
         // scrim takes the click) is worse than one that is not there.
         _picker.IsVisible = false;
+
+        // A switch's ways out are its cases, so editing them here changes them. Remembered as they were, the wires
+        // already drawn can be put back on the pins they were drawn to — see Workflow.RewireOutputs.
+        _openNode = node;
+        _outputsWhenOpened = [.. node.Outputs];
+
         _dialog.Show(node, _Incoming(node), _Produced(node), _Earlier(node), _Before(node));
+    }
+
+    /// <summary>
+    /// Keeps the wires of the step being edited on the ways out they were drawn to, if editing it changed what those
+    /// are (only a switch's do). Runs on every change while the dialog is open, so the canvas underneath is redrawn
+    /// with the wires already where they belong, rather than showing them on the wrong branch until it is closed.
+    /// </summary>
+    private void _RewireOpenNode()
+    {
+        if (_openNode is not { } node || _outputsWhenOpened is not { } before)
+        {
+            return;
+        }
+
+        if (node.Outputs.SequenceEqual(before, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var dropped = _workflow.RewireOutputs(node.Id, before);
+        _outputsWhenOpened = [.. node.Outputs];
+
+        if (dropped.Count > 0)
+        {
+            _status.Text = dropped.Count == 1
+                ? $"'{dropped[0]}' is gone, and the wire from it with it."
+                : $"{dropped.Count} cases are gone, and the wires from them with them: {string.Join(", ", dropped)}.";
+        }
     }
 
     // What flowed into this step in the last run: what the steps wired before it handed on.
@@ -406,6 +446,8 @@ internal sealed class WorkflowEditorControl : UserControl
 
     private void _CloseSettings()
     {
+        _openNode = null;
+        _outputsWhenOpened = null;
         _dialog.Hide();
         _picker.IsVisible = true;
         _canvas.Rebuild();

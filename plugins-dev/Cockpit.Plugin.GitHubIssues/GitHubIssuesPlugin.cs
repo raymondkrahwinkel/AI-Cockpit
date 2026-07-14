@@ -16,7 +16,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-issues",
         DisplayName: "GitHub Issues",
-        Version: "1.7.0",
+        Version: "1.8.0",
         Author: "Cockpit",
         Description: "Browse open GitHub issues across your repos (via the gh CLI) or one repo, with an \"Assigned to me\" filter, and drop a prompt asking the agent to open and review one. The prompt template is editable in settings.");
 
@@ -31,7 +31,7 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         host.AddSettings(() => new GitHubIssuesSettingsControl(settings));
         host.AddSideMenuButton(
             "GitHub Issues",
-            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host.Actions), 1040, 700));
+            () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host), 1040, 700));
 
         // The issue this session is working on, in its own header — and, before one is picked, the way to pick it.
         var links = new SessionIssueLinks();
@@ -47,6 +47,11 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         foreach (var step in GitHubWorkflowSteps.All(settings))
         {
             host.AddWorkflowStep(step);
+        }
+
+        foreach (var template in GitHubWorkflowTemplates.All)
+        {
+            host.AddWorkflowTemplate(template);
         }
 
         // And the trigger is fired by the act it names: you picked an issue for a session.

@@ -24,6 +24,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private const string AllRepositoriesOption = "All";
 
     private readonly GitHubIssuesSettings _settings;
+    private readonly ICockpitHost _host;
     private readonly ICockpitActions _actions;
     private readonly GitHubIssuesClient _http = new();
     private readonly GitHubGhClient _gh = new();
@@ -32,6 +33,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
     private readonly TextBlock _status;
+    private readonly Button _configure;
     private readonly DataGrid _grid;
 
     private readonly TextBlock _detailPlaceholder;
@@ -46,10 +48,11 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private IReadOnlyList<GitHubIssue> _all = [];
     private string _renderedPrompt = string.Empty;
 
-    public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitActions actions)
+    public GitHubIssuesDialogControl(GitHubIssuesSettings settings, ICockpitHost host)
     {
         _settings = settings;
-        _actions = actions;
+        _host = host;
+        _actions = host.Actions;
 
         _repoFilter = new ComboBox
         {
@@ -74,6 +77,17 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         _search.TextChanged += (_, _) => _ApplyFilter();
 
         _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+
+        // The one status this dialog reports that the operator cannot act on from here — so it comes with the way to.
+        _configure = new Button
+        {
+            Content = "Configure GitHub…",
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+            Margin = new Thickness(8, 0, 0, 0),
+            IsVisible = false,
+        };
+        _configure.Click += async (_, _) => await _host.ShowSettingsAsync();
 
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
@@ -197,20 +211,33 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         split.Children.Add(_grid);
         split.Children.Add(detailPanel);
 
+        var statusBar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { _status, _configure },
+        };
+
         var root = new DockPanel { Margin = new Thickness(16) };
         DockPanel.SetDock(topBar, Dock.Top);
-        DockPanel.SetDock(_status, Dock.Bottom);
+        DockPanel.SetDock(statusBar, Dock.Bottom);
         root.Children.Add(topBar);
-        root.Children.Add(_status);
+        root.Children.Add(statusBar);
         root.Children.Add(split);
         Content = root;
 
         _ = _LoadAsync(forceRefresh: false);
     }
 
+    /// <summary>The status line, and with it the way into settings when what it reports can only be fixed there.</summary>
+    private void _SetStatus(string text, bool needsConfiguration = false)
+    {
+        _status.Text = text;
+        _configure.IsVisible = needsConfiguration;
+    }
+
     private async Task _LoadAsync(bool forceRefresh)
     {
-        _status.Text = "Loading…";
+        _SetStatus("Loading…");
         try
         {
             var assignedToMe = _assignedToMe.IsChecked == true;
@@ -222,7 +249,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             {
                 if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
                 {
-                    _status.Text = "Set a repository in settings, or turn on the GitHub CLI.";
+                    _SetStatus("No repository set, and the GitHub CLI is off.", needsConfiguration: true);
                     return;
                 }
 
@@ -231,11 +258,11 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
             _PopulateRepoFilter();
             _ApplyFilter();
-            _status.Text = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
+            _SetStatus($"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.");
         }
         catch (Exception exception)
         {
-            _status.Text = $"Could not load issues: {exception.Message}";
+            _SetStatus($"Could not load issues: {exception.Message}");
         }
     }
 
@@ -314,7 +341,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     {
         if (issue is null)
         {
-            _status.Text = "Select an issue first.";
+            _SetStatus("Select an issue first.");
             return;
         }
 
@@ -343,7 +370,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     {
         if (issue is null || string.IsNullOrWhiteSpace(issue.Url))
         {
-            _status.Text = "Select an issue first.";
+            _SetStatus("Select an issue first.");
             return;
         }
 

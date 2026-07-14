@@ -35,7 +35,9 @@ internal sealed class NodeDialog : Border
     private readonly Border _card;
 
     private WorkflowNode? _node;
-    private TextBox? _lastEdited;
+    // The setting a field-chip writes into. A Control, not a TextBox: a field the step can enumerate is a dropdown you
+    // can type in, and {ticket} has to land in that one too.
+    private Control? _lastEdited;
 
     public NodeDialog()
     {
@@ -179,7 +181,7 @@ internal sealed class NodeDialog : Border
             {
                 node.Parameters[parameter] = value ?? string.Empty;
                 Changed?.Invoke(this, EventArgs.Empty);
-            }, referable: true));
+            }, referable: true, suggest: node.Type?.Suggest));
         }
 
         // A step that is switched off stays on the canvas, drawn dimmed, and a run passes it by. Deleting is not the
@@ -369,19 +371,69 @@ internal sealed class NodeDialog : Border
 
     private void _Insert(string reference)
     {
-        if (_lastEdited is not { } box)
+        switch (_lastEdited)
         {
-            return;
-        }
+            case TextBox box:
+            {
+                // At the caret: a reference usually goes into the middle of a sentence ("Work on {ticket}: {summary}").
+                var caret = Math.Clamp(box.CaretIndex, 0, box.Text?.Length ?? 0);
+                box.Text = (box.Text ?? string.Empty).Insert(caret, reference);
+                box.CaretIndex = caret + reference.Length;
+                box.Focus();
+                break;
+            }
 
-        var caret = Math.Clamp(box.CaretIndex, 0, box.Text?.Length ?? 0);
-        box.Text = (box.Text ?? string.Empty).Insert(caret, reference);
-        box.CaretIndex = caret + reference.Length;
-        box.Focus();
+            case AutoCompleteBox picker:
+            {
+                // A dropdown's value is the whole value — "{state}" is what goes in it, not a word inside a sentence.
+                picker.Text = reference;
+                picker.Focus();
+                break;
+            }
+        }
     }
 
-    private Control _Field(string label, string? value, Action<string?> onChanged, bool referable)
+    private Control _Field(
+        string label,
+        string? value,
+        Action<string?> onChanged,
+        bool referable,
+        Func<string, CancellationToken, Task<IReadOnlyList<string>>>? suggest = null)
     {
+        // A field the step can enumerate becomes a dropdown you can still type in: the statuses a board allows, but
+        // also {state} from the step before — a field that will not take an expression is a field that fights the
+        // flow. An AutoCompleteBox is both; a plain ComboBox would be only the first.
+        if (suggest is not null)
+        {
+            var picker = new AutoCompleteBox
+            {
+                Text = value ?? string.Empty,
+                Padding = new Thickness(10, 7),
+                FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
+                MinimumPrefixLength = 0,
+                IsTextCompletionEnabled = false,
+                PlaceholderText = "Choose one, or write an expression",
+            };
+            picker.TextChanged += (_, _) => onChanged(picker.Text);
+
+            if (referable)
+            {
+                picker.GotFocus += (_, _) => _lastEdited = picker;
+            }
+
+            _ = _SuggestAsync(suggest, label, picker);
+
+            return new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = label, FontSize = 11, Opacity = 0.7 },
+                    picker,
+                },
+            };
+        }
+
         var box = new TextBox { Text = value ?? string.Empty, AcceptsReturn = false };
 
         // Written as you type: the flow is saved continuously, so a value that only lands on Enter would be a value
@@ -404,6 +456,24 @@ internal sealed class NodeDialog : Border
                 box,
             },
         };
+    }
+
+    // Asked once, when the step is opened. A failure is silence: a field whose suggestions cannot be fetched (the
+    // token is wrong, the server is down) is still a field you can type in, and an error about it would be an error
+    // about something the operator did not ask for.
+    private static async Task _SuggestAsync(
+        Func<string, CancellationToken, Task<IReadOnlyList<string>>> suggest,
+        string parameter,
+        AutoCompleteBox picker)
+    {
+        try
+        {
+            picker.ItemsSource = await suggest(parameter, CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // Nothing to offer; the box stays a box.
+        }
     }
 
     private static Control _Pane(string title, string? hint, StackPanel body)

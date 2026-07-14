@@ -23,7 +23,8 @@ public sealed record NodeTypeDescriptor(
     IReadOnlyList<string> Outputs,
     IReadOnlyList<string> Parameters,
     IReadOnlyDictionary<string, string>? Sample = null,
-    string? Group = null)
+    string? Group = null,
+    Func<string, CancellationToken, Task<IReadOnlyList<string>>>? Suggest = null)
 {
     /// <summary>
     /// The heading the picker files this under. A cockpit type belongs to one of the fixed categories; a step a

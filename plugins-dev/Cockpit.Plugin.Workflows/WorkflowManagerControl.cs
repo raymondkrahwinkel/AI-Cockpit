@@ -3,8 +3,11 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Cockpit.Plugin.Workflows.Model;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.Workflows;
 
@@ -21,23 +24,45 @@ internal sealed class WorkflowManagerControl : UserControl
 {
     private readonly List<Workflow> _workflows;
     private readonly ICockpitActions _actions;
+    private readonly ICockpitHost _host;
+    private readonly IReadOnlyList<WorkflowTemplate> _templates;
     private readonly Action _save;
     private readonly StackPanel _rows;
 
-    public WorkflowManagerControl(List<Workflow> workflows, ICockpitActions actions, Action save)
+    public WorkflowManagerControl(List<Workflow> workflows, ICockpitHost host, IReadOnlyList<WorkflowTemplate> templates, Action save)
     {
         _workflows = workflows;
-        _actions = actions;
+        _host = host;
+        _actions = host.Actions;
+        _templates = templates;
         _save = save;
 
         _rows = new StackPanel { Spacing = 6 };
 
+        // Three ways to start, each its own button: a blank canvas, a flow the plugins already know how to draw, and
+        // one somebody sent you. They were a menu until the templates outgrew it — a flyout you have to read top to
+        // bottom is a list, and a list of thirty is not a menu.
         var newFlow = new Button { Content = "+ New flow", Classes = { "Accent" } };
-        newFlow.Click += (_, _) => _New();
+        newFlow.Click += (_, _) => _Add(new Workflow { Id = Guid.NewGuid().ToString("n"), Name = $"Flow {_workflows.Count + 1}" }, open: true);
+
+        var fromTemplate = new Button { Content = "From template…", Classes = { "Subtle" }, Margin = new Thickness(0, 0, 6, 0) };
+        ToolTip.SetTip(fromTemplate, "Start from a flow the plugins already know how to draw");
+        fromTemplate.Click += (_, _) => _ = _ShowTemplatesAsync();
+
+        var import = new Button { Content = "Import…", Classes = { "Subtle" }, Margin = new Thickness(0, 0, 6, 0) };
+        ToolTip.SetTip(import, "Open a flow somebody exported — it arrives switched off, for you to read before you arm it");
+        import.Click += async (_, _) => await _ImportAsync();
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children = { import, fromTemplate, newFlow },
+        };
 
         var header = new DockPanel { Margin = new Thickness(0, 0, 0, 14) };
-        DockPanel.SetDock(newFlow, Dock.Right);
-        header.Children.Add(newFlow);
+        DockPanel.SetDock(actions, Dock.Right);
+        header.Children.Add(actions);
         header.Children.Add(new StackPanel
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -99,6 +124,10 @@ internal sealed class WorkflowManagerControl : UserControl
         var duplicate = new Button { Content = "Duplicate", Classes = { "Compact", "Subtle" } };
         duplicate.Click += (_, _) => _Duplicate(workflow);
 
+        var export = new Button { Content = "Export", Classes = { "Compact", "Subtle" } };
+        ToolTip.SetTip(export, "Write this flow to a file — how you share one, and how a template is made");
+        export.Click += async (_, _) => await _ExportAsync(workflow);
+
         var delete = new Button { Content = "Delete", Classes = { "Compact", "Subtle" } };
         delete.Click += async (_, _) => await _DeleteAsync(workflow);
 
@@ -131,7 +160,7 @@ internal sealed class WorkflowManagerControl : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { active, open, duplicate, delete },
+            Children = { active, open, duplicate, export, delete },
         };
 
         var row = new DockPanel();
@@ -158,60 +187,135 @@ internal sealed class WorkflowManagerControl : UserControl
         };
     }
 
-    private void _New()
-    {
-        var workflow = new Workflow
-        {
-            Id = Guid.NewGuid().ToString("n"),
-            Name = $"Flow {_workflows.Count + 1}",
-        };
+    private void _Duplicate(Workflow workflow) => _Add(WorkflowCopy.Of(workflow, $"{workflow.Name} (copy)"), open: false);
 
+    /// <summary>The templates, in a dialog you can search — a menu stops working the moment there are more than a handful.</summary>
+    private async Task _ShowTemplatesAsync()
+    {
+        if (_templates.Count == 0)
+        {
+            _host.ShowToast("No templates yet — they come from the plugins you install, and from flows you export.", PluginToastSeverity.Information);
+            return;
+        }
+
+        await _host.ShowDialogAsync("Start from a template", () =>
+        {
+            var picker = new TemplatePickerControl(_templates);
+            picker.Chosen += (_, template) =>
+            {
+                _FromTemplate(template);
+                _CloseDialog(picker);
+            };
+            picker.ImportRequested += async (_, _) =>
+            {
+                _CloseDialog(picker);
+                await _ImportAsync();
+            };
+
+            return picker;
+        }, 720, 560);
+    }
+
+    // The dialog is the host's, and it owns its window: closing it from the inside means asking the window it is in.
+    private static void _CloseDialog(Control content) =>
+        (TopLevel.GetTopLevel(content) as Window)?.Close();
+
+    private void _FromTemplate(WorkflowTemplate template)
+    {
+        if (WorkflowJson.Read(template.Json) is not { } flow)
+        {
+            _host.ShowToast($"'{template.Name}' could not be read — its plugin wrote a flow this build does not understand.", PluginToastSeverity.Error);
+            return;
+        }
+
+        _Add(WorkflowCopy.Of(flow, template.Name), open: true);
+    }
+
+    /// <summary>Reads a flow somebody sent you. It arrives switched off: a flow you have not read is not one that should already be running.</summary>
+    private async Task _ImportAsync()
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import a flow",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Cockpit flow") { Patterns = ["*.json"] }],
+        });
+
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await files[0].OpenReadAsync();
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+
+            if (WorkflowJson.Read(json) is not { } flow)
+            {
+                _host.ShowToast("That file is not a flow this build can read.", PluginToastSeverity.Error);
+                return;
+            }
+
+            _Add(WorkflowCopy.Of(flow, flow.Name), open: true);
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Could not import that flow: {exception.Message}", PluginToastSeverity.Error);
+        }
+    }
+
+    /// <summary>Writes a flow to a file — the way one is shared, and the same text a plugin ships a template as.</summary>
+    private async Task _ExportAsync(Workflow workflow)
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+
+        var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export this flow",
+            SuggestedFileName = $"{workflow.Name}.json",
+            DefaultExtension = "json",
+            FileTypeChoices = [new FilePickerFileType("Cockpit flow") { Patterns = ["*.json"] }],
+        });
+
+        if (file is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var stream = await file.OpenWriteAsync();
+            await using var writer = new StreamWriter(stream);
+            await writer.WriteAsync(WorkflowJson.Write(workflow));
+
+            _host.ShowToast($"'{workflow.Name}' exported.", PluginToastSeverity.Success);
+        }
+        catch (Exception exception)
+        {
+            _host.ShowToast($"Could not export that flow: {exception.Message}", PluginToastSeverity.Error);
+        }
+    }
+
+    private void _Add(Workflow workflow, bool open)
+    {
         _workflows.Add(workflow);
         _save();
         Refresh();
-        OpenRequested?.Invoke(this, workflow);
-    }
 
-    private void _Duplicate(Workflow workflow)
-    {
-        var copy = new Workflow
+        if (open)
         {
-            Id = Guid.NewGuid().ToString("n"),
-            Name = $"{workflow.Name} (copy)",
-            IsActive = false,
-        };
-
-        // New ids throughout: two flows sharing a step id would be one flow with two names.
-        var idMap = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var node in workflow.Nodes)
-        {
-            var id = Guid.NewGuid().ToString("n");
-            idMap[node.Id] = id;
-            copy.Nodes.Add(new WorkflowNode
-            {
-                Id = id,
-                TypeId = node.TypeId,
-                Name = node.Name,
-                X = node.X,
-                Y = node.Y,
-                IsDisabled = node.IsDisabled,
-                Parameters = new Dictionary<string, string>(node.Parameters),
-            });
+            OpenRequested?.Invoke(this, workflow);
         }
-
-        foreach (var connection in workflow.Connections)
-        {
-            copy.Connections.Add(new WorkflowConnection
-            {
-                FromNodeId = idMap[connection.FromNodeId],
-                FromOutput = connection.FromOutput,
-                ToNodeId = idMap[connection.ToNodeId],
-            });
-        }
-
-        _workflows.Add(copy);
-        _save();
-        Refresh();
     }
 
     private async Task _DeleteAsync(Workflow workflow)

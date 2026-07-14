@@ -20,6 +20,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     private readonly IPluginSessionContext _session;
     private readonly SessionIssueLinks _links;
     private readonly YouTrackSettings _settings;
+    private readonly IssueStateChanges _stateChanges;
     private readonly YouTrackClient _client = new();
 
     private readonly TextBlock _label;
@@ -28,12 +29,13 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
     private YouTrackIssueFields? _fields;
     private int _loadToken;
 
-    public YouTrackSessionHeaderControl(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, YouTrackSettings settings)
+    public YouTrackSessionHeaderControl(ICockpitHost host, IPluginSessionContext session, SessionIssueLinks links, YouTrackSettings settings, IssueStateChanges stateChanges)
     {
         _host = host;
         _session = session;
         _links = links;
         _settings = settings;
+        _stateChanges = stateChanges;
 
         _label = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
         _row = new Button
@@ -215,6 +217,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
         try
         {
             await _client.SetStateAsync(link.Instance.InstanceUrl, link.Instance.Token, link.Issue, state, target, CancellationToken.None);
+            _stateChanges.Moved(link.Instance, link.Issue, state.CurrentValue ?? string.Empty, target, _session.WorkingDirectory);
             await _LoadAsync();
         }
         catch (Exception exception)

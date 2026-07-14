@@ -31,7 +31,8 @@ internal sealed class ContributedStep(IWorkflowStep step) : IStepRunner
         step.Outputs,
         step.Parameters,
         step.Produces.Count > 0 ? step.Produces : null,
-        step.Category.ToUpperInvariant());
+        step.Category.ToUpperInvariant(),
+        step.SuggestAsync);
 
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {

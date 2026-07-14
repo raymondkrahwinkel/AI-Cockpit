@@ -161,8 +161,9 @@ internal sealed class WorkflowNodeControl : Border
 
         // The way out a failure takes. Drawn in the colour of trouble and always last, so a flow's happy path reads
         // straight across and the thing that goes wrong hangs below it. A trigger has none: it cannot fail, it either
-        // fires or it does not.
-        if (node.Kind != WorkflowNodeKind.Trigger)
+        // fires or it does not. And it is off unless the step asks for it — a red pin on every step of every flow is
+        // a decision nobody made, on a canvas that should show the ones they did.
+        if (node.Kind != WorkflowNodeKind.Trigger && node.HasErrorPath)
         {
             var error = _BuildPin(isInput: false, outputIndex: node.ErrorOutput);
             error.Fill = ErrorBrush;

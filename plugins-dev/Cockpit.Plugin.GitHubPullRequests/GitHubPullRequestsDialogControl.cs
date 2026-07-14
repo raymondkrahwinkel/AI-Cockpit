@@ -20,6 +20,7 @@ namespace Cockpit.Plugin.GitHubPullRequests;
 internal sealed class GitHubPullRequestsDialogControl : UserControl
 {
     private readonly GitHubPullRequestsSettings _settings;
+    private readonly ICockpitHost _host;
     private readonly ICockpitActions _actions;
     private readonly GitHubPullRequestsClient _http = new();
     private readonly GitHubPrGhClient _gh = new();
@@ -27,6 +28,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
     private readonly TextBlock _status;
+    private readonly Button _configure;
     private readonly DataGrid _grid;
 
     private readonly TextBlock _detailPlaceholder;
@@ -41,10 +43,11 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
     private IReadOnlyList<GitHubPullRequest> _all = [];
     private string _renderedPrompt = string.Empty;
 
-    public GitHubPullRequestsDialogControl(GitHubPullRequestsSettings settings, ICockpitActions actions)
+    public GitHubPullRequestsDialogControl(GitHubPullRequestsSettings settings, ICockpitHost host)
     {
         _settings = settings;
-        _actions = actions;
+        _host = host;
+        _actions = host.Actions;
 
         // Assigned-to-me narrows the fetch server-side (gh --assignee @me) or client-side against the token
         // user (HTTP), so a toggle re-loads rather than filtering the already-fetched list.
@@ -60,6 +63,17 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         _search.TextChanged += (_, _) => _ApplyFilter();
 
         _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+
+        // The one status this dialog reports that the operator cannot act on from here — so it comes with the way to.
+        _configure = new Button
+        {
+            Content = "Configure GitHub…",
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+            Margin = new Thickness(8, 0, 0, 0),
+            IsVisible = false,
+        };
+        _configure.Click += async (_, _) => await _host.ShowSettingsAsync();
 
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
@@ -182,11 +196,17 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         split.Children.Add(_grid);
         split.Children.Add(detailPanel);
 
+        var statusBar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { _status, _configure },
+        };
+
         var root = new DockPanel { Margin = new Thickness(16) };
         DockPanel.SetDock(topBar, Dock.Top);
-        DockPanel.SetDock(_status, Dock.Bottom);
+        DockPanel.SetDock(statusBar, Dock.Bottom);
         root.Children.Add(topBar);
-        root.Children.Add(_status);
+        root.Children.Add(statusBar);
         root.Children.Add(split);
         Content = root;
 
@@ -195,7 +215,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
 
     private async Task _LoadAsync(bool forceRefresh)
     {
-        _status.Text = "Loading…";
+        _SetStatus("Loading…");
         try
         {
             var assignedToMe = _assignedToMe.IsChecked == true;
@@ -207,7 +227,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             {
                 if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
                 {
-                    _status.Text = "Set a repository in settings, or turn on the GitHub CLI.";
+                    _SetStatus("No repository set, and the GitHub CLI is off.", needsConfiguration: true);
                     return;
                 }
 
@@ -215,12 +235,19 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             }
 
             _ApplyFilter();
-            _status.Text = $"{_all.Count} open pull request(s). Click one for details, or double-click to add it to the prompt.";
+            _SetStatus($"{_all.Count} open pull request(s). Click one for details, or double-click to add it to the prompt.");
         }
         catch (Exception exception)
         {
-            _status.Text = $"Could not load pull requests: {exception.Message}";
+            _SetStatus($"Could not load pull requests: {exception.Message}");
         }
+    }
+
+    /// <summary>The status line, and with it the way into settings when what it reports can only be fixed there.</summary>
+    private void _SetStatus(string text, bool needsConfiguration = false)
+    {
+        _status.Text = text;
+        _configure.IsVisible = needsConfiguration;
     }
 
     private void _ApplyFilter()
@@ -273,7 +300,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
     {
         if (pullRequest is null)
         {
-            _status.Text = "Select a pull request first.";
+            _SetStatus("Select a pull request first.");
             return;
         }
 
@@ -302,7 +329,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
     {
         if (pullRequest is null || string.IsNullOrWhiteSpace(pullRequest.Url))
         {
-            _status.Text = "Select a pull request first.";
+            _SetStatus("Select a pull request first.");
             return;
         }
 

@@ -145,6 +145,17 @@ public static class NodeCatalog
             WorkflowNodeKind.Decision,
             ["true", "false"],
             ["Condition"]),
+        // Its ways out are written into it, not fixed here — see WorkflowNode.Outputs. What stands here is what a
+        // switch has before anyone has named a case: the way out for a value it does not recognise.
+        new(
+            SwitchCases.TypeId,
+            "Switch",
+            "One value, a way out per case. Anything it does not recognise leaves by \"otherwise\".",
+            "⋔",
+            NodeCategory.Flow,
+            WorkflowNodeKind.Decision,
+            [SwitchCases.Otherwise],
+            [SwitchCases.ValueParameter, SwitchCases.CasesParameter]),
         new(
             "cockpit.approve",
             "Ask me first",

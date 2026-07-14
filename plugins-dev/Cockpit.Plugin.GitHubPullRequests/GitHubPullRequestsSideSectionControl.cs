@@ -10,16 +10,24 @@ using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.Plugin.GitHubPullRequests;
 
 /// <summary>
-/// The inline accordion section registered via <see cref="ICockpitHost.AddSideMenuSection"/>, always visible
-/// under the session list: up to the configured max of open pull requests (across all repos in GitHub CLI
-/// mode, or one repo in HTTP mode, optionally filtered to chosen repositories), each a clickable row that
-/// renders the prompt template and injects it into the active session — or, with no active session, copies it
-/// to the clipboard instead — plus a "View all open PRs" button that opens the full
-/// <see cref="GitHubPullRequestsDialogControl"/> dialog.
+/// The inline accordion section registered via <see cref="ICockpitHost.AddSideMenuSection"/>, always visible under the
+/// session list: the open pull requests, each a row that puts the review prompt into the active session (or, with no
+/// session open, on the clipboard), and a link to the full <see cref="GitHubPullRequestsDialogControl"/> dialog.
+/// <para>
+/// Rebuilt from the approved mockup. It used to be two stacked lists — "Review requested" above your own open PRs —
+/// with a heading only on the first, so the two read as one list in which a single row inexplicably had an "Open"
+/// button. Now it is <em>one</em> list: a pull request waiting on you carries an amber stripe and an amber number,
+/// which says the same thing without a second list to say it in. Each row wears its actions only while the pointer is
+/// on it, so a list of things to read stays a list of things to read.
+/// </para>
+/// <para>
+/// A pull request can be <em>ignored</em> (right-click): the long-lived ones that live in a todo somewhere and do not
+/// need to be in front of you every day. Ignoring hides it and says so — the count stays visible and puts them back
+/// with one click, because a thing that disappears with no way back is a thing you stop trusting the list about.
+/// </para>
 /// </summary>
 internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 {
-
     // Auto-refresh so PRs appear/disappear on their own as they are opened, merged or closed (Raymond's ask)
     // without the operator clicking ⟳. A quiet, force-refreshing background poll — its interval is comfortably
     // above the gh client's own 60s cache TTL, and it only runs while the section is on screen.
@@ -38,59 +46,121 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
     private readonly DispatcherTimer _autoRefresh;
     private readonly DispatcherTimer _signalRefresh;
 
+    private readonly TextBlock _counts;
+    private readonly TextBlock _waiting;
+    private readonly Button _ignoredToggle;
     private readonly TextBlock _status;
-    private readonly StackPanel _list;
-    private readonly StackPanel _reviewList;
-    private readonly StackPanel _reviewPanel;
+    private readonly StackPanel _rows;
+
+    // What the last load produced, so ignoring one (or showing the ignored ones) re-renders without re-querying
+    // GitHub: neither is news from GitHub, and a round trip to redraw a list you already have is a stall.
+    private IReadOnlyList<GitHubPullRequest> _loaded = [];
+    private IReadOnlySet<string> _reviewRequested = new HashSet<string>(StringComparer.Ordinal);
+    private bool _showIgnored;
 
     public GitHubPullRequestsSideSectionControl(GitHubPullRequestsSettings settings, ICockpitHost host)
     {
         _settings = settings;
         _host = host;
 
-        _status = new TextBlock { FontSize = 11, Opacity = 0.7, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-        _list = new StackPanel { Spacing = 4, Margin = new Thickness(0, 4, 0, 4) };
-
-        // The pull requests waiting for your review sit apart from (and above) your own open PRs: they are the
-        // ones that are asking something of you. Hidden entirely when there are none, so the section stays quiet.
-        _reviewList = new StackPanel { Spacing = 4 };
-        _reviewPanel = new StackPanel
+        _counts = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextSecondaryBrush") };
+        _waiting = new TextBlock
         {
-            Spacing = 4,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = _Brush("CockpitStatusWaitingBrush"),
             IsVisible = false,
-            Children =
-            {
-                new TextBlock { Text = "Review requested", FontSize = 11, FontWeight = FontWeight.SemiBold },
-                _reviewList,
-            },
         };
 
-        var refresh = new Button { Content = "⟳", FontSize = 11, Padding = new Thickness(6, 2) };
+        // The ignored ones are not gone, they are set aside — and the count is the way back.
+        _ignoredToggle = new Button
+        {
+            Classes = { "Subtle" },
+            FontSize = 11,
+            Padding = new Thickness(4, 1),
+            IsVisible = false,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _ignoredToggle.Click += (_, _) =>
+        {
+            _showIgnored = !_showIgnored;
+            _Render();
+        };
+
+        var refresh = new Button
+        {
+            Content = "⟳",
+            Classes = { "Subtle" },
+            FontSize = 12,
+            Padding = new Thickness(5, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+        ToolTip.SetTip(refresh, "Refresh");
         refresh.Click += async (_, _) => await _LoadAsync(forceRefresh: true);
 
-        var header = new DockPanel();
+        var countsRow = new DockPanel { Margin = new Thickness(2, 0, 0, 2) };
         DockPanel.SetDock(refresh, Dock.Right);
-        header.Children.Add(refresh);
-        header.Children.Add(_status);
+        DockPanel.SetDock(_ignoredToggle, Dock.Right);
+        countsRow.Children.Add(refresh);
+        countsRow.Children.Add(_ignoredToggle);
+        countsRow.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                _counts,
+                new TextBlock { Text = "·", FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Foreground = _Brush("CockpitTextFaintBrush"), IsVisible = false },
+                _waiting,
+            },
+        });
 
+        // The middle dot only earns its place when there is something on both sides of it.
+        var separator = (TextBlock)((StackPanel)countsRow.Children[^1]).Children[1];
+        _waiting.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty)
+            {
+                separator.IsVisible = _waiting.IsVisible;
+            }
+        };
+
+        _rows = new StackPanel { Spacing = 1 };
+
+        _status = new TextBlock
+        {
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+            IsVisible = false,
+        };
+
+        // A quiet link, not a filled accent button: this section is a list, and the button that led away from it was
+        // the loudest thing in it.
         var viewAll = new Button
         {
-            Content = "View all open PRs",
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Center,
-            Classes = { "Accent" },
+            Content = "View all open PRs  →",
+            Classes = { "Subtle" },
+            FontSize = 12,
+            Padding = new Thickness(2, 2),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
         viewAll.Click += (_, _) => _ = _host.ShowDialogAsync(
             "GitHub Pull Requests",
-            () => new GitHubPullRequestsDialogControl(_settings, _host.Actions),
+            () => new GitHubPullRequestsDialogControl(_settings, _host),
             1040,
             700);
 
         Content = new StackPanel
         {
             Margin = new Thickness(4),
-            Spacing = 6,
-            Children = { header, _reviewPanel, _list, viewAll },
+            Spacing = 4,
+            Children = { countsRow, _status, _rows, viewAll },
         };
 
         // Re-fetch with the just-saved settings (owner/repo, token, gh-CLI toggle) instead of leaving this
@@ -142,28 +212,33 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
     private async Task _LoadAsync(bool forceRefresh, bool quiet = false)
     {
-        if (!quiet)
-        {
-            _status.Text = "Loading…";
-        }
-
         try
         {
             IReadOnlyList<GitHubPullRequest> all;
             if (_settings.UseGitHubCli)
             {
-                await _LoadReviewRequestsAsync(forceRefresh);
-                all = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe: false, forceRefresh, CancellationToken.None);
+                var reviewRequested = await _gh.SearchReviewRequestedAsync(forceRefresh, CancellationToken.None);
+                _reviewRequested = reviewRequested.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
+                _AnnounceArrivals(reviewRequested);
+
+                var open = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe: false, forceRefresh, CancellationToken.None);
+
+                // One list: a review request is an open pull request that happens to be waiting on you, and the search
+                // that finds it is a different query — not a different kind of thing. Merged by url so a PR that is
+                // both does not appear twice.
+                all = reviewRequested
+                    .Concat(open.Where(pullRequest => !_reviewRequested.Contains(pullRequest.Url)))
+                    .ToList();
             }
             else
             {
-                // The HTTP mode talks to one repository and has no review-requested search, so the group has
-                // nothing to show there.
-                _reviewPanel.IsVisible = false;
+                // The HTTP mode talks to one repository and has no review-requested search, so nothing is waiting on
+                // you as far as this section can tell.
+                _reviewRequested = new HashSet<string>(StringComparer.Ordinal);
 
                 if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
                 {
-                    _status.Text = "Set a repository in settings, or turn on the GitHub CLI.";
+                    _Say("No repository set, and the GitHub CLI is off — open the settings above.");
                     return;
                 }
 
@@ -172,20 +247,10 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
             // Optional repository filter: when set, keep only PRs in the chosen owner/repo list.
             var filter = _settings.RepoFilterSet;
-            var filtered = filter.Count == 0 ? all : all.Where(pullRequest => filter.Contains(pullRequest.Repository)).ToList();
+            _loaded = filter.Count == 0 ? all : all.Where(pullRequest => filter.Contains(pullRequest.Repository)).ToList();
 
-            var max = _settings.MaxItems;
-            _list.Children.Clear();
-            foreach (var pullRequest in filtered.Take(max))
-            {
-                _list.Children.Add(_BuildRow(pullRequest));
-            }
-
-            _status.Text = filtered.Count switch
-            {
-                0 => "No open pull requests.",
-                _ => $"{Math.Min(filtered.Count, max)} of {filtered.Count} open PR(s) — click to add to the prompt.",
-            };
+            _Say(null);
+            _Render();
         }
         catch (Exception exception)
         {
@@ -193,23 +258,192 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             // explicit (manual/settings) load surfaces it.
             if (!quiet)
             {
-                _status.Text = $"Could not load pull requests: {exception.Message}";
+                _Say($"Could not load pull requests: {exception.Message}");
             }
         }
     }
 
-    private async Task _LoadReviewRequestsAsync(bool forceRefresh)
+    /// <summary>Draws what was last loaded, under the operator's own choices: what is ignored, and whether the ignored are shown.</summary>
+    private void _Render()
     {
-        var reviewRequested = await _gh.SearchReviewRequestedAsync(forceRefresh, CancellationToken.None);
+        var ignored = _settings.IgnoredPullRequests;
+        var showing = _loaded
+            .Where(pullRequest => _showIgnored || !ignored.Contains(pullRequest.Url))
+            .Take(_settings.MaxItems)
+            .ToList();
 
-        _reviewList.Children.Clear();
-        foreach (var pullRequest in reviewRequested)
+        _rows.Children.Clear();
+        foreach (var pullRequest in showing)
         {
-            _reviewList.Children.Add(_BuildReviewRow(pullRequest));
+            _rows.Children.Add(_BuildRow(pullRequest, isIgnored: ignored.Contains(pullRequest.Url)));
         }
 
-        _reviewPanel.IsVisible = reviewRequested.Count > 0;
-        _AnnounceArrivals(reviewRequested);
+        var open = _loaded.Count(pullRequest => !ignored.Contains(pullRequest.Url));
+        var waiting = _loaded.Count(pullRequest => !ignored.Contains(pullRequest.Url) && _reviewRequested.Contains(pullRequest.Url));
+        var ignoredHere = _loaded.Count(pullRequest => ignored.Contains(pullRequest.Url));
+
+        _counts.Text = open == 1 ? "1 open" : $"{open} open";
+        _waiting.Text = waiting == 1 ? "1 waiting on you" : $"{waiting} waiting on you";
+        _waiting.IsVisible = waiting > 0;
+
+        _ignoredToggle.IsVisible = ignoredHere > 0;
+        _ignoredToggle.Content = _showIgnored ? $"{ignoredHere} ignored — hide" : $"{ignoredHere} ignored";
+        ToolTip.SetTip(_ignoredToggle, _showIgnored ? "Hide the pull requests you set aside" : "Show the pull requests you set aside");
+
+        if (_loaded.Count == 0)
+        {
+            _Say("No open pull requests.");
+        }
+        else if (showing.Count == 0)
+        {
+            _Say("Every open pull request is ignored — the count above puts them back.");
+        }
+    }
+
+    // One row: number and title on a line of their own (trimmed, with the whole title on hover), the repository
+    // under it, and the two actions — which appear only while the pointer is on the row.
+    private Control _BuildRow(GitHubPullRequest pullRequest, bool isIgnored)
+    {
+        var isWaiting = _reviewRequested.Contains(pullRequest.Url);
+
+        var number = new TextBlock
+        {
+            Text = $"#{pullRequest.Number}",
+            FontSize = 11,
+            FontFamily = _MonoFont(),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = isWaiting ? _Brush("CockpitStatusWaitingBrush") : _Brush("CockpitTextFaintBrush"),
+        };
+
+        var title = new TextBlock
+        {
+            Text = pullRequest.Title,
+            FontSize = 12,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextDecorations = isIgnored ? TextDecorations.Strikethrough : null,
+        };
+
+        var line = new DockPanel();
+        DockPanel.SetDock(number, Dock.Left);
+        number.Margin = new Thickness(0, 0, 6, 0);
+        line.Children.Add(number);
+        line.Children.Add(title);
+
+        var repository = new TextBlock
+        {
+            Text = isWaiting ? $"{pullRequest.Repository} · waiting on your review" : pullRequest.Repository,
+            FontSize = 10,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = _Brush("CockpitTextFaintBrush"),
+        };
+
+        var addToPrompt = _RowAction("⧉", "Add to the prompt");
+        addToPrompt.Click += async (_, e) =>
+        {
+            e.Handled = true;
+            await _InjectAsync(pullRequest);
+        };
+
+        var openInBrowser = _RowAction("↗", "Open in the browser");
+        openInBrowser.Click += (_, e) =>
+        {
+            e.Handled = true;
+            _OpenInBrowser(pullRequest.Url);
+        };
+
+        // Present but invisible until hovered: a row that grows a pair of buttons under the pointer would push its own
+        // text sideways as you read it.
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 1,
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0,
+            Children = { addToPrompt, openInBrowser },
+        };
+
+        var content = new DockPanel();
+        DockPanel.SetDock(actions, Dock.Right);
+        content.Children.Add(actions);
+        content.Children.Add(new StackPanel { Spacing = 1, Children = { line, repository } });
+
+        var row = new Button
+        {
+            Classes = { "Subtle" },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(7, 5),
+            Opacity = isIgnored ? 0.45 : 1,
+            Content = content,
+        };
+        ToolTip.SetTip(row, pullRequest.Title);
+        row.Click += async (_, _) => await _InjectAsync(pullRequest);
+        row.PointerEntered += (_, _) => actions.Opacity = 1;
+        row.PointerExited += (_, _) => actions.Opacity = 0;
+        row.ContextMenu = _RowMenu(pullRequest, isIgnored);
+
+        // The stripe is what a review request has instead of a list of its own.
+        return new Border
+        {
+            BorderThickness = new Thickness(2, 0, 0, 0),
+            BorderBrush = isWaiting ? _Brush("CockpitStatusWaitingBrush") : Brushes.Transparent,
+            Child = row,
+        };
+    }
+
+    private ContextMenu _RowMenu(GitHubPullRequest pullRequest, bool isIgnored)
+    {
+        var addToPrompt = new MenuItem { Header = "Add to prompt" };
+        addToPrompt.Click += async (_, _) => await _InjectAsync(pullRequest);
+
+        var openInBrowser = new MenuItem { Header = "Open in browser" };
+        openInBrowser.Click += (_, _) => _OpenInBrowser(pullRequest.Url);
+
+        var ignore = new MenuItem { Header = isIgnored ? "Show again" : "Ignore" };
+        ToolTip.SetTip(ignore, isIgnored
+            ? "Put this pull request back in the list"
+            : "Set this one aside — for the ones that stay open and live in a todo somewhere");
+        ignore.Click += (_, _) => _SetIgnored(pullRequest, !isIgnored);
+
+        return new ContextMenu
+        {
+            ItemsSource = new Control[] { addToPrompt, openInBrowser, new Separator(), ignore },
+        };
+    }
+
+    private void _SetIgnored(GitHubPullRequest pullRequest, bool ignored)
+    {
+        var urls = _settings.IgnoredPullRequests.ToHashSet(StringComparer.Ordinal);
+        if (ignored)
+        {
+            urls.Add(pullRequest.Url);
+        }
+        else
+        {
+            urls.Remove(pullRequest.Url);
+        }
+
+        _settings.IgnoredPullRequests = urls;
+
+        // Ignoring the last one you could see while the ignored are hidden would leave an empty list with no
+        // explanation; showing them keeps what just happened on screen.
+        _Render();
+    }
+
+    private static Button _RowAction(string glyph, string tip)
+    {
+        var button = new Button
+        {
+            Content = glyph,
+            Classes = { "Subtle" },
+            FontSize = 11,
+            Padding = new Thickness(5, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        ToolTip.SetTip(button, tip);
+
+        return button;
     }
 
     // A review request that was already waiting when the plugin first looked is not news, so the first load
@@ -226,7 +460,8 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             return;
         }
 
-        foreach (var pullRequest in inbox.Arrived)
+        var ignored = _settings.IgnoredPullRequests;
+        foreach (var pullRequest in inbox.Arrived.Where(pullRequest => !ignored.Contains(pullRequest.Url)))
         {
             _host.ShowToast(
                 $"Review requested — #{pullRequest.Number} {pullRequest.Title} ({pullRequest.Repository})",
@@ -236,55 +471,11 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         }
     }
 
-    // Same click-to-prompt behaviour as the rows below, plus the button you actually want on a review request:
-    // open it in the browser, where you review it.
-    private Control _BuildReviewRow(GitHubPullRequest pullRequest)
+    /// <summary>The one line this section has for what it cannot show: an error, or an empty list. Absent when there is nothing to say.</summary>
+    private void _Say(string? message)
     {
-        var open = new Button
-        {
-            Content = "Open",
-            FontSize = 11,
-            Padding = new Thickness(6, 2),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        open.Click += (_, _) => _OpenInBrowser(pullRequest.Url);
-        ToolTip.SetTip(open, "Open this pull request in the browser");
-
-        var row = new DockPanel();
-        DockPanel.SetDock(open, Dock.Right);
-        row.Children.Add(open);
-        row.Children.Add(_BuildRow(pullRequest));
-
-        return row;
-    }
-
-    private Button _BuildRow(GitHubPullRequest pullRequest)
-    {
-        var button = new Button
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(6, 4),
-            Content = new StackPanel
-            {
-                Children =
-                {
-                    new TextBlock { Text = $"#{pullRequest.Number} {pullRequest.Title}", FontSize = 12, TextWrapping = TextWrapping.Wrap },
-                    new TextBlock { Text = pullRequest.Repository, FontSize = 10, Opacity = 0.6 },
-                },
-            },
-        };
-        button.Click += async (_, _) => await _InjectAsync(pullRequest);
-
-        // Right-click menu: the normal left-click action (add the review prompt), plus opening the PR in the
-        // browser — the two things you most want to do with a PR from here.
-        var addToPrompt = new MenuItem { Header = "Add to prompt" };
-        addToPrompt.Click += async (_, _) => await _InjectAsync(pullRequest);
-        var openInBrowser = new MenuItem { Header = "Open in browser" };
-        openInBrowser.Click += (_, _) => _OpenInBrowser(pullRequest.Url);
-        button.ContextMenu = new ContextMenu { ItemsSource = new[] { addToPrompt, openInBrowser } };
-
-        return button;
+        _status.Text = message ?? string.Empty;
+        _status.IsVisible = !string.IsNullOrEmpty(message);
     }
 
     private void _OpenInBrowser(string? url)
@@ -297,11 +488,10 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-            _status.Text = $"Opened PR in the browser.";
         }
         catch (Exception exception)
         {
-            _status.Text = $"Could not open the browser: {exception.Message}";
+            _host.ShowToast($"Could not open the browser: {exception.Message}", PluginToastSeverity.Error);
         }
     }
 
@@ -315,12 +505,20 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         if (_host.Actions.HasActiveSession)
         {
             await _host.Actions.InjectIntoActiveSessionAsync(prompt);
-            _status.Text = $"✓ Added PR #{pullRequest.Number} to the active session's prompt.";
+            _host.ShowToast($"PR #{pullRequest.Number} added to the session's prompt.", PluginToastSeverity.Success);
         }
         else
         {
             await _host.Actions.SetClipboardTextAsync(prompt);
-            _status.Text = $"✓ No active session — copied PR #{pullRequest.Number}'s prompt to the clipboard.";
+            _host.ShowToast($"No active session — PR #{pullRequest.Number}'s prompt copied to the clipboard.", PluginToastSeverity.Information);
         }
     }
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
+
+    private static FontFamily _MonoFont() =>
+        Application.Current?.TryFindResource("CockpitMonoFont", out var value) == true && value is FontFamily font
+            ? font
+            : FontFamily.Default;
 }

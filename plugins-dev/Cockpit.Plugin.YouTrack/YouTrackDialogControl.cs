@@ -33,6 +33,7 @@ internal sealed class YouTrackDialogControl : UserControl
     private readonly ICockpitHost _host;
     private readonly ICockpitActions _actions;
     private readonly SessionIssueLinks _links;
+    private readonly IssueStateChanges _stateChanges;
     private readonly YouTrackClient _client = new();
     private readonly YouTrackWorkflow _workflow;
 
@@ -42,6 +43,7 @@ internal sealed class YouTrackDialogControl : UserControl
     private readonly CheckBox _assignedToMe;
     private readonly TextBox _search;
     private readonly TextBlock _status;
+    private readonly Button _configure;
     private readonly DataGrid _grid;
 
     private readonly TextBlock _detailPlaceholder;
@@ -69,12 +71,13 @@ internal sealed class YouTrackDialogControl : UserControl
     // and trigger a second, redundant issues fetch before the first one (driven explicitly below) even ran.
     private bool _isSyncingProjectFilter;
 
-    public YouTrackDialogControl(YouTrackSettings settings, ICockpitHost host, SessionIssueLinks links)
+    public YouTrackDialogControl(YouTrackSettings settings, ICockpitHost host, SessionIssueLinks links, IssueStateChanges stateChanges)
     {
         _settings = settings;
         _host = host;
         _actions = host.Actions;
         _links = links;
+        _stateChanges = stateChanges;
         _workflow = new YouTrackWorkflow(_client);
 
         _instanceSelector = new ComboBox
@@ -117,6 +120,18 @@ internal sealed class YouTrackDialogControl : UserControl
         _search.TextChanged += (_, _) => _ApplyFilter();
 
         _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+
+        // Telling someone their instance is unconfigured and leaving them to find the settings themselves is half a
+        // message. It appears beside the status line only when the status is about configuration.
+        _configure = new Button
+        {
+            Content = "Configure YouTrack…",
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+            Margin = new Thickness(8, 0, 0, 0),
+            IsVisible = false,
+        };
+        _configure.Click += async (_, _) => await _host.ShowSettingsAsync();
 
         var refresh = new Button { Content = "Refresh" };
         refresh.Click += async (_, _) => await _LoadIssuesAsync();
@@ -258,11 +273,17 @@ internal sealed class YouTrackDialogControl : UserControl
         split.Children.Add(_grid);
         split.Children.Add(detailPanel);
 
+        var statusBar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { _status, _configure },
+        };
+
         var root = new DockPanel { Margin = new Thickness(16) };
         DockPanel.SetDock(topBar, Dock.Top);
-        DockPanel.SetDock(_status, Dock.Bottom);
+        DockPanel.SetDock(statusBar, Dock.Bottom);
         root.Children.Add(topBar);
-        root.Children.Add(_status);
+        root.Children.Add(statusBar);
         root.Children.Add(split);
         Content = root;
 
@@ -273,12 +294,19 @@ internal sealed class YouTrackDialogControl : UserControl
     {
         if (_settings.Instances.Count == 0)
         {
-            _status.Text = "No YouTrack instances configured — add one in settings.";
+            _SetStatus("No YouTrack instances configured.", needsConfiguration: true);
             return;
         }
 
         // Fires _OnInstanceChangedAsync, which loads that instance's projects and issues.
         _instanceSelector.SelectedIndex = 0;
+    }
+
+    /// <summary>The status line, and with it the way out of the two states it reports that the operator can only fix in settings.</summary>
+    private void _SetStatus(string text, bool needsConfiguration = false)
+    {
+        _status.Text = text;
+        _configure.IsVisible = needsConfiguration;
     }
 
     private async Task _OnInstanceChangedAsync()
@@ -288,7 +316,7 @@ internal sealed class YouTrackDialogControl : UserControl
             return;
         }
 
-        _status.Text = "Loading projects…";
+        _SetStatus("Loading projects…");
         var projects = string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token)
             ? []
             : await _client.GetProjectsAsync(instance.InstanceUrl, instance.Token, CancellationToken.None);
@@ -325,18 +353,24 @@ internal sealed class YouTrackDialogControl : UserControl
     {
         if (_instanceSelector.SelectedItem is not YouTrackInstance instance)
         {
-            _status.Text = _settings.Instances.Count == 0
-                ? "No YouTrack instances configured — add one in settings."
-                : "Select an instance.";
+            if (_settings.Instances.Count == 0)
+            {
+                _SetStatus("No YouTrack instances configured.", needsConfiguration: true);
+            }
+            else
+            {
+                _SetStatus("Select an instance.");
+            }
+
             return;
         }
 
-        _status.Text = "Loading…";
+        _SetStatus("Loading…");
         try
         {
             if (string.IsNullOrWhiteSpace(instance.InstanceUrl) || string.IsNullOrWhiteSpace(instance.Token))
             {
-                _status.Text = $"\"{instance.Label}\" is missing an instance URL or token — check settings.";
+                _SetStatus($"\"{instance.Label}\" is missing an instance URL or token.", needsConfiguration: true);
                 _all = [];
                 _ApplyFilter();
                 return;
@@ -348,11 +382,11 @@ internal sealed class YouTrackDialogControl : UserControl
             _all = await _client.GetOpenIssuesAsync(instance.InstanceUrl, instance.Token, projectTag, extraFilter: null, _assignedToMe.IsChecked == true, MaxResults, CancellationToken.None);
             _PopulateStateFilter();
             _ApplyFilter();
-            _status.Text = $"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.";
+            _SetStatus($"{_all.Count} open issue(s). Click one for details, or double-click to add it to the prompt.");
         }
         catch (Exception exception)
         {
-            _status.Text = $"Could not load issues: {exception.Message}";
+            _SetStatus($"Could not load issues: {exception.Message}");
         }
     }
 
@@ -473,7 +507,9 @@ internal sealed class YouTrackDialogControl : UserControl
         _start.IsEnabled = false;
         try
         {
+            var previous = state.CurrentValue ?? string.Empty;
             _detailStatus.Text = await _workflow.StartAsync(instance, issue, fields, target, CancellationToken.None);
+            _stateChanges.Moved(instance, issue, previous, target, _host.Sessions.ActiveSessionWorkingDirectory);
             _LinkToActiveSession(issue);
             await _LoadIssuesAsync();
         }
@@ -517,6 +553,7 @@ internal sealed class YouTrackDialogControl : UserControl
         try
         {
             await _client.SetStateAsync(instance.InstanceUrl, instance.Token, issue, state, target, CancellationToken.None);
+            _stateChanges.Moved(instance, issue, state.CurrentValue ?? string.Empty, target, _host.Sessions.ActiveSessionWorkingDirectory);
             _detailStatus.Text = $"✓ {issue.IdReadable} → {target}.";
             await _LoadIssuesAsync();
         }
@@ -549,7 +586,7 @@ internal sealed class YouTrackDialogControl : UserControl
     {
         if (issue is null)
         {
-            _status.Text = "Select an issue first.";
+            _SetStatus("Select an issue first.");
             return;
         }
 
@@ -578,7 +615,7 @@ internal sealed class YouTrackDialogControl : UserControl
     {
         if (issue is null || string.IsNullOrWhiteSpace(issue.IdReadable))
         {
-            _status.Text = "Select an issue first.";
+            _SetStatus("Select an issue first.");
             return;
         }
 

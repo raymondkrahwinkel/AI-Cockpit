@@ -29,7 +29,17 @@ internal sealed class WorkflowCanvas : Border
     // read as the same thing.
     private const double PlusDistance = 26;
 
-    private readonly Avalonia.Controls.Canvas _surface = new() { Background = Brushes.Transparent, Width = 4000, Height = 3000 };
+    // Anchored top-left, not centred: a canvas with a fixed size is centred by the layout, which put world (0,0)
+    // some 1500px off the left edge — so "pan 0" looked at empty dots, and a flow laid out at x=80 opened invisible.
+    // With the surface anchored, canvas coordinates and what you see are the same thing.
+    private readonly Avalonia.Controls.Canvas _surface = new()
+    {
+        Background = Brushes.Transparent,
+        Width = 4000,
+        Height = 3000,
+        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+    };
     private readonly ScaleTransform _zoom = new(1, 1);
     private readonly TranslateTransform _pan = new();
 
@@ -50,9 +60,24 @@ internal sealed class WorkflowCanvas : Border
     private bool _isPanning;
     private Point _panOrigin;
 
+    // Fit once, when the canvas first knows how big it is — not on every resize, which would undo a pan the operator
+    // made by dragging the window edge.
+    private bool _fitted;
+
     public WorkflowCanvas(Workflow workflow)
     {
         Workflow = workflow;
+
+        SizeChanged += (_, e) =>
+        {
+            if (_fitted || e.NewSize.Width <= 0 || e.NewSize.Height <= 0)
+            {
+                return;
+            }
+
+            _fitted = true;
+            FitToContent(e.NewSize);
+        };
 
         Background = DotGrid.Brush;
         ClipToBounds = true;
@@ -136,6 +161,14 @@ internal sealed class WorkflowCanvas : Border
         _wires.Clear();
         _decorations.Clear();
 
+        // A step with a wire already drawn from its error pin has an error path, whatever the checkbox says: the flow
+        // says louder than the setting that somebody meant it. This is also what carries the flows drawn before the
+        // pin became a choice — without it their error wires would hang from a pin that is no longer there.
+        foreach (var node in Workflow.Nodes.Where(node => Workflow.HasConnectionFrom(node.Id, node.ErrorOutput)))
+        {
+            node.HasErrorPath = true;
+        }
+
         foreach (var node in Workflow.Nodes)
         {
             _AddControl(node);
@@ -191,6 +224,42 @@ internal sealed class WorkflowCanvas : Border
     {
         _zoom.ScaleX = _zoom.ScaleY = 1;
         _pan.X = _pan.Y = 0;
+        _RefreshPlusButtons();
+    }
+
+    /// <summary>
+    /// Brings the flow into view: everything on the canvas, centred, at a zoom that fits. What a flow opens to has to
+    /// be the flow — a template lays its steps out where its author put them, and the canvas remembered where the last
+    /// flow was panned to, so an imported flow opened on an empty patch of dots with its steps somewhere off-screen.
+    /// A flow with nothing in it simply resets: there is nothing to fit.
+    /// </summary>
+    public void FitToContent(Size viewport)
+    {
+        if (Workflow.Nodes.Count == 0 || viewport.Width <= 0 || viewport.Height <= 0)
+        {
+            ResetView();
+            return;
+        }
+
+        const double margin = 40;
+
+        var left = Workflow.Nodes.Min(node => node.X);
+        var top = Workflow.Nodes.Min(node => node.Y);
+        var right = Workflow.Nodes.Max(node => node.X) + WorkflowNodeControl.CardWidth;
+        var bottom = Workflow.Nodes.Max(node => node.Y) + WorkflowNodeControl.CardHeight;
+
+        var width = right - left + (margin * 2);
+        var height = bottom - top + (margin * 2);
+
+        // Never zoom *in* to fill the window: a flow of two steps blown up to fill a 4K canvas reads as a mistake.
+        var zoom = Math.Clamp(Math.Min(viewport.Width / width, viewport.Height / height), MinZoom, 1);
+        _zoom.ScaleX = _zoom.ScaleY = zoom;
+
+        // The transform scales about the top-left, so the pan is in screen space: where the content's top-left has to
+        // land for the whole of it to sit centred in the viewport.
+        _pan.X = ((viewport.Width - (width * zoom)) / 2) - ((left - margin) * zoom);
+        _pan.Y = ((viewport.Height - (height * zoom)) / 2) - ((top - margin) * zoom);
+
         _RefreshPlusButtons();
     }
 

@@ -28,7 +28,7 @@ internal sealed class WorkflowsDialogControl : UserControl
         _contributed = contributed;
         _workflows = [.. store.Load()];
 
-        _manager = new WorkflowManagerControl(_workflows, host.Actions, _Save);
+        _manager = new WorkflowManagerControl(_workflows, host, host.WorkflowTemplates, _Save);
         _manager.OpenRequested += (_, workflow) => _Open(workflow);
 
         Content = _manager;

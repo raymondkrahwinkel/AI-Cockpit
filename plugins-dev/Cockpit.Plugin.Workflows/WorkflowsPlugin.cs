@@ -20,9 +20,9 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "workflows",
         DisplayName: "Workflows",
-        Version: "0.18.0",
+        Version: "0.20.0",
         Author: "Cockpit",
-        Description: "Draw a flow and run it: a manual trigger, a shell command, a decision, a notification — wired together on a canvas and saved as you draw. A step uses what the steps before it produced ({output}, or {Run a command.output} to reach further back), and a decision's condition is an expression over that same data. Double-click a step to open it: what comes in on the left, its settings in the middle, what it produced on the right. Other plugins can contribute their own steps, so a flow can do whatever they know how to do.");
+        Description: "Draw a flow and run it: a manual trigger, a shell command, a decision (If, or a Switch with a way out per case), a notification — wired together on a canvas and saved as you draw. A step uses what the steps before it produced ({output}, or {Run a command.output} to reach further back), and a decision's condition is an expression over that same data. Double-click a step to open it: what comes in on the left, its settings in the middle, what it produced on the right. Other plugins can contribute their own steps, so a flow can do whatever they know how to do.");
 
     public void ConfigureServices(IServiceCollection services)
     {

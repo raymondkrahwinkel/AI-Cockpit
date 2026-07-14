@@ -77,6 +77,19 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
     }
 
     /// <summary>
+    /// The pull requests the operator has set aside, by url: ones that are open for the long haul and live in a todo
+    /// somewhere, not in this list. Persisted, because a PR you ignored today is one you do not want to be looking at
+    /// tomorrow either — and kept as a list rather than dropped, so ignoring is a thing you can undo.
+    /// </summary>
+    public IReadOnlySet<string> IgnoredPullRequests
+    {
+        get => storage.Get<string>("ignoredPullRequests") is { } stored
+            ? stored.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        set => storage.Set("ignoredPullRequests", string.Join('\n', value));
+    }
+
+    /// <summary>
     /// Optional repository filter — one <c>owner/repo</c> per line (or comma-separated). When set, only pull
     /// requests in those repositories are shown; blank means all repositories (the default).
     /// </summary>

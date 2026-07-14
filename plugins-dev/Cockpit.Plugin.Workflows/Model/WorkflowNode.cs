@@ -41,6 +41,17 @@ public sealed class WorkflowNode
     public bool ContinueOnError { get; set; }
 
     /// <summary>
+    /// Whether this step shows a way out for failure. Off by default: most steps in most flows have no error path, and
+    /// a red pin on every one of them is a canvas full of a decision nobody made. Switch it on for the steps whose
+    /// failure you actually want to handle, and the red pin appears to wire.
+    /// <para>
+    /// A step that already has a wire from its error pin keeps showing it whatever this says — the flow says louder
+    /// than the checkbox that somebody meant it.
+    /// </para>
+    /// </summary>
+    public bool HasErrorPath { get; set; }
+
+    /// <summary>
     /// The way out a step takes when it fails — one past its ordinary ones, so it never collides with a decision's
     /// branches. Wire it and a failure has somewhere to go: tell Slack, move the ticket back, try something else.
     /// Unwired, a failure stops that branch, which is what it should do when nobody said otherwise.
@@ -48,12 +59,30 @@ public sealed class WorkflowNode
     [JsonIgnore]
     public int ErrorOutput => Outputs.Count;
 
-    /// <summary>The type, or null when the flow refers to a type this build does not have (an uninstalled plugin's node) — which is shown as such rather than crashing the canvas.</summary>
+    /// <summary>
+    /// The type, or null when the flow refers to a type this build does not have (an uninstalled plugin's node) — which
+    /// is shown as such rather than crashing the canvas.
+    /// <para>
+    /// Never written to the file: it is looked up from <see cref="TypeId"/>, so storing it would be storing the same
+    /// thing twice — and a stale copy of it at that. It cannot be written either, since a type can carry a function
+    /// (what a field's values are), and saving a flow with one in it threw.
+    /// </para>
+    /// </summary>
+    [JsonIgnore]
     public NodeTypeDescriptor? Type => NodeCatalog.Find(TypeId);
 
+    [JsonIgnore]
     public WorkflowNodeKind Kind => Type?.Kind ?? WorkflowNodeKind.Action;
 
+    [JsonIgnore]
     public bool HasInput => Type?.HasInput ?? true;
 
-    public IReadOnlyList<string> Outputs => Type?.Outputs ?? [""];
+    /// <summary>
+    /// What this step's ways out are called. Fixed by the type for every node but one: a switch's pins are the cases
+    /// the operator wrote into it (see <see cref="SwitchCases"/>), so they are read from this node's own parameters.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> Outputs => TypeId == SwitchCases.TypeId
+        ? SwitchCases.Outputs(Parameters)
+        : Type?.Outputs ?? [""];
 }

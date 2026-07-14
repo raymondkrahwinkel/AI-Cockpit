@@ -1,7 +1,7 @@
 {
   "id": "github-pull-requests",
   "name": "GitHub Pull Requests",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "entryAssembly": "Cockpit.Plugin.GitHubPullRequests.dll",
   "entryType": "Cockpit.Plugin.GitHubPullRequests.GitHubPullRequestsPlugin",
   "abstractionsVersion": 1,
