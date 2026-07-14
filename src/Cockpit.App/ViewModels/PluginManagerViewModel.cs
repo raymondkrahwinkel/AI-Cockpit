@@ -199,7 +199,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         var result = await _installer.InstallFromZipAsync(zipPath, AbstractionsContract.Version);
-        await _AfterInstallAsync(result, "Plugin installed. Restart the cockpit to activate it.");
+        await _AfterInstallAsync(result, "Plugin installed. Restart AI-Cockpit to activate it.");
     }
 
     [RelayCommand]
@@ -220,7 +220,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         await _registrationStore.SaveAsync(row.FolderId, new PluginRegistration(Enabled: true, PinnedSha256: row.Discovered.Sha256));
         await LoadAsync();
-        StatusMessage = $"'{row.DisplayName}' enabled. Restart the cockpit to load it.";
+        StatusMessage = $"'{row.DisplayName}' enabled. Restart AI-Cockpit to load it.";
         NeedsRestart = true;
     }
 
@@ -306,7 +306,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         await _registrationStore.SaveAsync(row.FolderId, new PluginRegistration(Enabled: false, PinnedSha256: row.Discovered.Sha256));
         await LoadAsync();
-        StatusMessage = $"'{row.DisplayName}' disabled. Restart the cockpit to unload it.";
+        StatusMessage = $"'{row.DisplayName}' disabled. Restart AI-Cockpit to unload it.";
         NeedsRestart = true;
     }
 
@@ -488,7 +488,7 @@ public partial class PluginManagerViewModel : ViewModelBase
             // Templates are read into the editor's picker at startup, so this one is there next time — said plainly
             // rather than left for the operator to wonder why the flow they just installed is not in the list.
             NeedsRestart = true;
-            StatusMessage = $"'{row.Name}' installed. Restart the cockpit and it is in the flow editor's templates.";
+            StatusMessage = $"'{row.Name}' installed. Restart AI-Cockpit and it is in the flow editor's templates.";
         }
         finally
         {
@@ -586,7 +586,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
             await BrowseStoresAsync();
             StatusMessage = updated == updates.Count
-                ? $"Updated {updated} plugin(s). Restart the cockpit to activate."
+                ? $"Updated {updated} plugin(s). Restart AI-Cockpit to activate."
                 : $"Updated {updated} of {updates.Count} plugin(s); the rest failed — see the message above. Restart to activate.";
             NeedsRestart = updated > 0;
         }
@@ -678,7 +678,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         try
         {
             var result = await _installer!.InstallFromZipAsync(download.ZipPath, AbstractionsContract.Version);
-            await _AfterInstallAsync(result, $"'{row.Name}' installed. Restart the cockpit to activate it.");
+            await _AfterInstallAsync(result, $"'{row.Name}' installed. Restart AI-Cockpit to activate it.");
 
             // A staged update is live only after restart, so remember the version it now effectively is, so the
             // store stops offering the same update (and drops it out of the updates list) until the restart.

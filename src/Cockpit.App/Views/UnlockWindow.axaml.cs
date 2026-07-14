@@ -15,7 +15,7 @@ public partial class UnlockWindow : Window
     public UnlockWindow()
     {
         InitializeComponent();
-        CockpitWindowChrome.Apply(this, "Cockpit");
+        CockpitWindowChrome.Apply(this, "AI-Cockpit");
 
         // The password box is what the operator came here to type.
         Opened += (_, _) => this.FindControl<TextBox>("PasswordBox")?.Focus();

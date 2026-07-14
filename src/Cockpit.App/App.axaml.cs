@@ -221,7 +221,7 @@ public partial class App : Application
             });
     }
 
-    /// <summary>Restores and focuses the main window (tray left-click / "Show cockpit").</summary>
+    /// <summary>Restores and focuses the main window (tray left-click / "Show AI-Cockpit").</summary>
     public void ShowMainWindow()
     {
         if (_mainWindow is null)
@@ -247,7 +247,7 @@ public partial class App : Application
     // the tray is just a quick Show/Quit affordance and closing quits as usual.
     private void _SetUpTrayIcon()
     {
-        var showItem = new NativeMenuItem("Show cockpit");
+        var showItem = new NativeMenuItem("Show AI-Cockpit");
         showItem.Click += (_, _) => ShowMainWindow();
         var quitItem = new NativeMenuItem("Quit");
         quitItem.Click += (_, _) => RequestQuit();

@@ -54,7 +54,7 @@ public partial class OptionsDialog : Window
         {
             DataContext = new PasswordDialogViewModel(
                 "Encrypt your credentials",
-                "Your API keys and tokens are encrypted in cockpit.json, and the cockpit asks for this password "
+                "Your API keys and tokens are encrypted in cockpit.json, and AI-Cockpit asks for this password "
                 + "every time it starts.\n\n"
                 + "If you forget it, nobody can decrypt them — not you, not us. The only way back is to clear the "
                 + "credentials and type them in again; your profiles, sessions, layout and shortcuts survive that. "
@@ -79,7 +79,7 @@ public partial class OptionsDialog : Window
         {
             DataContext = new ConfirmationDialogViewModel(
                 "Turn off encryption",
-                "Your API keys and tokens go back to being readable in cockpit.json, and the cockpit will start "
+                "Your API keys and tokens go back to being readable in cockpit.json, and AI-Cockpit will start "
                 + "without asking for a password. Nothing is lost — this is the exact reverse of turning it on.",
                 "Turn it off"),
         };
@@ -133,7 +133,7 @@ public partial class OptionsDialog : Window
 
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Back up this cockpit",
+            Title = "Back up AI-Cockpit",
             SuggestedFileName = $"cockpit-backup-{DateTime.Now:yyyy-MM-dd}.zip",
             DefaultExtension = "zip",
             FileTypeChoices = [new FilePickerFileType("Cockpit backup") { Patterns = ["*.zip"] }],

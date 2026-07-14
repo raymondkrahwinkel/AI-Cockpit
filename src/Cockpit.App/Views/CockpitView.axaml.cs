@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Layout;
 using Exclr8.Terminal;
 
 namespace Cockpit.App.Views;
@@ -26,6 +27,9 @@ public partial class CockpitView : UserControl
     // Often enough that the number means something while you watch an agent work, rarely enough that reading the
     // process table is not itself the thing burning the CPU.
     private static readonly TimeSpan ResourceSampleInterval = TimeSpan.FromSeconds(2);
+
+    // Width of the collapsed sidebar rail — just enough for the expand chevron and a compact New session.
+    private const double CollapsedRailWidth = 40;
 
     private INotifyCollectionChanged? _observedSideSections;
     private INotifyCollectionChanged? _observedSideButtons;
@@ -120,7 +124,7 @@ public partial class CockpitView : UserControl
     // so this only fires for external changes, not its own drag.
     private void OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CockpitViewModel.SidebarWidth))
+        if (e.PropertyName is nameof(CockpitViewModel.SidebarWidth) or nameof(CockpitViewModel.SidebarCollapsed))
         {
             _ApplySidebarWidth();
         }
@@ -139,7 +143,14 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        _SidebarColumn().Width = new GridLength(cockpit.SidebarWidth);
+        // Collapsed: the sidebar column shrinks to the slim rail (which holds the expand chevron) and the
+        // splitter gives up its grip. The column's own MinWidth (the splitter's drag floor) must be lifted
+        // first, or it would refuse to shrink below the sidebar's minimum. Expanded: both are restored.
+        var collapsed = cockpit.SidebarCollapsed;
+        var column = _SidebarColumn();
+        column.MinWidth = collapsed ? 0 : LayoutSettings.MinSidebarWidth;
+        column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
+        RootGrid.ColumnDefinitions[1].Width = new GridLength(collapsed ? 0 : 4);
     }
 
     // The GridSplitter already clamps the drag itself (the column's MinWidth/MaxWidth), so the settled

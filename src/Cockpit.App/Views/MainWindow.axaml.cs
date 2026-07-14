@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        CockpitWindowChrome.Apply(this, "Cockpit", includeMinimize: true, includeMaximize: true, closeOnEscape: false);
+        CockpitWindowChrome.Apply(this, "AI-Cockpit", includeMinimize: true, includeMaximize: true, closeOnEscape: false);
 
         Activated += (_, _) => _SetWindowActive(true);
         Deactivated += (_, _) => _SetWindowActive(false);

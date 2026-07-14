@@ -63,7 +63,7 @@
     </UserControl.Styles>
 
     <Grid x:Name="RootGrid">
-        <!-- One row for the cockpit, one for the status bar (#78). Everything that was here before stays in
+        <!-- One row for AI-Cockpit, one for the status bar (#78). Everything that was here before stays in
              row 0 by default, so adding the bar did not have to touch a single existing panel. -->
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
@@ -84,17 +84,22 @@
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor. -->
         <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+                IsVisible="{Binding !SidebarCollapsed}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8">
 
                 <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+                    <!-- Collapse the sidebar out of the way; a matching » button appears over the content to bring it back. -->
+                    <Button Content="«" HorizontalAlignment="Right" Padding="8,2" Classes="Subtle"
+                            Command="{Binding ToggleSidebarCommand}"
+                            ToolTip.Tip="Collapse the sidebar"/>
                     <!-- SDK vs TTY is chosen inside the New-session dialog (#32) — one button covers both. -->
                     <Button Content="+ New session" Command="{Binding NewSessionCommand}"
                             Classes="Accent" HorizontalAlignment="Stretch"/>
                 </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
-                     primary session overview per the cockpit's design goal (sidebar = sessions, not tools). -->
+                     primary session overview per AI-Cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
                     <!-- Runtime open-mic toggle: listens continuously and types into the selected session.
@@ -232,9 +237,25 @@
             </DockPanel>
         </Border>
 
+        <!-- Collapsed rail: a slim strip in the sidebar's own column (so it never overlaps the session
+             content) with the expand chevron and a compact New session. Shown only while collapsed. -->
+        <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+                IsVisible="{Binding SidebarCollapsed}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+            <StackPanel Margin="4,8" Spacing="6" HorizontalAlignment="Center">
+                <Button Content="»" Classes="Subtle" Padding="6,2"
+                        Command="{Binding ToggleSidebarCommand}"
+                        ToolTip.Tip="Expand the sidebar"/>
+                <Button Content="+" Classes="Accent" Padding="7,2"
+                        Command="{Binding NewSessionCommand}"
+                        ToolTip.Tip="New session"/>
+            </StackPanel>
+        </Border>
+
         <!-- Sidebar-width splitter (#49): drags SidebarColumn between its min/max, then
              OnSidebarSplitterDragCompleted reads the settled width back and persists it. -->
         <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
+                      IsVisible="{Binding !SidebarCollapsed}"
                       DragCompleted="OnSidebarSplitterDragCompleted"/>
 
         <!-- Main area: empty-state welcome until a session exists (#31), then the grid/zoom. -->
@@ -422,10 +443,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- The local model servers (#78). They run beside the cockpit rather than under it — one Ollama serves
+                <!-- The local model servers (#78). They run beside AI-Cockpit rather than under it — one Ollama serves
                      every session — so they are shown apart from the total above rather than folded into it: a model
                      can weigh more than the whole app, and putting it in a figure the operator reads as "what the
-                     cockpit costs" would be a lie. -->
+                     AI-Cockpit costs" would be a lie. -->
                 <StackPanel Spacing="10" IsVisible="{Binding HasModelServers}">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
 
@@ -464,14 +485,14 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <TextBlock Text="Runs beside the cockpit, not under it: one server answers every session, so this is not part of the total above."
+                    <TextBlock Text="Runs beside AI-Cockpit, not under it: one server answers every session, so this is not part of the total above."
                                FontSize="10.5" TextWrapping="Wrap"
                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
                 </StackPanel>
             </StackPanel>
         </Border>
 
-        <!-- Status bar (#78): what the cockpit is using right now. The total is the cockpit's own process tree,
+        <!-- Status bar (#78): what AI-Cockpit is using right now. The total is AI-Cockpit's own process tree,
              so it already contains every session it spawned; the figures open the breakdown per session. -->
         <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -489,7 +510,7 @@
                         Classes="statusMeter"
                         Padding="8,2"
                         Command="{Binding ToggleResourcePanelCommand}"
-                        ToolTip.Tip="What the cockpit and its sessions are using — click for the breakdown per session">
+                        ToolTip.Tip="What AI-Cockpit and its sessions are using — click for the breakdown per session">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
                         <TextBlock Text="{Binding ResourceCpu}"
                                    FontSize="11"
