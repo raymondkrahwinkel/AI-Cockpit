@@ -39,28 +39,50 @@ jobs:
         shell: bash
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # Self-contained: the operator should not have to install a .NET runtime to run a desktop app.
+      # Self-contained: the operator should not have to install a .NET runtime to run a desktop app. Windows is a
+      # single file — the .exe you download, double-click, and later overwrite to update — with the bundled plugins
+      # embedded in it rather than in a folder beside it. Not trimmed: trimming is what breaks Avalonia's
+      # reflection-driven XAML loading; single-file does not.
       - name: Publish
         shell: bash
         run: |
+          single_file=false
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            single_file=true
+          fi
+
           dotnet publish src/Cockpit.App/Cockpit.App.csproj \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained true \
+            -p:PublishSingleFile=$single_file \
+            -p:IncludeNativeLibrariesForSelfExtract=$single_file \
             -p:Version=${{ steps.version.outputs.version }} \
-            -p:PublishSingleFile=false \
             --output publish/${{ matrix.rid }}
 
+      # One artifact per platform, and it is the thing you run: an .exe, a .app, an AppImage. The Linux tarball
+      # rides along as well, because unpacking a directory on a server is a real use.
       - name: Package
         shell: bash
         run: |
           mkdir -p artifacts
-          cd publish/${{ matrix.rid }}
-          if [ "${{ matrix.rid }}" = "win-x64" ]; then
-            7z a -tzip "../../artifacts/ai-cockpit-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip" .
-          else
-            tar -czf "../../artifacts/ai-cockpit-${{ steps.version.outputs.version }}-${{ matrix.rid }}.tar.gz" .
-          fi
+          version="${{ steps.version.outputs.version }}"
+          case "${{ matrix.rid }}" in
+            win-x64)
+              cp publish/win-x64/Cockpit.App.exe "artifacts/ai-cockpit-$version-win-x64.exe"
+              ;;
+            osx-arm64)
+              scripts/package-macos.sh arm64 "$version"
+              # ditto, not zip: it keeps the bundle's symlinks and permissions, and a .app that lost its executable
+              # bit is a .app that will not open.
+              ditto -c -k --sequesterRsrc --keepParent \
+                artifacts/macos/AI-Cockpit.app "artifacts/ai-cockpit-$version-macos-arm64.app.zip"
+              rm -rf artifacts/macos
+              ;;
+            linux-x64)
+              tar -czf "artifacts/ai-cockpit-$version-linux-x64.tar.gz" -C publish/linux-x64 .
+              ;;
+          esac
 
       # The AppImage rides alongside the tarball, as it does in the nightly — a release that offered less than a
       # nightly would be a strange thing to ask anyone to upgrade to.

@@ -39,8 +39,10 @@ echo "Publishing $runtime (version $version)…"
 rm -rf "$app"
 mkdir -p "$contents/MacOS" "$contents/Resources"
 
-# Self-contained so the target machine needs no .NET install. Not single-file and not trimmed: both break
-# Avalonia's native libraries and reflection-driven XAML loading.
+# Self-contained so the target machine needs no .NET install. Not single-file (a .app is a directory anyway, so
+# folding the payload into one file buys nothing here) and not trimmed — trimming is the one that actually breaks
+# Avalonia, whose XAML loading is reflection-driven. Single-file does work, with
+# IncludeNativeLibrariesForSelfExtract; the Windows build is exactly that.
 dotnet publish "$project" \
     --configuration Release \
     --runtime "$runtime" \

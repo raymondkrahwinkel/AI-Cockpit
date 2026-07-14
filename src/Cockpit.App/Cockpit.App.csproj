@@ -79,6 +79,37 @@
                       SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
+  <!-- A single-file build is one file, so the bundled plugins ride inside it: the same dll/deps/plugin.json are
+       embedded as resources under their folder names, and BundledPluginResources unpacks them at startup. Only for
+       single-file — a normal build keeps its folder, which is what a developer edits and rebuilds.
+
+       The plugins are project references, so they are built before this project compiles; the item is added in a
+       target rather than at the top level because at evaluation time those files do not exist yet on a clean
+       checkout, and MSBuild refuses an EmbeddedResource pointing at nothing. -->
+  <Target Name="EmbedBundledPlugins" BeforeTargets="PrepareForBuild" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.dll">
+        <LogicalName>bundled-plugins/transcript-search/Cockpit.Plugin.TranscriptSearch.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.deps.json">
+        <LogicalName>bundled-plugins/transcript-search/Cockpit.Plugin.TranscriptSearch.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\plugin.json">
+        <LogicalName>bundled-plugins/transcript-search/plugin.json</LogicalName>
+      </EmbeddedResource>
+
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.dll">
+        <LogicalName>bundled-plugins/git-status/Cockpit.Plugin.GitStatus.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.deps.json">
+        <LogicalName>bundled-plugins/git-status/Cockpit.Plugin.GitStatus.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\plugin.json">
+        <LogicalName>bundled-plugins/git-status/plugin.json</LogicalName>
+      </EmbeddedResource>
+    </ItemGroup>
+  </Target>
+
   <Target Name="CopyBundledPlugins" AfterTargets="Build;Publish">
     <ItemGroup>
       <TranscriptSearchFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.TranscriptSearch\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.TranscriptSearch.dll;

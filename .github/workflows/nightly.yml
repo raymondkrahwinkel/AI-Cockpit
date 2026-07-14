@@ -92,27 +92,56 @@ jobs:
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       # Self-contained: nobody should have to install a .NET runtime to try a nightly.
+      #
+      # Windows publishes as a single file — one .exe you download and double-click, and the same one file you
+      # overwrite to update. The bundled plugins are embedded in it (EmbedBundledPlugins in Cockpit.App.csproj)
+      # rather than sitting in a folder beside it, or "one file" would be a lie. Not trimmed: trimming is what
+      # actually breaks Avalonia's reflection-driven XAML loading — single-file does not, with
+      # IncludeNativeLibrariesForSelfExtract.
+      #
+      # Linux and macOS stay a directory publish, because their one-file forms are built from it: the AppImage
+      # wraps it, and a .app bundle is a directory by definition.
       - name: Publish
         shell: bash
         run: |
+          single_file=false
+          if [ "${{ matrix.rid }}" = "win-x64" ]; then
+            single_file=true
+          fi
+
           dotnet publish src/Cockpit.App/Cockpit.App.csproj \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained true \
+            -p:PublishSingleFile=$single_file \
+            -p:IncludeNativeLibrariesForSelfExtract=$single_file \
             -p:Version=${{ steps.version.outputs.version }} \
             -p:SourceRevisionId=${{ steps.version.outputs.sha }} \
             --output publish/${{ matrix.rid }}
 
+      # One thing per platform, and it is the thing you actually run: an .exe on Windows, a .app on macOS, an
+      # AppImage on Linux (below). The tarball rides along for Linux only, where unpacking a directory on a
+      # server is a real use — a zip of loose DLLs is not something anybody wants to be handed.
       - name: Package
         shell: bash
         run: |
           mkdir -p artifacts
-          cd publish/${{ matrix.rid }}
-          if [ "${{ matrix.rid }}" = "win-x64" ]; then
-            7z a -tzip "../../artifacts/ai-cockpit-nightly-${{ matrix.rid }}.zip" .
-          else
-            tar -czf "../../artifacts/ai-cockpit-nightly-${{ matrix.rid }}.tar.gz" .
-          fi
+          case "${{ matrix.rid }}" in
+            win-x64)
+              cp publish/win-x64/Cockpit.App.exe "artifacts/ai-cockpit-nightly-win-x64.exe"
+              ;;
+            osx-arm64)
+              scripts/package-macos.sh arm64 "${{ steps.version.outputs.version }}"
+              # Zipped with ditto: it keeps the bundle's symlinks and permissions, which a plain zip flattens —
+              # and a .app whose executable bit was lost is a .app that will not open.
+              ditto -c -k --sequesterRsrc --keepParent \
+                artifacts/macos/AI-Cockpit.app "artifacts/ai-cockpit-nightly-macos-arm64.app.zip"
+              rm -rf artifacts/macos
+              ;;
+            linux-x64)
+              tar -czf "artifacts/ai-cockpit-nightly-linux-x64.tar.gz" -C publish/linux-x64 .
+              ;;
+          esac
 
       # An AppImage as well as the tarball, and not instead of it: the tarball is what you unpack on a server or
       # feed to a package build, the AppImage is what a person double-clicks. Built from the publish that already

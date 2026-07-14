@@ -167,10 +167,21 @@ one file, alongside `plugins/`, `logs/` and the previous version of the config (
 Each **Claude** profile can point at its own **`CLAUDE_CONFIG_DIR`** (e.g. a work vs. a personal account), so two
 sessions can run under two different logins at the same time.
 
+Every nightly and release ships **one thing per platform, and it is the thing you run** — no unpacking a zip of
+loose DLLs and hunting for the executable:
+
+| Platform | Download | Update |
+|---|---|---|
+| **Windows** | `ai-cockpit-*-win-x64.exe` — a single self-contained file | Overwrite the .exe |
+| **macOS** | `ai-cockpit-*-macos-arm64.app.zip` — a real `.app` bundle | Replace the .app |
+| **Linux** | `ai-cockpit-*-x86_64.AppImage` — one file, or the tarball for a server | Overwrite the AppImage |
+
+None of them need a .NET runtime installed, and none of them need an installer. Your settings live in
+`cockpit.json` (see below), not next to the binary, so replacing the binary keeps everything.
+
 ### Linux
 
-Every nightly and release ships an **AppImage** next to the tarball: one file, no install, no runtime to
-install first. Make it executable and run it.
+The **AppImage** is one file: make it executable and run it.
 
 ```
 chmod +x AI-Cockpit-*-x86_64.AppImage

@@ -36,8 +36,9 @@ executable="${1:-}"
 if [ -z "$executable" ]; then
     output="$repo_root/artifacts/linux"
     echo "Publishing to $output…"
-    # Self-contained so the machine needs no .NET install. Not single-file and not trimmed: both break
-    # Avalonia's native libraries and reflection-driven XAML loading (same reasoning as package-macos.sh).
+    # Self-contained so the machine needs no .NET install. Not trimmed: trimming breaks Avalonia's
+    # reflection-driven XAML loading. (Single-file does work — the AppImage and the Windows exe are built that
+    # way — but a desktop install points at a directory anyway, so there is nothing to fold.)
     dotnet publish "$project" \
         --configuration Release \
         --runtime linux-x64 \

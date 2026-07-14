@@ -45,7 +45,16 @@ public sealed class BundledPluginInstaller : ISingletonService
     {
         if (!Directory.Exists(bundledRoot))
         {
-            return [];
+            // A single-file build has no folder beside it — it is one file, which is the point. The plugins ride
+            // inside the executable instead, and are unpacked here on the way past.
+            if (BundledPluginResources.TryExtract() is { } extracted)
+            {
+                bundledRoot = extracted;
+            }
+            else
+            {
+                return [];
+            }
         }
 
         var saved = await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
