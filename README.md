@@ -10,8 +10,9 @@ or a provider added by a plugin: they all run as panes in the same cockpit.
 
 ![The cockpit running a session: a streaming transcript with markdown, collapsible tool calls and a permission prompt, with the other sessions in the sidebar](docs/images/cockpit-session.png)
 
-> **Status: pre-1.0, in active development.** Expect breaking changes between commits; there are no releases
-> yet. Built and tested on Windows and Linux (Fedora).
+> **Status: 0.3.0, pre-1.0, in active development.** Expect breaking changes between commits; there are no
+> releases yet. Deliberately still 0.x: under 1.0 semver promises nothing, which is the honest state of a thing
+> whose plugin contract is still moving. Built and tested on Windows and Linux (Fedora).
 
 ## Why
 
@@ -124,7 +125,30 @@ other provider, since only the Claude CLI has an interactive TUI):
   contribute. Clearing a gesture unbinds it.
 - **Notifications:** an OS toast when you're at the machine, or a **Discord webhook** when you're away (presence from
   idle time + lock state) — fired when a session starts needing attention.
+- **What a session is spending:** a TTY session's header shows how full its context window is and how much of the
+  five-hour and weekly allowance is gone — three small bars that turn amber past 60% and red past 85%. The numbers
+  come from Claude's own statusline, which is the only place the allowances are readable at all; a statusline you
+  already configured keeps running underneath.
 - **Transcript search** across sessions, an **About** dialog, and minimize-to-tray on close.
+
+## Security
+
+Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`. What the cockpit does about that:
+
+- **Owner-only files.** `cockpit.json` and everything beside it is written `0600`, in a `0700` directory. Nothing
+  credential-bearing is left where the umask puts it.
+- **Encryption at rest, optional.** Options → Security encrypts every credential in the file (AES-256-GCM) with a
+  key derived from a password you set. The cockpit then asks for it at startup. Nothing about that password is
+  stored anywhere — which is what makes the file worthless to whoever copies it, and what makes forgetting it
+  final. Turning it off is the exact reverse; there is a way back in that clears the credentials and keeps
+  everything else.
+- **Nothing half-written.** Every save is written whole and renamed into place, keeping the previous version as
+  `.bak` — a crash cannot leave you with half a config, and an unreadable one is recovered rather than started
+  over empty.
+- **Where the boundary actually is.** This protects the *file*, not a running cockpit: while it is unlocked the
+  credentials are in memory and are handed to the sessions and tool servers that need them, and a plugin you
+  installed runs **inside** the app with your rights and can read them. Plugin isolation is a type boundary, not a
+  security one. The boundary is the install — which is why the store asks for consent and pins a checksum.
 
 ## Install / run
 
@@ -136,8 +160,12 @@ Or build and launch the produced executable directly — the app is designed to 
 console: all logging goes to a file logger rather than stdout.
 
 Create a session via **+ New session**: pick a profile, permission mode, model and effort. Settings live in
-**`cockpit.json`** next to the app's config (`%APPDATA%\Cockpit\cockpit.json` on Windows) — profiles, layout, voice,
-shortcuts, always-allow rules, the MCP registry and plugin state all live in that one file.
+**`cockpit.json`** — `%APPDATA%\Cockpit\cockpit.json` on Windows, `~/.config/Cockpit/cockpit.json` on Linux and
+macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
+one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
+
+On Linux, `scripts/install-linux.sh` publishes the app and adds a desktop entry with its icon, so it appears in
+the application menu rather than as an unnamed window.
 
 Each **Claude** profile can point at its own **`CLAUDE_CONFIG_DIR`** (e.g. a work vs. a personal account), so two
 sessions can run under two different logins at the same time.

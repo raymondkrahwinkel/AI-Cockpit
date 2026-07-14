@@ -423,6 +423,9 @@ public interface IPluginStorage
 {
     T? Get<T>(string key);
     void Set<T>(string key, T value);
+
+    void SetSecret(string key, string value);   // default: Set(key, value)
+    string? GetSecret(string key);              // default: Get<string>(key)
 }
 ```
 
@@ -436,6 +439,36 @@ Serializes and persists `value` under `key`. Works for primitives and your own D
 host.Storage.Set("repo", "owner/name");
 host.Storage.Set("options", new MyOptions { Token = "…", Filter = "open" });
 ```
+
+### `void SetSecret(string key, string value)` / `string? GetSecret(string key)`
+
+Stores a credential: a token, an API key, a webhook URL — anything that would be a problem in someone else's
+hands. What is stored this way is **encrypted at rest** whenever the operator has turned that on (Options →
+Security), and is emptied from a backup that says it carries no credentials.
+
+You may not need it. The host already recognises the usual field names — `token`, `apiKey`, `api_key`, `secret`,
+`password`, `webhook` — anywhere in the settings, including inside your own JSON, so a plain `Set("token", …)` is
+covered. This is for the names it cannot guess:
+
+```csharp
+host.Storage.SetSecret("pat", token);          // "pat" is not a name the host would recognise
+var token = host.Storage.GetSecret("pat");
+```
+
+Or declare them in `plugin.json`, which also covers values written before you added this, and lets the store show
+at install time which credentials your plugin intends to keep:
+
+```json
+{ "secretKeys": ["pat"] }
+```
+
+Both carry default implementations, so an existing plugin keeps compiling and keeps working. Declare when in
+doubt: a field that is not really a secret costs nothing by being treated as one, while one that is — and is not
+declared — sits in the clear in a config the operator believes is encrypted.
+
+**What this does not do:** it protects the file, not a running cockpit. Your plugin runs inside the host process
+with the operator's full rights, and so does every other plugin they installed. The boundary is the install, not
+the runtime.
 
 ---
 

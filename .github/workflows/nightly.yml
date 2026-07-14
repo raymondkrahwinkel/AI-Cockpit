@@ -8,8 +8,10 @@ name: Nightly
 # a nightly that is byte-for-byte yesterday's is noise — or whenever you fire it by hand from the Actions tab.
 #
 # A nightly has no version number to compare (that is what a rolling tag means), so its identity is the commit it
-# was built from: 0.1.0-nightly.<run>+<sha>. "Is there something newer?" is answered by the run number; "which
-# nightly am I running?" by the sha, which is the question you actually ask when one misbehaves.
+# was built from: <VersionPrefix>-nightly.<run>+<sha>, e.g. 0.3.0-nightly.42+abc1234. "Is there something newer?"
+# is answered by the run number; "which nightly am I running?" by the sha, which is the question you actually ask
+# when one misbehaves. The version comes from MSBuild rather than being written here, so it cannot drift from what
+# the app is.
 on:
   schedule:
     # 02:00 UTC — the small hours in Amsterdam, whichever side of daylight saving we are on.
