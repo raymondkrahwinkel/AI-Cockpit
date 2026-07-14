@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=AI Cockpit
+GenericName=AI session cockpit
+Comment=Run and watch several AI coding sessions side by side
+# Exec is rewritten by scripts/install-linux.sh to the installed executable's absolute path.
+Exec=ai-cockpit
+Icon=ai-cockpit
+Terminal=false
+Categories=Development;IDE;
+Keywords=AI;Claude;agent;session;terminal;
+StartupWMClass=Cockpit.App
