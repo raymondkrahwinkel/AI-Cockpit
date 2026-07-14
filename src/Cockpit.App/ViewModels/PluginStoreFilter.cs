@@ -16,5 +16,7 @@ public sealed record PluginStoreFilter(PluginStoreFilterKind Kind, string? Categ
 
     public static PluginStoreFilter UpdatesAvailable { get; } = new(PluginStoreFilterKind.UpdatesAvailable);
 
+    public static PluginStoreFilter Templates { get; } = new(PluginStoreFilterKind.Templates);
+
     public static PluginStoreFilter ForCategory(string category) => new(PluginStoreFilterKind.Category, category);
 }

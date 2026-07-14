@@ -89,7 +89,7 @@ public class PluginStoreDialogViewModelTests
         var vm = new PluginStoreDialogViewModel(manager);
 
         vm.SidebarItems.Select(item => item.Label).Should().Equal(
-            "Discover", "All plugins", "AI providers", "Issue trackers", "Other", "Installed (0)", "Available updates (0)");
+            "Discover", "All plugins", "AI providers", "Issue trackers", "Other", "Workflow templates (0)", "Installed (0)", "Available updates (0)");
         vm.SelectedSidebarItem.Should().Be(PluginStoreSidebarItem.Discover);
     }
 

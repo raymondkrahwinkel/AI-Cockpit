@@ -19,6 +19,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 {
     private readonly PluginManagerViewModel _manager;
     private readonly NotifyCollectionChangedEventHandler _onAvailablePluginsChanged;
+    private readonly NotifyCollectionChangedEventHandler _onAvailableTemplatesChanged;
     private readonly NotifyCollectionChangedEventHandler _onStoresChanged;
     private readonly PropertyChangedEventHandler _onManagerPropertyChanged;
     private bool _isDisposed;
@@ -68,9 +69,13 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
         _manager = manager;
         _onAvailablePluginsChanged = (_, _) => _OnCatalogueChanged();
+        // The templates arrive after the plugins do, so counting them only when the plugin list changes left the
+        // sidebar saying "Workflow templates (0)" — greyed out and unclickable — while the store was offering ten.
+        _onAvailableTemplatesChanged = (_, _) => _OnCatalogueChanged();
         _onStoresChanged = (_, _) => _OnCatalogueChanged();
         _onManagerPropertyChanged = _OnManagerPropertyChanged;
         _manager.AvailablePlugins.CollectionChanged += _onAvailablePluginsChanged;
+        _manager.AvailableTemplates.CollectionChanged += _onAvailableTemplatesChanged;
         _manager.Stores.CollectionChanged += _onStoresChanged;
         _manager.PropertyChanged += _onManagerPropertyChanged;
 
@@ -90,6 +95,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         }
 
         _manager.AvailablePlugins.CollectionChanged -= _onAvailablePluginsChanged;
+        _manager.AvailableTemplates.CollectionChanged -= _onAvailableTemplatesChanged;
         _manager.Stores.CollectionChanged -= _onStoresChanged;
         _manager.PropertyChanged -= _onManagerPropertyChanged;
         _isDisposed = true;
@@ -119,6 +125,22 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     /// browsing, this view works even with no store configured (installing from a zip needs no store).
     /// </summary>
     public bool IsInstalledView => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Installed;
+
+    /// <summary>True while the sidebar's "Workflow templates" is selected — the flows the stores offer, not the plugins.</summary>
+    public bool IsTemplatesView => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Templates;
+
+    /// <summary>The templates a search narrows to: name, description and author, because whoever searches for "review" has that word in the description more often than in the name.</summary>
+    public IEnumerable<StoreTemplateRowViewModel> FilteredTemplates => string.IsNullOrWhiteSpace(SearchText)
+        ? _manager.AvailableTemplates
+        : _manager.AvailableTemplates.Where(template =>
+            template.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
+            || template.Description.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
+            || template.Author.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>What the templates view says when a store offers none, or a search matches none.</summary>
+    public string TemplatesEmptyMessage => _manager.AvailableTemplates.Count == 0
+        ? "The configured stores offer no workflow templates."
+        : "No templates match that.";
 
     /// <summary>The empty-state message for the current filter/search combination (§1.8) — search takes priority over the filter-specific message.</summary>
     public string EmptyStateMessage => BuildEmptyStateMessage(SelectedSidebarItem?.Filter ?? PluginStoreFilter.Discover, SearchText);
@@ -225,6 +247,9 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     partial void OnSelectedSidebarItemChanged(PluginStoreSidebarItem? value)
     {
         OnPropertyChanged(nameof(IsInstalledView));
+        OnPropertyChanged(nameof(IsTemplatesView));
+        OnPropertyChanged(nameof(FilteredTemplates));
+        OnPropertyChanged(nameof(TemplatesEmptyMessage));
         _RecomputeFiltered();
     }
 
@@ -255,6 +280,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
             SidebarItems.Add(PluginStoreSidebarItem.ForCategory(category));
         }
 
+        SidebarItems.Add(PluginStoreSidebarItem.Templates(_manager.AvailableTemplates.Count));
         SidebarItems.Add(PluginStoreSidebarItem.Installed(installedCount));
         SidebarItems.Add(PluginStoreSidebarItem.UpdatesAvailable(updatesCount));
 

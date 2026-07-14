@@ -14,6 +14,8 @@ public sealed record PluginStoreSidebarItem(string Label, PluginStoreFilter Filt
 
     public static PluginStoreSidebarItem ForCategory(string category) => new(category, PluginStoreFilter.ForCategory(category));
 
+    public static PluginStoreSidebarItem Templates(int count) => new($"Workflow templates ({count})", PluginStoreFilter.Templates, count > 0);
+
     public static PluginStoreSidebarItem Installed(int count) => new($"Installed ({count})", PluginStoreFilter.Installed, count > 0);
 
     public static PluginStoreSidebarItem UpdatesAvailable(int count) => new($"Available updates ({count})", PluginStoreFilter.UpdatesAvailable, count > 0);

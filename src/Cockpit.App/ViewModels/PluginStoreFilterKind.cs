@@ -17,4 +17,11 @@ public enum PluginStoreFilterKind
 
     /// <summary>Installed entries with a newer version in the store (<see cref="StorePluginRowViewModel.UpdateAvailable"/>).</summary>
     UpdatesAvailable,
+
+    /// <summary>
+    /// The workflow templates the stores offer (#69) — flows somebody already drew. Their own scope, because they are
+    /// not plugins: nothing is loaded, no code runs, and what you are agreeing to is the steps on your canvas. A
+    /// section under the plugin grid is a place nobody scrolls to.
+    /// </summary>
+    Templates,
 }
