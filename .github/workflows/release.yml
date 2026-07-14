@@ -73,6 +73,10 @@ jobs:
               ;;
             osx-arm64)
               scripts/package-macos.sh arm64 "$version"
+
+              # The .dmg for a person (open, drag onto Applications), the zipped bundle for automation.
+              mv artifacts/macos/*.dmg "artifacts/ai-cockpit-$version-macos-arm64.dmg"
+
               # ditto, not zip: it keeps the bundle's symlinks and permissions, and a .app that lost its executable
               # bit is a .app that will not open.
               ditto -c -k --sequesterRsrc --keepParent \

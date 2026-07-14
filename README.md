@@ -173,7 +173,7 @@ loose DLLs and hunting for the executable:
 | Platform | Download | Update |
 |---|---|---|
 | **Windows** | `ai-cockpit-*-win-x64.exe` — a single self-contained file | Overwrite the .exe |
-| **macOS** | `ai-cockpit-*-macos-arm64.app.zip` — a real `.app` bundle | Replace the .app |
+| **macOS** | `ai-cockpit-*-macos-arm64.dmg` — open it, drag the app onto Applications | Replace the app |
 | **Linux** | `ai-cockpit-*-x86_64.AppImage` — one file, or the tarball for a server | Overwrite the AppImage |
 
 None of them need a .NET runtime installed, and none of them need an installer. Your settings live in
@@ -207,10 +207,15 @@ nothing to say):
 scripts/package-macos.sh arm64 1.0.0        # or: x64
 ```
 
-That publishes self-contained, assembles `artifacts/macos/AI-Cockpit.app`, stamps the version, builds the icon
-and signs the bundle **ad-hoc** — enough to run and to grant microphone access on the machine that built it.
-One bundle per architecture: a universal binary means lipo-ing every native library in the publish output, not
-just the apphost.
+That publishes self-contained, assembles `artifacts/macos/AI-Cockpit.app`, stamps the version, builds the icon,
+signs the bundle **ad-hoc** — enough to run and to grant microphone access on the machine that built it — and
+wraps it in a **`.dmg`** with an Applications shortcut, which is how a macOS app is handed to a person: open,
+drag, done. One bundle per architecture: a universal binary means lipo-ing every native library in the publish
+output, not just the apphost.
+
+> **Ad-hoc means Gatekeeper will object elsewhere.** A nightly is signed on the runner that built it and nowhere
+> near a Developer ID, so on your machine macOS will refuse it until you allow it (right-click → Open, or
+> Settings → Privacy & Security). That is not a broken build; it is what an unnotarised app looks like.
 
 For distribution, sign with a Developer ID and notarise (the script prints the exact commands):
 

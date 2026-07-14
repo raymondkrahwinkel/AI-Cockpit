@@ -96,8 +96,31 @@ echo "Signing with identity: $identity"
 codesign --force --deep --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
+# The .dmg, which is how a macOS app is handed to a person: open it, drag the app onto the Applications shortcut
+# next to it, done. A zipped bundle works too and is what automation wants, but it leaves the operator holding a
+# folder they have to know where to put — the disk image says where by showing them.
+echo "Building the disk image…"
+staging="$(mktemp -d)/AI-Cockpit"
+mkdir -p "$staging"
+cp -R "$app" "$staging/"
+ln -s /Applications "$staging/Applications"
+
+dmg="$repo_root/artifacts/macos/AI-Cockpit-$version-arm64.dmg"
+if [ "$arch" != "arm64" ]; then
+    dmg="$repo_root/artifacts/macos/AI-Cockpit-$version-$arch.dmg"
+fi
+
+rm -f "$dmg"
+# UDZO: compressed and read-only, which is what a download should be. -ov because a rebuild replaces the last one.
+hdiutil create -volname "AI-Cockpit" -srcfolder "$staging" -ov -format UDZO "$dmg" >/dev/null
+
+# The image itself is signed as well: an unsigned .dmg is one more thing for Gatekeeper to object to before the
+# app inside it ever gets a chance to be judged on its own signature.
+codesign --force --sign "$identity" "$dmg"
+
 echo
 echo "Done: $app"
+echo "      $dmg"
 echo
 if [ "$identity" = "-" ]; then
     cat <<'EOF'

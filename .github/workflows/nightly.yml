@@ -132,8 +132,14 @@ jobs:
               ;;
             osx-arm64)
               scripts/package-macos.sh arm64 "${{ steps.version.outputs.version }}"
-              # Zipped with ditto: it keeps the bundle's symlinks and permissions, which a plain zip flattens —
-              # and a .app whose executable bit was lost is a .app that will not open.
+
+              # The .dmg is what a person downloads: open, drag onto Applications, done. The zipped bundle stays
+              # beside it because that is what automation wants — a tool that has to unpack a disk image first is
+              # a tool nobody writes.
+              mv artifacts/macos/*.dmg "artifacts/ai-cockpit-nightly-macos-arm64.dmg"
+
+              # ditto, not zip: it keeps the bundle's symlinks and permissions, and a .app that lost its
+              # executable bit is a .app that will not open.
               ditto -c -k --sequesterRsrc --keepParent \
                 artifacts/macos/AI-Cockpit.app "artifacts/ai-cockpit-nightly-macos-arm64.app.zip"
               rm -rf artifacts/macos
