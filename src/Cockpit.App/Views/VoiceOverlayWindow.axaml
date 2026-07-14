@@ -11,7 +11,7 @@
         CanResize="False"
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual"
-        Title="Cockpit voice overlay">
+        Title="AI-Cockpit voice overlay">
     <!-- Transcription of pill-mockup.html/.png: dark translucent pill, hairline border, Claude-coral
          accent — see the plan (#34) for the mockup source. Listening/Transcribing are mutually
          exclusive rows overlaid in one cell so the window (SizeToContent) always sizes to whichever

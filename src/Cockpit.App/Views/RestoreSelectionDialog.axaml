@@ -29,7 +29,7 @@
                 <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
 
                 <CheckBox Content="Settings, profiles, shortcuts and permissions" IsChecked="{Binding RestoreSettings}"/>
-                <TextBlock Text="The cockpit's own half. Restoring it replaces the profiles and settings you have now."
+                <TextBlock Text="AI-Cockpit's own half. Restoring it replaces the profiles and settings you have now."
                            TextWrapping="Wrap" FontSize="11" Margin="24,-4,0,0"
                            Foreground="{StaticResource CockpitTextFaintBrush}"/>
 

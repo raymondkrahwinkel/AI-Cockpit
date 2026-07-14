@@ -13,7 +13,7 @@ public sealed partial class RestoreSelectionViewModel : ViewModelBase
 {
     public RestoreSelectionViewModel(BackupManifest manifest, IReadOnlyCollection<string> installed)
     {
-        MadeOn = $"Made {manifest.CreatedUtc.ToLocalTime():d MMMM yyyy, HH:mm} by cockpit {manifest.AppVersion}";
+        MadeOn = $"Made {manifest.CreatedUtc.ToLocalTime():d MMMM yyyy, HH:mm} by AI-Cockpit {manifest.AppVersion}";
 
         Credentials = manifest.IncludesCredentials
             ? "It carries its own keys and tokens."

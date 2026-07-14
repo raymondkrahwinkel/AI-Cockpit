@@ -10,7 +10,7 @@
         Icon="/Assets/AppIcon.ico"
         Width="1280" Height="820" MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
-        Title="Cockpit.App">
+        Title="AI-Cockpit">
 
     <Design.DataContext>
         <!-- This only sets the DataContext for the previewer in an IDE,

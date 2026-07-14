@@ -246,7 +246,7 @@
                                 <NumericUpDown Value="{Binding DelegationTimeoutMinutes}" Minimum="0" Maximum="240"
                                                Increment="1" FormatString="0" Width="110"
                                                HorizontalContentAlignment="Center"
-                                               ToolTip.Tip="Minutes a delegated task may run here before the cockpit stops it. Nobody is watching a delegated session, so a model that loops or waits on something that never comes would otherwise hold this profile's slot indefinitely. 0 = no limit."/>
+                                               ToolTip.Tip="Minutes a delegated task may run here before AI-Cockpit stops it. Nobody is watching a delegated session, so a model that loops or waits on something that never comes would otherwise hold this profile's slot indefinitely. 0 = no limit."/>
                                 <TextBlock Text="minutes (0 = no limit)" FontSize="11" VerticalAlignment="Center"
                                            Foreground="{StaticResource CockpitTextFaintBrush}"/>
                             </StackPanel>
