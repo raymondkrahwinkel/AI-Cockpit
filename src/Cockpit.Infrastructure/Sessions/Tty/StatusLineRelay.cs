@@ -35,6 +35,8 @@ internal sealed class StatusLineRelay : IStatusLineRelay, ISingletonService
 
     private const string ScriptName = "statusline-relay.sh";
 
+    private const string PowerShellScriptName = "statusline-relay.ps1";
+
     public (string? StatusFile, string? SettingsJson) Install(
         SessionProfile? profile,
         string userProfileDirectory,
@@ -67,25 +69,15 @@ internal sealed class StatusLineRelay : IStatusLineRelay, ISingletonService
 
     private static string StatusDirectory => Path.Combine(CockpitConfigPath.Root, "statusline");
 
-    /// <summary>
-    /// The <c>--settings</c> JSON that points Claude's statusline at the relay, or <see langword="null"/> on
-    /// Windows, where this shell script does not run. Returns null rather than half-working: a statusline that
-    /// fails leaves the operator staring at an error line where their own statusline used to be.
-    /// </summary>
+    /// <summary>The <c>--settings</c> JSON that points Claude's statusline at the relay.</summary>
     internal static string? SettingsJson(string? existingStatusLineCommand)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return null;
-        }
-
-        var script = EnsureScript(existingStatusLineCommand);
         var settings = new JsonObject
         {
             ["statusLine"] = new JsonObject
             {
                 ["type"] = "command",
-                ["command"] = script,
+                ["command"] = EnsureScript(existingStatusLineCommand),
             },
         };
 
@@ -120,10 +112,19 @@ internal sealed class StatusLineRelay : IStatusLineRelay, ISingletonService
     }
 
     /// <summary>
-    /// Writes the relay script (idempotent — rewritten each launch, so a changed statusline is picked up) and
-    /// returns its path.
+    /// Writes the relay script and returns the command Claude should run. Rewritten on every launch, so a
+    /// statusline the operator changed since last time is picked up.
+    /// <para>
+    /// Two scripts, because the cockpit runs on three platforms and a bash script is not one of the things
+    /// Windows has. Same shape either way: keep the JSON, then run whatever statusline was already configured.
+    /// </para>
     /// </summary>
-    private static string EnsureScript(string? existingStatusLineCommand)
+    private static string EnsureScript(string? existingStatusLineCommand) =>
+        OperatingSystem.IsWindows()
+            ? WritePowerShellScript(existingStatusLineCommand)
+            : WriteBashScript(existingStatusLineCommand);
+
+    private static string WriteBashScript(string? existingStatusLineCommand)
     {
         Directory.CreateDirectory(StatusDirectory);
 
@@ -156,15 +157,46 @@ internal sealed class StatusLineRelay : IStatusLineRelay, ISingletonService
 
         var path = Path.Combine(CockpitConfigPath.Root, ScriptName);
         File.WriteAllText(path, script);
-
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(
-                path,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        }
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
         return path;
+    }
+
+    private static string WritePowerShellScript(string? existingStatusLineCommand)
+    {
+        Directory.CreateDirectory(StatusDirectory);
+
+        var chain = string.IsNullOrWhiteSpace(existingStatusLineCommand)
+            ? string.Empty
+            : $"""
+
+               # The operator's own statusline, fed the same JSON, its output passed through as ours. Run through
+               # cmd, since what they configured is a command line, not necessarily a PowerShell cmdlet.
+               $payload | & cmd /c "{existingStatusLineCommand}"
+               """;
+
+        var script = $$"""
+            # Written by AI-Cockpit. Claude Code pipes its statusline JSON in on stdin; this keeps a copy for the
+            # session's header ({{StatusFileVariable}}) and then runs whatever statusline the operator had.
+            $ErrorActionPreference = 'SilentlyContinue'
+            $payload = [Console]::In.ReadToEnd()
+
+            $target = $env:{{StatusFileVariable}}
+            if ($target) {
+                # Written whole and moved into place: the cockpit reads this file on a timer, and a half-flushed
+                # file would parse as nothing.
+                [System.IO.File]::WriteAllText("$target.tmp", $payload)
+                Move-Item -Force -LiteralPath "$target.tmp" -Destination $target
+            }
+            {{chain}}
+            """;
+
+        var path = Path.Combine(CockpitConfigPath.Root, PowerShellScriptName);
+        File.WriteAllText(path, script);
+
+        // Quoted: the config directory is under the operator's profile, and Windows user names have spaces in them
+        // far more often than anyone remembers when they write the path unquoted.
+        return $"powershell -NoProfile -ExecutionPolicy Bypass -File \"{path}\"";
     }
 
     /// <summary>Removes a session's snapshot file. The limits of a session that ended are nobody's business.</summary>

@@ -105,13 +105,25 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private bool _isVerticalLayout;
 
     /// <summary>
-    /// What this session is spending, as the header shows it: <c>ctx 42% · 5h 18% · wk 7%</c>. Empty until Claude
-    /// has said — it reports none of it before the first response, and a header claiming "0%" would be inventing
-    /// a number. Fed by the statusline relay (<c>StatusLineRelay</c>), which is the only place the five-hour and
-    /// weekly allowances are readable at all.
+    /// What this session is spending, each drawn as a small bar in the header: how full the context window is, and
+    /// how much of the five-hour and weekly allowance is gone. Null until Claude has said — it reports none of it
+    /// before the first response, and a bar reading "0%" would be a claim rather than a silence. Fed by the
+    /// statusline relay (<c>StatusLineRelay</c>), which is the only place the allowances are readable at all.
     /// </summary>
     [ObservableProperty]
-    private string _limits = string.Empty;
+    private double? _contextUsedPercent;
+
+    /// <inheritdoc cref="ContextUsedPercent"/>
+    [ObservableProperty]
+    private double? _fiveHourUsedPercent;
+
+    /// <inheritdoc cref="ContextUsedPercent"/>
+    [ObservableProperty]
+    private double? _sevenDayUsedPercent;
+
+    /// <summary>The whole story on hover, including when each window rolls over — which is the thing a bar cannot say.</summary>
+    [ObservableProperty]
+    private string _limitsTooltip = string.Empty;
 
     private CancellationTokenSource? _limitsPollCancellation;
 
@@ -120,7 +132,9 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     {
         ActiveProfileLabel = "work";
         Status = "TTY mode (experiment).";
-        Limits = "ctx 42% · 5h 18% · wk 7%";
+        ContextUsedPercent = 42;
+        FiveHourUsedPercent = 64;
+        SevenDayUsedPercent = 91;
     }
 
     public ClaudeTtyViewModel(
@@ -400,8 +414,13 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
                         if (File.Exists(statusFile)
                             && SessionLimits.TryParse(await File.ReadAllTextAsync(statusFile, cancellation)) is { HasAny: true } limits)
                         {
-                            var text = FormatLimits(limits);
-                            await Dispatcher.UIThread.InvokeAsync(() => Limits = text);
+                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            {
+                                ContextUsedPercent = limits.ContextUsedPercent;
+                                FiveHourUsedPercent = limits.FiveHourUsedPercent;
+                                SevenDayUsedPercent = limits.SevenDayUsedPercent;
+                                LimitsTooltip = DescribeLimits(limits);
+                            });
                         }
                     }
                     catch (Exception)
@@ -416,27 +435,34 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
             cancellation);
     }
 
-    /// <summary>The header line: only the numbers Claude actually reported, so nothing here is invented.</summary>
-    internal static string FormatLimits(SessionLimits limits)
+    /// <summary>
+    /// The hover text: what the bars mean, spelled out, plus when each window rolls over — which is the one thing
+    /// a bar cannot say and the thing you actually want when it is nearly full. Only the numbers Claude reported,
+    /// so nothing here is invented.
+    /// </summary>
+    internal static string DescribeLimits(SessionLimits limits)
     {
-        var parts = new List<string>(3);
+        var lines = new List<string>(3);
 
         if (limits.ContextUsedPercent is { } context)
         {
-            parts.Add($"ctx {Percent(context)}%");
+            lines.Add($"Context window: {Percent(context)}% used");
         }
 
         if (limits.FiveHourUsedPercent is { } fiveHour)
         {
-            parts.Add($"5h {Percent(fiveHour)}%");
+            lines.Add($"Session (5 hours): {Percent(fiveHour)}% used{Resets(limits.FiveHourResetsAt)}");
         }
 
         if (limits.SevenDayUsedPercent is { } sevenDay)
         {
-            parts.Add($"wk {Percent(sevenDay)}%");
+            lines.Add($"Week: {Percent(sevenDay)}% used{Resets(limits.SevenDayResetsAt)}");
         }
 
-        return string.Join(" · ", parts);
+        return string.Join(Environment.NewLine, lines);
+
+        static string Resets(DateTimeOffset? resetsAt) =>
+            resetsAt is { } at ? $" — resets {at.ToLocalTime():ddd HH:mm}" : string.Empty;
 
         // Away from zero, not .NET's default banker's rounding — which turns 42.5% into 42% and would have the
         // header quietly under-report exactly on the halves.

@@ -39,27 +39,32 @@ public class SessionLimitsTests
     public void BeforeTheFirstResponse_NothingIsClaimed()
     {
         // Claude reports no rate_limits until it has spoken to the API, and none at all on a plan that has no
-        // allowance to report. A header that filled that silence with "0%" would be inventing a number.
+        // allowance to report. A bar that filled that silence with "0%" would be inventing a number — so each bar
+        // hides itself when its value is null, and there is nothing to describe.
         var limits = SessionLimits.TryParse("""{ "session_id": "abc", "model": { "display_name": "Opus 4.8" } }""");
 
         limits.Should().NotBeNull();
         limits!.HasAny.Should().BeFalse();
-        ClaudeTtyViewModel.FormatLimits(limits).Should().BeEmpty();
+        ClaudeTtyViewModel.DescribeLimits(limits).Should().BeEmpty();
     }
 
     [Fact]
-    public void OnlyWhatWasReported_IsShown()
+    public void OnlyWhatWasReported_IsDescribed()
     {
         // The context percentage without the allowances: what a session on a plan with no rate limits looks like.
         var limits = SessionLimits.TryParse("""{ "context_window": { "used_percentage": 61.2 } }""");
 
-        ClaudeTtyViewModel.FormatLimits(limits!).Should().Be("ctx 61%");
+        ClaudeTtyViewModel.DescribeLimits(limits!).Should().Be("Context window: 61% used");
     }
 
     [Fact]
-    public void TheHeader_ReadsAsOneLine()
+    public void TheHoverText_SaysWhatTheBarsCannot_WhenEachWindowRollsOver()
     {
-        ClaudeTtyViewModel.FormatLimits(SessionLimits.TryParse(FullBlob)!).Should().Be("ctx 43% · 5h 18% · wk 7%");
+        var description = ClaudeTtyViewModel.DescribeLimits(SessionLimits.TryParse(FullBlob)!);
+
+        description.Should().Contain("Context window: 43% used");
+        description.Should().Contain("Session (5 hours): 18% used — resets");
+        description.Should().Contain("Week: 7% used — resets");
     }
 
     [Fact]
