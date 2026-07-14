@@ -49,9 +49,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         var sample = new EditableProfileViewModel(
             new SessionProfile(
                 "local",
-                ConfigDir: string.Empty,
+                new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null),
                 Purpose: "cheap local model",
-                ProviderConfig: new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null),
                 Delegation: new DelegationPolicy(
                     AllowedAsTarget: true,
                     MaxConcurrent: 2,
@@ -139,7 +138,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     {
         // A freshly added profile may pick its provider (#26); an existing one is fixed.
         var added = new EditableProfileViewModel(
-            new SessionProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
+            new SessionProfile("new profile", new ClaudeConfig(string.Empty)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
         Profiles.Add(added);
         SelectedProfile = added;
     }

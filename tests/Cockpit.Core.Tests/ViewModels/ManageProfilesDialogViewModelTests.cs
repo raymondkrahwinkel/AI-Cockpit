@@ -17,7 +17,9 @@ public class ManageProfilesDialogViewModelTests
     [Fact]
     public async Task LoadAsync_TurnsStoredProfilesIntoEditableRowsWithTheirLoginStatus()
     {
-        var work = new SessionProfile("work", "/home/r/.claude-work",
+        var work = new SessionProfile(
+            "work",
+            new ClaudeConfig("/home/r/.claude-work"),
             Defaults: new ProfileDefaults("plan", "opus", "high"));
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns([work]);
@@ -70,8 +72,8 @@ public class ManageProfilesDialogViewModelTests
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(
         [
-            new SessionProfile("default", "/home/r/.claude"),
-            new SessionProfile("personal", "/home/r/.claude-personal"),
+            new SessionProfile("default", new ClaudeConfig("/home/r/.claude")),
+            new SessionProfile("personal", new ClaudeConfig("/home/r/.claude-personal")),
         ]);
         var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
         await vm.LoadAsync();
@@ -103,8 +105,8 @@ public class ManageProfilesDialogViewModelTests
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(
         [
-            new SessionProfile("orphaned-gemini", ConfigDir: "", ProviderConfig: orphanConfig),
-            new SessionProfile("personal", "/home/r/.claude-personal"),
+            new SessionProfile("orphaned-gemini", orphanConfig),
+            new SessionProfile("personal", new ClaudeConfig("/home/r/.claude-personal")),
         ]);
         // An empty registry — the "gemini-provider.gemini" plugin is not registered, exactly the removed/
         // disabled/failed-to-load state the orphan row is stuck in.
@@ -142,7 +144,7 @@ public class ManageProfilesDialogViewModelTests
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns([new SessionProfile("work", "/home/r/.claude-work")]);
+            .Returns([new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"))]);
         var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
         await vm.LoadAsync();
         vm.SelectedProfile!.Label = "work-renamed";
@@ -164,8 +166,9 @@ public class ManageProfilesDialogViewModelTests
     [Fact]
     public async Task LoadAsync_TurnsAStoredAutoApproveToolsDefaultIntoTheEditableRow()
     {
-        var work = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"),
+        var work = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"),
             Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns([work]);
@@ -226,7 +229,7 @@ public class ManageProfilesDialogViewModelTests
     public async Task LoadAsync_ExistingProfilesCannotChangeProvider()
     {
         var store = Substitute.For<ISessionProfileStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("work", "/home/r/.claude-work")]);
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"))]);
         var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
 
         await vm.LoadAsync();
@@ -292,7 +295,7 @@ public class ManageProfilesDialogViewModelTests
     [Fact]
     public void ToProfile_CollapsesEmptyExecutableAndPurposeToNull()
     {
-        var editable = new EditableProfileViewModel(new SessionProfile("work", "/home/r/.claude-work"), isLoggedIn: false)
+        var editable = new EditableProfileViewModel(new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")), isLoggedIn: false)
         {
             ExecutablePath = "   ",
             Purpose = "",
@@ -300,7 +303,7 @@ public class ManageProfilesDialogViewModelTests
 
         var profile = editable.ToProfile();
 
-        profile.ExecutablePath.Should().BeNull();
+        profile.Claude!.ExecutablePath.Should().BeNull();
         profile.Purpose.Should().BeNull();
         profile.Defaults.Should().NotBeNull();
     }

@@ -11,5 +11,5 @@ namespace Cockpit.Infrastructure.Sessions;
 internal sealed class ClaudeProfileLoginChecker : IClaudeProfileLoginChecker, ISingletonService
 {
     public bool IsLoggedIn(SessionProfile profile) =>
-        File.Exists(Path.Combine(profile.ConfigDir, ".credentials.json"));
+        profile.Claude is { ConfigDir: { } configDir } && File.Exists(Path.Combine(configDir, ".credentials.json"));
 }

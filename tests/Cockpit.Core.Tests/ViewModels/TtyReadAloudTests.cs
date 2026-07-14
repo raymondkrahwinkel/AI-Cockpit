@@ -18,7 +18,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class TtyReadAloudTests
 {
-    private static readonly SessionProfile Work = new("work", "/config/work");
+    private static readonly SessionProfile Work = new("work", new ClaudeConfig("/config/work"));
 
     [Fact]
     public void ReadResponsesAloud_Off_NeverStartsTailingOrEnqueuesAnything()

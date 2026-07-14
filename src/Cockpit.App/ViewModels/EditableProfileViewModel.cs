@@ -238,8 +238,8 @@ public partial class EditableProfileViewModel : ViewModelBase
         IPluginProviderRegistry? pluginProviderRegistry = null)
     {
         _label = profile.Label;
-        _configDir = profile.ConfigDir;
-        _executablePath = profile.ExecutablePath ?? string.Empty;
+        _configDir = profile.Claude?.ConfigDir ?? string.Empty;
+        _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;
         _purpose = profile.Purpose ?? string.Empty;
         _memoryLimitMb = profile.MemoryLimitMb ?? 0;
         _selectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode);
@@ -290,11 +290,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
     public SessionProfile ToProfile() => new(
         Label.Trim(),
-        ConfigDir.Trim(),
-        string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim(),
+        _ToProviderConfig(),
         string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
         new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value, AutoApproveTools),
-        _ToProviderConfig(),
         _ToDelegationPolicy(),
         MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
 
@@ -329,7 +327,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             Tags: null);
     }
 
-    private ProviderConfig? _ToProviderConfig()
+    private ProviderConfig _ToProviderConfig()
     {
         var systemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt.Trim();
         if (SelectedProvider.Value == SessionProvider.Plugin)
@@ -341,15 +339,20 @@ public partial class EditableProfileViewModel : ViewModelBase
 
             // No config view to serialize (the provider plugin is not resolvable) — hand back the profile's
             // original config untouched rather than null, so a save/remove of some other row never silently
-            // wipes this orphaned profile's ProviderId/ConfigJson (and any API key inside it).
-            return _orphanedPluginConfig;
+            // wipes this orphaned profile's ProviderId/ConfigJson (and any API key inside it). Reachable only
+            // for a profile the ctor already flagged as orphaned (IsValid is false otherwise, so the
+            // Manage-profiles Save gate never gets here without one) — a null here would be this view model
+            // itself in a state its own invariants rule out, so it fails loudly instead of handing back a
+            // profile with no provider at all.
+            return _orphanedPluginConfig
+                ?? throw new InvalidOperationException("Plugin provider selected with neither a config view nor an orphaned config to fall back to.");
         }
 
         return SelectedProvider.Value switch
         {
             SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt),
             SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt),
-            _ => null,
+            _ => new ClaudeConfig(ConfigDir.Trim(), string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim()),
         };
     }
 }

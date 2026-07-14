@@ -81,7 +81,7 @@ public class TtyLauncherTests
         var (launcher, _) = CreateLauncher();
         var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
         var provider = Provider(spec);
-        var profile = new SessionProfile("work", "/config/dir");
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"));
         var options = new Dictionary<string, string> { ["model"] = "opus" };
         var resume = SessionResume.MostRecent;
 

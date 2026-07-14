@@ -31,7 +31,7 @@ public class ProviderConfigEntryTests
     {
         var original = new PluginProviderConfig("gemini-provider.gemini", """{"apiKey":"secret","model":"gemini-2.5-flash"}""");
 
-        var roundTripped = ProviderConfigEntry.FromDomain(original)!.ToDomain();
+        var roundTripped = ProviderConfigEntry.FromDomain(original)!.ToDomain(claudeConfigDir: string.Empty, claudeExecutablePath: null);
 
         roundTripped.Should().BeOfType<PluginProviderConfig>();
         var plugin = (PluginProviderConfig)roundTripped!;

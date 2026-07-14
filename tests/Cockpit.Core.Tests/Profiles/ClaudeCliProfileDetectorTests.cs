@@ -28,9 +28,9 @@ public class ClaudeCliProfileDetectorTests
         var profiles = ClaudeCliProfileDetector.Detect(candidates, _ => true);
 
         profiles.Should().HaveCount(3);
-        profiles.Should().Contain(p => p.Label == "default" && p.ConfigDir == DefaultDir);
-        profiles.Should().Contain(p => p.Label == "personal" && p.ConfigDir == PersonalDir);
-        profiles.Should().Contain(p => p.Label == "work" && p.ConfigDir == WorkDir);
+        profiles.Should().Contain(p => p.Label == "default" && p.Claude!.ConfigDir == DefaultDir);
+        profiles.Should().Contain(p => p.Label == "personal" && p.Claude!.ConfigDir == PersonalDir);
+        profiles.Should().Contain(p => p.Label == "work" && p.Claude!.ConfigDir == WorkDir);
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public class ClaudeCliProfileDetectorTests
 
         var profiles = ClaudeCliProfileDetector.Detect(candidates, dir => dir.EndsWith(".claude"));
 
-        profiles.Should().ContainSingle().Which.ConfigDir.Should().Be(DefaultDir);
+        profiles.Should().ContainSingle().Which.Claude!.ConfigDir.Should().Be(DefaultDir);
     }
 
     [Fact]

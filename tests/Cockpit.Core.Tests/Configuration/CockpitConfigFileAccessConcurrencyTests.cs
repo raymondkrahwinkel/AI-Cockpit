@@ -40,7 +40,7 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
         // document lands first and the tail of the long one survives behind it — the file then parses up to a
         // point and is garbage after it, which is exactly the shape the operator's config was found in.
         var longProfiles = Enumerable.Range(0, 400)
-            .Select(index => new SessionProfile($"profile-{index}", $"/home/someone/.claude-{index}", Purpose: new string('x', 400)))
+            .Select(index => new SessionProfile($"profile-{index}", new ClaudeConfig($"/home/someone/.claude-{index}"), Purpose: new string('x', 400)))
             .ToList();
 
         var writers = Enumerable.Range(0, 24).Select(index =>
@@ -49,7 +49,7 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
 
             return index % 2 is 0
                 ? access.UpdateAsync(config => config.Profiles = [.. longProfiles.Select(SessionProfileEntry.FromDomain)], CancellationToken.None)
-                : access.UpdateAsync(config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("solo", "/home/someone/.claude"))], CancellationToken.None);
+                : access.UpdateAsync(config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("solo", new ClaudeConfig("/home/someone/.claude")))], CancellationToken.None);
         });
 
         await Task.WhenAll(writers);
@@ -66,14 +66,14 @@ public class CockpitConfigFileAccessConcurrencyTests : IDisposable
         // The whole promise of this class: each store mutates its own section and preserves the others. Without
         // serialization the read-modify-write of one silently drops the other's just-written section.
         var access = new CockpitConfigFileAccess(ConfigPath);
-        await access.UpdateAsync(config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("seed", "/home/someone/.claude"))], CancellationToken.None);
+        await access.UpdateAsync(config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("seed", new ClaudeConfig("/home/someone/.claude")))], CancellationToken.None);
 
         var profileWriter = new CockpitConfigFileAccess(ConfigPath);
         var boundsWriter = new CockpitConfigFileAccess(ConfigPath);
 
         await Task.WhenAll(
             profileWriter.UpdateAsync(
-                config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("written-by-the-profile-store", "/home/someone/.claude"))],
+                config => config.Profiles = [SessionProfileEntry.FromDomain(new SessionProfile("written-by-the-profile-store", new ClaudeConfig("/home/someone/.claude")))],
                 CancellationToken.None),
             boundsWriter.UpdateAsync(
                 config => config.WindowBounds = new WindowBoundsEntry { Width = 1280, Height = 820 },

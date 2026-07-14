@@ -14,9 +14,9 @@ public class ClaudeConfigDirectoryTests
     [Fact]
     public void Resolve_WithProfile_ReturnsTheProfileDirectory()
     {
-        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
 
-        var resolved = ClaudeConfigDirectory.Resolve(profile, @"C:\ignored", @"C:\Users\raymo");
+        var resolved = ClaudeConfigDirectory.Resolve(profile.Claude, @"C:\ignored", @"C:\Users\raymo");
 
         resolved.Should().Be(@"C:\Users\raymo\.claude-work");
     }
@@ -24,7 +24,7 @@ public class ClaudeConfigDirectoryTests
     [Fact]
     public void Resolve_WithoutProfile_AndEnvSet_ReturnsTheEnvDirectory()
     {
-        var resolved = ClaudeConfigDirectory.Resolve(profile: null, @"C:\Users\raymo\.claude-alt", @"C:\Users\raymo");
+        var resolved = ClaudeConfigDirectory.Resolve(claude: null, @"C:\Users\raymo\.claude-alt", @"C:\Users\raymo");
 
         resolved.Should().Be(@"C:\Users\raymo\.claude-alt");
     }
@@ -32,7 +32,7 @@ public class ClaudeConfigDirectoryTests
     [Fact]
     public void Resolve_WithoutProfile_AndNoEnv_FallsBackToUserProfileDotClaude()
     {
-        var resolved = ClaudeConfigDirectory.Resolve(profile: null, environmentConfigDir: null, @"C:\Users\raymo");
+        var resolved = ClaudeConfigDirectory.Resolve(claude: null, environmentConfigDir: null, @"C:\Users\raymo");
 
         resolved.Should().Be(Path.Combine(@"C:\Users\raymo", ".claude"));
     }
@@ -40,7 +40,7 @@ public class ClaudeConfigDirectoryTests
     [Fact]
     public void Resolve_WithoutProfile_AndBlankEnv_FallsBackToUserProfileDotClaude()
     {
-        var resolved = ClaudeConfigDirectory.Resolve(profile: null, environmentConfigDir: "   ", @"C:\Users\raymo");
+        var resolved = ClaudeConfigDirectory.Resolve(claude: null, environmentConfigDir: "   ", @"C:\Users\raymo");
 
         resolved.Should().Be(Path.Combine(@"C:\Users\raymo", ".claude"));
     }
@@ -48,24 +48,24 @@ public class ClaudeConfigDirectoryTests
     [Fact]
     public void ResolveSpawnOverride_WithoutProfile_ReturnsNull()
     {
-        ClaudeConfigDirectory.ResolveSpawnOverride(profile: null, @"C:\Users\raymo").Should().BeNull();
+        ClaudeConfigDirectory.ResolveSpawnOverride(claude: null, @"C:\Users\raymo").Should().BeNull();
     }
 
     [Fact]
     public void ResolveSpawnOverride_WithNonDefaultDirProfile_ReturnsThatDirectory()
     {
-        var profile = new SessionProfile("work", Path.Combine(@"C:\Users\raymo", ".claude-work"));
+        var profile = new SessionProfile("work", new ClaudeConfig(Path.Combine(@"C:\Users\raymo", ".claude-work")));
 
-        ClaudeConfigDirectory.ResolveSpawnOverride(profile, @"C:\Users\raymo")
+        ClaudeConfigDirectory.ResolveSpawnOverride(profile.Claude, @"C:\Users\raymo")
             .Should().Be(Path.Combine(@"C:\Users\raymo", ".claude-work"));
     }
 
     [Fact]
     public void ResolveSpawnOverride_WithDefaultDirProfile_ReturnsNull_SoTheCliKeepsItsHomeRootConfig()
     {
-        var profile = new SessionProfile("default", Path.Combine(@"C:\Users\raymo", ".claude"));
+        var profile = new SessionProfile("default", new ClaudeConfig(Path.Combine(@"C:\Users\raymo", ".claude")));
 
-        ClaudeConfigDirectory.ResolveSpawnOverride(profile, @"C:\Users\raymo").Should().BeNull();
+        ClaudeConfigDirectory.ResolveSpawnOverride(profile.Claude, @"C:\Users\raymo").Should().BeNull();
     }
 
     [Fact]
@@ -86,9 +86,9 @@ public class ClaudeConfigDirectoryTests
     [Fact]
     public void ResolveConfigJsonDirectory_WithNonDefaultDirProfile_ReturnsTheProfileDirectory()
     {
-        var profile = new SessionProfile("work", Path.Combine(@"C:\Users\raymo", ".claude-work"));
+        var profile = new SessionProfile("work", new ClaudeConfig(Path.Combine(@"C:\Users\raymo", ".claude-work")));
 
-        ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, @"C:\Users\raymo")
+        ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile.Claude, @"C:\Users\raymo")
             .Should().Be(Path.Combine(@"C:\Users\raymo", ".claude-work"));
     }
 
@@ -97,16 +97,16 @@ public class ClaudeConfigDirectoryTests
     {
         // Regression: the workspace-trust marker must land in ~/.claude.json (home root), not
         // ~/.claude/.claude.json, for a default-dir profile whose CLAUDE_CONFIG_DIR stays unset.
-        var profile = new SessionProfile("default", Path.Combine(@"C:\Users\raymo", ".claude"));
+        var profile = new SessionProfile("default", new ClaudeConfig(Path.Combine(@"C:\Users\raymo", ".claude")));
 
-        ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, @"C:\Users\raymo")
+        ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile.Claude, @"C:\Users\raymo")
             .Should().Be(@"C:\Users\raymo");
     }
 
     [Fact]
     public void ResolveConfigJsonDirectory_WithoutProfile_ReturnsTheHomeRoot()
     {
-        ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile: null, @"C:\Users\raymo")
+        ClaudeConfigDirectory.ResolveConfigJsonDirectory(claude: null, @"C:\Users\raymo")
             .Should().Be(@"C:\Users\raymo");
     }
 }

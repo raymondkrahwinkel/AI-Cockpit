@@ -41,7 +41,7 @@ public class ClaudeCliSessionTests
     {
         var process = new FakeClaudeCliProcess();
         await using var session = new ClaudeCliSession(process, new RecordingPermissionCoordinator(), new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
-        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
 
         await session.StartAsync(profile);
 

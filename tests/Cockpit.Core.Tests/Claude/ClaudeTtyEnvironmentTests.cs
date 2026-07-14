@@ -25,7 +25,7 @@ public class ClaudeTtyEnvironmentTests
     [Fact]
     public void BuildOverlay_WithNonDefaultDirProfile_SetsClaudeConfigDirToTheProfileDirectory()
     {
-        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
         var baseEnvironment = TtyEnvironment.BuildBase(BaseEnvironment);
 
         var overlay = ClaudeTtyEnvironment.BuildOverlay(baseEnvironment, profile, UserProfileDir);
@@ -37,7 +37,7 @@ public class ClaudeTtyEnvironmentTests
     [Fact]
     public void BuildOverlay_WithDefaultDirProfile_DoesNotSetClaudeConfigDir_SoTheCliUsesItsNativeHomeRootConfig()
     {
-        var defaultProfile = new SessionProfile("default", Path.Combine(UserProfileDir, ".claude"));
+        var defaultProfile = new SessionProfile("default", new ClaudeConfig(Path.Combine(UserProfileDir, ".claude")));
         var baseEnvironment = TtyEnvironment.BuildBase(BaseEnvironment);
 
         var overlay = ClaudeTtyEnvironment.BuildOverlay(baseEnvironment, defaultProfile, UserProfileDir);
@@ -49,7 +49,7 @@ public class ClaudeTtyEnvironmentTests
     [Fact]
     public void BuildOverlay_WithDefaultDirProfile_DropsAnInheritedClaudeConfigDir()
     {
-        var defaultProfile = new SessionProfile("default", Path.Combine(UserProfileDir, ".claude"));
+        var defaultProfile = new SessionProfile("default", new ClaudeConfig(Path.Combine(UserProfileDir, ".claude")));
         var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",
@@ -90,7 +90,7 @@ public class ClaudeTtyEnvironmentTests
     [Fact]
     public void BuildOverlay_KeepsANonDefaultConfigDir_OverAnInheritedOne()
     {
-        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
         var baseWithConfigDir = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["CLAUDE_CONFIG_DIR"] = @"C:\some\other",
@@ -106,7 +106,7 @@ public class ClaudeTtyEnvironmentTests
     [Fact]
     public void BuildOverlay_WithAProfileAndAMemoryLimit_AddsTheNodeHeapCapOnTopOfAnyInheritedNodeOptions()
     {
-        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work", MemoryLimitMb: 1024);
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"), MemoryLimitMb: 1024);
         var baseWithNodeOptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["NODE_OPTIONS"] = "--enable-source-maps",
@@ -121,7 +121,7 @@ public class ClaudeTtyEnvironmentTests
     [Fact]
     public void BuildOverlay_WithAProfileAndNoMemoryLimit_LeavesNodeOptionsOutOfTheOverlay()
     {
-        var profile = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
         var baseEnvironment = TtyEnvironment.BuildBase(BaseEnvironment);
 
         var overlay = ClaudeTtyEnvironment.BuildOverlay(baseEnvironment, profile, UserProfileDir);

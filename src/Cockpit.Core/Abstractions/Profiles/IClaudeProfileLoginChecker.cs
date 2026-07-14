@@ -8,6 +8,6 @@ namespace Cockpit.Core.Abstractions.Profiles;
 /// </summary>
 public interface IClaudeProfileLoginChecker
 {
-    /// <summary>True if <c>&lt;profile.ConfigDir&gt;\.credentials.json</c> exists.</summary>
+    /// <summary>True if <c>&lt;profile.Claude.ConfigDir&gt;\.credentials.json</c> exists; false for a profile running under another provider, which has no Claude login to check.</summary>
     bool IsLoggedIn(SessionProfile profile);
 }

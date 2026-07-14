@@ -36,11 +36,17 @@ public static class ClaudeTtyEnvironment
             return overlay;
         }
 
-        overlay[ClaudeConfigDirectory.EnvironmentVariable] =
-            ClaudeConfigDirectory.ResolveSpawnOverride(profile, userProfileDirectory);
+        // Only a Claude profile pins a config directory. A non-Claude profile reaching this Claude-only overlay
+        // would be a routing bug elsewhere (this session provider is "claude"), not something to crash the spawn
+        // over — CLAUDE_CONFIG_DIR is simply left unset, the same as a profile-less session.
+        if (profile.Claude is { } claude)
+        {
+            overlay[ClaudeConfigDirectory.EnvironmentVariable] =
+                ClaudeConfigDirectory.ResolveSpawnOverride(claude, userProfileDirectory);
+        }
 
-        // A memory ceiling, when the profile asks for one. Off unless it does: a capped session that needs more
-        // memory than the cap does not slow down, it dies mid-turn.
+        // A memory ceiling, when the profile asks for one. Generic to any provider, not just Claude. Off unless
+        // it does: a capped session that needs more memory than the cap does not slow down, it dies mid-turn.
         if (SessionMemoryLimit.NodeOptions(baseEnvironment.GetValueOrDefault("NODE_OPTIONS"), profile.MemoryLimitMb) is { } options)
         {
             overlay["NODE_OPTIONS"] = options;

@@ -58,7 +58,7 @@ public class ClaudeTtySessionProviderBuildLaunchTests : IDisposable
     public void BuildLaunch_WithAProfile_SetsClaudeConfigDirInTheEnvironmentOverlay()
     {
         var provider = _CreateProvider();
-        var profile = new SessionProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
+        var profile = new SessionProfile("Personal", new ClaudeConfig(_configDir, "/usr/bin/claude"));
 
         var spec = provider.BuildLaunch(Context(profile));
 
@@ -69,7 +69,7 @@ public class ClaudeTtySessionProviderBuildLaunchTests : IDisposable
     public void BuildLaunch_WithAProfile_MarksTheWorkingDirectoryTrustedBeforeReturning()
     {
         var provider = _CreateProvider(new CockpitOptions { Claude = new ClaudeCliOptions { WorkingDirectory = Directory.GetCurrentDirectory() } });
-        var profile = new SessionProfile("Personal", _configDir);
+        var profile = new SessionProfile("Personal", new ClaudeConfig(_configDir));
 
         provider.BuildLaunch(Context(profile, workingDirectory: "/some/other/dir"));
 
@@ -116,7 +116,7 @@ public class ClaudeTtySessionProviderBuildLaunchTests : IDisposable
         var executableLocator = Substitute.For<IClaudeExecutableLocator>();
         executableLocator.FindBundledExecutable().Returns("/opt/claude/claude");
         var provider = _CreateProvider(executableLocator: executableLocator);
-        var profile = new SessionProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
+        var profile = new SessionProfile("Personal", new ClaudeConfig(_configDir, "/usr/bin/claude"));
 
         var spec = provider.BuildLaunch(Context(profile));
 
@@ -127,7 +127,7 @@ public class ClaudeTtySessionProviderBuildLaunchTests : IDisposable
     public void BuildLaunch_WithOptions_BuildsTheArgumentsInOrder()
     {
         var provider = _CreateProvider();
-        var profile = new SessionProfile("Personal", _configDir, ExecutablePath: "/usr/bin/claude");
+        var profile = new SessionProfile("Personal", new ClaudeConfig(_configDir, "/usr/bin/claude"));
         var options = new Dictionary<string, string>
         {
             [TtyLaunchOption.PermissionMode] = "acceptEdits",

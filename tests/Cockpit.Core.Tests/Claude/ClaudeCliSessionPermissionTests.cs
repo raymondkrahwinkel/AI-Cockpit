@@ -86,7 +86,7 @@ public class ClaudeCliSessionPermissionTests
         process.CompleteOutput();
         var store = new InMemoryPermissionRuleStore("work", PermissionRule.ForWildcard("Bash"));
         var session = new ClaudeCliSession(process, coordinator, store, NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", new ClaudeConfig(@"C:\fake")));
         await DrainEventsAsync(session);
 
         var registration = coordinator.Registered.Should().ContainSingle(r => r.ToolUseId == "toolu_reg").Subject;
@@ -103,7 +103,7 @@ public class ClaudeCliSessionPermissionTests
         var process = new FakeClaudeCliProcess();
         var store = new InMemoryPermissionRuleStore();
         await using var session = new ClaudeCliSession(process, coordinator, store, NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", new ClaudeConfig(@"C:\fake")));
 
         await session.AllowPermissionAlwaysAsync("toolu_x", "Bash", """{"command":"ls"}""", PermissionRuleScope.Wildcard);
 
@@ -118,7 +118,7 @@ public class ClaudeCliSessionPermissionTests
         var process = new FakeClaudeCliProcess();
         var store = new InMemoryPermissionRuleStore();
         await using var session = new ClaudeCliSession(process, coordinator, store, NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", new ClaudeConfig(@"C:\fake")));
 
         await session.AllowPermissionAlwaysAsync("toolu_y", "Bash", """{"command":"dotnet build"}""", PermissionRuleScope.Exact);
 
@@ -136,7 +136,7 @@ public class ClaudeCliSessionPermissionTests
         process.Enqueue("""{"type":"assistant","session_id":"S1","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_next","name":"Bash","input":{"command":"ls"}}]}}""");
         process.CompleteOutput();
         await using var session = new ClaudeCliSession(process, coordinator, new InMemoryPermissionRuleStore(), NullLogger<ClaudeCliSession>.Instance);
-        await session.StartAsync(new SessionProfile("work", @"C:\fake"));
+        await session.StartAsync(new SessionProfile("work", new ClaudeConfig(@"C:\fake")));
 
         await session.AllowPermissionAlwaysAsync("toolu_first", "Bash", """{"command":"ls"}""", PermissionRuleScope.Wildcard);
         await DrainEventsAsync(session);

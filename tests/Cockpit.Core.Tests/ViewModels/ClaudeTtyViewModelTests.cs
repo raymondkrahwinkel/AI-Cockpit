@@ -16,7 +16,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class ClaudeTtyViewModelTests
 {
-    private static readonly SessionProfile Work = new("work", @"C:\Users\raymo\.claude-work");
+    private static readonly SessionProfile Work = new("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
 
     [Fact]
     public void LaunchConfigured_WhenAlreadySubscribed_RaisesLaunchWithTheProfileAndOptions()

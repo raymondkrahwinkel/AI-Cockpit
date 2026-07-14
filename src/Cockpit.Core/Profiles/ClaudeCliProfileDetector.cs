@@ -24,7 +24,7 @@ public static class ClaudeCliProfileDetector
                 continue;
             }
 
-            profiles.Add(new SessionProfile(LabelFromDirectoryName(configDir), configDir));
+            profiles.Add(new SessionProfile(LabelFromDirectoryName(configDir), new ClaudeConfig(configDir)));
         }
 
         return profiles;

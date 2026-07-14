@@ -70,11 +70,11 @@ internal sealed class ClaudeTtySessionProvider : ITtySessionProvider, ISingleton
             // for this spawn — the profile dir for a non-default profile, the home root for a default-dir profile
             // (whose CLAUDE_CONFIG_DIR stays unset).
             _workspaceTrustWriter.MarkWorkingDirectoryTrusted(
-                ClaudeConfigDirectory.ResolveConfigJsonDirectory(context.Profile, userHome),
+                ClaudeConfigDirectory.ResolveConfigJsonDirectory(context.Profile.Claude, userHome),
                 workingDirectory);
         }
 
-        var executablePath = context.Profile?.ExecutablePath
+        var executablePath = context.Profile?.Claude?.ExecutablePath
             ?? _executableLocator.FindBundledExecutable()
             ?? cli.ExecutablePath;
 

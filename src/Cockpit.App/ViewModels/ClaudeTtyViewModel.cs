@@ -194,7 +194,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         // writes one — under the CLI's default config dir — so resolve the effective directory here
         // rather than giving up when there is no profile.
         _effectiveConfigDir = ClaudeConfigDirectory.Resolve(
-            profile,
+            profile?.Claude,
             Environment.GetEnvironmentVariable(ClaudeConfigDirectory.EnvironmentVariable),
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         // Snapshot the transcripts that exist now, before claude spawns and writes its own — the tailers

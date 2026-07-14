@@ -201,7 +201,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private bool _isSelectedProfileLoggedIn;
 
     /// <summary>Config directory of the selected profile, shown under the picker so it is clear where its login lives.</summary>
-    public string? SelectedProfileConfigDir => SelectedProfile?.ConfigDir;
+    public string? SelectedProfileConfigDir => SelectedProfile?.Claude?.ConfigDir;
 
     /// <summary>Whether the selected profile runs on the Claude CLI (login + session-option/config fields apply) versus a local HTTP provider (#26).</summary>
     public bool IsClaudeProfile => SelectedProfile?.Provider is null or SessionProvider.ClaudeCli;
@@ -235,7 +235,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
     {
-        var personal = new SessionProfile("personal", "~/.claude-personal", Purpose: "private");
+        var personal = new SessionProfile("personal", new ClaudeConfig("~/.claude-personal"), Purpose: "private");
         Profiles.Add(personal);
         SelectedProfile = personal;
         IsSelectedProfileLoggedIn = true;

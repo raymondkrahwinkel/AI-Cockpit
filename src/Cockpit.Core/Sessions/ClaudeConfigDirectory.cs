@@ -14,11 +14,11 @@ public static class ClaudeConfigDirectory
 {
     public const string EnvironmentVariable = "CLAUDE_CONFIG_DIR";
 
-    public static string Resolve(SessionProfile? profile, string? environmentConfigDir, string userProfileDirectory)
+    public static string Resolve(ClaudeConfig? claude, string? environmentConfigDir, string userProfileDirectory)
     {
-        if (profile is not null)
+        if (claude is not null)
         {
-            return profile.ConfigDir;
+            return claude.ConfigDir;
         }
 
         return string.IsNullOrWhiteSpace(environmentConfigDir)
@@ -28,32 +28,33 @@ public static class ClaudeConfigDirectory
 
     /// <summary>
     /// The value to export as <see cref="EnvironmentVariable"/> when spawning the CLI for
-    /// <paramref name="profile"/>, or <c>null</c> to leave the variable unset. Null for a profile-less
-    /// session and for a profile pinned to the CLI's own default directory (<c>~/.claude</c>): exporting
+    /// <paramref name="claude"/>, or <c>null</c> to leave the variable unset. Null for a profile-less
+    /// session (or one running under another provider) and for a profile pinned to the CLI's own default
+    /// directory (<c>~/.claude</c>): exporting
     /// <c>CLAUDE_CONFIG_DIR=~/.claude</c> is <em>not</em> a no-op — the CLI keeps <c>.claude.json</c> in the
     /// home root when the variable is unset but inside the directory when it is set, so forcing it onto the
     /// default dir makes a freshly logged-in CLI miss the config/login a bare <c>claude</c> wrote and
     /// re-onboard. A profile on a non-default directory returns that directory.
     /// </summary>
-    public static string? ResolveSpawnOverride(SessionProfile? profile, string userProfileDirectory)
+    public static string? ResolveSpawnOverride(ClaudeConfig? claude, string userProfileDirectory)
     {
-        if (profile is null)
+        if (claude is null)
         {
             return null;
         }
 
-        return IsDefaultDirectory(profile.ConfigDir, userProfileDirectory) ? null : profile.ConfigDir;
+        return IsDefaultDirectory(claude.ConfigDir, userProfileDirectory) ? null : claude.ConfigDir;
     }
 
     /// <summary>
     /// The directory whose <c>.claude.json</c> the spawned CLI actually reads/writes for
-    /// <paramref name="profile"/> — the counterpart of <see cref="ResolveSpawnOverride"/> for callers that
+    /// <paramref name="claude"/> — the counterpart of <see cref="ResolveSpawnOverride"/> for callers that
     /// must touch that file directly (the workspace-trust marker). A non-default profile keeps its own dir;
-    /// a default-dir profile (or none) resolves to the home root, matching where the CLI keeps
-    /// <c>.claude.json</c> when CLAUDE_CONFIG_DIR is left unset.
+    /// a default-dir profile (or none, or a non-Claude profile) resolves to the home root, matching where the
+    /// CLI keeps <c>.claude.json</c> when CLAUDE_CONFIG_DIR is left unset.
     /// </summary>
-    public static string ResolveConfigJsonDirectory(SessionProfile? profile, string userProfileDirectory) =>
-        ResolveSpawnOverride(profile, userProfileDirectory) ?? userProfileDirectory;
+    public static string ResolveConfigJsonDirectory(ClaudeConfig? claude, string userProfileDirectory) =>
+        ResolveSpawnOverride(claude, userProfileDirectory) ?? userProfileDirectory;
 
     /// <summary>True when <paramref name="configDir"/> is the CLI's own default config directory (<c>~/.claude</c>).</summary>
     public static bool IsDefaultDirectory(string configDir, string userProfileDirectory)

@@ -21,7 +21,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class SessionViewModelTests
 {
-    private static readonly SessionProfile Profile = new("default", @"C:\fake\.claude");
+    private static readonly SessionProfile Profile = new("default", new ClaudeConfig(@"C:\fake\.claude"));
 
     [Fact]
     public async Task StartConfigured_LaunchesWithTheChosenModel()
@@ -138,8 +138,9 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"),
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"),
             Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
@@ -160,8 +161,9 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
@@ -208,8 +210,9 @@ public class SessionViewModelTests
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
             SupportsVision: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
@@ -235,8 +238,9 @@ public class SessionViewModelTests
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
             SupportsVision: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -258,8 +262,9 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(

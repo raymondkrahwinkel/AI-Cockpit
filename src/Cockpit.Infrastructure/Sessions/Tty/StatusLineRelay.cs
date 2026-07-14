@@ -44,7 +44,7 @@ internal sealed class StatusLineRelay : IStatusLineRelay, ISingletonService
     {
         try
         {
-            var configDirectory = ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, userProfileDirectory);
+            var configDirectory = ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile?.Claude, userProfileDirectory);
             var settings = SettingsJson(ReadExistingStatusLineCommand(configDirectory));
             if (settings is null)
             {

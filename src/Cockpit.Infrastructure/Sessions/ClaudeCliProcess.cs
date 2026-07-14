@@ -100,11 +100,11 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             // for this spawn — the profile dir for a non-default profile, the home root for a default-dir
             // profile (whose CLAUDE_CONFIG_DIR stays unset).
             _workspaceTrustWriter.MarkWorkingDirectoryTrusted(
-                ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile, userHome),
+                ClaudeConfigDirectory.ResolveConfigJsonDirectory(profile.Claude, userHome),
                 Path.GetFullPath(workingDirectory));
         }
 
-        var executablePath = profile?.ExecutablePath
+        var executablePath = profile?.Claude?.ExecutablePath
             ?? _executableLocator.FindBundledExecutable()
             ?? cli.ExecutablePath;
 
@@ -154,7 +154,7 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             // A non-default profile dir is exported as CLAUDE_CONFIG_DIR; a default-dir profile clears any
             // inherited value so the CLI uses its native home-root config/login (setting it to ~/.claude is
             // not a no-op — see ClaudeConfigDirectory.ResolveSpawnOverride).
-            var configDirOverride = ClaudeConfigDirectory.ResolveSpawnOverride(profile, userHome);
+            var configDirOverride = ClaudeConfigDirectory.ResolveSpawnOverride(profile.Claude, userHome);
             if (configDirOverride is not null)
             {
                 startInfo.EnvironmentVariables[ClaudeConfigDirectory.EnvironmentVariable] = configDirOverride;

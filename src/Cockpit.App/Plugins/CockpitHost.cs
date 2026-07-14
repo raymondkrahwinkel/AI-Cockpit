@@ -118,7 +118,7 @@ internal sealed class CockpitHost(
     {
         var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false);
         return profiles
-            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.ConfigDir))
+            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty))
             .ToList();
     }
 

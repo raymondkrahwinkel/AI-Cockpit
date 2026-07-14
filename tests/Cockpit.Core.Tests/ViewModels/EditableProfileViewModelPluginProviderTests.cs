@@ -21,7 +21,7 @@ public class EditableProfileViewModelPluginProviderTests
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView("""{"ApiKey":"secret"}""");
         registry.Register(_Registration("gemini-provider.gemini", "Gemini (OpenAI-compatible)", configView));
-        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"secret"}"""));
+        var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"secret"}"""));
         var providers = SessionProviderCatalog.AllProviders(registry);
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
@@ -39,7 +39,7 @@ public class EditableProfileViewModelPluginProviderTests
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView("""{"ApiKey":"secret","Model":"gemini-2.5-flash"}""");
         registry.Register(_Registration("gemini-provider.gemini", "Gemini", configView));
-        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", "{}"));
+        var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
         var providers = SessionProviderCatalog.AllProviders(registry);
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
 
@@ -60,7 +60,7 @@ public class EditableProfileViewModelPluginProviderTests
     public void Constructor_WithAnUnregisteredProviderId_MarksTheProfileAsMissingWithNoConfigView()
     {
         var registry = new PluginProviderRegistry(); // nothing registered — simulates a removed/disabled plugin
-        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"secret"}"""));
+        var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"secret"}"""));
 
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, pluginProviderRegistry: registry);
 
@@ -81,7 +81,7 @@ public class EditableProfileViewModelPluginProviderTests
     {
         var registry = new PluginProviderRegistry();
         var originalConfig = new PluginProviderConfig("gemini-provider.gemini", """{"ApiKey":"super-secret","Model":"gemini-2.5-flash"}""");
-        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: originalConfig);
+        var profile = new SessionProfile("gemini", originalConfig);
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, pluginProviderRegistry: registry);
 
         var saved = editable.ToProfile();
@@ -97,7 +97,7 @@ public class EditableProfileViewModelPluginProviderTests
         var registry = new PluginProviderRegistry();
         var configView = new FakePluginProviderConfigView(json: null, isValid: false);
         registry.Register(_Registration("gemini-provider.gemini", "Gemini", configView));
-        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", "{}"));
+        var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
         var providers = SessionProviderCatalog.AllProviders(registry);
         var editable = new EditableProfileViewModel(profile, isLoggedIn: false, providers: providers, pluginProviderRegistry: registry);
 
@@ -112,7 +112,7 @@ public class EditableProfileViewModelPluginProviderTests
         registry.Register(_Registration("gemini-provider.gemini", "Gemini", configView));
         var providers = SessionProviderCatalog.AllProviders(registry);
         var editable = new EditableProfileViewModel(
-            new SessionProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true, providers: providers, pluginProviderRegistry: registry);
+            new SessionProfile("new profile", new ClaudeConfig(string.Empty)), isLoggedIn: false, canChooseProvider: true, providers: providers, pluginProviderRegistry: registry);
 
         editable.SelectedProvider = providers.Single(option => option.PluginProviderId == "gemini-provider.gemini");
 

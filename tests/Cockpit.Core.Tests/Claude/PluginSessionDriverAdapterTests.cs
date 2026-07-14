@@ -71,7 +71,7 @@ public class PluginSessionDriverAdapterTests
     {
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
-        var profile = new SessionProfile("gemini", ConfigDir: "", ProviderConfig: new PluginProviderConfig("gemini-provider.gemini", "{}"));
+        var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
 
         await adapter.StartAsync(profile, model: "gemini-2.5-flash");
 
