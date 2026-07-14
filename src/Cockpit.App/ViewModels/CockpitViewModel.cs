@@ -814,7 +814,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ResourceMonitor? resourceMonitor = null,
         IBackupService? backupService = null,
         IUpdateService? updateService = null,
-        IUpdateSettingsStore? updateSettingsStore = null)
+        IUpdateSettingsStore? updateSettingsStore = null,
+        IWorkflowTemplateLibrary? workflowTemplateLibrary = null)
     {
         _updates = updateService;
         _updateSettingsStore = updateSettingsStore;
@@ -831,7 +832,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDiagnostics, this, appRestartService)
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDiagnostics, this, appRestartService, workflowTemplateLibrary)
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;

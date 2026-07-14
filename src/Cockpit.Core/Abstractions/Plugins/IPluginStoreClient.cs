@@ -13,4 +13,11 @@ public interface IPluginStoreClient
     Task<PluginStoreFetchResult> FetchIndexAsync(string storeUrl, CancellationToken cancellationToken = default);
 
     Task<PluginStoreDownloadResult> DownloadZipAsync(string indexUrl, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches a workflow template's flow (#69) — a JSON file, not a zip: a template is text, so there is nothing to
+    /// unpack, no assembly to load and no consent to running code. The store's checksum is still verified when it
+    /// publishes one, so what arrives is what was published.
+    /// </summary>
+    Task<WorkflowTemplateDownloadResult> DownloadTemplateAsync(string indexUrl, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default);
 }

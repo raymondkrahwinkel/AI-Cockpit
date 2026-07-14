@@ -553,6 +553,49 @@ complete file using every field below.
 |---|---|---|
 | `name` | yes | The store's display name, shown as the catalogue title in the store dialog. |
 | `plugins` | yes | Array of plugin entries, described below. |
+| `templates` | no | Array of workflow templates the store offers — flows somebody already drew. Described below; omit it and the store simply offers none. |
+
+### Workflow templates — `templates[]`
+
+A template is a **flow as text**: the same JSON the flow editor exports a flow to. Unlike a plugin there is no
+assembly, nothing is loaded and no code runs at install time — the cockpit writes the file, and the flow appears in
+the editor's "From template…" picker after a restart. It arrives **switched off**: a flow you have not read is not one
+that should already be running.
+
+That is not the same as harmless. A flow can carry a shell command, so the store shows what a template needs before
+you install it, and reading it before arming it is your own check.
+
+```json
+"templates": [
+  {
+    "id": "you.ticket-to-agent",
+    "name": "Ticket → branch → agent",
+    "description": "Pick a ticket, cut the branch, put an agent on it.",
+    "author": "You",
+    "version": "1.0",
+    "category": "Your store",
+    "path": "templates/ticket-to-agent.json",
+    "sha256": "<sha-256 of the flow's json, hex lowercase — optional but recommended>",
+    "requires": ["youtrack"]
+  }
+]
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | yes | Stable identity, so an update is recognised as the same template rather than a second copy. |
+| `name` | yes | What the store and the template picker show. |
+| `description` | no | One line: what the flow does. |
+| `author` | no | Who published it. |
+| `version` | no | The published version, so an update to a template is a thing that can be seen. |
+| `category` | no | The heading the picker files it under; defaults to the store's name. |
+| `path` | yes | Where the flow's JSON sits, **relative to the index**. |
+| `sha256` | no | Checksum of that JSON. Published, it is verified: what arrives is then what was published. |
+| `requires` | no | The plugins whose steps the flow uses (`["youtrack"]`). Shown before install — a flow built on YouTrack's steps is no use without it, and finding that out on the canvas is finding it out too late. |
+
+**Exporting a template:** open a flow in the editor and press **Export** — the file it writes is exactly what goes at
+`path`. A plugin can also ship templates in code (`host.AddWorkflowTemplate`), which is how YouTrack and GitHub Issues
+offer theirs.
 
 **Per plugin (`plugins[]`):**
 

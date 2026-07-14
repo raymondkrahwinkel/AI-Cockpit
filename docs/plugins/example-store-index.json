@@ -32,5 +32,20 @@
         }
       ]
     }
+  ],
+  "templates": [
+    {
+      "id": "cockpit.ticket-to-agent",
+      "name": "Ticket → branch → agent",
+      "description": "When you pick a ticket for a session: cut its branch, move the ticket to in progress, and put the agent to work on it.",
+      "author": "Cockpit",
+      "version": "1.0",
+      "category": "Cockpit",
+      "path": "templates/ticket-to-agent.json",
+      "sha256": "d0f5c1a0f5b58e1f30e5b5c2b4a1e6a5cbb0c7a4d2f8e91c3b6a4d7e0f2c8b1a",
+      "requires": [
+        "youtrack"
+      ]
+    }
   ]
 }

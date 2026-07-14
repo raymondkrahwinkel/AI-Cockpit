@@ -29,12 +29,23 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly PluginDiagnostics? _diagnostics;
     private readonly IPluginContributionSink? _contributionSink;
     private readonly IAppRestartService? _restartService;
+    private readonly IWorkflowTemplateLibrary? _templateLibrary;
 
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
     public ObservableCollection<string> Stores { get; } = [];
 
     public ObservableCollection<StorePluginRowViewModel> AvailablePlugins { get; } = [];
+
+    /// <summary>
+    /// The workflow templates the stores offer (#69) — flows somebody already drew. Browsed with the plugins, from the
+    /// same index: a store that publishes both is one store, and asking the operator to visit two places to find out
+    /// what it has would be an implementation detail leaking into the app.
+    /// </summary>
+    public ObservableCollection<StoreTemplateRowViewModel> AvailableTemplates { get; } = [];
+
+    /// <summary>Whether any store offers a template at all — no templates, no section.</summary>
+    public bool HasAvailableTemplates => AvailableTemplates.Count > 0;
 
     // Plugins updated this session, keyed by plugin id → the version just staged. An update is only swapped live
     // on restart, so the live manifest still reports the old version; treating the staged version as installed
@@ -81,7 +92,8 @@ public partial class PluginManagerViewModel : ViewModelBase
         IReadOnlyDictionary<string, PluginSettingsRegistration> settingsRegistry,
         PluginDiagnostics diagnostics,
         IPluginContributionSink? contributionSink = null,
-        IAppRestartService? restartService = null)
+        IAppRestartService? restartService = null,
+        IWorkflowTemplateLibrary? templateLibrary = null)
     {
         _registrationStore = registrationStore;
         _installer = installer;
@@ -93,6 +105,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _diagnostics = diagnostics;
         _contributionSink = contributionSink;
         _restartService = restartService;
+        _templateLibrary = templateLibrary;
         _WatchAvailablePluginsForUpdateGate();
     }
 
@@ -373,9 +386,11 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         IsBusy = true;
         AvailablePlugins.Clear();
+        AvailableTemplates.Clear();
         try
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenTemplates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var problems = new List<string>();
             foreach (var storeUrl in Stores)
             {
@@ -407,7 +422,23 @@ public partial class PluginManagerViewModel : ViewModelBase
                         isEnabled: installedRow?.CanDisable ?? false,
                         hasSettings: installedRow?.HasSettings ?? false));
                 }
+
+                foreach (var template in fetch.Index.Templates ?? [])
+                {
+                    // First store wins for an id, same as for plugins: a template listed twice shows once.
+                    if (!seenTemplates.Add(template.Id))
+                    {
+                        continue;
+                    }
+
+                    AvailableTemplates.Add(new StoreTemplateRowViewModel(
+                        template,
+                        fetch.IndexUrl,
+                        isInstalled: _templateLibrary?.IsInstalled(template.Id) ?? false));
+                }
             }
+
+            OnPropertyChanged(nameof(HasAvailableTemplates));
 
             StatusMessage = AvailablePlugins.Count == 0
                 ? (problems.Count > 0 ? $"No plugins found ({problems[0]})." : "No plugins found in the configured stores.")
@@ -417,6 +448,67 @@ public partial class PluginManagerViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Installs a workflow template (#69): fetches its flow, checks it against the store's checksum, and writes it into
+    /// the library the editor's picker reads. Nothing is loaded and no code runs — a template is a flow as text, and it
+    /// arrives switched off, for the operator to read before arming it.
+    /// </summary>
+    [RelayCommand]
+    private async Task InstallTemplateAsync(StoreTemplateRowViewModel row)
+    {
+        if (_storeClient is null || _templateLibrary is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var download = await _storeClient.DownloadTemplateAsync(row.IndexUrl, row.Entry.Path, row.Entry.Sha256);
+            if (!download.IsSuccess || download.Json is null)
+            {
+                StatusMessage = download.Error ?? $"Could not install '{row.Name}'.";
+                return;
+            }
+
+            _templateLibrary.Install(new InstalledWorkflowTemplate(
+                row.Entry.Id,
+                row.Entry.Name,
+                row.Entry.Description,
+                download.Json,
+                row.Entry.Author,
+                row.Entry.Version,
+                row.Entry.Category,
+                row.Entry.Requires));
+
+            row.IsInstalled = true;
+
+            // Templates are read into the editor's picker at startup, so this one is there next time — said plainly
+            // rather than left for the operator to wonder why the flow they just installed is not in the list.
+            NeedsRestart = true;
+            StatusMessage = $"'{row.Name}' installed. Restart the cockpit and it is in the flow editor's templates.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Takes an installed template out of the library. The flows already made from it are yours and stay.</summary>
+    [RelayCommand]
+    private void RemoveTemplate(StoreTemplateRowViewModel row)
+    {
+        if (_templateLibrary is null)
+        {
+            return;
+        }
+
+        _templateLibrary.Remove(row.Entry.Id);
+        row.IsInstalled = false;
+        NeedsRestart = true;
+        StatusMessage = $"'{row.Name}' removed. Flows you already made from it are unaffected.";
     }
 
     [RelayCommand]

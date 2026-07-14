@@ -264,6 +264,69 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- The workflow templates the same stores offer (#69) — flows somebody already drew. They live
+                             here rather than behind a store of their own: a store that publishes both is one store, and
+                             sending the operator to a second place to see what it has would be plumbing leaking into the
+                             app. Only shown when a store actually offers one. -->
+                        <StackPanel Spacing="10" IsVisible="{Binding Manager.HasAvailableTemplates}">
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
+
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Workflow templates" FontWeight="SemiBold"/>
+                                <TextBlock Text="Flows somebody already drew. A template is text, not code — nothing loads and nothing runs. It arrives switched off, for you to read before you arm it."
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            </StackPanel>
+
+                            <ItemsControl ItemsSource="{Binding Manager.AvailableTemplates}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StoreTemplateRowViewModel">
+                                        <Border Background="{StaticResource CockpitPanelBgBrush}"
+                                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                                CornerRadius="{StaticResource CockpitControlRadius}"
+                                                Padding="12,10" Margin="0,0,0,8">
+                                            <DockPanel>
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6"
+                                                            VerticalAlignment="Center">
+                                                    <Button Content="Remove" Classes="Compact Subtle"
+                                                            IsVisible="{Binding IsInstalled}"
+                                                            Command="{Binding $parent[Window].DataContext.Manager.RemoveTemplateCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip.Tip="Takes it out of the template list. Flows you already made from it are yours and stay."/>
+                                                    <Button Content="{Binding ActionLabel}" Classes="Compact"
+                                                            Command="{Binding $parent[Window].DataContext.Manager.InstallTemplateCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                </StackPanel>
+
+                                                <StackPanel Spacing="2">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12.5"/>
+                                                        <TextBlock Text="{Binding Version}" FontSize="11"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                    </StackPanel>
+
+                                                    <TextBlock Text="{Binding Description}" FontSize="11.5"
+                                                               TextWrapping="Wrap"
+                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                                        <TextBlock Text="{Binding Author}" FontSize="10.5"
+                                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                        <!-- A flow built on YouTrack's steps is no use without YouTrack, and
+                                                             finding that out on the canvas is finding it out too late. -->
+                                                        <TextBlock Text="{Binding Needs}" FontSize="10.5"
+                                                                   IsVisible="{Binding HasNeeds}"
+                                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
                 </Panel>

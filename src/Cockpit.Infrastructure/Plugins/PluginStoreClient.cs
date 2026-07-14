@@ -76,6 +76,43 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         }
     }
 
+    public async Task<WorkflowTemplateDownloadResult> DownloadTemplateAsync(string indexUrl, string relativePath, string? expectedSha256, CancellationToken cancellationToken = default)
+    {
+        string url;
+        try
+        {
+            url = PluginStoreUrl.ResolveZipUrl(indexUrl, relativePath);
+        }
+        catch (Exception exception)
+        {
+            return new WorkflowTemplateDownloadResult(false, $"The store index has a bad template path: {exception.Message}", null);
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.UserAgent.ParseAdd("Cockpit-PluginStore");
+            using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(expectedSha256))
+            {
+                var actual = PluginHash.Compute(bytes);
+                if (!string.Equals(actual, expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WorkflowTemplateDownloadResult(false, "The downloaded template did not match the store's published checksum and was rejected.", null);
+                }
+            }
+
+            return new WorkflowTemplateDownloadResult(true, null, System.Text.Encoding.UTF8.GetString(bytes));
+        }
+        catch (Exception exception)
+        {
+            return new WorkflowTemplateDownloadResult(false, $"Could not download the template: {exception.Message}", null);
+        }
+    }
+
     private static async Task<string> _GetStringAsync(string url, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);

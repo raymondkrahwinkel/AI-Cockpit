@@ -13,6 +13,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Plugins;
+using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.App;
 
@@ -109,8 +110,36 @@ public partial class App : Application
             dialogHost,
             sessionObserver));
 
+        // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
+        // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.
+        // Read after the plugins have registered theirs, so an id clash is the store's copy losing to the plugin's own.
+        _RegisterInstalledTemplates(
+            Program.Services.GetRequiredService<IWorkflowTemplateLibrary>(),
+            Program.Services.GetRequiredService<IWorkflowTemplateRegistry>());
+
         // Surface any load/init failures (phase 1 or 2) as a banner; the app kept running regardless.
         cockpit.RefreshPluginFailures();
+    }
+
+    private static void _RegisterInstalledTemplates(IWorkflowTemplateLibrary library, IWorkflowTemplateRegistry registry)
+    {
+        foreach (var installed in library.Load())
+        {
+            try
+            {
+                registry.Register(new WorkflowTemplate(
+                    installed.Id,
+                    installed.Name,
+                    installed.Description ?? string.Empty,
+                    installed.Json,
+                    installed.Category ?? "Installed"));
+            }
+            catch (InvalidOperationException)
+            {
+                // A plugin already offers a template under this id — its own copy wins, and the store's is skipped
+                // rather than taking the app down over a name.
+            }
+        }
     }
 
     // Seeds the plugin's storage from its saved slice and writes changes back through the store; the load
