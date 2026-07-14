@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Cockpit.Infrastructure.Configuration;
 
 /// <summary>
@@ -16,7 +18,13 @@ internal sealed class CockpitConfigFile
     /// How the credentials in this file are protected: whether encryption is on, and the salt/iterations the
     /// key is derived from. Not a secret itself, and deliberately readable before the app is unlocked — without
     /// it there is no way to derive the key that reads the rest.
+    /// <para>
+    /// Absent unless the operator turned encryption on: encryption is off by default, and a config that says
+    /// <c>"Security": null</c> is a config inviting the question "am I locked?" — which is exactly the question
+    /// it should never provoke.
+    /// </para>
     /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SecretProtectionEntry? Security { get; set; }
 
     public List<SessionProfileEntry> Profiles { get; set; } = [];

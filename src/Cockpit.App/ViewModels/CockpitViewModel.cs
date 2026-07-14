@@ -21,6 +21,7 @@ using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Shortcuts;
 using Cockpit.Core.Abstractions.Terminal;
@@ -780,11 +781,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
+        Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
 
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
         // that normally builds them never runs, and the tab would render empty in the previewer/screenshotter.
         _RebuildShortcutRows();
     }
+
+    /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
+    public SecurityOptionsViewModel Security { get; }
 
     public CockpitViewModel(
         Func<SessionViewModel> sessionFactory,
@@ -815,8 +820,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IBackupService? backupService = null,
         IUpdateService? updateService = null,
         IUpdateSettingsStore? updateSettingsStore = null,
-        IWorkflowTemplateLibrary? workflowTemplateLibrary = null)
+        IWorkflowTemplateLibrary? workflowTemplateLibrary = null,
+        ISecretProtectionService? secretProtection = null)
     {
+        // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
+        // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
+        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets());
+        _ = Security.RefreshAsync();
+
         _updates = updateService;
         _updateSettingsStore = updateSettingsStore;
         _backupService = backupService;

@@ -172,6 +172,21 @@ public class SecretProtectionTests : IDisposable
     }
 
     [Fact]
+    public void TheFormat_IsAFormat_NotSomethingOnlyItsOwnWriterCanRead()
+    {
+        // Produced by an independent implementation (Python: hashlib.pbkdf2_hmac + cryptography's AESGCM) from the
+        // password, salt and iteration count below. It pins the on-disk format — the KDF, the key length, the
+        // nonce|ciphertext|tag layout, and the field path as associated data. Change any of those and this fails,
+        // which is the point: an operator's config must still open after we touch the crypto.
+        const string encrypted = "enc:v1:AAECAwQFBgcICQoLe8UEzFFflAnzBRRyc23dvImugNtoqJxQAip0oQYBFV+1s14upA==";
+        var salt = Convert.FromBase64String("AAECAwQFBgcICQoLDA0ODw==");
+
+        var protector = new SecretProtector(SecretKey.Derive(Password, salt, iterations: 1000));
+
+        protector.Unprotect("McpServers[0].ApiKey", encrypted).Should().Be(Token);
+    }
+
+    [Fact]
     public async Task TheRewrite_KeepsABackupOfWhatWasThere()
     {
         await Store().SaveAsync([Server(Token)]);

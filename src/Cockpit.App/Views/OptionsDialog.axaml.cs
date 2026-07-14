@@ -41,6 +41,73 @@ public partial class OptionsDialog : Window
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 
+    // Turning encryption on or off rewrites every credential the operator has, and turning it off puts them all
+    // back in the clear. Neither happens on a single click, and both say what they are about to do.
+    private async void OnEnableEncryption(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var dialog = new PasswordDialog
+        {
+            DataContext = new PasswordDialogViewModel(
+                "Encrypt your credentials",
+                "Your API keys and tokens will be encrypted in cockpit.json, and the cockpit will ask for this "
+                + "password every time it starts. Pick something you will not lose.",
+                requiresCurrent: false),
+        };
+
+        if (await dialog.ShowDialog<PasswordDialogViewModel?>(this) is { } password)
+        {
+            await cockpit.Security.EnableAsync(password.NewPassword);
+        }
+    }
+
+    private async void OnDisableEncryption(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var confirmation = new ConfirmationDialog
+        {
+            DataContext = new ConfirmationDialogViewModel(
+                "Turn off encryption",
+                "Your API keys and tokens go back to being readable in cockpit.json, and the cockpit will start "
+                + "without asking for a password. Nothing is lost — this is the exact reverse of turning it on.",
+                "Turn it off"),
+        };
+
+        if (await confirmation.ShowDialog<bool>(this))
+        {
+            await cockpit.Security.DisableAsync();
+        }
+    }
+
+    private async void OnChangePassword(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var dialog = new PasswordDialog
+        {
+            DataContext = new PasswordDialogViewModel(
+                "Change your password",
+                "Your credentials are decrypted with the old password and encrypted again with the new one.",
+                requiresCurrent: true),
+        };
+
+        if (await dialog.ShowDialog<PasswordDialogViewModel?>(this) is { } password)
+        {
+            await cockpit.Security.ChangePasswordAsync(password.CurrentPassword, password.NewPassword);
+        }
+    }
+
     // The file pickers live here because picking a file is a view's job (Window.StorageProvider), the same way the
     // profile dialog picks a directory. What goes *in* the archive is the view model's business, not this one's.
     private async void OnCheckForUpdates(object? sender, RoutedEventArgs e)

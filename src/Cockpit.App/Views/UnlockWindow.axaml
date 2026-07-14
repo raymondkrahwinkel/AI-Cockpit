@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.UnlockWindow"
+        x:DataType="vm:UnlockViewModel"
+        Icon="/Assets/AppIcon.ico"
+        Title="Cockpit"
+        Width="420" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:UnlockViewModel/>
+    </Design.DataContext>
+
+    <StackPanel Margin="28,26" Spacing="14">
+        <Border Width="48" Height="48" CornerRadius="12"
+                Background="{StaticResource CockpitAccentBrush}" HorizontalAlignment="Center">
+            <TextBlock Text="AI" FontSize="20" FontWeight="Bold"
+                       Foreground="{StaticResource CockpitWindowBgBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+
+        <StackPanel Spacing="4">
+            <TextBlock Text="Locked" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock Text="Your API keys and tokens are encrypted. Type the password to unlock them."
+                       FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+        </StackPanel>
+
+        <TextBox Name="PasswordBox" PasswordChar="•" PlaceholderText="Password"
+                 Text="{Binding Password}" IsEnabled="{Binding !IsBusy}"
+                 KeyDown="OnPasswordKeyDown"/>
+
+        <TextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                   FontSize="12" TextWrapping="Wrap"
+                   Foreground="{StaticResource CockpitStatusErrorBrush}"/>
+
+        <Button Content="Unlock" Classes="Accent" HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Center"
+                IsEnabled="{Binding !IsBusy}" Click="OnUnlock"/>
+
+        <Button Content="I forgot my password" HorizontalAlignment="Center"
+                Background="Transparent" BorderThickness="0"
+                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"
+                IsEnabled="{Binding !IsBusy}" Click="OnForgot"/>
+    </StackPanel>
+</Window>

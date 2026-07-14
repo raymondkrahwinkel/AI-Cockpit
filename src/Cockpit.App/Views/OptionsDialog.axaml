@@ -16,6 +16,7 @@
         <vm:CockpitViewModel/>
     </Design.DataContext>
 
+  <Panel>
     <DockPanel>
 
         <!-- Footer: Close on the left, one shared Save on the right — replaces the six per-section
@@ -378,6 +379,47 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem Header="Security">
+                <ScrollViewer>
+                    <StackPanel Spacing="8" Margin="16">
+                        <TextBlock Text="Encrypt your credentials" FontWeight="SemiBold"/>
+                        <TextBlock Text="Your provider API keys, MCP bearer tokens and the plugins' tokens are stored in cockpit.json. Encrypting them means the file gives up nothing without your password — if it is copied, synced, backed up, or the laptop walks off."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="12" Margin="0,4">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Encrypted — the cockpit asks for your password when it starts"
+                                           IsVisible="{Binding Security.IsEncrypted}"
+                                           FontSize="12.5" Foreground="{StaticResource CockpitStatusDoneBrush}"/>
+                                <TextBlock Text="Not encrypted — your keys and tokens are readable in cockpit.json"
+                                           IsVisible="{Binding !Security.IsEncrypted}"
+                                           FontSize="12.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Encrypt with a password…" Classes="Accent"
+                                    IsVisible="{Binding !Security.IsEncrypted}" Click="OnEnableEncryption"/>
+                            <Button Content="Change password…"
+                                    IsVisible="{Binding Security.IsEncrypted}" Click="OnChangePassword"/>
+                            <Button Content="Turn off encryption…"
+                                    IsVisible="{Binding Security.IsEncrypted}" Click="OnDisableEncryption"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding Security.Status}"
+                                   IsVisible="{Binding Security.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                        <TextBlock Text="What this does not do: it protects the file, not a running cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,10,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem Header="Debug">
                 <ScrollViewer>
                     <StackPanel Spacing="8" Margin="16">
@@ -392,4 +434,19 @@
 
         </TabControl>
     </DockPanel>
+
+    <!-- The migration overlay. It blocks the dialog on purpose: this is the one operation that rewrites every
+         credential the operator has, and letting them edit settings underneath it is how you get a half file. -->
+    <Border IsVisible="{Binding Security.IsMigrating}" Background="#CC16181D">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Width="300">
+            <TextBlock Text="{Binding Security.MigrationCaption}" HorizontalAlignment="Center"
+                       FontSize="13" FontWeight="SemiBold"/>
+            <ProgressBar Minimum="0" Maximum="100" Height="6"
+                         Value="{Binding Security.MigrationProgress}"
+                         Foreground="{StaticResource CockpitAccentBrush}"/>
+            <TextBlock Text="Do not close the cockpit while this runs." HorizontalAlignment="Center"
+                       FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+        </StackPanel>
+    </Border>
+  </Panel>
 </Window>

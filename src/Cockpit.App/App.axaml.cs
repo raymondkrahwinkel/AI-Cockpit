@@ -10,6 +10,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Delegation;
+using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Plugins;
@@ -39,43 +40,84 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;
-            var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
-            _mainWindow = new MainWindow
+
+            // Encrypted credentials: the key comes from a password, so the cockpit cannot be built yet — the view
+            // model, the plugins and the MCP servers all read settings, and reading them without the key would
+            // hand them ciphertext. The unlock window goes first and the app starts behind it.
+            var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
+            if (protection.GetStatusAsync().GetAwaiter().GetResult() is { Enabled: true, Unlocked: false })
             {
-                DataContext = cockpitViewModel,
-            };
-            desktop.MainWindow = _mainWindow;
-            _SetUpTrayIcon();
+                _ShowUnlockWindow(desktop, protection);
+                base.OnFrameworkInitializationCompleted();
 
-            // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
-            // portal/keyboard-hook is only ever touched for an operator who opted in.
-            _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
+                return;
+            }
 
-            // Open-mic dictation: expose the coordinator so the sidebar toggle can turn it on/off at
-            // runtime, and resume listening at startup if it was left on. No-op when voice is off.
-            var openMicCoordinator = Program.Services.GetRequiredService<OpenMicCoordinator>();
-            cockpitViewModel.OpenMic = openMicCoordinator;
-            _ = openMicCoordinator.StartAsync();
-
-            // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
-            // plugin the host built for it so it can register its Options tab / side-menu section.
-            _InitializePlugins();
-
-            // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
-            // gets compared), then every 15 minutes for the rest of the run.
-            // #71: and the cockpit itself. One look on startup, if the operator left that on — an update nobody is
-            // told about is an update nobody installs. It never nags: a failed check is silent here, and only says
-            // what went wrong when someone asks from Options.
-            _ = cockpitViewModel.InitialiseUpdatesAsync();
-
-            var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
-            _ = pluginUpdateChecker.CheckNowAsync();
-            _pluginUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
-            _pluginUpdateTimer.Tick += (_, _) => _ = pluginUpdateChecker.CheckNowAsync();
-            _pluginUpdateTimer.Start();
+            _StartCockpit(desktop);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// The unlock window is the app's only window until the password is right. It is the lifetime's MainWindow so
+    /// the framework shows it; the real one replaces it, and is shown before this one closes — a moment with no
+    /// window at all is a moment the desktop lifetime reads as "the app is done".
+    /// </summary>
+    private void _ShowUnlockWindow(IClassicDesktopStyleApplicationLifetime desktop, ISecretProtectionService protection)
+    {
+        var viewModel = new UnlockViewModel(protection);
+        var window = new UnlockWindow { DataContext = viewModel };
+
+        viewModel.Unlocked += (_, _) =>
+        {
+            _StartCockpit(desktop);
+            window.Close();
+        };
+
+        desktop.MainWindow = window;
+    }
+
+    private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
+        _mainWindow = new MainWindow
+        {
+            DataContext = cockpitViewModel,
+        };
+        desktop.MainWindow = _mainWindow;
+
+        // Shown here rather than left to the lifetime: when this replaces the unlock window, the framework has
+        // already shown its MainWindow and will not show a second one on its own.
+        _mainWindow.Show();
+        _SetUpTrayIcon();
+
+        // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
+        // portal/keyboard-hook is only ever touched for an operator who opted in.
+        _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
+
+        // Open-mic dictation: expose the coordinator so the sidebar toggle can turn it on/off at
+        // runtime, and resume listening at startup if it was left on. No-op when voice is off.
+        var openMicCoordinator = Program.Services.GetRequiredService<OpenMicCoordinator>();
+        cockpitViewModel.OpenMic = openMicCoordinator;
+        _ = openMicCoordinator.StartAsync();
+
+        // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
+        // plugin the host built for it so it can register its Options tab / side-menu section.
+        _InitializePlugins();
+
+        // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
+        // gets compared), then every 15 minutes for the rest of the run.
+        // #71: and the cockpit itself. One look on startup, if the operator left that on — an update nobody is
+        // told about is an update nobody installs. It never nags: a failed check is silent here, and only says
+        // what went wrong when someone asks from Options.
+        _ = cockpitViewModel.InitialiseUpdatesAsync();
+
+        var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
+        _ = pluginUpdateChecker.CheckNowAsync();
+        _pluginUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
+        _pluginUpdateTimer.Tick += (_, _) => _ = pluginUpdateChecker.CheckNowAsync();
+        _pluginUpdateTimer.Start();
     }
 
     // Phase 2 of the plugin lifecycle: each plugin gets a CockpitHost carrying the built service provider,
