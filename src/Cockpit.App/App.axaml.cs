@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Plugins;
+using Cockpit.Core.Secrets;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.App;
@@ -131,7 +132,21 @@ public partial class App : Application
 
         var cockpit = Program.Services.GetRequiredService<CockpitViewModel>();
         var registrationStore = Program.Services.GetRequiredService<IPluginRegistrationStore>();
+        var secretFieldStore = Program.Services.GetRequiredService<IPluginSecretFieldStore>();
         var dialogHost = Program.Services.GetRequiredService<IPluginDialogHost>();
+
+        // Which storage keys hold a credential, before any plugin's settings are read: a value under a key the
+        // host does not know to be a secret would be handed to the plugin as ciphertext, and left in a backup that
+        // says it carries no credentials. The plugins declare them (plugin.json / SetSecret); the names are not
+        // secrets themselves, so they are read without needing the key.
+        var declared = secretFieldStore.LoadAsync().GetAwaiter().GetResult()
+            .Concat(pluginManager.Loaded.SelectMany(discovered => discovered.Manifest.SecretKeys))
+            .ToList();
+
+        if (declared.Count > 0)
+        {
+            SecretKeyHolder.Shared.Declare(declared);
+        }
         var actions = new PluginActions(
             cockpit,
             () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard,
@@ -148,7 +163,7 @@ public partial class App : Application
             Program.Services,
             cockpit,
             actions,
-            _CreatePluginStorage(discovered, registrationStore),
+            _CreatePluginStorage(discovered, registrationStore, secretFieldStore),
             dialogHost,
             sessionObserver));
 
@@ -186,10 +201,24 @@ public partial class App : Application
 
     // Seeds the plugin's storage from its saved slice and writes changes back through the store; the load
     // blocks briefly on the small config file at startup, which is acceptable on the UI thread here.
-    private static PluginStorage _CreatePluginStorage(DiscoveredPlugin discovered, IPluginRegistrationStore store)
+    private static PluginStorage _CreatePluginStorage(
+        DiscoveredPlugin discovered,
+        IPluginRegistrationStore store,
+        IPluginSecretFieldStore secretFieldStore)
     {
         var seed = store.LoadDataAsync(discovered.FolderId).GetAwaiter().GetResult();
-        return new PluginStorage(seed, data => _ = store.SaveDataAsync(discovered.FolderId, data));
+
+        return new PluginStorage(
+            seed,
+            data => _ = store.SaveDataAsync(discovered.FolderId, data),
+            // A key a plugin calls SetSecret on is remembered for the next start too: the name is what tells the
+            // host to decrypt that field on the way in, and it would otherwise only be known while the plugin that
+            // wrote it happened to be running.
+            key =>
+            {
+                SecretKeyHolder.Shared.Declare([key]);
+                _ = secretFieldStore.DeclareAsync(discovered.FolderId, [key]);
+            });
     }
 
     /// <summary>Restores and focuses the main window (tray left-click / "Show cockpit").</summary>

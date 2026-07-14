@@ -143,6 +143,9 @@ public interface IPluginStorage
 {
     T? Get<T>(string key);        // JSON-serialized values
     void Set<T>(string key, T value);
+
+    void SetSecret(string key, string value);  // a token, an API key, a webhook — see "Credentials" below
+    string? GetSecret(string key);
 }
 
 public interface IPluginSettingsView
@@ -301,6 +304,36 @@ pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-name
 It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
 already changed by hand (enabled/disabled, rescoped, or deleted).
 
+## Credentials — say what holds one
+
+The operator can encrypt the credentials in `cockpit.json` with a password (Options → Security). The host does
+that for **every** plugin, without asking the plugin anything: it recognises the usual field names — `token`,
+`apiKey`, `api_key`, `secret`, `password`, `webhook` — wherever they sit, including inside your own settings.
+Store your token under a name like that and you are already covered, encrypted at rest and emptied from a backup
+that says it carries no credentials.
+
+What the host cannot guess is a name it has never heard of: a `pat`, a `credential`, an `installKey`. Two ways to
+tell it, and either is enough:
+
+```csharp
+storage.SetSecret("pat", token);         // says it at the call site, where you are the one who knows
+var token = storage.GetSecret("pat");
+```
+
+```json
+{ "secretKeys": ["pat"] }                // in plugin.json — also covers values written before you added this
+```
+
+Declare it and the field is encrypted like any other credential. Forget to, and it sits in the clear in a config
+the operator believes is encrypted — worse than not offering the feature at all. When in doubt, declare it: a
+field that is not really a secret costs nothing by being treated as one.
+
+**What this does not do.** It protects the file, not a running cockpit. Your plugin runs *inside* the host
+process with the operator's full rights, and so does every other plugin they installed: while the app is
+unlocked, any of you can read any credential the cockpit holds. The boundary is the install, not the runtime —
+which is why the store asks for consent and pins a checksum, and why this page tells you plainly rather than
+implying an isolation that does not exist.
+
 ## The manifest — `plugin.json`
 
 Ships in the plugin's folder root. Parsed and validated **before** anything is loaded — a malformed or
@@ -328,6 +361,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `entryAssembly` | yes | The DLL carrying your `ICockpitPlugin`, relative to the plugin folder. The installer refuses the zip if this file is missing. |
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
 | `entryType` | no | Fully-qualified entry type; omit to let the host find the single `ICockpitPlugin` in the entry assembly. |
+| `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
 | `minHostVersion` | no | Informational only today — the host parses and stores it but does **not** currently enforce it as a gate. Set it anyway so a future host version can. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
 

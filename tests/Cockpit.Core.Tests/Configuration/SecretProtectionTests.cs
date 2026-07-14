@@ -172,6 +172,43 @@ public class SecretProtectionTests : IDisposable
     }
 
     [Fact]
+    public async Task APluginsOwnFieldName_IsProtectedOnceThePluginSaysSo()
+    {
+        // "pat" is not a name the host recognises — that is the whole reason a plugin can declare it (plugin.json
+        // "secretKeys", or IPluginStorage.SetSecret). Without the declaration it would be stored in the clear
+        // while the operator believes their credentials are encrypted, which is worse than not offering the
+        // feature at all.
+        var declared = new SecretKeyHolder();
+        declared.Declare(["pat"]);
+
+        var document = new JsonObject
+        {
+            ["Plugins"] = new JsonObject
+            {
+                ["some-plugin"] = new JsonObject
+                {
+                    ["Data"] = new JsonObject { ["pat"] = Token },
+                },
+            },
+        };
+        await File.WriteAllTextAsync(_configPath, document.ToJsonString());
+
+        await new SecretProtectionService(_configPath, declared).EnableAsync(Password);
+
+        RawConfig().Should().NotContain(Token);
+
+        // And a fresh start, which knows the declared name from the config, reads it back rather than handing the
+        // plugin ciphertext.
+        var restarted = new SecretKeyHolder();
+        restarted.Declare(["pat"]);
+        (await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password)).Should().BeTrue();
+
+        var protector = restarted.Protector!;
+        var stored = JsonNode.Parse(RawConfig())!["Plugins"]!["some-plugin"]!["Data"]!["pat"]!.GetValue<string>();
+        protector.Unprotect("Plugins.some-plugin.Data.pat", stored).Should().Be(Token);
+    }
+
+    [Fact]
     public void TheFormat_IsAFormat_NotSomethingOnlyItsOwnWriterCanRead()
     {
         // Produced by an independent implementation (Python: hashlib.pbkdf2_hmac + cryptography's AESGCM) from the

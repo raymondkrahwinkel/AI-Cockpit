@@ -56,6 +56,14 @@ internal sealed class CockpitConfigFile
 
     public Dictionary<string, PluginRegistrationEntry> Plugins { get; set; } = [];
 
+    /// <summary>
+    /// Per plugin id, the storage keys it keeps a credential in beyond the names the host recognises by itself
+    /// (a <c>pat</c>, a <c>credential</c>) — declared in its <c>plugin.json</c> or by calling
+    /// <c>IPluginStorage.SetSecret</c>. The names themselves are not secrets, and they have to be readable before
+    /// the settings are decrypted: they are what says which fields to decrypt.
+    /// </summary>
+    public Dictionary<string, List<string>> PluginCredentialFields { get; set; } = [];
+
     /// <summary>Configured plugin-store URLs (#14) the manager browses for installable plugins; owned by the plugin-store config store.</summary>
     public List<string> PluginStores { get; set; } = [];
 

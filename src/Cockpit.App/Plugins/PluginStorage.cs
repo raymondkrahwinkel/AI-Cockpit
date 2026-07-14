@@ -12,11 +12,16 @@ public sealed class PluginStorage : IPluginStorage
 {
     private readonly Dictionary<string, string> _values;
     private readonly Action<IReadOnlyDictionary<string, string>> _persist;
+    private readonly Action<string>? _declareSecret;
 
-    public PluginStorage(IReadOnlyDictionary<string, string> seed, Action<IReadOnlyDictionary<string, string>> persist)
+    public PluginStorage(
+        IReadOnlyDictionary<string, string> seed,
+        Action<IReadOnlyDictionary<string, string>> persist,
+        Action<string>? declareSecret = null)
     {
         _values = new Dictionary<string, string>(seed);
         _persist = persist;
+        _declareSecret = declareSecret;
     }
 
     public T? Get<T>(string key) => _values.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
@@ -26,4 +31,17 @@ public sealed class PluginStorage : IPluginStorage
         _values[key] = JsonSerializer.Serialize(value);
         _persist(_values);
     }
+
+    /// <summary>
+    /// Stores a credential. The key is remembered as one — persisted, so the next start knows to decrypt it before
+    /// handing it back rather than giving the plugin ciphertext, and so a backup that claims to carry no
+    /// credentials empties it too. Then it is written like any other value.
+    /// </summary>
+    public void SetSecret(string key, string value)
+    {
+        _declareSecret?.Invoke(key);
+        Set(key, value);
+    }
+
+    public string? GetSecret(string key) => Get<string>(key);
 }

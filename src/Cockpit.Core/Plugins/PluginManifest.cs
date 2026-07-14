@@ -16,8 +16,18 @@ public sealed record PluginManifest(
     string? EntryType,
     string? MinHostVersion,
     string? Description,
-    string? Author)
+    string? Author,
+    IReadOnlyList<string>? SecretKeys = null)
 {
+    /// <summary>
+    /// The storage keys this plugin keeps a credential in (<c>"secretKeys": ["pat"]</c>). The host recognises the
+    /// usual names by itself (token, apiKey, secret, password, webhook); this is for the ones it cannot guess, and
+    /// it is read before the plugin loads — so a value stored under such a name is decrypted on the way in rather
+    /// than handed to the plugin as ciphertext. It also says, at install time, which credentials a plugin intends
+    /// to keep.
+    /// </summary>
+    public IReadOnlyList<string> SecretKeys { get; } = SecretKeys ?? [];
+
     public static bool TryParse(string json, out PluginManifest? manifest, out string? error)
     {
         manifest = null;
@@ -69,7 +79,8 @@ public sealed record PluginManifest(
                 GetOptionalString(root, "entryType"),
                 GetOptionalString(root, "minHostVersion"),
                 GetOptionalString(root, "description"),
-                GetOptionalString(root, "author"));
+                GetOptionalString(root, "author"),
+                GetOptionalStrings(root, "secretKeys"));
             return true;
         }
     }
@@ -94,4 +105,20 @@ public sealed record PluginManifest(
         => root.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.String
             ? element.GetString()
             : null;
+
+    private static IReadOnlyList<string>? GetOptionalStrings(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var element) || element.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        return
+        [
+            .. element.EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString()!)
+                .Where(value => !string.IsNullOrWhiteSpace(value)),
+        ];
+    }
 }
