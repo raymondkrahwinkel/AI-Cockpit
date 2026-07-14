@@ -114,6 +114,17 @@ jobs:
             tar -czf "../../artifacts/ai-cockpit-nightly-${{ matrix.rid }}.tar.gz" .
           fi
 
+      # An AppImage as well as the tarball, and not instead of it: the tarball is what you unpack on a server or
+      # feed to a package build, the AppImage is what a person double-clicks. Built from the publish that already
+      # happened, so both artifacts are the same bytes.
+      - name: AppImage
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: |
+          scripts/package-appimage.sh publish/linux-x64 "${{ steps.version.outputs.version }}"
+          mv artifacts/appimage/*.AppImage "artifacts/ai-cockpit-nightly-x86_64.AppImage"
+          rm -rf artifacts/appimage
+
       # Hand the build to the release job rather than publishing from here. Three jobs each uploading into one
       # rolling release means a platform that fails leaves its predecessor's bytes sitting next to the others:
       # the release page then looks complete while being a mixture of two builds, which is worse than a nightly

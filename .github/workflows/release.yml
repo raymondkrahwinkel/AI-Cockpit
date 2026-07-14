@@ -62,6 +62,17 @@ jobs:
             tar -czf "../../artifacts/ai-cockpit-${{ steps.version.outputs.version }}-${{ matrix.rid }}.tar.gz" .
           fi
 
+      # The AppImage rides alongside the tarball, as it does in the nightly — a release that offered less than a
+      # nightly would be a strange thing to ask anyone to upgrade to.
+      - name: AppImage
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: |
+          scripts/package-appimage.sh publish/linux-x64 "${{ steps.version.outputs.version }}"
+          mv artifacts/appimage/*.AppImage \
+            "artifacts/ai-cockpit-${{ steps.version.outputs.version }}-x86_64.AppImage"
+          rm -rf artifacts/appimage
+
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*

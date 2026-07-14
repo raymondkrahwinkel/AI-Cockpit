@@ -164,11 +164,27 @@ Create a session via **+ New session**: pick a profile, permission mode, model a
 macOS. Profiles, layout, voice, shortcuts, always-allow rules, the MCP registry and plugin state all live in that
 one file, alongside `plugins/`, `logs/` and the previous version of the config (`cockpit.json.bak`).
 
-On Linux, `scripts/install-linux.sh` publishes the app and adds a desktop entry with its icon, so it appears in
-the application menu rather than as an unnamed window.
-
 Each **Claude** profile can point at its own **`CLAUDE_CONFIG_DIR`** (e.g. a work vs. a personal account), so two
 sessions can run under two different logins at the same time.
+
+### Linux
+
+Every nightly and release ships an **AppImage** next to the tarball: one file, no install, no runtime to
+install first. Make it executable and run it.
+
+```
+chmod +x AI-Cockpit-*-x86_64.AppImage
+./AI-Cockpit-*-x86_64.AppImage
+```
+
+> An AppImage mounts itself with FUSE. On a distribution that ships only fuse3 (most of the recent ones do) you
+> either install `libfuse2`, or run it with `--appimage-extract-and-run`, which unpacks to a temp directory and
+> needs nothing at all. That is an AppImage thing, not a cockpit thing, and it is worth knowing before you
+> conclude the build is broken: without FUSE it exits silently.
+
+Prefer the tarball — for a server, or to feed a package build — and want the app in your application menu?
+`scripts/install-linux.sh` publishes the app and adds a desktop entry with its icon. `scripts/package-appimage.sh`
+builds the AppImage itself, from a publish directory or from scratch.
 
 ### macOS
 
