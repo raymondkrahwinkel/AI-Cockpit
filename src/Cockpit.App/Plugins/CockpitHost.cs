@@ -12,6 +12,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.App.Plugins;
 
@@ -67,6 +68,12 @@ internal sealed class CockpitHost(
 
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
+
+    public void AddWidget(WidgetRegistration registration) =>
+        services.GetRequiredService<IWidgetRegistry>().Register(registration);
+
+    public IReadOnlyList<WidgetRegistration> Widgets =>
+        services.GetRequiredService<IWidgetRegistry>().Widgets;
 
     public void AddWorkflowStep(IWorkflowStep step) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Register(step);
