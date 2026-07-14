@@ -104,4 +104,25 @@ internal sealed class GitHubPullRequestsSettings(IPluginStorage storage)
         RepoFilter
             .Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Repositories or owners to watch, one per line (or comma-separated): <c>EVE-Workbench</c> for every repo of
+    /// that user/org, <c>EVE-Workbench/Eveworkbench</c> for the one.
+    /// <para>
+    /// The rest of this list answers "which pull requests are mine" — authored by me, assigned to me, waiting on my
+    /// review. A repository you are responsible for asks a different question: what is open here, whoever opened it.
+    /// Five open pull requests in a project of yours, none of them yours, showed nothing at all.
+    /// </para>
+    /// </summary>
+    public string WatchedRepos
+    {
+        get => storage.Get<string>("watchedRepos") ?? string.Empty;
+        set => storage.Set("watchedRepos", value);
+    }
+
+    /// <summary><see cref="WatchedRepos"/>, parsed.</summary>
+    public IReadOnlyList<string> WatchedReposList =>
+        [.. WatchedRepos
+            .Split(['\n', '\r', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)];
 }

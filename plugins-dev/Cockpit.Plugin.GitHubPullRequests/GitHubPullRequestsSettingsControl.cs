@@ -23,6 +23,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
     private readonly TextBox _template;
     private readonly NumericUpDown _maxItems;
     private readonly TextBox _repoFilter;
+    private readonly TextBox _watchedRepos;
     private readonly CheckBox _notifyOnReviewRequests;
 
     public GitHubPullRequestsSettingsControl(GitHubPullRequestsSettings settings)
@@ -101,6 +102,15 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
             PlaceholderText = "owner/repo per line — blank = all repositories",
         };
 
+        _watchedRepos = new TextBox
+        {
+            Text = settings.WatchedRepos,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 70,
+            PlaceholderText = "owner or owner/repo per line — blank = only what is mine",
+        };
+
         _template = new TextBox
         {
             Text = settings.Template,
@@ -122,6 +132,8 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
                     httpPanel,
                     _Label("Show how many pull requests inline (the dialog lists them all)"),
                     SettingsHelpRow.Build(_maxItems, "How many pull requests the inline section shows under the session list (1–20). The \"View all open PRs\" dialog always lists every one."),
+                    _Label("Watch these repositories — every open pull request in them, whoever opened it"),
+                    SettingsHelpRow.Build(_watchedRepos, "One owner (EVE-Workbench: every repo of that user or org) or owner/repo (just the one) per line. The rest of this list is about pull requests that are yours — authored by you, assigned to you, waiting on your review. A repository you are responsible for asks a different question: what is open here, whoever opened it."),
                     _Label("Only these repositories (optional)"),
                     SettingsHelpRow.Build(_repoFilter, "Limit the list to specific repositories — one owner/repo per line (or comma-separated), e.g. octocat/hello-world. Leave blank to show pull requests from all your repositories."),
                     _Label("Prompt template — placeholders: {number} {title} {url} {owner} {repo} {body} {author}"),
@@ -142,6 +154,7 @@ internal sealed class GitHubPullRequestsSettingsControl : UserControl, IPluginSe
         _settings.Token = _token.Text?.Trim() ?? string.Empty;
         _settings.MaxItems = (int)(_maxItems.Value ?? 5);
         _settings.RepoFilter = _repoFilter.Text?.Trim() ?? string.Empty;
+        _settings.WatchedRepos = _watchedRepos.Text?.Trim() ?? string.Empty;
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
         return true;
     }

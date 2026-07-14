@@ -106,6 +106,56 @@ internal sealed class GitHubPrGhClient
     }
 
     /// <summary>
+    /// Every open pull request in a repository or owner the operator watches — <em>whoever</em> opened it.
+    /// <para>
+    /// The other searches all ask "which of these are mine": authored by me, assigned to me, waiting on my
+    /// review. That is the right question for a personal list and the wrong one for a project you are
+    /// responsible for: a repository with five open pull requests, none of them yours, shows nothing at all.
+    /// A watched scope is <c>owner</c> (every repo of that user or org) or <c>owner/repo</c> (just the one).
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<GitHubPullRequest>> SearchWatchedAsync(string scope, bool forceRefresh, CancellationToken cancellationToken)
+    {
+        var trimmed = scope.Trim();
+        if (trimmed.Length == 0)
+        {
+            return [];
+        }
+
+        var cacheKey = "watch|" + trimmed;
+        if (!forceRefresh)
+        {
+            lock (CacheGate)
+            {
+                if (PullRequestCache.TryGetValue(cacheKey, out var cached) && DateTimeOffset.UtcNow - cached.At < PullRequestTtl)
+                {
+                    return cached.PullRequests;
+                }
+            }
+        }
+
+        // gh distinguishes the two: --repo takes owner/name, --owner takes the user or org and spans its repos.
+        var scoped = trimmed.Contains('/') ? "--repo" : "--owner";
+        var args = new[]
+        {
+            "search", "prs", "--state", "open", scoped, trimmed, "--limit", "100",
+            "--json", "number,title,url,body,repository,author",
+        };
+
+        var pullRequests = await _WithoutArchivedAsync(
+            _ParsePullRequests(await _RunGhAsync(args, cancellationToken)),
+            forceRefresh,
+            cancellationToken);
+
+        lock (CacheGate)
+        {
+            PullRequestCache[cacheKey] = (DateTimeOffset.UtcNow, pullRequests);
+        }
+
+        return pullRequests;
+    }
+
+    /// <summary>
     /// Drops the pull requests that live in an archived repository.
     /// <para>
     /// The exclusion used to apply only when the operator had scoped the view to one owner, on the reasoning that

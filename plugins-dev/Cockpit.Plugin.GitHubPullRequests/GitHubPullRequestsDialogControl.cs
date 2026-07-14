@@ -221,7 +221,21 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
             var assignedToMe = _assignedToMe.IsChecked == true;
             if (_settings.UseGitHubCli)
             {
-                _all = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None);
+                var mine = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe, forceRefresh, CancellationToken.None);
+
+                // The watched repositories, unless the operator narrowed the view to what is assigned to them —
+                // then "everything open here, whoever opened it" is precisely what they said they did not want.
+                var watched = new List<GitHubPullRequest>();
+                if (!assignedToMe)
+                {
+                    foreach (var scope in _settings.WatchedReposList)
+                    {
+                        watched.AddRange(await _gh.SearchWatchedAsync(scope, forceRefresh, CancellationToken.None));
+                    }
+                }
+
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                _all = mine.Concat(watched).Where(pullRequest => seen.Add(pullRequest.Url)).ToList();
             }
             else
             {

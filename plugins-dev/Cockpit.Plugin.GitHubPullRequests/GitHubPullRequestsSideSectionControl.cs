@@ -223,11 +223,21 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
                 var open = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe: false, forceRefresh, CancellationToken.None);
 
+                // Everything open in the repositories the operator watches, whoever opened it. The searches above
+                // all ask "which of these are mine", which is the wrong question for a project you are responsible
+                // for: five open pull requests in a repo of yours, none of them yours, showed nothing at all.
+                var watched = new List<GitHubPullRequest>();
+                foreach (var scope in _settings.WatchedReposList)
+                {
+                    watched.AddRange(await _gh.SearchWatchedAsync(scope, forceRefresh, CancellationToken.None));
+                }
+
                 // One list: a review request is an open pull request that happens to be waiting on you, and the search
                 // that finds it is a different query — not a different kind of thing. Merged by url so a PR that is
-                // both does not appear twice.
+                // found by two of the three searches does not appear twice.
+                var seen = new HashSet<string>(_reviewRequested, StringComparer.Ordinal);
                 all = reviewRequested
-                    .Concat(open.Where(pullRequest => !_reviewRequested.Contains(pullRequest.Url)))
+                    .Concat(open.Concat(watched).Where(pullRequest => seen.Add(pullRequest.Url)))
                     .ToList();
             }
             else
