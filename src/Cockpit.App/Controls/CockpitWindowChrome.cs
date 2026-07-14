@@ -15,7 +15,11 @@ namespace Cockpit.App.Controls;
 /// </summary>
 internal static class CockpitWindowChrome
 {
-    public static void Apply(Window window, string? title = null, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true)
+    /// <param name="onSettings">
+    /// When given, a gear appears left of the caption buttons and runs this — how a plugin's dialog offers its own
+    /// settings (#: settings from anywhere). Omitted, the title bar looks exactly as it did.
+    /// </param>
+    public static void Apply(Window window, string? title = null, bool includeMinimize = false, bool includeMaximize = false, bool closeOnEscape = true, Action? onSettings = null)
     {
         window.WindowDecorations = WindowDecorations.BorderOnly;
         window.ExtendClientAreaToDecorationsHint = true;
@@ -42,20 +46,20 @@ internal static class CockpitWindowChrome
         // Detach the existing content before re-parenting it under the chrome, or Avalonia throws while the
         // control is briefly a child of two parents.
         window.Content = null;
-        window.Content = _ChromeRoot(window, title ?? window.Title ?? string.Empty, body, includeMinimize, includeMaximize);
+        window.Content = _ChromeRoot(window, title ?? window.Title ?? string.Empty, body, includeMinimize, includeMaximize, onSettings);
     }
 
-    private static Control _ChromeRoot(Window window, string title, Control body, bool includeMinimize, bool includeMaximize)
+    private static Control _ChromeRoot(Window window, string title, Control body, bool includeMinimize, bool includeMaximize, Action? onSettings)
     {
         var root = new DockPanel();
-        var titleBar = _TitleBar(window, title, includeMinimize, includeMaximize);
+        var titleBar = _TitleBar(window, title, includeMinimize, includeMaximize, onSettings);
         DockPanel.SetDock(titleBar, Dock.Top);
         root.Children.Add(titleBar);
         root.Children.Add(body);
         return root;
     }
 
-    private static Control _TitleBar(Window window, string title, bool includeMinimize, bool includeMaximize)
+    private static Control _TitleBar(Window window, string title, bool includeMinimize, bool includeMaximize, Action? onSettings)
     {
         var titleText = new TextBlock
         {
@@ -67,6 +71,15 @@ internal static class CockpitWindowChrome
         };
 
         var captionButtons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Stretch };
+
+        // The gear sits before the caption buttons, so closing a window stays where the hand already goes.
+        if (onSettings is not null)
+        {
+            var settings = _CaptionButton(CockpitIcons.Gear());
+            ToolTip.SetTip(settings, "Settings");
+            settings.Click += (_, _) => onSettings();
+            captionButtons.Children.Add(settings);
+        }
 
         if (includeMinimize)
         {
@@ -136,9 +149,9 @@ internal static class CockpitWindowChrome
 
     // A uniform caption button: same width, font size and centred glyph so the buttons line up regardless
     // of each glyph's own metrics.
-    private static Button _CaptionButton(string glyph) => new()
+    private static Button _CaptionButton(object content) => new()
     {
-        Content = glyph,
+        Content = content,
         Classes = { "Subtle" },
         FontSize = 13,
         Width = 46,

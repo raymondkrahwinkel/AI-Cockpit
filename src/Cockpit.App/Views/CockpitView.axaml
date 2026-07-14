@@ -25,6 +25,41 @@
         <Style Selector="Border.sessionItem:pointerover Button.closeSession">
             <Setter Property="Opacity" Value="1"/>
         </Style>
+
+        <!-- The figures in the status bar are a button, and have to look like one before they are hovered: a strip of
+             grey text that happens to be clickable is a feature nobody finds. So it carries a chevron pointing at the
+             panel it opens, lifts on hover and takes the hand cursor — enough to say "press me" without putting a
+             button-shaped box in a bar that is meant to be quiet. -->
+        <Style Selector="Button.statusMeter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.statusMeter:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        </Style>
+
+        <!-- The resource panel (#78) rises out of the status bar rather than appearing: closed it is not merely
+             hidden but out of the way — no opacity, no pointer — so it never eats a click at the bottom-right of a
+             window it is not in. Animated on opacity and position rather than toggled on IsVisible, because a panel
+             that snaps into existence reads as a glitch, and one that slides up reads as the bar opening. -->
+        <Style Selector="Border.resourcePanel">
+            <Setter Property="Opacity" Value="0"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+            <Setter Property="RenderTransform" Value="translateY(10px)"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.12"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.resourcePanel.open">
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="IsHitTestVisible" Value="True"/>
+            <Setter Property="RenderTransform" Value="translateY(0)"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid x:Name="RootGrid">
@@ -70,19 +105,11 @@
                                   IsEnabled="{Binding OpenMic.IsAvailable}"
                                   ToolTip.ShowOnDisabled="True"
                                   ToolTip.Tip="Toggle open-mic dictation on/off — listens continuously and types into the selected session (enable Voice in Options first)"/>
-                    <!-- Delegated work runs as sessions without a tab, so this is where it stays visible (#67).
-                         Hidden until something has actually been delegated, rather than sitting there dead — and
-                         kept out of the menu below because it carries live state (how many are running). -->
-                    <Button HorizontalAlignment="Stretch" Classes="Subtle"
-                            Command="{Binding ShowDelegatedTasksCommand}"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            IsVisible="{Binding DelegatedTasks.Tasks.Count}"
-                            Content="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks ({0} active)'}"
-                            ToolTip.Tip="Work other sessions handed to a profile — read what they produced, or stop them"/>
                     <!-- Everything you configure or look up once, behind one menu: the sidebar is for sessions,
-                         and six permanent text rows of setup drowned that out. -->
-                    <Button Content="⋯  Menu" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Classes="Subtle" Foreground="{StaticResource CockpitTextFaintBrush}"
+                         and six permanent text rows of setup drowned that out. Styled like the plugin rows above
+                         it rather than as a faint chromeless link: it sits in the same column and does the same
+                         kind of thing, and a row that is styled differently reads as a different kind of control. -->
+                    <Button Content="Menu" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                             ToolTip.Tip="Profiles, MCP servers, plugins, options and about">
                         <Button.Flyout>
                             <MenuFlyout Placement="TopEdgeAlignedLeft">
@@ -321,30 +348,182 @@
         <!-- The toasts (#61), now a control of their own so a plugin's modal dialog shows the same ones. -->
         <controls:ToastOverlay Grid.Column="0" Grid.ColumnSpan="3"/>
 
+        <!-- The breakdown (#78), rising out of the status bar in the corner the figures are in. It sits in the content
+             row, so it floats over the sessions rather than pushing the bar around, and it is anchored bottom-right so
+             it lines up with the button that opens it. -->
+        <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                Classes="resourcePanel"
+                Classes.open="{Binding IsResourcePanelOpen}"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,10,6"
+                Width="320"
+                Background="{StaticResource CockpitPanelBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="8"
+                BoxShadow="0 8 24 0 #40000000">
+            <StackPanel Margin="14,12" Spacing="10">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0" FontSize="12"
+                            Command="{Binding CloseResourcePanelCommand}"
+                            Content="✕"
+                            ToolTip.Tip="Close"/>
+                    <TextBlock Text="Resources" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <!-- The total, big enough to be the thing you came for. It is the whole process tree, so the sessions
+                     below are already in it — which the line under them says, rather than leaving it to be inferred
+                     from figures that do not add up. -->
+                <TextBlock Text="{Binding ResourceSummary}"
+                           FontSize="14" FontWeight="SemiBold"
+                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+
+                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+                <!-- Above the list, not below it: it says what the list is. -->
+                <TextBlock Text="{Binding ResourceDetail}"
+                           FontSize="10.5" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+                <ItemsControl ItemsSource="{Binding ResourceRows}" IsVisible="{Binding HasResourceRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ResourceRowViewModel">
+                            <StackPanel Spacing="3" Margin="0,0,0,10">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right"
+                                               Text="{Binding Memory}"
+                                               FontSize="11.5" FontWeight="SemiBold"
+                                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Title}"
+                                               FontSize="11.5"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+                                </DockPanel>
+
+                                <!-- How much of the app's memory this one session is: the figure says 700 MB, the bar
+                                     says it is most of what is being used, and that is the part you would act on. -->
+                                <ProgressBar Height="4" Minimum="0" Maximum="1"
+                                             Value="{Binding MemoryShare}"
+                                             Foreground="{StaticResource CockpitAccentBrush}"
+                                             Background="{StaticResource CockpitSecondaryBgBrush}"/>
+
+                                <TextBlock Text="{Binding Cpu}"
+                                           FontSize="10.5"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- The local model servers (#78). They run beside the cockpit rather than under it — one Ollama serves
+                     every session — so they are shown apart from the total above rather than folded into it: a model
+                     can weigh more than the whole app, and putting it in a figure the operator reads as "what the
+                     cockpit costs" would be a lie. -->
+                <StackPanel Spacing="10" IsVisible="{Binding HasModelServers}">
+                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+
+                    <TextBlock Text="Local model servers"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                    <ItemsControl ItemsSource="{Binding ModelServerRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ResourceRowViewModel">
+                                <StackPanel Spacing="3" Margin="0,0,0,10">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right"
+                                                   Text="{Binding Memory}"
+                                                   FontSize="11.5" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Title}"
+                                                   FontSize="11.5"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                    </DockPanel>
+
+                                    <ProgressBar Height="4" Minimum="0" Maximum="1"
+                                                 Value="{Binding MemoryShare}"
+                                                 Foreground="{StaticResource CockpitAccentBrush}"
+                                                 Background="{StaticResource CockpitSecondaryBgBrush}"/>
+
+                                    <TextBlock Text="{Binding Cpu}"
+                                               FontSize="10.5"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="Runs beside the cockpit, not under it: one server answers every session, so this is not part of the total above."
+                               FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <!-- Status bar (#78): what the cockpit is using right now. The total is the cockpit's own process tree,
-             so it already contains every session it spawned; hovering breaks that down per session. -->
-        <!-- The tooltip hangs on the bar, not on the text: a TextBlock without a background catches no pointer,
-             so hovering "CPU 3% · RAM 1.2 GB" did nothing at all — the one place the breakdown lives. -->
+             so it already contains every session it spawned; the figures open the breakdown per session. -->
         <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0"
-                Padding="10,4"
-                ToolTip.Tip="{Binding ResourceDetail}"
-                ToolTip.Placement="Top">
+                Padding="10,4">
             <DockPanel>
                 <!-- The memory figure is its own TextBlock so it alone can change colour: amber as it climbs, red at
                      the point where the system starts killing things. A number that turns while you work is something
                      you can act on without being interrupted. -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding ResourceCpu}"
+                <!-- The figures are a button, and the breakdown is a panel it opens (#78). It used to be a tooltip,
+                     which meant relying on the platform to hit-test a strip of text and to place a popup where it was
+                     asked to — and on this one it did neither. A button is hit like any other button, and a panel the
+                     operator opened is one that stays open while they read it. -->
+                <Button DockPanel.Dock="Right"
+                        Classes="statusMeter"
+                        Padding="8,2"
+                        Command="{Binding ToggleResourcePanelCommand}"
+                        ToolTip.Tip="What the cockpit and its sessions are using — click for the breakdown per session">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
+                        <TextBlock Text="{Binding ResourceCpu}"
+                                   FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ResourceMemory}"
+                                   FontSize="11"
+                                   Foreground="{Binding ResourceMemoryBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                                   VerticalAlignment="Center"/>
+                        <!-- Points at the panel: up while it is closed (that is where it will come from), down while it
+                             is open (that is where it will go). -->
+                        <TextBlock Text="⌃" FontSize="10" Margin="0,2,0,0"
+                                   IsVisible="{Binding !IsResourcePanelOpen}"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="⌄" FontSize="10" Margin="0,-2,0,0"
+                                   IsVisible="{Binding IsResourcePanelOpen}"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- The delegated tasks (#67) run as sessions without a tab, so the status bar is where they are
+                     visible at all: work is happening on your behalf that nothing else on screen would tell you
+                     about. Always there, including at nought: a meter that shows up only when it has something to
+                     report leaves you unable to tell "nothing is running" from "the meter is gone". The colour carries
+                     that — blue while something works, grey while nothing does. -->
+                <Button DockPanel.Dock="Right"
+                        Classes="statusMeter"
+                        Padding="8,2"
+                        Margin="0,0,8,0"
+                        Command="{Binding ShowDelegatedTasksCommand}"
+                        ToolTip.Tip="Work your sessions handed to another profile — click to read what they produced, or stop them">
+                    <TextBlock Text="{Binding DelegatedTasks.ActiveTaskCount, StringFormat='Delegated tasks: {0}'}"
                                FontSize="11"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Foreground="{Binding DelegatedTasks.ActiveTaskBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                                VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding ResourceMemory}"
-                               FontSize="11"
-                               Foreground="{Binding ResourceMemoryBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
+                </Button>
+
                 <TextBlock Text="{Binding ResourceSessions}"
                            FontSize="11"
                            Foreground="{StaticResource CockpitTextFaintBrush}"

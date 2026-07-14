@@ -30,10 +30,21 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// <summary>How many tasks may wait for a slot before the cockpit says no rather than growing a queue nobody watches.</summary>
     private const int MaxQueued = 8;
 
+    /// <summary>
+    /// How long a finished task's session is kept alive for a follow-up before the cockpit closes it. The session is
+    /// deliberately not torn down the moment a turn ends — the caller may want to ask one more thing, and a
+    /// conversation that has to be started again is not a conversation. But an orchestrator that simply never calls
+    /// stop_task (the common case: it has its answer and moves on) would leave a sub-agent sitting there until the
+    /// app closes — a CLI process, or an Ollama model held in memory, doing nothing at all. So it reaps itself, and
+    /// a follow-up within the window puts it back to work and starts the clock again.
+    /// </summary>
+    private static readonly TimeSpan IdleSessionWindow = TimeSpan.FromMinutes(5);
+
     private readonly ISessionProfileStore _profileStore;
     private readonly ISessionManager _sessionManager;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IDelegationAuditLog _auditLog;
+    private readonly ISessionWorkspaces _workspaces;
     private readonly Func<int, TimeSpan> _timeout;
     private readonly List<DelegatedTaskEntry> _tasks = [];
     private readonly Lock _tasksLock = new();
@@ -42,8 +53,9 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         ISessionProfileStore profileStore,
         ISessionManager sessionManager,
         IMcpServerStore mcpServerStore,
-        IDelegationAuditLog auditLog)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes))
+        IDelegationAuditLog auditLog,
+        ISessionWorkspaces workspaces)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces)
     {
     }
 
@@ -53,12 +65,14 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         ISessionManager sessionManager,
         IMcpServerStore mcpServerStore,
         IDelegationAuditLog auditLog,
-        Func<int, TimeSpan> timeout)
+        Func<int, TimeSpan> timeout,
+        ISessionWorkspaces? workspaces = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
         _mcpServerStore = mcpServerStore;
         _auditLog = auditLog;
+        _workspaces = workspaces ?? NoSessionWorkspaces.Instance;
         _timeout = timeout;
     }
 
@@ -80,6 +94,70 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 profile.DelegationPolicy.MaxConcurrent,
                 _CountRunning(profile.Label)))
             .ToList();
+    }
+
+    /// <summary>
+    /// Writes back what a profile turned out to be good for — and nothing else. Only the three descriptive fields are
+    /// touched; the rest of the policy is rebuilt from what the operator set, so a caller cannot make itself a target,
+    /// raise a ceiling, or open a directory by calling this. A profile that is not already a target is refused, for
+    /// the same reason: it is not a caller's to enrol.
+    /// </summary>
+    public async Task<DelegationTargetView> DescribeTargetAsync(
+        string profileLabel,
+        string? purpose,
+        IReadOnlyList<string>? tags,
+        IReadOnlyList<string>? taskTypes,
+        CancellationToken cancellationToken = default)
+    {
+        var profiles = await _profileStore.LoadAsync(cancellationToken);
+        var index = profiles.ToList().FindIndex(candidate => string.Equals(candidate.Label, profileLabel, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            throw new DelegationRejectedException($"No profile named '{profileLabel}'.");
+        }
+
+        var profile = profiles[index];
+        if (!profile.DelegationPolicy.AllowedAsTarget)
+        {
+            throw new DelegationRejectedException(
+                $"Profile '{profile.Label}' is not a delegation target, and enrolling one is the operator's call, not yours.");
+        }
+
+        // Null leaves a field as it was; a caller that knows only what a profile is good for should not have to
+        // restate its task types to say so.
+        var updated = profile.DelegationPolicy with
+        {
+            Purpose = purpose is null ? profile.DelegationPolicy.Purpose : _OrNull(purpose),
+            Tags = tags is null ? profile.DelegationPolicy.Tags : _OrNull(tags),
+            AllowedTaskTypes = taskTypes is null ? profile.DelegationPolicy.AllowedTaskTypes : _OrNull(taskTypes),
+        };
+
+        var saved = profiles.ToList();
+        saved[index] = profile with { Delegation = updated };
+        await _profileStore.SaveAsync(saved, cancellationToken);
+
+        return new DelegationTargetView(
+            profile.Label,
+            profile.Provider.ToString(),
+            updated.Purpose,
+            updated.Tags ?? [],
+            updated.AllowedTaskTypes ?? [],
+            updated.MaxConcurrent,
+            _CountRunning(profile.Label));
+    }
+
+    // An empty string (or an empty list) is how a caller says "there is nothing to say here" — stored as absent
+    // rather than as a blank that reads like a value.
+    private static string? _OrNull(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static IReadOnlyList<string>? _OrNull(IReadOnlyList<string> values)
+    {
+        var kept = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .ToList();
+
+        return kept.Count > 0 ? kept : null;
     }
 
     public async Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, CancellationToken cancellationToken = default)
@@ -182,6 +260,11 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 $"({entry.Profile.DelegationPolicy.MaxConcurrent}). Wait for one to finish, then send the follow-up.");
         }
 
+        // The session is wanted after all, so the clock that would have closed it stops.
+        entry.IdleCancellation?.Cancel();
+        entry.IdleCancellation?.Dispose();
+        entry.IdleCancellation = null;
+
         entry.Status = DelegatedTaskStatus.Running;
         TasksChanged?.Invoke();
         await entry.Runtime.SendUserMessageAsync(text, cancellationToken: cancellationToken);
@@ -215,7 +298,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
     // Everything the target profile refuses is refused here, before a process exists. A caller cannot widen any
     // of it: the driver, the credentials and the environment all come from the profile, never from the call.
-    private static void _Guard(DelegationRequest request, DelegationPolicy policy)
+    private void _Guard(DelegationRequest request, DelegationPolicy policy)
     {
         if (!policy.AllowedAsTarget)
         {
@@ -237,18 +320,29 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         if (request.WorkingDirectory is { Length: > 0 } workingDirectory && !_IsAllowedWorkingDirectory(workingDirectory, policy))
         {
             throw new DelegationRejectedException(
-                $"Profile '{request.ProfileLabel}' does not allow a task to run in '{workingDirectory}'.");
+                $"Profile '{request.ProfileLabel}' does not allow a task to run in '{workingDirectory}'. " +
+                "Allow it under the profile's delegation settings, or delegate from a session that works there.");
         }
     }
 
-    // Compared on the resolved full path, so "allowed/../../etc" cannot walk out of an allowed directory.
-    private static bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy)
+    /// <summary>
+    /// Where a delegated task may run: the directories the target profile allows, and the ones the cockpit's own
+    /// sessions are already working in. The second is what makes delegation usable at all — you delegate <em>from</em>
+    /// a session in a repository, and that session can already read and write there, so the sub-agent it starts
+    /// reaches nothing its caller did not have. Everywhere else still needs the profile's own say-so.
+    /// </summary>
+    private bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy)
     {
-        if (policy.AllowedWorkingDirs is not { Count: > 0 } allowed)
+        var allowed = (policy.AllowedWorkingDirs ?? [])
+            .Concat(_workspaces.ActiveWorkingDirectories)
+            .ToList();
+
+        if (allowed.Count == 0)
         {
             return false;
         }
 
+        // Compared on the resolved full path, so "allowed/../../etc" cannot walk out of an allowed directory.
         var requested = Path.GetFullPath(workingDirectory);
         return allowed.Any(root =>
         {
@@ -293,6 +387,39 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             TasksChanged?.Invoke();
             await _Audit(DelegationAuditAction.Failed, entry.Profile.Label, entry.TaskId, request: null, ex.Message, entry);
         }
+    }
+
+    /// <summary>
+    /// Closes a finished task's session once nobody has followed up on it for <see cref="IdleSessionWindow"/>. Without
+    /// this a delegated session lived until the app did: an orchestrator that has its answer has no reason to call
+    /// stop_task, and every task it ever ran would still be holding a process — or a model in a local server's
+    /// memory. The result is kept; only the session goes.
+    /// </summary>
+    private void _ArmIdleReap(DelegatedTaskEntry entry)
+    {
+        var idle = new CancellationTokenSource();
+        entry.IdleCancellation = idle;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(IdleSessionWindow, idle.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // A follow-up came, or the task was stopped — either way this session is somebody else's business now.
+                return;
+            }
+
+            // Still finished and still holding a session: nobody wants it any more.
+            if (entry.Runtime is { } runtime && entry.IsFinished)
+            {
+                await _sessionManager.StopAsync(runtime.Id);
+                entry.ReleaseSession();
+                TasksChanged?.Invoke();
+            }
+        });
     }
 
     /// <summary>
@@ -387,13 +514,14 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         {
             case TurnCompleted turn:
                 entry.TurnCount++;
-                // The task is answered, but the session stays up: a caller can send a follow-up turn. It is torn
-                // down on stop, which is also what the orchestrator does once it has the result it wanted.
+                // The task is answered, but the session stays up for a while: a caller can send a follow-up turn.
+                // It is torn down on stop — and, when nobody stops it, once the idle window closes.
                 entry.Finish(
                     turn.IsError ? DelegatedTaskStatus.Failed : DelegatedTaskStatus.Completed,
                     result: entry.Runtime?.LastAssistantText,
                     error: turn.IsError ? turn.Result : null,
                     keepSessionAlive: true);
+                _ArmIdleReap(entry);
                 TasksChanged?.Invoke();
                 _ = _Audit(
                     turn.IsError ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,

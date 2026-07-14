@@ -22,6 +22,7 @@ public class CockpitHostAddSessionProviderTests
         var services = new ServiceCollection().AddSingleton<IPluginProviderRegistry>(registry).BuildServiceProvider();
         var host = new CockpitHost(
             "gemini-provider",
+            "Gemini Provider",
             services,
             Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),

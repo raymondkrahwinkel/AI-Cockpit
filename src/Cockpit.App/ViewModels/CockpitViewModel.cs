@@ -80,6 +80,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly PluginDiagnostics? _pluginDiagnostics;
+    private readonly IPluginDialogHost? _pluginDialogHost;
     private readonly List<byte> _recordedPcm = [];
 
     // Last observed status per session, so a NeedsAttention notification fires only on the edge into
@@ -116,13 +117,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Raised when the left-menu order or visibility changed (#72) — the cue for the sidebar to rebuild.</summary>
     public event EventHandler? PluginMenuChanged;
 
-    /// <summary>The plugin's left-menu contributions in the order and visibility the operator chose (#72); ties keep the order the plugins were discovered in.</summary>
-    public IReadOnlyList<PluginSideButton> VisibleSideButtons =>
-        PluginSideButtons.Where(button => !_IsHiddenInMenu(button.PluginId)).OrderBy(button => _MenuOrderOf(button.PluginId)).ToList();
-
-    /// <inheritdoc cref="VisibleSideButtons"/>
-    public IReadOnlyList<PluginSideSection> VisibleSideSections =>
-        PluginSideSections.Where(section => !_IsHiddenInMenu(section.PluginId)).OrderBy(section => _MenuOrderOf(section.PluginId)).ToList();
+    /// <summary>
+    /// Everything the plugins put in the left menu — launcher buttons and inline sections alike — in the order and
+    /// visibility the operator chose (#72); ties keep the order the plugins were discovered in.
+    /// <para>
+    /// One list, not one per kind: drawing every button and then every section meant a plugin that contributes a
+    /// section (the open pull requests) sat below every plugin that contributes a button, however far up the operator
+    /// moved it. An order that a plugin's kind can overrule is not an order.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PluginMenuEntry> VisibleMenuEntries =>
+        PluginSideButtons.Select(button => new PluginMenuEntry(button.PluginId, button, null))
+            .Concat(PluginSideSections.Select(section => new PluginMenuEntry(section.PluginId, null, section)))
+            .Where(entry => !_IsHiddenInMenu(entry.PluginId))
+            // OrderBy is stable, and the buttons come first above — so a plugin contributing both keeps its button
+            // above its own section, where a launcher belongs.
+            .OrderBy(entry => _MenuOrderOf(entry.PluginId))
+            .ToList();
 
     /// <summary>Applies a menu preference the plugin manager just persisted, and tells the sidebar to rebuild (#72).</summary>
     public void ApplyPluginMenuPreference(string pluginId, int menuOrder, bool hiddenInMenu)
@@ -148,8 +159,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Rows for the Options → Shortcuts tab: the editable app-action gestures, then the read-only plugin-contributed ones.</summary>
     public ObservableCollection<ShortcutRowViewModel> ShortcutRows { get; } = [];
 
-    /// <summary>Per-plugin settings views (#14) keyed by plugin folder id, opened from the gear in the plugin manager.</summary>
-    public Dictionary<string, Func<Control>> PluginSettings { get; } = [];
+    /// <summary>Per-plugin settings views (#14) keyed by plugin folder id, opened from any of the gears — the plugin manager's, the left-menu button's, a plugin dialog's — or by the plugin itself.</summary>
+    public Dictionary<string, PluginSettingsRegistration> PluginSettings { get; } = [];
 
     /// <summary>Settings-saved callbacks (#52) keyed by plugin folder id, registered via <see cref="ICockpitHost.OnSettingsSaved"/> and run once that plugin's settings dialog Save() returns true.</summary>
     private readonly Dictionary<string, List<Action>> _settingsSavedHandlers = [];
@@ -205,8 +216,35 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
         _OnUiThread(() => PluginShortcuts.Add(shortcut));
 
-    void IPluginContributionSink.AddPluginSettings(string pluginId, Func<Control> createView) =>
-        _OnUiThread(() => PluginSettings[pluginId] = createView);
+    // Registration touches only this plain dictionary — never a bound ObservableCollection — and every caller is
+    // an Avalonia UI-thread callback in practice (a plugin's Initialize). Kept synchronous for the same reason as
+    // AddSettingsSavedHandler below: a dispatcher hop would only run once something pumps the queue, which leaves
+    // the registration invisible to anything reading it in the same turn.
+    void IPluginContributionSink.AddPluginSettings(string pluginId, string pluginName, Func<Control> createView) =>
+        PluginSettings[pluginId] = new PluginSettingsRegistration(pluginId, pluginName, createView);
+
+    public bool HasPluginSettings(string pluginId) => PluginSettings.ContainsKey(pluginId);
+
+    /// <summary>
+    /// The single way a plugin's settings dialog opens, wherever the gear that opened it sits (#: settings from
+    /// anywhere). Every entry point routes here rather than opening the view itself, so a settings change saved
+    /// from a plugin's own dialog runs the same settings-saved handlers as one saved from the manager — a plugin
+    /// that re-registers its MCP server on save must not depend on which gear the operator happened to reach for.
+    /// </summary>
+    public async Task OpenPluginSettingsAsync(string pluginId)
+    {
+        if (_pluginDialogHost is null || !PluginSettings.TryGetValue(pluginId, out var settings))
+        {
+            return;
+        }
+
+        await _pluginDialogHost.ShowSettingsDialogAsync(
+            $"{settings.PluginName} settings",
+            settings.CreateView,
+            640,
+            560,
+            onSaved: () => ((IPluginContributionSink)this).NotifySettingsSaved(pluginId));
+    }
 
     // Unlike the three contributions above, registration here touches only this private dictionary — never
     // a bound ObservableCollection — and both members are reached exclusively from Avalonia UI-thread
@@ -785,6 +823,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _audioDeviceProvider = audioDeviceProvider;
         _pluginDiagnostics = pluginDiagnostics;
+        _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;
         // The full plugin manager needs its store/installer/bootstrap, store dependencies, the dialog host
         // and the diagnostics; when they are absent (unit tests that don't exercise plugins) the design-time
@@ -792,7 +831,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = pluginRegistrationStore is not null && pluginInstaller is not null && pluginBootstrap is not null
                 && pluginStoreConfigStore is not null && pluginStoreClient is not null && pluginDialogHost is not null
                 && pluginDiagnostics is not null
-            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDialogHost, pluginDiagnostics, this, appRestartService)
+            ? new PluginManagerViewModel(pluginRegistrationStore, pluginInstaller, pluginBootstrap, dialogService, pluginStoreConfigStore, pluginStoreClient, PluginSettings, pluginDiagnostics, this, appRestartService)
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
@@ -1073,9 +1112,42 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _resourceMemoryBrushKey = "CockpitTextSecondaryBrush";
 
-    /// <summary>The same, broken down per session — what the status bar shows on hover.</summary>
+    /// <summary>The same, broken down per session — the panel's own text when there is nothing to break down.</summary>
     [ObservableProperty]
     private string _resourceDetail = string.Empty;
+
+    /// <summary>
+    /// The breakdown as rows (#78): what the resource panel lists. It opens from the figures in the status bar
+    /// rather than appearing on hover — a tooltip is at the mercy of the platform's hit-testing and placement, and
+    /// on this one it turned out to be at the mercy of both. A panel the operator opens is also a panel that stays
+    /// open while they read it.
+    /// </summary>
+    public ObservableCollection<ResourceRowViewModel> ResourceRows { get; } = [];
+
+    /// <summary>
+    /// The local model servers (#78) — Ollama, LM Studio — with what they are holding. A session that talks to one
+    /// over HTTP has no process of its own, so it can never appear above; the model it loaded is nonetheless the
+    /// heaviest thing on the machine, and "nothing to break down" was a poor answer to "what is using my memory".
+    /// </summary>
+    public ObservableCollection<ResourceRowViewModel> ModelServerRows { get; } = [];
+
+    /// <summary>Whether a local model server is running at all — no Ollama, no section.</summary>
+    public bool HasModelServers => ModelServerRows.Count > 0;
+
+    /// <summary>Whether the resource panel is open — toggled from the status bar's figures.</summary>
+    [ObservableProperty]
+    private bool _isResourcePanelOpen;
+
+    /// <summary>True when there is nothing to break down: sessions that run over HTTP have no local process to weigh.</summary>
+    public bool HasResourceRows => ResourceRows.Count > 0;
+
+    /// <summary>Opens the breakdown, or closes it — the status bar's figures are the button.</summary>
+    [RelayCommand]
+    private void ToggleResourcePanel() => IsResourcePanelOpen = !IsResourcePanelOpen;
+
+    /// <summary>Closes the breakdown. Esc, and the panel's own close button.</summary>
+    [RelayCommand]
+    private void CloseResourcePanel() => IsResourcePanelOpen = false;
 
     /// <summary>Left of the meter: how many sessions are being weighed, so it is visible that the breakdown exists at all rather than hidden behind a hover nobody tries.</summary>
     [ObservableProperty]
@@ -1168,12 +1240,101 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The total is the cockpit's whole tree, so it already contains the sessions — saying so stops the
         // breakdown from reading like it should add up to the total.
         ResourceDetail = usage.Sessions.Count == 0
-            ? "Nothing to break down: a session that runs over HTTP (Ollama, LM Studio) has no local process to weigh."
-            : "Per session — its process and everything it spawned. The total above already includes these."
-              + Environment.NewLine + Environment.NewLine
-              + string.Join(
-                  Environment.NewLine,
-                  usage.Sessions.Select(session => $"{session.Title}:   CPU {session.CpuPercent:0}%   ·   RAM {_Megabytes(session.MemoryBytes)}"));
+            ? "No session has a process of its own — one that runs over HTTP (Ollama, LM Studio) is served by the model server below. What the total is made of:"
+            : "What the total is made of — each session's process and everything it spawned, the app itself, and the tool servers it started for them:";
+
+        _RefreshResourceRows(usage);
+    }
+
+    // Rebuilt in place, same as the session rows: the panel is refreshed every couple of seconds, and a list that
+    // empties itself first flickers in the hand of whoever is reading it.
+    private void _RefreshModelServerRows(ResourceUsage usage)
+    {
+        // Measured against the machine, not against the cockpit: these servers are not inside the cockpit's total, so
+        // a share of that total would be a fraction of the wrong thing — and a model can easily outweigh the app.
+        var machine = MachineMemory.TotalBytes();
+
+        var rows = usage.ModelServers
+            .Select(server => new ResourceRowViewModel(
+                server.Name,
+                $"{_Percent(server.MemoryBytes, machine)} of this machine",
+                _Megabytes(server.MemoryBytes),
+                _Share(server.MemoryBytes, machine)))
+            .ToList();
+
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (index < ModelServerRows.Count)
+            {
+                if (!ModelServerRows[index].Equals(rows[index]))
+                {
+                    ModelServerRows[index] = rows[index];
+                }
+            }
+            else
+            {
+                ModelServerRows.Add(rows[index]);
+            }
+        }
+
+        while (ModelServerRows.Count > rows.Count)
+        {
+            ModelServerRows.RemoveAt(ModelServerRows.Count - 1);
+        }
+
+        OnPropertyChanged(nameof(HasModelServers));
+    }
+
+    // Rebuilt in place rather than cleared and refilled: this runs every couple of seconds, and a collection that
+    // empties itself first makes the panel flicker in the hand of whoever has it open.
+    private void _RefreshResourceRows(ResourceUsage usage)
+    {
+        // Everything inside the total, in one list: the sessions, the app itself, and the MCP tool servers it started
+        // for them. Those servers are what took the figure from 300 MB to 800 the moment a session connected, and they
+        // were nowhere on screen — a total that cannot be explained is a total nobody can act on.
+        var parts = usage.Sessions
+            .Select(session => new ResourceRowViewModel(
+                session.Title,
+                $"CPU {session.CpuPercent:0}%",
+                _Megabytes(session.MemoryBytes),
+                _Share(session.MemoryBytes, usage.MemoryBytes)))
+            .Append(new ResourceRowViewModel(
+                "The cockpit itself",
+                "the app, its windows and its transcripts",
+                _Megabytes(usage.Parts.OwnBytes),
+                _Share(usage.Parts.OwnBytes, usage.MemoryBytes)))
+            .Concat(usage.Parts.Children.Select(child => new ResourceRowViewModel(
+                child.Name,
+                "a tool server the cockpit started",
+                _Megabytes(child.MemoryBytes),
+                _Share(child.MemoryBytes, usage.MemoryBytes))));
+
+        var rows = parts
+            .OrderByDescending(row => row.MemoryShare)
+            .ToList();
+
+        for (var index = 0; index < rows.Count; index++)
+        {
+            if (index < ResourceRows.Count)
+            {
+                if (!ResourceRows[index].Equals(rows[index]))
+                {
+                    ResourceRows[index] = rows[index];
+                }
+            }
+            else
+            {
+                ResourceRows.Add(rows[index]);
+            }
+        }
+
+        while (ResourceRows.Count > rows.Count)
+        {
+            ResourceRows.RemoveAt(ResourceRows.Count - 1);
+        }
+
+        OnPropertyChanged(nameof(HasResourceRows));
+        _RefreshModelServerRows(usage);
     }
 
     // A session's number includes everything it spawned, so "RAM" here means the tree, not the parent.
@@ -1181,6 +1342,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         bytes >= 1024L * 1024 * 1024
             ? $"{bytes / 1024.0 / 1024 / 1024:0.0} GB"
             : $"{bytes / 1024 / 1024} MB";
+
+    private static double _Share(long part, long whole) =>
+        whole > 0 ? Math.Clamp((double)part / whole, 0, 1) : 0;
+
+    // "of this machine" only means something when the machine's memory can be read; where it cannot, the share is
+    // left unsaid rather than shown as zero.
+    private static string _Percent(long part, long whole) =>
+        whole > 0 ? $"{(double)part / whole:P0}" : "an unknown share";
 
     /// <summary>
     /// Whether this cockpit can back itself up (#70) — false only in the design-time view model, which has no

@@ -53,6 +53,7 @@ public class ConversationPickerTests
 
         return new CockpitHost(
             "test-plugin",
+            "Test Plugin",
             services.BuildServiceProvider(),
             Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
@@ -26,8 +25,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     private readonly ISessionDialogService? _dialogService;
     private readonly IPluginStoreConfigStore? _storeConfigStore;
     private readonly IPluginStoreClient? _storeClient;
-    private readonly IReadOnlyDictionary<string, Func<Control>>? _settingsRegistry;
-    private readonly IPluginDialogHost? _dialogHost;
+    private readonly IReadOnlyDictionary<string, PluginSettingsRegistration>? _settingsRegistry;
     private readonly PluginDiagnostics? _diagnostics;
     private readonly IPluginContributionSink? _contributionSink;
     private readonly IAppRestartService? _restartService;
@@ -80,8 +78,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         ISessionDialogService dialogService,
         IPluginStoreConfigStore storeConfigStore,
         IPluginStoreClient storeClient,
-        IReadOnlyDictionary<string, Func<Control>> settingsRegistry,
-        IPluginDialogHost dialogHost,
+        IReadOnlyDictionary<string, PluginSettingsRegistration> settingsRegistry,
         PluginDiagnostics diagnostics,
         IPluginContributionSink? contributionSink = null,
         IAppRestartService? restartService = null)
@@ -93,7 +90,6 @@ public partial class PluginManagerViewModel : ViewModelBase
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
         _settingsRegistry = settingsRegistry;
-        _dialogHost = dialogHost;
         _diagnostics = diagnostics;
         _contributionSink = contributionSink;
         _restartService = restartService;
@@ -215,20 +211,16 @@ public partial class PluginManagerViewModel : ViewModelBase
         NeedsRestart = true;
     }
 
+    /// <summary>The manager's gear is now one of several ways into a plugin's settings, so it opens them the same way the others do.</summary>
     [RelayCommand]
     private async Task OpenPluginSettingsAsync(PluginRowViewModel row)
     {
-        if (_dialogHost is null || _settingsRegistry is null || !_settingsRegistry.TryGetValue(row.FolderId, out var createView))
+        if (_contributionSink is null)
         {
             return;
         }
 
-        await _dialogHost.ShowSettingsDialogAsync(
-            $"{row.DisplayName} settings",
-            createView,
-            640,
-            560,
-            onSaved: () => _contributionSink?.NotifySettingsSaved(row.FolderId));
+        await _contributionSink.OpenPluginSettingsAsync(row.FolderId);
     }
 
     /// <summary>Moves the plugin up the left menu (#72) — and up this list, which is ordered the same way.</summary>

@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
@@ -716,6 +717,63 @@ public class CockpitViewModelTests
         act.Should().NotThrow();
     }
 
+    // Settings are now reachable from several places (the manager's gear, the gear on a plugin's left-menu entry
+    // or dialog, and the plugin itself), and every one of them opens the same dialog through this one seam —
+    // titled after the plugin, whichever gear was pressed.
+    [Fact]
+    public async Task OpenPluginSettings_OpensThePluginsOwnViewTitledAfterIt()
+    {
+        var dialogHost = Substitute.For<IPluginDialogHost>();
+        var vm = NewVm(pluginDialogHost: dialogHost);
+        var view = new TextBlock();
+        ((IPluginContributionSink)vm).AddPluginSettings("youtrack", "YouTrack", () => view);
+
+        await vm.OpenPluginSettingsAsync("youtrack");
+
+        await dialogHost.Received(1).ShowSettingsDialogAsync(
+            "YouTrack settings",
+            Arg.Any<Func<Control>>(),
+            Arg.Any<double>(),
+            Arg.Any<double>(),
+            Arg.Any<Action?>());
+    }
+
+    // Saving from any gear must run the plugin's settings-saved handlers: a plugin that re-registers its MCP
+    // server on save cannot depend on which one the operator reached for.
+    [Fact]
+    public async Task SavingFromAnyGear_RunsThePluginsSettingsSavedHandlers()
+    {
+        var dialogHost = Substitute.For<IPluginDialogHost>();
+        dialogHost
+            .ShowSettingsDialogAsync(Arg.Any<string>(), Arg.Any<Func<Control>>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<Action?>())
+            .Returns(callInfo =>
+            {
+                callInfo.Arg<Action?>()?.Invoke();
+                return Task.CompletedTask;
+            });
+        var vm = NewVm(pluginDialogHost: dialogHost);
+        var sink = (IPluginContributionSink)vm;
+        var saves = 0;
+        sink.AddPluginSettings("youtrack", "YouTrack", () => new TextBlock());
+        sink.AddSettingsSavedHandler("youtrack", () => saves++);
+
+        await vm.OpenPluginSettingsAsync("youtrack");
+
+        saves.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task OpenPluginSettings_ForAPluginThatRegisteredNone_DoesNothing()
+    {
+        var dialogHost = Substitute.For<IPluginDialogHost>();
+        var vm = NewVm(pluginDialogHost: dialogHost);
+
+        await vm.OpenPluginSettingsAsync("youtrack");
+
+        vm.HasPluginSettings("youtrack").Should().BeFalse();
+        await dialogHost.DidNotReceiveWithAnyArgs().ShowSettingsDialogAsync(default!, default!, default, default, default);
+    }
+
     private static async Task<CockpitViewModel> NewVmWithSessionsAsync(int count)
     {
         var vm = NewVm();
@@ -782,7 +840,11 @@ public class CockpitViewModelTests
         vm.SelectedSession.Should().Be(vm.Sessions[1]);
     }
 
-    private static CockpitViewModel NewVm(ISessionDialogService? dialogService = null, ITerminalSettingsStore? terminalSettingsStore = null, ILayoutSettingsStore? layoutSettingsStore = null)
+    private static CockpitViewModel NewVm(
+        ISessionDialogService? dialogService = null,
+        ITerminalSettingsStore? terminalSettingsStore = null,
+        ILayoutSettingsStore? layoutSettingsStore = null,
+        IPluginDialogHost? pluginDialogHost = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
@@ -819,7 +881,8 @@ public class CockpitViewModelTests
             sessionBehaviorSettingsStore,
             layoutSettingsStore,
             voiceSettingsStore,
-            terminalSettingsStore);
+            terminalSettingsStore,
+            pluginDialogHost: pluginDialogHost);
     }
 
     private static ISessionDialogService DefaultDialogService()

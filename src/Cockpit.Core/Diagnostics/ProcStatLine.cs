@@ -7,17 +7,22 @@ namespace Cockpit.Core.Diagnostics;
 /// parentheses</em>, and it may itself contain spaces and parentheses (a process called "my prog (v2)" is legal),
 /// so counting fields from the left is wrong. The reliable trick is to start counting after the LAST ')'.
 /// </summary>
-public sealed record ProcStatLine(int ParentProcessId, long UserTicks, long SystemTicks)
+public sealed record ProcStatLine(string Name, int ParentProcessId, long UserTicks, long SystemTicks)
 {
     public long TotalTicks => UserTicks + SystemTicks;
 
     public static ProcStatLine? Parse(string line)
     {
+        var firstParenthesis = line.IndexOf('(');
         var lastParenthesis = line.LastIndexOf(')');
-        if (lastParenthesis < 0 || lastParenthesis + 2 >= line.Length)
+        if (firstParenthesis < 0 || lastParenthesis < firstParenthesis || lastParenthesis + 2 >= line.Length)
         {
             return null;
         }
+
+        // The name is what is between the parentheses — all of it, including any spaces and parentheses of its own,
+        // which is the same trap that makes counting fields from the left wrong.
+        var name = line[(firstParenthesis + 1)..lastParenthesis];
 
         // After the ')' the fields are: state(3) ppid(4) pgrp(5) session(6) tty(7) tpgid(8) flags(9)
         // minflt(10) cminflt(11) majflt(12) cmajflt(13) utime(14) stime(15) ...
@@ -34,6 +39,6 @@ public sealed record ProcStatLine(int ParentProcessId, long UserTicks, long Syst
             return null;
         }
 
-        return new ProcStatLine(parentProcessId, userTicks, systemTicks);
+        return new ProcStatLine(name, parentProcessId, userTicks, systemTicks);
     }
 }

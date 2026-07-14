@@ -86,27 +86,32 @@
                 </ScrollViewer>
             </Border>
 
-            <DockPanel Grid.Column="1" Margin="12,0,0,0">
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                    <TextBlock Text="{Binding SelectedTask.Title}" FontWeight="SemiBold" FontSize="12"
-                               VerticalAlignment="Center"/>
-                    <!-- Stop is offered only while the task can still be stopped; a finished task shows no
-                         button rather than one that does nothing. -->
-                    <Button Content="Stop" Classes="Compact"
-                            Command="{Binding StopCommand}" CommandParameter="{Binding SelectedTask}"
-                            IsVisible="{Binding SelectedTask.CanStop, FallbackValue=False}"
-                            ToolTip.Tip="Stops the delegated task and tears its session down."/>
-                </StackPanel>
+            <!-- The task's name and its Stop button live *inside* the panel, not on a strip above it: sat outside,
+                 they took a band of height the list on the left did not have, so the two cards were never the same
+                 height — least of all with nothing selected, where the strip was blank and still took the room. -->
+            <Border Grid.Column="1" Margin="12,0,0,0"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
+                                IsVisible="{Binding SelectedTask, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{Binding SelectedTask.Title}" FontWeight="SemiBold" FontSize="12"
+                                   VerticalAlignment="Center"/>
+                        <!-- Stop is offered only while the task can still be stopped; a finished task shows no
+                             button rather than one that does nothing. -->
+                        <Button Content="Stop" Classes="Compact"
+                                Command="{Binding StopCommand}" CommandParameter="{Binding SelectedTask}"
+                                IsVisible="{Binding SelectedTask.CanStop, FallbackValue=False}"
+                                ToolTip.Tip="Stops the delegated task and tears its session down."/>
+                    </StackPanel>
 
-                <!-- What the sub-agent produced, rendered as markdown through the cockpit's own renderer — a
-                     delegated coding task answers with code blocks, and those were unreadable as flat text. -->
-                <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                        CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12">
+                    <!-- What the sub-agent produced, rendered as markdown through the cockpit's own renderer — a
+                         delegated coding task answers with code blocks, and those were unreadable as flat text. -->
                     <ScrollViewer>
                         <views:MarkdownView Markdown="{Binding SelectedTaskOutput}" HorizontalAlignment="Stretch"/>
                     </ScrollViewer>
-                </Border>
-            </DockPanel>
+                </DockPanel>
+            </Border>
         </Grid>
     </DockPanel>
 </Window>

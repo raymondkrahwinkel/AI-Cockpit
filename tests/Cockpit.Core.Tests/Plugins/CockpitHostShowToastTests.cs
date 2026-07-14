@@ -55,6 +55,7 @@ public class CockpitHostShowToastTests
         var services = new ServiceCollection().AddSingleton(toastService).BuildServiceProvider();
         return new CockpitHost(
             "github-pull-requests",
+            "GitHub Pull Requests",
             services,
             Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),

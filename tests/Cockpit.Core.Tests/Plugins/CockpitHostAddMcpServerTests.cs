@@ -168,6 +168,7 @@ public class CockpitHostAddMcpServerTests
         var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
         return new CockpitHost(
             "youtrack",
+            "YouTrack",
             services,
             Substitute.For<IPluginContributionSink>(),
             Substitute.For<ICockpitActions>(),

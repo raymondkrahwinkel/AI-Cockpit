@@ -63,6 +63,14 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private string _allowedTaskTypes;
 
+    /// <summary>
+    /// The directories a delegated task may run in, one per line. Empty means a caller may not choose one at all —
+    /// which is what made every delegation with a working directory fail: the policy existed, but nothing in this
+    /// dialog could grant it, so "allowed nowhere" was the only setting a profile could have.
+    /// </summary>
+    [ObservableProperty]
+    private string _allowedWorkingDirs;
+
     /// <summary>How many delegated tasks may run on this profile at once — the guard on its provider's usage pot (and, for a local model, its GPU).</summary>
     [ObservableProperty]
     private int _maxConcurrentTasks;
@@ -243,6 +251,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _allowedAsTarget = delegation.AllowedAsTarget;
         _delegationPurpose = delegation.Purpose ?? string.Empty;
         _allowedTaskTypes = delegation.AllowedTaskTypes is { Count: > 0 } types ? string.Join(", ", types) : string.Empty;
+        _allowedWorkingDirs = delegation.AllowedWorkingDirs is { Count: > 0 } dirs ? string.Join(Environment.NewLine, dirs) : string.Empty;
         _maxConcurrentTasks = delegation.MaxConcurrent;
         _mayDelegateFurther = delegation.MayDelegateFurther;
         _delegationTimeoutMinutes = delegation.TimeoutMinutes;
@@ -302,10 +311,16 @@ public partial class EditableProfileViewModel : ViewModelBase
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
 
+        // One directory per line; a comma is a legal character in a path, so it cannot be the separator here the way
+        // it is for task types.
+        var workingDirs = AllowedWorkingDirs
+            .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
         return new DelegationPolicy(
             AllowedAsTarget: true,
             MaxConcurrent: Math.Max(1, MaxConcurrentTasks),
-            AllowedWorkingDirs: null,
+            AllowedWorkingDirs: workingDirs.Count > 0 ? workingDirs : null,
             PermissionCeiling: DelegationPolicy.DefaultPermissionCeiling,
             MayDelegateFurther: MayDelegateFurther,
             TimeoutMinutes: Math.Max(0, DelegationTimeoutMinutes),

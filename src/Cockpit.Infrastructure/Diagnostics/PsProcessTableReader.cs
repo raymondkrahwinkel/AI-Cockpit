@@ -30,7 +30,7 @@ internal sealed class PsProcessTableReader : IProcessTableReader
 
         // The '=' suffixes suppress the header, so every line is data.
         startInfo.ArgumentList.Add("-axo");
-        startInfo.ArgumentList.Add("pid=,ppid=,time=,rss=");
+        startInfo.ArgumentList.Add("pid=,ppid=,time=,rss=,comm=");
 
         try
         {

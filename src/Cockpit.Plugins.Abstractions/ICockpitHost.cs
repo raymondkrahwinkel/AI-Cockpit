@@ -89,6 +89,19 @@ public interface ICockpitHost
     IReadOnlyList<IWorkflowStep> WorkflowSteps => [];
 
     /// <summary>
+    /// Contributes a ready-made flow (#69) — "a ticket you pick becomes a branch, an agent and a status change". A
+    /// plugin that contributes steps knows how they fit together; a template is that knowledge, offered instead of an
+    /// empty canvas. Shown in the workflows plugin's "New flow" picker under this plugin's name. Default no-op so
+    /// existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched.
+    /// </summary>
+    void AddWorkflowTemplate(WorkflowTemplate template)
+    {
+    }
+
+    /// <summary>The templates every plugin has contributed — what the workflows plugin reads to build its "New flow" picker. Default empty.</summary>
+    IReadOnlyList<WorkflowTemplate> WorkflowTemplates => [];
+
+    /// <summary>
     /// Fires a trigger this plugin contributed (an <see cref="IWorkflowStep"/> whose <see cref="IWorkflowStep.IsTrigger"/>
     /// is true): a ticket was picked for a session, a review was requested. Every active flow that begins with that
     /// trigger runs, starting with <paramref name="data"/>.
@@ -110,6 +123,24 @@ public interface ICockpitHost
 
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
+
+    /// <summary>
+    /// Opens this plugin's own settings — the view it registered with <see cref="AddSettings"/>, in the same
+    /// dialog the plugin manager's gear opens, saved the same way. It is what a plugin calls from the place the
+    /// operator is when they discover something is missing: a dialog that has to say "no instances configured"
+    /// can offer the way to configure one instead of naming a screen elsewhere in the app. Does nothing when the
+    /// plugin registered no settings view. Default no-op so existing <see cref="ICockpitHost"/> implementations
+    /// (test fakes, older plugin builds) keep compiling untouched — only the app's own host opens it.
+    /// </summary>
+    Task ShowSettingsAsync() => Task.CompletedTask;
+
+    /// <summary>
+    /// Whether this plugin registered a settings view (<see cref="AddSettings"/>) — what a plugin checks before
+    /// offering a "Configure…" button that would otherwise do nothing. A plugin that always calls
+    /// <see cref="AddSettings"/> in <see cref="ICockpitPlugin.Initialize"/> already knows the answer and has no
+    /// reason to ask.
+    /// </summary>
+    bool HasSettings => false;
 
     /// <summary>
     /// Registers <paramref name="callback"/> to run (on the UI thread) after this plugin's own settings are

@@ -12,7 +12,9 @@ public static class PsLine
 {
     public static ProcessRow? Parse(string line)
     {
-        var fields = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // The name is asked for last (comm=) and taken as the whole rest of the line: a command may contain spaces,
+        // and splitting it into fields would cut a path like "/Applications/LM Studio.app/..." in half.
+        var fields = line.Split(' ', 5, StringSplitOptions.RemoveEmptyEntries);
         if (fields.Length < 4)
         {
             return null;
@@ -26,7 +28,9 @@ public static class PsLine
             return null;
         }
 
-        return new ProcessRow(processId, parentProcessId, cpuTime, residentKilobytes * 1024);
+        var name = fields.Length > 4 ? Path.GetFileName(fields[4].Trim()) : string.Empty;
+
+        return new ProcessRow(processId, parentProcessId, cpuTime, residentKilobytes * 1024, name);
     }
 
     /// <summary>ps writes accumulated CPU time as <c>MM:SS.ss</c>, <c>HH:MM:SS</c> or <c>D-HH:MM:SS</c> depending on how long the process has lived.</summary>

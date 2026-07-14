@@ -35,6 +35,19 @@ public interface IWorkflowStep
     IReadOnlyList<string> Parameters { get; }
 
     /// <summary>
+    /// What a parameter's plausible values are, asked when its field is opened — the statuses a YouTrack board allows,
+    /// the repositories you have, the profiles you may delegate to. The step knows them; the workflow editor cannot,
+    /// and typing "In Progres" into a free-text box is a flow that fails at run time over a letter.
+    /// <para>
+    /// Suggestions, not a closed list: the field stays typeable, because a value is often <c>{state}</c> from the step
+    /// before rather than any of the fixed ones. Fetch what you must — this is called on the UI's behalf, not in a
+    /// run — and return nothing when there is nothing to suggest (the default), which leaves a plain text box.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<string>> SuggestAsync(string parameter, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>([]);
+
+    /// <summary>
     /// The ways out. One unnamed way out is the usual case, and the default. Naming several makes it a decision:
     /// the step says in <see cref="WorkflowStepResult.Branch"/> which one it took, and only that wire is followed.
     /// </summary>

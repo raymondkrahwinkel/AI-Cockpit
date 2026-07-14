@@ -18,7 +18,7 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 {
-    public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height)
+    public async Task ShowDialogAsync(string title, Func<Control> createContent, double width, double height, Func<Task>? onOpenSettings = null)
     {
         if (!_TryCreateWindow(title, width, height, out var window, out var owner))
         {
@@ -26,7 +26,7 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
         }
 
         window.Content = _WithToasts(createContent(), owner);
-        CockpitWindowChrome.Apply(window, title);
+        CockpitWindowChrome.Apply(window, title, onSettings: onOpenSettings is null ? null : () => _ = onOpenSettings());
         await window.ShowDialog(owner);
     }
 
@@ -92,16 +92,21 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
     {
         window = null!;
         owner = null!;
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main })
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } main } lifetime)
         {
             return false;
         }
 
-        owner = main;
+        // The owner is whichever window the operator is actually looking at, not always the main one: a settings
+        // dialog opened from the gear on a plugin's own dialog must sit on top of that dialog. Owned by the main
+        // window it would open behind a modal that blocks its own owner — visible nowhere, with the app looking
+        // hung. The main window stays the fallback, which is what it is for every dialog opened from the cockpit
+        // itself.
+        owner = lifetime.Windows.LastOrDefault(candidate => candidate.IsActive) ?? main;
 
         // The size a plugin asks for is a wish, not a law: a dialog that wants 1400px on a 1280px-wide cockpit
-        // opens with its content cut off, which is how a canvas ends up cropped. Fit it to the window it opens
-        // over, and let the operator resize from there — a canvas in particular is never big enough.
+        // opens with its content cut off, which is how a canvas ends up cropped. Fit it to the cockpit window —
+        // the main one, whichever window it is centred over — and let the operator resize from there.
         var maximum = new Size(main.Width * 0.94, main.Height * 0.94);
 
         window = new Window

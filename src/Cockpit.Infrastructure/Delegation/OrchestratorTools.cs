@@ -36,6 +36,26 @@ internal sealed class OrchestratorTools
         return JsonSerializer.Serialize(targets, SerializerOptions);
     }
 
+    [McpServerTool(Name = "describe_profile")]
+    [Description("Records what a profile turned out to be good for, so the next session starts where this one left off: its purpose, its capability tags, and the kinds of work it accepts. Use it after working with a profile — if a model reviewed a frontend diff well but lost the thread on architecture, say so here. Only these three descriptive fields can be set, and only on a profile that is already a delegation target: what a delegated session may actually do (its permission ceiling, the directories it may work in, how many tasks at once) is the operator's to decide, not yours. A field left out is left as it was.")]
+    public async Task<string> DescribeProfileAsync(
+        [Description("The label of the profile to describe, as returned by list_profiles.")] string profile,
+        [Description("What this profile is good for, in a sentence — read by whoever picks a profile next. Omit to leave it as it is.")] string? purpose,
+        [Description("Capability tags (code, summarize, cheap, local, …). Omit to leave them as they are; an empty list clears them.")] string[]? tags,
+        [Description("The kinds of work this profile should accept (review, refactor, …). Omit to leave them as they are; an empty list accepts anything.")] string[]? task_types,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var target = await _delegation.DescribeTargetAsync(profile, purpose, tags, task_types, cancellationToken);
+            return JsonSerializer.Serialize(target, SerializerOptions);
+        }
+        catch (DelegationRejectedException rejected)
+        {
+            return JsonSerializer.Serialize(new { error = rejected.Message }, SerializerOptions);
+        }
+    }
+
     [McpServerTool(Name = "delegate_task")]
     [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again.")]
     public async Task<string> DelegateTaskAsync(

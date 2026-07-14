@@ -24,6 +24,7 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 internal sealed class CockpitHost(
     string pluginId,
+    string pluginName,
     IServiceProvider services,
     IPluginContributionSink contributionSink,
     ICockpitActions actions,
@@ -40,7 +41,11 @@ internal sealed class CockpitHost(
     public ICockpitSessionObserver Sessions => sessions;
 
     public void AddSettings(Func<Control> createView) =>
-        contributionSink.AddPluginSettings(pluginId, createView);
+        contributionSink.AddPluginSettings(pluginId, pluginName, createView);
+
+    public bool HasSettings => contributionSink.HasPluginSettings(pluginId);
+
+    public Task ShowSettingsAsync() => contributionSink.OpenPluginSettingsAsync(pluginId);
 
     public void AddSideMenuButton(string title, Action onInvoke) =>
         contributionSink.AddPluginSideButton(pluginId, title, onInvoke);
@@ -69,6 +74,15 @@ internal sealed class CockpitHost(
     public IReadOnlyList<IWorkflowStep> WorkflowSteps =>
         services.GetRequiredService<IWorkflowStepRegistry>().Steps;
 
+    // The contributing plugin's own name is the heading a template is filed under, unless it says otherwise: that is
+    // where an operator looks for "the YouTrack one".
+    public void AddWorkflowTemplate(WorkflowTemplate template) =>
+        services.GetRequiredService<IWorkflowTemplateRegistry>()
+            .Register(template with { Category = template.Category ?? pluginName });
+
+    public IReadOnlyList<WorkflowTemplate> WorkflowTemplates =>
+        services.GetRequiredService<IWorkflowTemplateRegistry>().Templates;
+
     public void RaiseWorkflowTrigger(string typeId, IReadOnlyDictionary<string, string> data) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Raise(typeId, data);
 
@@ -78,8 +92,21 @@ internal sealed class CockpitHost(
         remove => services.GetRequiredService<IWorkflowStepRegistry>().Fired -= value;
     }
 
+    /// <summary>
+    /// A plugin's dialog gets a gear in its title bar when the plugin has settings to open — asked for at the
+    /// moment the dialog opens rather than when the plugin was built, since a plugin registers its settings and
+    /// its dialogs in any order it likes. The dialog the operator is looking at is where they find out something
+    /// is unconfigured, so it is where the way to configure it belongs.
+    /// </summary>
     public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) =>
-        dialogHost.ShowDialogAsync(title, createContent, width, height);
+        dialogHost.ShowDialogAsync(
+            title,
+            createContent,
+            width,
+            height,
+            onOpenSettings: contributionSink.HasPluginSettings(pluginId)
+                ? () => contributionSink.OpenPluginSettingsAsync(pluginId)
+                : null);
 
     public void OnSettingsSaved(Action callback) =>
         contributionSink.AddSettingsSavedHandler(pluginId, callback);

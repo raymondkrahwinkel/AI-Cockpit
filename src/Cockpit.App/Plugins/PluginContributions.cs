@@ -14,6 +14,20 @@ public sealed record PluginSideButton(string PluginId, string Title, Action OnIn
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
 
 /// <summary>
+/// One thing a plugin put in the left menu: either a launcher <see cref="Button"/> or an inline <see cref="Section"/>,
+/// never both. They share a list so the operator's order (#72) applies across them — a section moved to the top belongs
+/// at the top, not below every plugin that happens to contribute a button instead.
+/// </summary>
+public sealed record PluginMenuEntry(string PluginId, PluginSideButton? Button, PluginSideSection? Section);
+
+/// <summary>
+/// A plugin's settings view: which plugin it belongs to, the plugin's own name (what the dialog is titled,
+/// wherever it is opened from — the manager's gear, a left-menu gear, or the plugin itself), and the factory
+/// that builds it.
+/// </summary>
+public sealed record PluginSettingsRegistration(string PluginId, string PluginName, Func<Control> CreateView);
+
+/// <summary>
 /// Where a plugin's contribution points land in the running UI. Implemented by <c>CockpitViewModel</c>
 /// (the collections/registry the side menu and plugin manager bind to); an interface so <c>CockpitHost</c>
 /// and its tests depend on the sink, not the whole cockpit view model. Settings are keyed by plugin id so
@@ -34,7 +48,20 @@ public interface IPluginContributionSink
     /// <summary>Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.</summary>
     void AddPluginShortcut(PluginShortcut shortcut);
 
-    void AddPluginSettings(string pluginId, Func<Control> createView);
+    /// <summary>Registers <paramref name="pluginId"/>'s settings view, titled after <paramref name="pluginName"/> wherever it is opened from.</summary>
+    void AddPluginSettings(string pluginId, string pluginName, Func<Control> createView);
+
+    /// <summary>Whether <paramref name="pluginId"/> registered a settings view — what the gears (left menu, dialog chrome) ask before offering to open one.</summary>
+    bool HasPluginSettings(string pluginId);
+
+    /// <summary>
+    /// Opens <paramref name="pluginId"/>'s settings dialog: the one way in, whether the operator came from the
+    /// plugin manager's gear, the gear on its left-menu button, the gear on one of its dialogs, or the plugin
+    /// asked for it itself (<see cref="ICockpitHost.ShowSettingsAsync"/>). Saving runs the plugin's
+    /// settings-saved handlers, so a settings change lands the same way from all of them. Does nothing when the
+    /// plugin registered no settings view.
+    /// </summary>
+    Task OpenPluginSettingsAsync(string pluginId);
 
     /// <summary>Registers <paramref name="callback"/> to run when <paramref name="pluginId"/>'s settings are next saved (#52) — see <see cref="ICockpitHost.OnSettingsSaved"/>.</summary>
     void AddSettingsSavedHandler(string pluginId, Action callback);

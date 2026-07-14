@@ -111,9 +111,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _status = "Not started.";
 
-    /// <summary>Hover text on the status line listing the session's connected tool names, so it is verifiable which tools (e.g. file tools) the model actually has.</summary>
+    /// <summary>
+    /// What the status line says on hover about the session's tools: the count, or why there are none. The names
+    /// themselves are <see cref="ConnectedTools"/> — fifty-five of them run together with commas was a wall of text,
+    /// and a list nobody can read is a list nobody checks.
+    /// </summary>
     [ObservableProperty]
-    private string _connectedToolsTooltip = string.Empty;
+    private string _connectedToolsHeading = string.Empty;
+
+    /// <summary>The session's connected tool names, so it is verifiable which tools (file tools, say) the model actually has.</summary>
+    public ObservableCollection<string> ConnectedTools { get; } = [];
 
     [ObservableProperty]
     private bool _isBusy;
@@ -749,10 +756,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 Status = string.IsNullOrEmpty(init.Cwd)
                     ? $"Connected ({init.Tools.Count} tools)."
                     : $"Connected ({init.Tools.Count} tools, cwd={init.Cwd}).";
-                // Surface the actual tool names on hover so it is verifiable which tools are available.
-                ConnectedToolsTooltip = init.Tools.Count == 0
+                // The names themselves, on hover, so it is verifiable which tools are available — sorted, because a
+                // list you look something up in is sorted, and the order a server happened to announce them in is not
+                // an order.
+                ConnectedToolsHeading = init.Tools.Count == 0
                     ? "No tools connected — add an MCP server (e.g. filesystem) to give this session tools."
-                    : $"Tools: {string.Join(", ", init.Tools)}";
+                    : $"{init.Tools.Count} tools connected";
+
+                ConnectedTools.Clear();
+                foreach (var tool in init.Tools.OrderBy(tool => tool, StringComparer.OrdinalIgnoreCase))
+                {
+                    ConnectedTools.Add(tool);
+                }
+
                 break;
 
             case AssistantThinkingDelta thinking:

@@ -37,6 +37,9 @@ internal sealed class DelegatedTaskEntry
     /// <summary>Fires when the task outlives what its profile allows; cancelled the moment the task ends, so a finished task is never stopped after the fact.</summary>
     public CancellationTokenSource? TimeoutCancellation { get; set; }
 
+    /// <summary>Fires when a finished task's session has sat unused long enough to close; cancelled by a follow-up (which puts it back to work) or by a stop (which closes it anyway).</summary>
+    public CancellationTokenSource? IdleCancellation { get; set; }
+
     public DelegatedTaskStatus Status { get; set; } = DelegatedTaskStatus.Queued;
 
     public DateTimeOffset CreatedAt { get; } = DateTimeOffset.Now;
@@ -53,7 +56,18 @@ internal sealed class DelegatedTaskEntry
 
     public bool IsFinished => Status is DelegatedTaskStatus.Completed or DelegatedTaskStatus.Failed or DelegatedTaskStatus.Stopped;
 
-    public void Attach(ISessionRuntime runtime) => Runtime = runtime;
+    public void Attach(ISessionRuntime runtime)
+    {
+        Runtime = runtime;
+        _CancelIdle();
+    }
+
+    /// <summary>Lets go of the session once it has been closed. The task keeps its result — what it produced outlives the session that produced it.</summary>
+    public void ReleaseSession()
+    {
+        _CancelIdle();
+        Runtime = null;
+    }
 
     /// <summary>
     /// Records the outcome. <paramref name="keepSessionAlive"/> distinguishes a task that answered (its session
@@ -73,8 +87,16 @@ internal sealed class DelegatedTaskEntry
 
         if (!keepSessionAlive)
         {
+            _CancelIdle();
             Runtime = null;
         }
+    }
+
+    private void _CancelIdle()
+    {
+        IdleCancellation?.Cancel();
+        IdleCancellation?.Dispose();
+        IdleCancellation = null;
     }
 
     public DelegatedTaskView ToView() => new(

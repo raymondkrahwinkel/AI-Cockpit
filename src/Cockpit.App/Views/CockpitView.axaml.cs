@@ -189,11 +189,10 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        var buttons = cockpit.VisibleSideButtons;
-        var sections = cockpit.VisibleSideSections;
+        var entries = cockpit.VisibleMenuEntries;
 
         PluginSectionsHost.Children.Clear();
-        if (buttons.Count == 0 && sections.Count == 0)
+        if (entries.Count == 0)
         {
             PluginSectionsHost.IsVisible = false;
             return;
@@ -205,22 +204,23 @@ public partial class CockpitView : UserControl
             PluginSectionsHost.Children.Add(new Border { Height = 1, Background = brush, Margin = new Thickness(0, 4) });
         }
 
-        foreach (var launcher in buttons)
+        // Buttons and sections are drawn from the one ordered list, so a section the operator moved to the top is at
+        // the top — rather than below every plugin that happens to contribute a button.
+        foreach (var entry in entries)
         {
-            var button = new Button
-            {
-                Content = launcher.Title,
-                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-            };
-            var invoke = launcher.OnInvoke;
-            button.Click += (_, _) => invoke();
-            PluginSectionsHost.Children.Add(button);
-        }
+            var pluginId = entry.PluginId;
+            Action? onSettings = cockpit.HasPluginSettings(pluginId)
+                ? () => _ = cockpit.OpenPluginSettingsAsync(pluginId)
+                : null;
 
-        foreach (var section in sections)
-        {
-            PluginSectionsHost.Children.Add(new PluginSectionControl(section.Title, section.CreateView()));
+            Control control = entry switch
+            {
+                { Button: { } launcher } => new PluginLauncherButton(launcher.Title, launcher.OnInvoke, onSettings),
+                { Section: { } section } => new PluginSectionControl(section.Title, section.CreateView(), onSettings),
+                _ => throw new InvalidOperationException($"'{pluginId}' contributed a menu entry that is neither a button nor a section."),
+            };
+
+            PluginSectionsHost.Children.Add(control);
         }
     }
 
@@ -228,6 +228,15 @@ public partial class CockpitView : UserControl
     {
         if (e.Handled || DataContext is not CockpitViewModel cockpit)
         {
+            return;
+        }
+
+        // Esc closes the resource panel before anything else looks at the key: it is the open thing on screen, and
+        // Esc is what closes the open thing.
+        if (e.Key == Key.Escape && cockpit.IsResourcePanelOpen)
+        {
+            cockpit.CloseResourcePanelCommand.Execute(null);
+            e.Handled = true;
             return;
         }
 

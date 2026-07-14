@@ -41,6 +41,7 @@ public class SessionHeaderItemTests
     private static ICockpitHost NewHost(IPluginContributionSink sink) =>
         new CockpitHost(
             "test-plugin",
+            "Test Plugin",
             Substitute.For<IServiceProvider>(),
             sink,
             Substitute.For<ICockpitActions>(),

@@ -42,8 +42,14 @@ public sealed class ResourceMonitor(IProcessTableReader reader) : ISingletonServ
         _sampledAt = now;
 
         // The cockpit's own tree already contains the sessions it spawned, so the total is the cockpit's tree —
-        // adding the sessions on top would count them twice.
-        return new ResourceUsage(self.CpuPercent, self.MemoryBytes, sessions);
+        // adding the sessions on top would count them twice. The parts break that total into things the operator can
+        // name: the app itself, and the MCP tool servers it started.
+        return new ResourceUsage(
+            self.CpuPercent,
+            self.MemoryBytes,
+            sessions,
+            LocalModelServers.From(rows),
+            CockpitBreakdown.From(rows, Environment.ProcessId, sessionProcessIds.Values.ToHashSet()));
     }
 
     private (double CpuPercent, long MemoryBytes) _Measure(int processId, IReadOnlyList<ProcessRow> rows, TimeSpan elapsed, int cores)
@@ -58,10 +64,20 @@ public sealed class ResourceMonitor(IProcessTableReader reader) : ISingletonServ
     }
 }
 
-/// <summary>What the cockpit is using right now, and how that breaks down per session (#78).</summary>
-public sealed record ResourceUsage(double CpuPercent, long MemoryBytes, IReadOnlyList<SessionResourceUsage> Sessions)
+/// <summary>
+/// What the cockpit is using right now, how that breaks down per session, and what the local model servers beside it
+/// are holding (#78). The servers are apart from the total on purpose: they are not the cockpit's children and they
+/// outlive its sessions, so folding them into "what this app costs" would be wrong — but leaving them out of the
+/// panel entirely meant the app had nothing to say about the heaviest thing on the machine.
+/// </summary>
+public sealed record ResourceUsage(
+    double CpuPercent,
+    long MemoryBytes,
+    IReadOnlyList<SessionResourceUsage> Sessions,
+    IReadOnlyList<ModelServerUsage> ModelServers,
+    CockpitParts Parts)
 {
-    public static readonly ResourceUsage None = new(0, 0, []);
+    public static readonly ResourceUsage None = new(0, 0, [], [], CockpitParts.None);
 }
 
 /// <summary>One session's share, measured across its whole process tree.</summary>

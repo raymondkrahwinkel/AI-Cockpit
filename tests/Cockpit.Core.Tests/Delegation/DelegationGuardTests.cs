@@ -343,7 +343,7 @@ public class DelegationGuardTests
     {
         var profileStore = Substitute.For<ISessionProfileStore>();
         profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles);
-        return new DelegationService(profileStore, new SessionManager(driverFactory), mcpServerStore, Substitute.For<IDelegationAuditLog>());
+        return new DelegationService(profileStore, new SessionManager(driverFactory), mcpServerStore, Substitute.For<IDelegationAuditLog>(), NoSessionWorkspaces.Instance);
     }
 
     // The MCP registry as the operator configured it: their own servers, plus the orchestrator they switched on

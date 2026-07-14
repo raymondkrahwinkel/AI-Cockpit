@@ -24,6 +24,26 @@ public interface IDelegationService
     Task<IReadOnlyList<DelegationTargetView>> ListTargetsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Records what a target profile turned out to be good for: its purpose, its tags, and the kinds of work it
+    /// accepts. An orchestrator learns this by using a profile — that Qwen reviews a frontend diff well and loses the
+    /// thread on architecture is knowledge the run produced, and knowledge that is not written down is knowledge the
+    /// next session does not have.
+    /// <para>
+    /// Deliberately the <em>only</em> thing a caller may change about a profile. Everything that decides what a
+    /// delegated session can do — whether the profile is a target at all, its permission ceiling, the directories it
+    /// may work in, how many tasks it will run at once, its credentials — stays with the operator. A caller that could
+    /// set those could make itself a target that may do anything, anywhere, and every guard in this engine would be a
+    /// suggestion. Refused for a profile that is not already a delegation target.
+    /// </para>
+    /// </summary>
+    Task<DelegationTargetView> DescribeTargetAsync(
+        string profileLabel,
+        string? purpose,
+        IReadOnlyList<string>? tags,
+        IReadOnlyList<string>? taskTypes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Starts a task on <paramref name="profileLabel"/>. Rejects rather than spawns when the profile is unknown,
     /// is not a target, does not accept the declared task type, or was handed a working directory it does not
     /// allow. When the profile (or the cockpit) is at its concurrency cap the task is accepted as

@@ -101,6 +101,7 @@ public partial class App : Application
 
         pluginManager.Initialize(discovered => new CockpitHost(
             discovered.FolderId,
+            discovered.Manifest.Name,
             Program.Services,
             cockpit,
             actions,

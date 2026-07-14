@@ -49,6 +49,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
+    <InternalsVisibleTo Include="Cockpit.App.ViewTests" />
   </ItemGroup>
 
   <!-- Plugins that ship with the app (#: bundled plugins): features that used to be core and moved out to a

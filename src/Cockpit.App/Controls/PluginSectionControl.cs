@@ -18,7 +18,11 @@ internal sealed class PluginSectionControl : UserControl
     private readonly Border _body;
     private bool _expanded = true;
 
-    public PluginSectionControl(string title, Control content)
+    /// <param name="onSettings">
+    /// When given, a gear in the section's header runs it — the same short way into a plugin's settings that its
+    /// left-menu button has, for the plugins that contribute a section instead of a button.
+    /// </param>
+    public PluginSectionControl(string title, Control content, Action? onSettings = null)
     {
         _chevron = new TextBlock
         {
@@ -37,11 +41,27 @@ internal sealed class PluginSectionControl : UserControl
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
 
-        var headerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var headerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
         Grid.SetColumn(titleBlock, 0);
-        Grid.SetColumn(_chevron, 1);
+        Grid.SetColumn(_chevron, 2);
         headerGrid.Children.Add(titleBlock);
         headerGrid.Children.Add(_chevron);
+
+        if (onSettings is not null)
+        {
+            var gear = new Button
+            {
+                Content = CockpitIcons.Gear(),
+                Classes = { "Subtle" },
+                Padding = new Thickness(4, 2),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            ToolTip.SetTip(gear, $"{title} settings");
+            gear.Click += (_, _) => onSettings();
+            Grid.SetColumn(gear, 1);
+            headerGrid.Children.Add(gear);
+        }
 
         var header = new Border
         {
@@ -53,7 +73,17 @@ internal sealed class PluginSectionControl : UserControl
             Cursor = new Cursor(StandardCursorType.Hand),
             Child = headerGrid,
         };
-        header.PointerPressed += (_, _) => _Toggle();
+        // Pressing the header collapses the section — except on the gear, which is a button in that header and owns
+        // its own press. Same rule as the window chrome's caption buttons.
+        header.PointerPressed += (_, e) =>
+        {
+            if (e.Source is Button)
+            {
+                return;
+            }
+
+            _Toggle();
+        };
 
         _body = new Border
         {

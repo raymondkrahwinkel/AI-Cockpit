@@ -32,7 +32,8 @@ internal sealed class ProcProcessTableReader : IProcessTableReader
                 processId,
                 stat.ParentProcessId,
                 TimeSpan.FromSeconds(stat.TotalTicks / TicksPerSecond),
-                _ReadResidentMemory(processId)));
+                _ReadResidentMemory(processId),
+                stat.Name));
         }
 
         return rows;

@@ -217,6 +217,20 @@
                                 <TextBox Text="{Binding AllowedTaskTypes}" PlaceholderText="summarize, refactor  (leave empty to accept anything)"/>
                             </StackPanel>
 
+                            <!-- Without this the policy could only ever say "nowhere": a delegated task may run in a
+                                 directory the profile allows, and nothing here could name one — so every delegation
+                                 that carried a working directory was refused, whichever directory it was. -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="May work in these directories" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox Text="{Binding AllowedWorkingDirs}"
+                                         AcceptsReturn="True"
+                                         MinHeight="60"
+                                         TextWrapping="NoWrap"
+                                         PlaceholderText="/home/raymond/RiderProjects/Eveworkbench&#x0a;one directory per line"/>
+                                <TextBlock Text="A delegated task may only run in these directories, and in what lies under them. Empty means a task may not choose a directory at all — so delegation can never reach an arbitrary part of the disk."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="Tasks at once" FontSize="11" VerticalAlignment="Center"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>

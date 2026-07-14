@@ -21,7 +21,7 @@ internal sealed class WmiProcessTableReader : IProcessTableReader
         try
         {
             using var searcher = new ManagementObjectSearcher(
-                "SELECT ProcessId, ParentProcessId, KernelModeTime, UserModeTime, WorkingSetSize FROM Win32_Process");
+                "SELECT ProcessId, ParentProcessId, KernelModeTime, UserModeTime, WorkingSetSize, Name FROM Win32_Process");
 
             var rows = new List<ProcessRow>();
             foreach (var item in searcher.Get())
@@ -41,7 +41,8 @@ internal sealed class WmiProcessTableReader : IProcessTableReader
                     processId,
                     _ToInt(process["ParentProcessId"]),
                     TimeSpan.FromTicks(kernel + user),
-                    _ToLong(process["WorkingSetSize"])));
+                    _ToLong(process["WorkingSetSize"]),
+                    process["Name"] as string ?? string.Empty));
             }
 
             return rows;
