@@ -1174,11 +1174,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>
     /// Says something when the cockpit and its sessions together approach what the machine has (#78).
     /// <para>
-    /// macOS puts an app and everything it spawns in one coalition, and its memory killer counts and kills at that
-    /// level: the Claude processes we start are charged to us, and when it fires, the coalition's leader — the cockpit
-    /// — is what dies, taking every session with it. A session is 300–700 MB of Node; three of them outweigh the whole
-    /// app. This is the difference between "the app suddenly disappeared" and "you were told, and you could have closed
-    /// a session".
+    /// A session is 300–700 MB of Node; three of them outweigh the whole app. This is the difference between "the app
+    /// suddenly disappeared" and "you were told, and you could have closed a session". Why the operating system kills
+    /// what it kills — and why the coalition explanation this comment used to give is wrong — is in
+    /// <see cref="Cockpit.Core.Diagnostics.MemoryPressure"/>.
     /// </para>
     /// </summary>
     private void _WarnAboutMemory(ResourceUsage usage)

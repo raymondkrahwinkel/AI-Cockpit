@@ -2,13 +2,25 @@ namespace Cockpit.Core.Diagnostics;
 
 /// <summary>
 /// When to warn that the cockpit and its sessions together are using enough memory for the operating system to start
-/// killing things — and, on macOS, to kill <em>us</em>.
+/// killing things.
 /// <para>
-/// macOS groups a process and everything it spawns into one <b>coalition</b>, and its memory killer (jetsam) counts
-/// and kills at that level: the Claude processes we start are charged to the cockpit, and when it fires, the coalition
-/// leader — the cockpit — is what dies, taking every session with it. A Claude session is 300–700 MB of Node; three of
-/// them is more memory than the whole cockpit. So the number worth watching is not ours, it is the tree's, and this is
-/// the one thing that turns "the app disappeared" into "you were warned, and you could close a session".
+/// A Claude session is 300–700 MB of Node; three of them is more memory than the whole cockpit. So the number worth
+/// watching is not ours, it is the tree's — and this warning is the one thing that turns "the app disappeared" into
+/// "you were warned, and you could close a session".
+/// </para>
+/// <para>
+/// An earlier version of this comment explained the macOS behaviour by <b>coalitions</b> — that macOS charges a
+/// process for everything it spawns and kills the coalition leader. That was wrong, and it is corrected here rather
+/// than deleted, because it is the kind of plausible story that gets re-derived. macOS does not use the jetsam bands
+/// for this at all (they are iOS); under memory pressure it runs <c>no_paging_space_action()</c>, which kills the
+/// process holding the most compressed pages — "killing largest compressed process", in the kernel's own words.
+/// Nobody is charged for their children, and the leader is not singled out. Which also means the obvious mitigation
+/// (spawn the sessions outside our coalition) would have bought exactly nothing.
+/// </para>
+/// <para>
+/// The lever that does exist is <c>POSIX_SPAWN_PCONTROL_KILL</c>: a child can be spawned volunteering itself as the
+/// one to kill when memory runs out. Not done yet — and it should not be, until a jetsam log actually shows the
+/// cockpit dying this way rather than something else entirely. See the macOS section of Memory/Cockpit/Todo.md.
 /// </para>
 /// <para>
 /// The rule below is written to be ignorable exactly once. It warns on the way up, and it does not warn again until
