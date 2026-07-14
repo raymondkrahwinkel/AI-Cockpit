@@ -82,10 +82,18 @@ fi
 # distributable (then notarise, see below).
 identity="${CODESIGN_IDENTITY:--}"
 echo "Signing with identity: $identity"
-find "$contents/MacOS" -type f -perm +111 -print0 |
-    while IFS= read -r -d '' binary; do
-        codesign --force --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$binary"
+
+# Every Mach-O file, found by what it *is* rather than by whether someone set its executable bit. The .NET
+# publish ships its native libraries (.dylib) without that bit, so signing only the executables left them
+# unsigned — and one unsigned Mach-O inside the bundle is enough for `codesign --verify --strict` to reject the
+# whole thing ("In subcomponent: …"), which is exactly how this was found.
+find "$contents/MacOS" -type f -print0 |
+    while IFS= read -r -d '' candidate; do
+        if file -b "$candidate" | grep -q "Mach-O"; then
+            codesign --force --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$candidate"
+        fi
     done
+
 codesign --force --timestamp --options runtime --entitlements "$entitlements" --sign "$identity" "$app"
 codesign --verify --strict --verbose=2 "$app"
 
