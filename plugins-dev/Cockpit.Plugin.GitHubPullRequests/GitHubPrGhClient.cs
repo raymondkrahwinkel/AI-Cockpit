@@ -47,7 +47,7 @@ internal sealed class GitHubPrGhClient
 
         var searchArgs = new List<string>
         {
-            "search", "prs", "--state", "open", "--limit", "100", "--json", "number,title,url,body,repository,author",
+            "search", "prs", "--state", "open", "--limit", "100", "--json", "number,title,url,body,repository,author,updatedAt",
         };
         if (isMe)
         {
@@ -158,7 +158,7 @@ internal sealed class GitHubPrGhClient
             var args = new List<string>
             {
                 "search", "prs", "--state", "open", "--limit", "100",
-                "--json", "number,title,url,body,repository,author",
+                "--json", "number,title,url,body,repository,author,updatedAt",
             };
 
             foreach (var owner in batch)
@@ -265,7 +265,7 @@ internal sealed class GitHubPrGhClient
         var args = new[]
         {
             "search", "prs", "--state", "open", scoped, trimmed, "--limit", "100",
-            "--json", "number,title,url,body,repository,author",
+            "--json", "number,title,url,body,repository,author,updatedAt",
         };
 
         var pullRequests = await _WithoutArchivedAsync(
@@ -331,13 +331,13 @@ internal sealed class GitHubPrGhClient
     internal static readonly string[] MergedArguments =
     [
         "search", "prs", "--author", "@me", "--merged", "--limit", "30",
-        "--json", "number,title,url,body,repository,author",
+        "--json", "number,title,url,body,repository,author,updatedAt",
     ];
 
     internal static readonly string[] ReviewRequestedArguments =
     [
         "search", "prs", "--state", "open", "--review-requested", "@me", "--limit", "100",
-        "--json", "number,title,url,body,repository,author",
+        "--json", "number,title,url,body,repository,author,updatedAt",
     ];
 
     // The archived repos for the owner; "@me"/blank means the current gh user (no owner argument). Cached
@@ -443,7 +443,13 @@ internal sealed class GitHubPrGhClient
             var author = element.TryGetProperty("author", out var a) && a.ValueKind == JsonValueKind.Object && a.TryGetProperty("login", out var login)
                 ? login.GetString() ?? string.Empty
                 : string.Empty;
-            pullRequests.Add(new GitHubPullRequest(number, title, url, body, repository, author));
+            var updatedAt = element.TryGetProperty("updatedAt", out var updated)
+                && updated.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(updated.GetString(), out var parsed)
+                    ? parsed
+                    : (DateTimeOffset?)null;
+
+            pullRequests.Add(new GitHubPullRequest(number, title, url, body, repository, author, updatedAt));
         }
 
         return pullRequests;

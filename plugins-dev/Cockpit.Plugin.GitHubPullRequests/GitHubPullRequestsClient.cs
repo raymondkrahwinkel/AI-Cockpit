@@ -54,7 +54,15 @@ internal sealed class GitHubPullRequestsClient
             var author = element.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.Object && user.TryGetProperty("login", out var login2)
                 ? login2.GetString() ?? string.Empty
                 : string.Empty;
-            pullRequests.Add(new GitHubPullRequest(number, title, htmlUrl, body, repository, author));
+            // The REST API spells it updated_at where the search API says updatedAt; both mean "when this last saw
+            // any activity", which is what the list is ordered by.
+            var updatedAt = element.TryGetProperty("updated_at", out var updated)
+                && updated.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(updated.GetString(), out var parsed)
+                    ? parsed
+                    : (DateTimeOffset?)null;
+
+            pullRequests.Add(new GitHubPullRequest(number, title, htmlUrl, body, repository, author, updatedAt));
         }
 
         return pullRequests;

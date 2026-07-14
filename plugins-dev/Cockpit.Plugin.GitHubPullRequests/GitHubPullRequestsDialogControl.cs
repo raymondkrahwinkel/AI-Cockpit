@@ -90,6 +90,14 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         _grid.Columns.Add(new DataGridTextColumn { Header = "Repository", Binding = new Binding(nameof(GitHubPullRequest.Repository)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "#", Binding = new Binding(nameof(GitHubPullRequest.Number)), Width = new DataGridLength(64) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Title", Binding = new Binding(nameof(GitHubPullRequest.Title)), Width = new DataGridLength(2, DataGridLengthUnitType.Star) });
+
+        // The column the list is sorted by, so the order is something the operator can see rather than infer.
+        _grid.Columns.Add(new DataGridTextColumn
+        {
+            Header = "Updated",
+            Binding = new Binding(nameof(GitHubPullRequest.UpdatedAt)) { StringFormat = "{0:d MMM HH:mm}" },
+            Width = new DataGridLength(110),
+        });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Author", Binding = new Binding(nameof(GitHubPullRequest.Author)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.SelectionChanged += (_, _) => _ShowDetail(_grid.SelectedItem as GitHubPullRequest);
         _grid.DoubleTapped += (_, _) => _AddToPrompt(_grid.SelectedItem as GitHubPullRequest);
@@ -297,7 +305,10 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
                 || pullRequest.Number.ToString().Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        _grid.ItemsSource = new ObservableCollection<GitHubPullRequest>(filtered);
+        // Newest activity first, the same order the sidebar section shows — the operator should not have to work out
+        // why the same list is arranged two ways. The grid's own column sorting still overrules this on a click.
+        _grid.ItemsSource = new ObservableCollection<GitHubPullRequest>(
+            filtered.OrderByDescending(pullRequest => pullRequest.UpdatedAt ?? DateTimeOffset.MinValue));
     }
 
     private void _ShowDetail(GitHubPullRequest? pullRequest)

@@ -269,7 +269,15 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
             // Optional repository filter: when set, keep only PRs in the chosen owner/repo list.
             var filter = _settings.RepoFilterSet;
-            _loaded = filter.Count == 0 ? all : all.Where(pullRequest => filter.Contains(pullRequest.Repository)).ToList();
+            var visible = filter.Count == 0 ? all : all.Where(pullRequest => filter.Contains(pullRequest.Repository));
+
+            // Newest activity on top — a commit, a review, a comment. The list is short (five by default), so the
+            // question it has to answer is "what moved", not "what exists": a pull request somebody touched an hour
+            // ago belongs above one that has been sitting open since March. One without a date sorts last rather
+            // than to the top, which is what DateTimeOffset.MinValue does for a null.
+            _loaded = visible
+                .OrderByDescending(pullRequest => pullRequest.UpdatedAt ?? DateTimeOffset.MinValue)
+                .ToList();
 
             _Say(null);
             _Render();
