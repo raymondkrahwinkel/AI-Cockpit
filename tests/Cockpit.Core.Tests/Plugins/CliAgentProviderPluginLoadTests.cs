@@ -59,6 +59,17 @@ public class CliAgentProviderPluginLoadTests
         var driver = driverFactory.Create("""{"Command":"codex","WorkingDirectory":"."}""");
         driver.Should().NotBeNull();
 
+        // The plugin also offers Codex's real interactive TUI (#45 fase B2), under the same provider id as
+        // the session provider above — a profile names a provider, and what that provider can do is what it
+        // registered, both here.
+        host.TtyProviders.Should().ContainSingle();
+        var ttyRegistration = host.TtyProviders.Single();
+        ttyRegistration.ProviderId.Should().Be("cli-agent-provider.codex");
+        ttyRegistration.DisplayName.Should().Be("Codex (CLI)");
+        ttyRegistration.Options.Should().Contain(option => option.Key == "sandbox");
+        ttyRegistration.Options.Should().Contain(option => option.Key == "model");
+        ttyRegistration.CreateProvider(host.Services).Should().NotBeNull();
+
         plugin.Dispose();
     }
 
@@ -87,6 +98,8 @@ public class CliAgentProviderPluginLoadTests
     {
         public List<SessionProviderRegistration> SessionProviders { get; } = [];
 
+        public List<TtyProviderRegistration> TtyProviders { get; } = [];
+
         public IServiceProvider Services { get; } = new ServiceCollection().BuildServiceProvider();
 
         public ICockpitActions Actions { get; } = new NoActions();
@@ -108,6 +121,8 @@ public class CliAgentProviderPluginLoadTests
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
 
         public void AddSessionProvider(SessionProviderRegistration registration) => SessionProviders.Add(registration);
+
+        public void AddTtyProvider(TtyProviderRegistration registration) => TtyProviders.Add(registration);
     }
 
     private sealed class NoActions : ICockpitActions

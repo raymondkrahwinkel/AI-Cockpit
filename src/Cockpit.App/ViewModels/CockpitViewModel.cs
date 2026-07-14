@@ -1955,7 +1955,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var session = _ttySessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
-            session.LaunchConfigured(result.Profile, result.Mode.Value, result.Model.Value, result.Effort.Value, result.WorkingDirectory, result.Resume);
+
+            // Claude's permission-mode/model/effort are its own vocabulary, not every provider's — a plugin
+            // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
+            // both for the same launch (see NewSessionResult.PluginTtyOptions).
+            var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
+            session.LaunchConfigured(
+                result.Profile,
+                isClaudeProfile ? result.Mode.Value : null,
+                isClaudeProfile ? result.Model.Value : null,
+                isClaudeProfile ? result.Effort.Value : null,
+                result.WorkingDirectory,
+                result.Resume,
+                result.PluginTtyOptions);
         }
     }
 

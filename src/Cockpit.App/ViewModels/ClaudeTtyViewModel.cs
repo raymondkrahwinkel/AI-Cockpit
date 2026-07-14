@@ -26,13 +26,14 @@ namespace Cockpit.App.ViewModels;
 public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly ITtyLauncher? _launcher;
-    private readonly ITtySessionProvider? _provider;
+    private readonly ITtySessionProviderResolver? _providerResolver;
     private readonly ISessionTranscriptReader? _transcriptReader;
     private SessionProfile? _configuredProfile;
     private string? _effectiveConfigDir;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
     private string? _configuredEffort;
+    private IReadOnlyDictionary<string, string>? _configuredPluginOptions;
     private string? _configuredWorkingDirectory;
     private bool _isLaunchConfigured;
     private SessionResume? _configuredResume;
@@ -140,7 +141,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 
     public ClaudeTtyViewModel(
         ITtyLauncher launcher,
-        ITtySessionProvider provider,
+        ITtySessionProviderResolver providerResolver,
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
@@ -149,7 +150,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         IOptions<CockpitOptions>? options = null)
     {
         _launcher = launcher;
-        _provider = provider;
+        _providerResolver = providerResolver;
         _transcriptReader = transcriptReader;
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
@@ -177,8 +178,19 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// launches the TUI as soon as the view is ready (#31). Replaces the old in-panel Start button and
     /// inline profile picker. <paramref name="permissionMode"/>/<paramref name="model"/>/
     /// <paramref name="effort"/> are launch-only: the real TUI owns any live switching afterwards.
+    /// <paramref name="pluginOptions"/> carries the same kind of launch-only start defaults for a plugin
+    /// TTY provider's own declared options (Codex's sandbox policy, say) — a Claude session leaves this
+    /// null and uses <paramref name="permissionMode"/>/<paramref name="model"/>/<paramref name="effort"/>
+    /// instead; the caller never sends both for the same launch.
     /// </summary>
-    public void LaunchConfigured(SessionProfile? profile, string? permissionMode, string? model, string? effort, string? workingDirectory = null, SessionResume? resume = null)
+    public void LaunchConfigured(
+        SessionProfile? profile,
+        string? permissionMode,
+        string? model,
+        string? effort,
+        string? workingDirectory = null,
+        SessionResume? resume = null,
+        IReadOnlyDictionary<string, string>? pluginOptions = null)
     {
         _configuredProfile = profile;
         _configuredResume = resume;
@@ -203,6 +215,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         _configuredPermissionMode = permissionMode;
         _configuredModel = model;
         _configuredEffort = effort;
+        _configuredPluginOptions = pluginOptions;
         _isLaunchConfigured = true;
         ActiveProfileLabel = profile?.Label;
         Status = profile is null ? "Launching TUI..." : $"Launching TUI ({profile.Label})...";
@@ -220,15 +233,29 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         // Only commit the launch once there is a subscriber to receive it: if the profile is configured
         // before the view exists, LaunchRequested is still null, so we must not mark it launched yet —
         // the view calls this again once subscribed.
-        if (_launched || !_isLaunchConfigured || _launcher is null || _provider is null || LaunchRequested is null)
+        if (_launched || !_isLaunchConfigured || _launcher is null || _providerResolver is null || LaunchRequested is null)
         {
+            return;
+        }
+
+        // Which TUI this profile runs — Claude's, a plugin's, or none. "None" is a real answer (a local HTTP model
+        // is not a program you can put in a terminal) and it is said out loud rather than launched over: the pane
+        // reports it instead of quietly starting somebody else's CLI, which is what it used to do.
+        if (_providerResolver.Resolve(_configuredProfile) is not { } provider)
+        {
+            _launched = true;
+            Status = _configuredProfile is null
+                ? "This provider has no terminal interface."
+                : $"{_configuredProfile.Label} has no terminal interface — use SDK mode for this provider.";
+            SessionStatus = SessionStatus.Idle;
+
             return;
         }
 
         _launched = true;
         LaunchRequested.Invoke(new TtyLaunchRequest(
             _launcher,
-            _provider,
+            provider,
             _configuredProfile,
             _LaunchOptions(),
             _configuredWorkingDirectory,
@@ -238,6 +265,9 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// <summary>
     /// The start defaults in the provider's vocabulary. A blank knob is left out rather than passed as an empty
     /// string: "no model chosen" and "model set to nothing" are different things, and only the first is true here.
+    /// Claude's own three knobs and a plugin provider's declared options are never both populated for the same
+    /// launch (see <see cref="LaunchConfigured"/>), so layering the plugin options on top here never overwrites
+    /// a Claude value with a plugin one.
     /// </summary>
     private Dictionary<string, string> _LaunchOptions()
     {
@@ -245,6 +275,14 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         Add(TtyLaunchOption.PermissionMode, _configuredPermissionMode);
         Add(TtyLaunchOption.Model, _configuredModel);
         Add(TtyLaunchOption.Effort, _configuredEffort);
+
+        if (_configuredPluginOptions is not null)
+        {
+            foreach (var (key, value) in _configuredPluginOptions)
+            {
+                Add(key, value);
+            }
+        }
 
         return options;
 

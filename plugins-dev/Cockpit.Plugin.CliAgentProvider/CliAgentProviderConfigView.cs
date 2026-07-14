@@ -42,8 +42,8 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             {
                 _Label("Codex command / path"),
                 SettingsHelpRow.Build(_command, "Bare \"codex\" is resolved against PATH (including a Windows .cmd npm shim); or paste an absolute path to the executable."),
-                _Label("Working directory"),
-                _workingDirectory,
+                _Label("Working directory (optional — SDK sessions only)"),
+                SettingsHelpRow.Build(_workingDirectory, "A TTY session runs where the New-session dialog says, so it ignores this. An SDK session cannot be told where it runs — the plugin contract carries no working directory — so it uses this, and falls back to the cockpit's own directory when it is empty."),
                 _Label("Sandbox mode"),
                 SettingsHelpRow.Build(_sandboxMode, "read-only is Codex's safe default. workspace-write allows edits inside the working directory; danger-full-access runs Codex with no sandboxing at all — only on a machine/workdir you fully trust."),
                 _Label("Model (optional)"),
@@ -59,7 +59,15 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         var command = _command.Text?.Trim() ?? string.Empty;
         var workingDirectory = _workingDirectory.Text?.Trim() ?? string.Empty;
 
-        if (string.IsNullOrEmpty(command) || string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory))
+        // The working directory is optional, and only the headless route reads it at all: a TTY session is told
+        // where it runs by the cockpit (the New-session dialog's own working directory), so demanding it here
+        // would make the operator fill in a field their session never uses.
+        //
+        // The headless route needs it because the plugin session-driver contract does not carry a working
+        // directory — the host resolves one and the adapter drops it. So the plugin has to ask for what the
+        // cockpit already knows. That is a gap in the contract, not a setting; when it is closed this field can
+        // go entirely.
+        if (string.IsNullOrEmpty(command) || (!string.IsNullOrEmpty(workingDirectory) && !Directory.Exists(workingDirectory)))
         {
             configJson = string.Empty;
             return false;

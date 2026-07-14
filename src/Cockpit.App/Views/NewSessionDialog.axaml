@@ -108,8 +108,11 @@
                 </StackPanel>
             </Grid>
 
-            <!-- Kind is Claude-only: a local provider runs solely as an SDK session (TTY spawns the claude CLI). -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding IsClaudeProfile}">
+            <!-- Kind is offered only for a profile that actually has a TUI to run: Claude always does, a plugin
+                 profile only when it registered a TTY provider under the same id as its session provider, and
+                 a local HTTP provider (Ollama/LM Studio) never does. Offering it and then silently launching
+                 the wrong CLI (or none) is the dead-control shape this guards against (#45 fase B2). -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding HasTtyProvider}">
                 <TextBlock Grid.Column="0" Text="Kind" VerticalAlignment="Center" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
@@ -171,6 +174,31 @@
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 <ComboBox Grid.Column="1" ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
                           DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+            </Grid>
+
+            <!-- Plugin TTY start defaults (#45 fase B2): whatever the selected plugin's TTY provider declared
+                 (Codex's sandbox policy, its model) — rendered generically, since the host renders exactly
+                 what was declared and never learns what any of it means. Shown instead of Claude's mode/
+                 model/effort above (ShowSessionOptions is Claude-only): a plugin provider speaks its own
+                 vocabulary, not Claude's. -->
+            <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowPluginTtyOptions}">
+                <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding PluginTtyOptions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
+                            <Grid ColumnDefinitions="90,*" Margin="0,0,0,4">
+                                <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding Value}"
+                                          IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                          PlaceholderText="(CLI default)"/>
+                                <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
+                                         PlaceholderText="(CLI default)"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </Grid>
 
             <!-- Per-session MCP-server selection (#44): a checkbox per enabled registry server, defaulting to

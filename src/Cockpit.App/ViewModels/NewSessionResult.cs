@@ -26,6 +26,14 @@ namespace Cockpit.App.ViewModels;
 /// launched in, for both the SDK process and the TTY pty. <see langword="null"/>/blank keeps the global
 /// default (the configured option, else the app's current directory).
 /// </param>
+/// <param name="PluginTtyOptions">
+/// The start defaults chosen for a <em>plugin</em> TTY provider's own declared options (Codex's sandbox
+/// policy, say) — keyed exactly as that provider's <c>TtyProviderRegistration.Options</c> declared them.
+/// <see langword="null"/> for a Claude session (which carries its start defaults through
+/// <see cref="Mode"/>/<see cref="Model"/>/<see cref="Effort"/> instead) or a profile with no declared
+/// options. The two never both apply to the same launch: <see cref="Mode"/>/<see cref="Model"/>/<see cref="Effort"/>
+/// are Claude's vocabulary and this is everyone else's.
+/// </param>
 public sealed record NewSessionResult(
     SessionKind Kind,
     SessionProfile Profile,
@@ -35,4 +43,5 @@ public sealed record NewSessionResult(
     string? SessionName,
     IReadOnlySet<string>? EnabledMcpServerNames = null,
     string? WorkingDirectory = null,
-    SessionResume? Resume = null);
+    SessionResume? Resume = null,
+    IReadOnlyDictionary<string, string>? PluginTtyOptions = null);

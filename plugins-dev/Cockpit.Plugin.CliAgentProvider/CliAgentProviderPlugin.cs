@@ -33,6 +33,26 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             CreateDriverFactory: _ => new CliSubprocessPluginSessionDriverFactory(),
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: false),
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson)));
+
+        // Same provider id as the session provider above — a profile names a provider, and what that
+        // provider can do (a headless driver, a TUI, or both, per PluginTtyContracts) is what it registered.
+        // Codex's own words for its start defaults (see CodexTtyProvider's remarks for why these are not
+        // Claude's permission-mode/effort): the sandbox policy and the model override.
+        host.AddTtyProvider(new TtyProviderRegistration(
+            ProviderId: "cli-agent-provider.codex",
+            DisplayName: "Codex (CLI)",
+            CreateProvider: _ => new CodexTtyProvider(),
+            Options:
+            [
+                new PluginTtyLaunchOption(
+                    CodexTtyProvider.SandboxOptionKey,
+                    "Sandbox",
+                    Choices: ["read-only", "workspace-write", "danger-full-access"]),
+                new PluginTtyLaunchOption(
+                    CodexTtyProvider.ModelOptionKey,
+                    "Model",
+                    Choices: []),
+            ]));
     }
 
     public void Dispose()

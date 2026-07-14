@@ -3,11 +3,13 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -34,6 +36,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IMcpServerStore? _mcpServerStore;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private readonly ConversationPickerRegistration? _conversationPicker;
+    private readonly ITtySessionProviderResolver? _ttyProviderResolver;
+    private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
@@ -208,6 +212,24 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public bool IsLocalProfile => SelectedProfile is not null && !IsClaudeProfile;
 
+    /// <summary>
+    /// Whether the selected profile has a TUI to run at all — the gate for offering the Kind picker and for
+    /// what TTY actually launches. Claude always does (its own <c>claude</c> TTY provider); a plugin profile
+    /// does only when it registered one via <c>ICockpitHost.AddTtyProvider</c> under the same provider id its
+    /// session provider uses (#45 fase B2) — resolved the same way <c>ClaudeTtyViewModel</c> resolves it at
+    /// launch, so the dialog never offers a kind the launch would then refuse. A local HTTP provider (Ollama/
+    /// LM Studio) is never a program a terminal can host, so it has none either way.
+    /// </summary>
+    public bool HasTtyProvider => IsClaudeProfile || (_ttyProviderResolver?.Resolve(SelectedProfile) is not null);
+
+    /// <summary>The declared start defaults for the selected profile's plugin TTY provider (Codex's sandbox policy, say) — empty for Claude/local profiles or a plugin with none declared.</summary>
+    public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginTtyOptions { get; } = [];
+
+    public bool HasPluginTtyOptions => PluginTtyOptions.Count > 0;
+
+    /// <summary>Shown instead of Claude's mode/model/effort combos when TTY is chosen for a plugin profile that declared its own start defaults.</summary>
+    public bool ShowPluginTtyOptions => IsTty && !IsClaudeProfile && HasPluginTtyOptions;
+
     /// <summary>Provider label shown next to the picker; empty for Claude, which needs no badge.</summary>
     public string SelectedProviderLabel => IsLocalProfile ? SessionProviderCatalog.Resolve(SelectedProfile!.Provider).Label : string.Empty;
 
@@ -241,13 +263,22 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(ISessionProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null, IConversationPickerRegistry? conversationPickers = null)
+    public NewSessionDialogViewModel(
+        ISessionProfileStore profileStore,
+        IClaudeProfileLoginChecker loginChecker,
+        IMcpServerStore? mcpServerStore = null,
+        IWorkingPathHistoryStore? workingPathStore = null,
+        IConversationPickerRegistry? conversationPickers = null,
+        ITtySessionProviderResolver? ttyProviderResolver = null,
+        IPluginTtyProviderRegistry? ttyProviderRegistry = null)
     {
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _mcpServerStore = mcpServerStore;
         _workingPathStore = workingPathStore;
+        _ttyProviderResolver = ttyProviderResolver;
+        _ttyProviderRegistry = ttyProviderRegistry;
     }
 
     /// <summary>
@@ -357,9 +388,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsLocalProfile));
         OnPropertyChanged(nameof(SelectedProviderLabel));
 
-        // A local provider only runs as an SDK session (TTY spawns the claude CLI, which is Claude-only),
-        // so force SDK and let the view hide the kind selector for it.
-        if (value?.Provider is SessionProvider.Ollama or SessionProvider.LmStudio)
+        _RefreshPluginTtyOptions(value);
+        OnPropertyChanged(nameof(HasTtyProvider));
+
+        // A profile with no TTY provider to run only runs as an SDK session (a local HTTP provider has none;
+        // neither does a plugin provider that registered no IPluginTtyProvider) — force SDK and let the view
+        // hide the kind selector, rather than leaving Kind on whatever it was and silently launching the
+        // wrong CLI once Start is pressed.
+        if (!HasTtyProvider)
         {
             SelectedKind = SessionKind.Sdk;
         }
@@ -380,6 +416,29 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         ConfirmCommand.NotifyCanExecuteChanged();
     }
 
+    /// <summary>
+    /// Rebuilds <see cref="PluginTtyOptions"/> from the selected profile's own plugin TTY provider (if any) —
+    /// the start defaults it declared via <c>TtyProviderRegistration.Options</c>, rendered generically here
+    /// since the host does not (and must not) know what any of them mean, only their key/label/choices.
+    /// </summary>
+    private void _RefreshPluginTtyOptions(SessionProfile? profile)
+    {
+        PluginTtyOptions.Clear();
+
+        if (_ttyProviderRegistry is not null
+            && profile?.ProviderConfig is PluginProviderConfig plugin
+            && _ttyProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
+        {
+            foreach (var option in registration.Options)
+            {
+                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue));
+            }
+        }
+
+        OnPropertyChanged(nameof(HasPluginTtyOptions));
+        OnPropertyChanged(nameof(ShowPluginTtyOptions));
+    }
+
     partial void OnIsSelectedProfileLoggedInChanged(bool value)
     {
         OnPropertyChanged(nameof(LoginStatusLabel));
@@ -396,6 +455,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(HeaderText));
         OnPropertyChanged(nameof(ShowSdkStartHint));
         OnPropertyChanged(nameof(ShowTtyStartHint));
+        OnPropertyChanged(nameof(ShowPluginTtyOptions));
         // Kind drives the start gate (TTY needs no login) and the login hint (SDK-only), so both re-evaluate.
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));
@@ -429,7 +489,17 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             _ = _workingPathStore.RecordRecentAsync(workingDirectory);
         }
 
-        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name, enabledMcpServerNames, workingDirectory, _Resume()));
+        // A plugin TTY provider's own declared options only apply when TTY is actually chosen for it — never
+        // alongside Claude's mode/model/effort, which the result always carries regardless of kind/provider.
+        IReadOnlyDictionary<string, string>? pluginTtyOptions = ShowPluginTtyOptions
+            ? PluginTtyOptions
+                .Where(option => !string.IsNullOrWhiteSpace(option.Value))
+                .ToDictionary(option => option.Key, option => option.Value!)
+            : null;
+
+        CloseRequested?.Invoke(new NewSessionResult(
+            SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name,
+            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions));
     }
 
     [RelayCommand]
@@ -443,4 +513,36 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 public sealed record RememberedPathOption(string Path, bool IsFavorite)
 {
     public string Display => IsFavorite ? $"★ {Path}" : Path;
+}
+
+/// <summary>
+/// One start default a plugin TTY provider declared (<c>PluginTtyLaunchOption</c>) — <see cref="Key"/>/
+/// <see cref="Label"/>/<see cref="Choices"/> straight from the registration, plus the operator's pick so
+/// far. <see cref="Value"/> starts blank rather than defaulting to the first choice when the provider left
+/// <c>DefaultValue</c> null: "no choice made" and "the first choice" are different things, and only the
+/// provider's own default counts as the second one (mirrors <c>ClaudeTtyViewModel._LaunchOptions</c>'s same
+/// rule for a blank knob). A blank <see cref="Value"/> for a provider with <see cref="Choices"/> renders as
+/// no selection — the CLI's own default then applies, same as leaving Claude's mode/model/effort untouched.
+/// </summary>
+public sealed partial class PluginTtyOptionSelectionViewModel : ObservableObject
+{
+    public string Key { get; }
+
+    public string Label { get; }
+
+    public IReadOnlyList<string> Choices { get; }
+
+    /// <summary>No declared choices means free text — the New-session dialog renders a text box instead of a combo.</summary>
+    public bool IsFreeText => Choices.Count == 0;
+
+    [ObservableProperty]
+    private string? _value;
+
+    public PluginTtyOptionSelectionViewModel(string key, string label, IReadOnlyList<string> choices, string? defaultValue)
+    {
+        Key = key;
+        Label = label;
+        Choices = choices;
+        _value = defaultValue;
+    }
 }

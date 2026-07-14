@@ -1,8 +1,11 @@
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
 
@@ -306,6 +309,77 @@ public class NewSessionDialogViewModelTests
         result!.EnabledMcpServerNames.Should().BeNull();
     }
 
+    [Fact]
+    public async Task SelectingAPluginProfileWithNoTtyProvider_ForcesSdkKind_SoStartNeverSilentlyLaunchesClaude()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginTtyProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns((TtyProviderRegistration?)null);
+        var resolver = Substitute.For<ITtySessionProviderResolver>();
+        resolver.Resolve(plugin).Returns((ITtySessionProvider?)null);
+        var vm = NewVmWithTty(out _, [plugin], resolver, registry);
+
+        await vm.LoadAsync();
+
+        vm.HasTtyProvider.Should().BeFalse();
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+    }
+
+    [Fact]
+    public async Task SelectingAPluginProfileWithATtyProvider_KeepsTtyAvailable_AndDeclaredOptionsRender()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginTtyProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(new TtyProviderRegistration(
+            "cli-agent-provider.codex",
+            "Codex (CLI)",
+            _ => Substitute.For<IPluginTtyProvider>(),
+            Options: [new PluginTtyLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"])]));
+        var resolver = Substitute.For<ITtySessionProviderResolver>();
+        resolver.Resolve(plugin).Returns(Substitute.For<ITtySessionProvider>());
+        var vm = NewVmWithTty(out _, [plugin], resolver, registry);
+
+        await vm.LoadAsync();
+        vm.SelectTtyCommand.Execute(null);
+
+        vm.HasTtyProvider.Should().BeTrue();
+        vm.SelectedKind.Should().Be(SessionKind.Tty);
+        vm.ShowPluginTtyOptions.Should().BeTrue();
+        vm.PluginTtyOptions.Should().ContainSingle(option => option.Key == "sandbox" && option.Label == "Sandbox");
+        vm.ShowSessionOptions.Should().BeFalse("mode/model/effort are Claude's own vocabulary, not this plugin's");
+    }
+
+    [Fact]
+    public async Task Confirm_ForAPluginTtySession_CarriesTheChosenPluginOptionsButNotABlankOne()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginTtyProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(new TtyProviderRegistration(
+            "cli-agent-provider.codex",
+            "Codex (CLI)",
+            _ => Substitute.For<IPluginTtyProvider>(),
+            Options:
+            [
+                new PluginTtyLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"]),
+                new PluginTtyLaunchOption("model", "Model", []),
+            ]));
+        var resolver = Substitute.For<ITtySessionProviderResolver>();
+        resolver.Resolve(plugin).Returns(Substitute.For<ITtySessionProvider>());
+        var vm = NewVmWithTty(out _, [plugin], resolver, registry);
+        await vm.LoadAsync();
+        vm.SelectTtyCommand.Execute(null);
+        vm.PluginTtyOptions.Single(option => option.Key == "sandbox").Value = "workspace-write";
+
+        NewSessionResult? result = null;
+        vm.CloseRequested += r => result = r;
+        vm.ConfirmCommand.Execute(null);
+
+        result.Should().NotBeNull();
+        result!.PluginTtyOptions.Should().NotBeNull();
+        result.PluginTtyOptions!.Should().ContainSingle();
+        result.PluginTtyOptions["sandbox"].Should().Be("workspace-write");
+    }
+
     private static NewSessionDialogViewModel NewVm(out IClaudeProfileLoginChecker loginChecker, params SessionProfile[] profiles)
     {
         var store = Substitute.For<ISessionProfileStore>();
@@ -317,6 +391,25 @@ public class NewSessionDialogViewModelTests
         }
 
         return new NewSessionDialogViewModel(store, loginChecker);
+    }
+
+    private static NewSessionDialogViewModel NewVmWithTty(
+        out IClaudeProfileLoginChecker loginChecker,
+        SessionProfile[] profiles,
+        ITtySessionProviderResolver ttyProviderResolver,
+        IPluginTtyProviderRegistry ttyProviderRegistry)
+    {
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
+        loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        foreach (var profile in profiles)
+        {
+            loginChecker.IsLoggedIn(profile).Returns(true);
+        }
+
+        return new NewSessionDialogViewModel(
+            store, loginChecker, mcpServerStore: null, workingPathStore: null, conversationPickers: null,
+            ttyProviderResolver, ttyProviderRegistry);
     }
 
     private static NewSessionDialogViewModel NewVmWithMcp(

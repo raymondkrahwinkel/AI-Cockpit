@@ -26,7 +26,7 @@ public class TtyReadAloudTests
         var reader = _Reader();
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
-            Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
@@ -38,7 +38,7 @@ public class TtyReadAloudTests
     public void ReadResponsesAloud_OnWithoutALaunchConfigured_DoesNotStartTailing()
     {
         var reader = _Reader();
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), transcriptReader: reader);
+        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader);
 
         vm.ReadResponsesAloud = true;
 
@@ -53,7 +53,7 @@ public class TtyReadAloudTests
             .Returns(callInfo => _YieldThenWaitForCancellation("Here is the tty answer.", callInfo.ArgAt<CancellationToken>(2)));
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
-            Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.ReadResponsesAloud = true;
@@ -74,7 +74,7 @@ public class TtyReadAloudTests
             .Returns(callInfo => _YieldThenWaitForCancellation("Profile-less answer.", callInfo.ArgAt<CancellationToken>(2)));
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
-            Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
 
         vm.LaunchConfigured(profile: null, "default", "sonnet", "medium");
         vm.ReadResponsesAloud = true;
@@ -96,7 +96,7 @@ public class TtyReadAloudTests
             .Returns(_ => _EmptyTranscript());
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
-            Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.ReadResponsesAloud = true;
 
@@ -110,7 +110,7 @@ public class TtyReadAloudTests
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
-            Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: _Reader());
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: _Reader());
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
         await vm.DisposeAsync();
@@ -131,7 +131,7 @@ public class TtyReadAloudTests
             });
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
-            Substitute.For<ITtyLauncher>(), Substitute.For<ITtySessionProvider>(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
+            Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.ReadResponsesAloud = true;
         await _WaitUntilAsync(() => voicePlaybackQueue.ReceivedCalls().Any());
@@ -140,6 +140,14 @@ public class TtyReadAloudTests
 
         capturedToken.Should().NotBeNull();
         await _WaitUntilAsync(() => capturedToken!.Value.IsCancellationRequested);
+    }
+
+    /// <summary>Resolves any profile (including none) to a fresh provider substitute — same as the real resolver does for a Claude profile or a profile-less session.</summary>
+    private static ITtySessionProviderResolver _Resolver()
+    {
+        var resolver = Substitute.For<ITtySessionProviderResolver>();
+        resolver.Resolve(Arg.Any<SessionProfile?>()).Returns(Substitute.For<ITtySessionProvider>());
+        return resolver;
     }
 
     /// <summary>A transcript reader whose launch snapshot is empty, so the VM's baseline is non-null and the tailer actually starts.</summary>

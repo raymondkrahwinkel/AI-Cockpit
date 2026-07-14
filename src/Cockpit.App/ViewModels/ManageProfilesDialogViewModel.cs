@@ -207,11 +207,15 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             return;
         }
 
-        // A profile needs the fields its provider can launch with (a config directory for Claude, a base
-        // URL and model for a local provider); refuse to persist a half-filled row rather than write junk.
-        if (Profiles.Any(profile => !profile.IsValid))
+        // A profile needs the settings its own provider launches with; refuse to persist a half-filled row rather
+        // than write junk. The message names the profiles rather than the fields: which fields those are is the
+        // provider's business, and a message that enumerates them ("a config directory, or a base URL and model")
+        // is one that quietly becomes a lie with every provider added — as it already had for Codex, which needs
+        // neither.
+        if (Profiles.Where(profile => !profile.IsValid).Select(profile => profile.Label).ToList() is { Count: > 0 } incomplete)
         {
-            StatusMessage = "Every profile needs a label, plus a config directory (Claude) or a base URL and model (local).";
+            var named = incomplete.Select(label => string.IsNullOrWhiteSpace(label) ? "(unnamed)" : label);
+            StatusMessage = $"Fill in what these profiles' providers need: {string.Join(", ", named)}.";
             return;
         }
 
