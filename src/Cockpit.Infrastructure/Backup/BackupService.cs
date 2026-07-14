@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Backup;
+using Cockpit.Core.Secrets;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
 using Microsoft.Extensions.Logging;
@@ -348,7 +349,12 @@ internal sealed class BackupService(
             }
         }
 
-        var removed = options.IncludeCredentials ? [] : SecretScrubber.Scrub(settings);
+        // The plugins' own declared fields too (a "pat", a "credential"), not just the names the host recognises:
+        // an archive that says it carries no credentials must carry none, and a field the encryption protects but
+        // the scrubber misses is a token in a backup that claims to be safe to store anywhere.
+        var removed = options.IncludeCredentials
+            ? []
+            : SecretScrubber.Scrub(settings, SecretKeyHolder.Shared.Fields);
 
         var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
         await using var stream = entry.Open();

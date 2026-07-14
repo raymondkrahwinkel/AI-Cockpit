@@ -124,6 +124,7 @@ internal sealed class StatusLineRelay : IStatusLineRelay, ISingletonService
             ? WritePowerShellScript(existingStatusLineCommand)
             : WriteBashScript(existingStatusLineCommand);
 
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
     private static string WriteBashScript(string? existingStatusLineCommand)
     {
         Directory.CreateDirectory(StatusDirectory);
