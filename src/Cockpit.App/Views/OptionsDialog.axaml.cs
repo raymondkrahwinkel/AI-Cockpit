@@ -54,8 +54,11 @@ public partial class OptionsDialog : Window
         {
             DataContext = new PasswordDialogViewModel(
                 "Encrypt your credentials",
-                "Your API keys and tokens will be encrypted in cockpit.json, and the cockpit will ask for this "
-                + "password every time it starts. Pick something you will not lose.",
+                "Your API keys and tokens are encrypted in cockpit.json, and the cockpit asks for this password "
+                + "every time it starts.\n\n"
+                + "If you forget it, nobody can decrypt them — not you, not us. The only way back is to clear the "
+                + "credentials and type them in again; your profiles, sessions, layout and shortcuts survive that. "
+                + "You can turn encryption off again at any time, which puts everything back exactly as it was.",
                 requiresCurrent: false),
         };
 

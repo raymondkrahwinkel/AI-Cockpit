@@ -209,6 +209,48 @@ public class SecretProtectionTests : IDisposable
     }
 
     [Fact]
+    public void AnEncryptedValue_IsNeverEncryptedTwice()
+    {
+        var protector = new SecretProtector(SecretKey.Derive(Password, SecretKey.NewSalt(), iterations: 1000));
+        var once = protector.Protect("McpServers[0].ApiKey", Token);
+
+        var twice = protector.Protect("McpServers[0].ApiKey", once);
+
+        twice.Should().Be(once, "a second pass over a value that is already ciphertext must leave it alone — that is what makes a half-converted file repairable rather than ruined");
+        protector.Unprotect("McpServers[0].ApiKey", twice).Should().Be(Token, "and it still decrypts to the original, not to ciphertext");
+    }
+
+    [Fact]
+    public async Task AHalfEncryptedConfig_IsReadableAndHealsItself()
+    {
+        // How this file could exist: a restored backup, a hand edit, a migration from a version that wrote one.
+        // Our own writes cannot produce it — the migration renames a finished file over the old one, and a rename
+        // is atomic — but a file that ended up mixed anyway must not be a dead end.
+        await Store().SaveAsync([Server(Token), Server("a-second-key")]);
+        await Service().EnableAsync(Password);
+
+        // Put the first server's key back in the clear, leaving the second encrypted: the half-and-half case.
+        var document = JsonNode.Parse(RawConfig())!;
+        document["McpServers"]![0]!["ApiKey"] = Token;
+        await File.WriteAllTextAsync(_configPath, document.ToJsonString());
+
+        var restarted = new SecretKeyHolder();
+        (await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password)).Should().BeTrue();
+
+        // Reading tolerates the mix: the encrypted one is decrypted, the plain one is passed through as it stands.
+        var store = new McpServerStore(_configPath, restarted);
+        var servers = await store.LoadAsync();
+        servers[0].ApiKey.Should().Be(Token);
+        servers[1].ApiKey.Should().Be("a-second-key");
+
+        // And the next write closes the gap: everything that is not yet ciphertext becomes ciphertext.
+        await store.SaveAsync(servers);
+
+        RawConfig().Should().NotContain(Token, "the value that was left in the clear is encrypted on the next save");
+        RawConfig().Should().NotContain("a-second-key");
+    }
+
+    [Fact]
     public void TheFormat_IsAFormat_NotSomethingOnlyItsOwnWriterCanRead()
     {
         // Produced by an independent implementation (Python: hashlib.pbkdf2_hmac + cryptography's AESGCM) from the

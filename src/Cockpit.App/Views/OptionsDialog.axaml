@@ -413,9 +413,17 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                    TextWrapping="Wrap" Margin="0,4,0,0"/>
 
-                        <TextBlock Text="What this does not do: it protects the file, not a running cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
-                                   TextWrapping="Wrap" Margin="0,10,0,0"/>
+                        <TextBlock Text="If you forget the password" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                        <TextBlock Text="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="If something goes wrong halfway" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                        <TextBlock Text="It cannot leave you with half a file. The new config is written beside the old one and renamed over it in one step, so you have either the old one or the new one — never a mix — and the previous version is kept as cockpit.json.bak. A value that will not convert aborts the whole thing and touches nothing. And an already-encrypted value is never encrypted a second time, so a config that ended up mixed anyway (a restored backup, a hand edit) still opens, and the rest is encrypted on the next save."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                        <TextBlock Text="What this does not do" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                        <TextBlock Text="It protects the file, not a running cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
