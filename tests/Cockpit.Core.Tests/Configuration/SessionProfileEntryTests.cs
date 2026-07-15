@@ -79,4 +79,30 @@ public class SessionProfileEntryTests
         profile.Defaults!.OptionDefaults!["model"].Should().Be("opus");
         profile.Defaults!.OptionDefaults!["effort"].Should().Be("high");
     }
+
+    [Fact]
+    public void ToDomain_WhenOptionDefaultsWereSeededWithPluginDefaults_RecoversThemFromTheAuthoritativeTypedFields()
+    {
+        // Root-cause regression: an intermediate build seeded OptionDefaults with the plugin's own defaults
+        // (permission-mode=default, effort=medium, no model) instead of the operator's saved values, shadowing the
+        // still-correct typed fields. The typed fields are authoritative, so on load OptionDefaults is rebuilt from them.
+        var entry = new SessionProfileEntry
+        {
+            Label = "personal",
+            Provider = new ProviderConfigEntry { Provider = SessionProvider.Plugin, PluginProviderId = "claude", PluginConfigJson = "{}" },
+            Defaults = new ProfileDefaultsEntry
+            {
+                PermissionMode = "bypassPermissions",
+                Model = "opus",
+                Effort = "high",
+                OptionDefaults = new Dictionary<string, string> { ["permission-mode"] = "default", ["effort"] = "medium" },
+            },
+        };
+
+        var profile = entry.ToDomain();
+
+        profile.Defaults!.OptionDefaults!["permission-mode"].Should().Be("bypassPermissions");
+        profile.Defaults!.OptionDefaults!["model"].Should().Be("opus");
+        profile.Defaults!.OptionDefaults!["effort"].Should().Be("high");
+    }
 }

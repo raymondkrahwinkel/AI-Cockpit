@@ -334,16 +334,27 @@ public partial class EditableProfileViewModel : ViewModelBase
     }
 
     /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
-    public SessionProfile ToProfile() => new(
-        Label.Trim(),
-        _ToProviderConfig(),
-        string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
-        new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools)
-        {
-            OptionDefaults = _CollectPluginOptionDefaults(),
-        },
-        _ToDelegationPolicy(),
-        MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
+    public SessionProfile ToProfile()
+    {
+        // The generic option-default editors are the source of truth for a plugin profile's permission-mode/model/
+        // effort; keep the typed ProfileDefaults fields in sync with them (falling back to the typed value a
+        // non-plugin provider still carries) so the two never diverge and a saved edit survives the next load.
+        var optionDefaults = _CollectPluginOptionDefaults();
+        return new(
+            Label.Trim(),
+            _ToProviderConfig(),
+            string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
+            new ProfileDefaults(
+                optionDefaults?.GetValueOrDefault("permission-mode") ?? SelectedPermissionMode.Value,
+                optionDefaults?.GetValueOrDefault("model") ?? SessionOptionCatalog.ModelForValue(ClaudeModel).Value,
+                optionDefaults?.GetValueOrDefault("effort") ?? SelectedEffort.Value,
+                AutoApproveTools)
+            {
+                OptionDefaults = optionDefaults,
+            },
+            _ToDelegationPolicy(),
+            MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
+    }
 
     // The per-profile option defaults the operator set, keyed by option key; only the ones actually chosen (a blank
     // value leaves the option on the plugin's own default). Null when the provider declares no options.

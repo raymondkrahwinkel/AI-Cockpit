@@ -20,38 +20,37 @@ public static class ClaudePluginProfile
         new(ProviderId, _SerializeConfig(configDir, executablePath));
 
     /// <summary>
-    /// Carries a Claude profile's typed permission-mode/model/effort defaults into the generic
-    /// <see cref="ProfileDefaults.OptionDefaults"/> map when it has none yet — the defaults half of the migration, so a
-    /// profile keeps its saved start settings after Claude becomes a plugin (the profile-edit and New-session dialogs
-    /// read them generically now). Idempotent: a profile that already has <see cref="ProfileDefaults.OptionDefaults"/>
-    /// is returned untouched.
+    /// Keeps a Claude profile's generic <see cref="ProfileDefaults.OptionDefaults"/> in sync with its authoritative
+    /// typed permission-mode/model/effort defaults — the profile-edit dialog writes both together, and the typed
+    /// fields win here, so a profile keeps its saved start settings and recovers if an earlier build seeded
+    /// OptionDefaults with the plugin's own defaults instead of the operator's values. Keys a provider owns itself (a
+    /// sandbox, say) pass through untouched; a blank typed field leaves its key unset (the option's own default then
+    /// applies). Core cannot reference the plugin abstractions, so these key literals — matching the host's
+    /// <c>WellKnownPluginSessionOptions</c> — are the one Claude-specific detail here.
     /// </summary>
     public static ProfileDefaults WithMigratedOptionDefaults(ProfileDefaults defaults)
     {
-        if (defaults.OptionDefaults is { Count: > 0 })
-        {
-            return defaults;
-        }
+        var options = defaults.OptionDefaults is { Count: > 0 } existing
+            ? new Dictionary<string, string>(existing, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // The Claude plugin declares its options under these keys (matching the host's WellKnownPluginSessionOptions);
-        // Core cannot reference the plugin abstractions, so these literals are the one Claude-specific detail here.
-        var options = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!string.IsNullOrWhiteSpace(defaults.PermissionMode))
-        {
-            options["permission-mode"] = defaults.PermissionMode;
-        }
+        _ApplyTypedDefault(options, "permission-mode", defaults.PermissionMode);
+        _ApplyTypedDefault(options, "model", defaults.Model);
+        _ApplyTypedDefault(options, "effort", defaults.Effort);
 
-        if (!string.IsNullOrWhiteSpace(defaults.Model))
-        {
-            options["model"] = defaults.Model;
-        }
+        return options.Count > 0 ? defaults with { OptionDefaults = options } : defaults with { OptionDefaults = null };
+    }
 
-        if (!string.IsNullOrWhiteSpace(defaults.Effort))
+    private static void _ApplyTypedDefault(Dictionary<string, string> options, string key, string typedValue)
+    {
+        if (string.IsNullOrWhiteSpace(typedValue))
         {
-            options["effort"] = defaults.Effort;
+            options.Remove(key);
         }
-
-        return options.Count > 0 ? defaults with { OptionDefaults = options } : defaults;
+        else
+        {
+            options[key] = typedValue;
+        }
     }
 
     // Matches the plugin's own ClaudeProviderConfig shape: camelCase keys, blank fields omitted (both blank means a
