@@ -96,11 +96,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     partial void OnIsPermissionModeLockedChanged(bool value) => OnPropertyChanged(nameof(PermissionModes));
 
-    /// <summary>Models offered per session; the selected one becomes <c>--model</c> at launch and can be switched live.</summary>
-    public IReadOnlyList<ModelOption> Models => SessionOptionCatalog.Models;
+    /// <summary>The Claude model aliases suggested in the editable model field; the field stays free text so a specific model or snapshot can be pinned live, matching the New-session dialog.</summary>
+    public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
+    /// <summary>
+    /// The running session's model of record: the launch <c>--model</c>, and what a live switch updates. The header
+    /// edits it through <see cref="LiveModelText"/> rather than binding here directly, so a switch applies on commit
+    /// (Enter/focus-loss) instead of on every keystroke.
+    /// </summary>
     [ObservableProperty]
     private ModelOption _selectedModel = SessionOptionCatalog.DefaultModel;
+
+    /// <summary>
+    /// The editable text in the header's Claude model field. Setting it has no side effect — the live switch fires
+    /// only when <see cref="CommitLiveModel"/> is called (the view commits on Enter, focus-loss, or picking a
+    /// suggestion), so typing a snapshot name does not fire a set_model control request per character.
+    /// </summary>
+    [ObservableProperty]
+    private string _liveModelText = SessionOptionCatalog.DefaultModel.Value;
 
     /// <summary>Thinking-effort levels offered per session; drives the thinking-budget control.</summary>
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
@@ -312,6 +325,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         SelectedPermissionMode = mode;
         IsPermissionModeLocked = isBypass;
         SelectedModel = model;
+        LiveModelText = model.Value;
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
         _launchOptions = launchOptions;
@@ -446,6 +460,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _ = _SetModelSafeAsync(value.Value);
+    }
+
+    /// <summary>
+    /// Applies the edited Claude model as a live switch, called by the view when the model field commits (Enter,
+    /// focus-loss, or picking a suggestion). Routes through <see cref="SelectedModel"/> so the model of record and
+    /// the live control request (via <see cref="OnSelectedModelChanged"/>) stay one path; a blank field or an
+    /// unchanged value is ignored so a commit that changed nothing fires no request.
+    /// </summary>
+    public void CommitLiveModel()
+    {
+        var text = LiveModelText?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        var model = SessionOptionCatalog.ModelForValue(text);
+        if (model.Value != SelectedModel.Value)
+        {
+            SelectedModel = model;
+        }
     }
 
     /// <summary>Live-switches the running session's thinking budget. No-op before the session has started.</summary>

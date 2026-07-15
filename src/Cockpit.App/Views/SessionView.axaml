@@ -38,11 +38,16 @@
                               IsVisible="{Binding Capabilities.SupportsPermissions}"
                               IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
                               ToolTip.Tip="Permission mode for this session (live-switchable; bypass is locked once the session is launched in it)"/>
-                    <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding Capabilities.SupportsLiveModelSwitch}"
-                              ToolTip.Tip="Model for this session (--model at launch, live-switchable)"/>
+                    <!-- Editable, not a fixed dropdown (like the New-session dialog): the aliases are only
+                         suggestions, so a specific model or snapshot can be pinned live. The switch applies on
+                         commit (Enter / focus-loss / picking a suggestion), wired in code-behind, so a keystroke
+                         does not fire a set_model per character. -->
+                    <AutoCompleteBox x:Name="LiveModelBox" ItemsSource="{Binding ClaudeModelSuggestions}"
+                                     Text="{Binding LiveModelText}"
+                                     FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
+                                     Classes="Compact" MinWidth="110" VerticalAlignment="Center"
+                                     IsVisible="{Binding Capabilities.SupportsLiveModelSwitch}"
+                                     ToolTip.Tip="Model for this session (--model at launch, live-switchable; type a model or snapshot, Enter to apply)"/>
                     <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
                               VerticalAlignment="Center"

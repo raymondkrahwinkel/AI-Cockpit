@@ -28,6 +28,28 @@ public partial class SessionView : UserControl
         // click into the input first to dictate.
         AddHandler(InputElement.KeyDownEvent, _OnPushToTalkKeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyUpEvent, _OnPushToTalkKeyUp, RoutingStrategies.Tunnel);
+
+        // The Claude model field is editable free text, so apply the live switch on commit — Enter, focus-loss, or
+        // picking a suggestion — rather than per keystroke, which would fire a set_model control request per letter.
+        LiveModelBox.LostFocus += (_, _) => _CommitLiveModel();
+        LiveModelBox.DropDownClosed += (_, _) => _CommitLiveModel();
+        LiveModelBox.KeyDown += _OnLiveModelKeyDown;
+    }
+
+    private void _OnLiveModelKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            _CommitLiveModel();
+        }
+    }
+
+    private void _CommitLiveModel()
+    {
+        if (DataContext is SessionViewModel vm)
+        {
+            vm.CommitLiveModel();
+        }
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
