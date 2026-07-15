@@ -1,0 +1,144 @@
+using System.Text.Json;
+using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Workspaces;
+using FluentAssertions;
+
+namespace Cockpit.Core.Tests.Workspaces;
+
+/// <summary>
+/// <see cref="WorkspaceSettingsStore"/> against a real config file: the round trip, that it leaves sibling
+/// sections alone, and what it does with a file that disagrees with itself. The recovery cases matter more
+/// than the happy path — a malformed <c>workspaces</c> section must not cost the operator their cockpit.
+/// </summary>
+public class WorkspaceSettingsStoreTests : IDisposable
+{
+    private readonly string _configPath = Path.Combine(Path.GetTempPath(), $"cockpit-workspaces-{Guid.NewGuid():n}.json");
+
+    public void Dispose()
+    {
+        if (File.Exists(_configPath))
+        {
+            File.Delete(_configPath);
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
+    [Fact]
+    public async Task LoadAsync_NothingEverSaved_YieldsTheDefaultSingleSessionsWorkspace()
+    {
+        var settings = await new WorkspaceSettingsStore(_configPath).LoadAsync();
+
+        settings.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Sessions);
+    }
+
+    [Fact]
+    public async Task SaveThenLoad_RoundTripsWorkspacesPanesAndTheActiveOne()
+    {
+        var store = new WorkspaceSettingsStore(_configPath);
+        var dashboard = Workspace.Create("Monitoring", WorkspaceType.Dashboard) with { Layout = new DashboardLayout { Columns = 3, Rows = 2 } };
+        dashboard = dashboard.WithPane(new WorkspacePane("p1", PaneKind.Widget)
+        {
+            WidgetId = "system-monitor.usage",
+            Cell = new GridCell(1, 0, 2, 1),
+        });
+        var saved = WorkspaceSettings.Default.WithWorkspace(dashboard);
+
+        await store.SaveAsync(saved);
+        var loaded = await store.LoadAsync();
+
+        loaded.Workspaces.Should().HaveCount(2);
+        loaded.ActiveWorkspaceId.Should().Be(dashboard.Id);
+        var reloaded = loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id);
+        reloaded.Name.Should().Be("Monitoring");
+        reloaded.Layout.Columns.Should().Be(3);
+        reloaded.Panes.Should().ContainSingle().Which.Should().BeEquivalentTo(dashboard.Panes[0]);
+    }
+
+    [Fact]
+    public async Task SaveAsync_LeavesSiblingSectionsUntouched()
+    {
+        await File.WriteAllTextAsync(_configPath, """{"Layout":{"SidebarWidth":240},"Profiles":[]}""");
+
+        await new WorkspaceSettingsStore(_configPath).SaveAsync(WorkspaceSettings.Default);
+
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(_configPath));
+        document.RootElement.GetProperty("Layout").GetProperty("SidebarWidth").GetDouble().Should().Be(240);
+    }
+
+    [Fact]
+    public async Task SaveAsync_ASessionsWorkspace_WritesNoDashboardGrid_SoTheFileHoldsNoSettingNothingReads()
+    {
+        await new WorkspaceSettingsStore(_configPath).SaveAsync(WorkspaceSettings.Default);
+
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(_configPath));
+        var workspace = document.RootElement.GetProperty("Workspaces").GetProperty("Workspaces")[0];
+        workspace.TryGetProperty("Layout", out var layout).Should().BeTrue();
+        layout.ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task LoadAsync_AWidgetPaneInASessionsWorkspace_DropsThePaneRatherThanRefusingToStart()
+    {
+        // A config that disagrees with itself is recoverable by ignoring the offending pane; refusing to load
+        // would cost the operator the whole cockpit over one bad line.
+        await File.WriteAllTextAsync(_configPath, """
+            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[
+              {"Id":"w1","Name":"Work","Type":"Sessions","Panes":[
+                {"Id":"p1","Kind":"Widget","WidgetId":"clock.time"},
+                {"Id":"p2","Kind":"Terminal","Shell":"pwsh"}]}]}}
+            """);
+
+        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
+
+        loaded.Workspaces.Should().ContainSingle().Which.Panes.Should().ContainSingle()
+            .Which.Kind.Should().Be(PaneKind.Terminal);
+    }
+
+    [Fact]
+    public async Task LoadAsync_AnUnknownWorkspaceType_FallsBackToSessionsRatherThanThrowing()
+    {
+        await File.WriteAllTextAsync(_configPath, """
+            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[{"Id":"w1","Name":"?","Type":"Hologram","Panes":[]}]}}
+            """);
+
+        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
+
+        loaded.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Sessions);
+    }
+
+    [Fact]
+    public async Task LoadAsync_AnEmptyWorkspaceList_YieldsTheDefaultRatherThanAnEmptyCockpit()
+    {
+        await File.WriteAllTextAsync(_configPath, """{"Workspaces":{"Workspaces":[]}}""");
+
+        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
+
+        loaded.Workspaces.Should().ContainSingle();
+        loaded.Active.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task LoadAsync_AnOutOfRangeDashboardGrid_IsClampedBeforeItReachesTheView()
+    {
+        await File.WriteAllTextAsync(_configPath, """
+            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[
+              {"Id":"w1","Name":"D","Type":"Dashboard","Layout":{"Columns":0,"Rows":0},"Panes":[]}]}}
+            """);
+
+        var layout = (await new WorkspaceSettingsStore(_configPath).LoadAsync()).Workspaces[0].Layout;
+
+        layout.Columns.Should().Be(DashboardLayout.MinColumns);
+        layout.Rows.Should().Be(DashboardLayout.MinRows);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ADanglingActiveId_ResolvesToTheFirstWorkspace()
+    {
+        await File.WriteAllTextAsync(_configPath, """
+            {"Workspaces":{"ActiveWorkspaceId":"gone","Workspaces":[{"Id":"w1","Name":"A","Type":"Sessions","Panes":[]}]}}
+            """);
+
+        (await new WorkspaceSettingsStore(_configPath).LoadAsync()).ActiveWorkspaceId.Should().Be("w1");
+    }
+}
