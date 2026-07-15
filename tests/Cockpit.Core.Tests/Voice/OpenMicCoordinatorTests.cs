@@ -5,6 +5,8 @@ using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -246,6 +248,66 @@ public class OpenMicCoordinatorTests
         playbackQueue.DidNotReceive().StopAll();
     }
 
+    /// <summary>A throw here lands on a task nobody observes, leaving a greyed-out toggle and an empty log — the shape of the F9 failure, in the coordinator next door.</summary>
+    [Fact]
+    public async Task StartAsync_WhenTheSettingsCannotBeRead_LogsIt_RatherThanDyingOnATaskNobodyObserves()
+    {
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns<VoiceSettings>(_ => throw new IOException("cockpit.json is being used by another process"));
+        var logger = new CapturingLogger<OpenMicCoordinator>();
+        var coordinator = _NewCoordinator(new FakeOpenMicListener(), voiceSettingsStore, logger);
+
+        var act = async () => await coordinator.StartAsync();
+
+        await act.Should().NotThrowAsync();
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
+    }
+
+    /// <summary>A microphone that will not open leaves the coordinator wired to a listener that is not running — and it would stay wired for the session.</summary>
+    [Fact]
+    public async Task StartAsync_WhenTheListenerRefusesToStart_LeavesNothingSubscribedToAListenerThatNeverStarted()
+    {
+        var listener = new FakeOpenMicListener { StartFailure = new InvalidOperationException("the microphone is held by another application") };
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, OpenMicEnabled = true });
+        var logger = new CapturingLogger<OpenMicCoordinator>();
+        var coordinator = _NewCoordinator(listener, voiceSettingsStore, logger);
+
+        await coordinator.StartAsync();
+
+        listener.UtteranceSubscriberCount.Should().Be(0);
+        coordinator.IsListening.Should().BeFalse();
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error && entry.Exception is InvalidOperationException);
+    }
+
+    /// <summary>Voice is on even when open-mic will not start: the toggle is what the operator retries with, and a failed start must not disable it.</summary>
+    [Fact]
+    public async Task StartAsync_WhenTheListenerRefusesToStart_LeavesTheToggleAvailableToTryAgain()
+    {
+        var listener = new FakeOpenMicListener { StartFailure = new InvalidOperationException("the microphone is held by another application") };
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, OpenMicEnabled = true });
+        var coordinator = _NewCoordinator(listener, voiceSettingsStore, new CapturingLogger<OpenMicCoordinator>());
+
+        await coordinator.StartAsync();
+
+        coordinator.IsAvailable.Should().BeTrue();
+        coordinator.ToggleOpenMicCommand.CanExecute(null).Should().BeTrue();
+    }
+
+    private static OpenMicCoordinator _NewCoordinator(
+        IOpenMicListener listener,
+        IVoiceSettingsStore voiceSettingsStore,
+        ILogger<OpenMicCoordinator> logger) =>
+        new(listener,
+            TestCockpit.NewViewModel(),
+            voiceSettingsStore,
+            Substitute.For<ITranscriptCleanupService>(),
+            Substitute.For<IVoicePlaybackQueue>(),
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            logger);
+
     /// <param name="overlay">Pass one to assert on the pill; omit it and the coordinator reports into a throwaway.</param>
     private static OpenMicCoordinator _CreateCoordinator(
         SessionPanelViewModel? session,
@@ -263,7 +325,8 @@ public class OpenMicCoordinatorTests
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings ?? new VoiceSettings());
         return new OpenMicCoordinator(
             listener, cockpit, voiceSettingsStore, cleanup, playbackQueue,
-            overlay ?? new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()));
+            overlay ?? new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            NullLogger<OpenMicCoordinator>.Instance);
     }
 
     private static SessionPanelViewModel _CreateSdkSession()

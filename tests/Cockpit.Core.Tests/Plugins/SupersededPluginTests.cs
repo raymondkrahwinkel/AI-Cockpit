@@ -7,14 +7,15 @@ namespace Cockpit.Core.Tests.Plugins;
 /// Splitting a plugin in two leaves the old one installed — the installer never removes what an operator has,
 /// which is right. But its successors keep the widget type ids it registered, so a saved dashboard survives the
 /// split and the old plugin ends up claiming the same types as the new ones. Only one of each can win, so the
-/// operator has to be told; this is the decision of when.
+/// operator has to be told; this is the decision of when. Which plugins count as competing — the enabled ones,
+/// not every one with a registration — is <see cref="Cockpit.App.Services.SupersededPluginNotice"/>'s to answer.
 /// </summary>
 public class SupersededPluginTests
 {
     private static readonly SupersededPlugin Widgets = new("widgets", "Reference widgets", ["clock", "system-monitor"]);
 
     [Fact]
-    public void ShouldOffer_WhenTheOldPluginAndASuccessorAreBothInstalled_SaysSo()
+    public void ShouldOffer_WhenTheOldPluginAndASuccessorAreBothEnabled_SaysSo()
     {
         Widgets.ShouldOffer(["widgets", "clock", "git-status"]).Should().BeTrue();
     }
@@ -27,17 +28,17 @@ public class SupersededPluginTests
     }
 
     /// <summary>
-    /// An old plugin whose successors are not installed is just a plugin: it is the only thing contributing its
+    /// An old plugin whose successors are not enabled is just a plugin: it is the only thing contributing its
     /// widgets, it works, and offering to remove it would break a working dashboard.
     /// </summary>
     [Fact]
-    public void ShouldOffer_WithNoSuccessorInstalled_SaysNothing()
+    public void ShouldOffer_WithNoSuccessorEnabled_SaysNothing()
     {
         Widgets.ShouldOffer(["widgets", "git-status"]).Should().BeFalse();
     }
 
     [Fact]
-    public void ShouldOffer_WithNothingInstalled_SaysNothing()
+    public void ShouldOffer_WithNothingEnabled_SaysNothing()
     {
         Widgets.ShouldOffer([]).Should().BeFalse();
     }
