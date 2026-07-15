@@ -73,6 +73,16 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task AllowPermissionAlwaysAsync(string toolUseId, CancellationToken cancellationToken = default) =>
         RespondToPermissionAsync(toolUseId, allow: true, cancellationToken);
 
+    /// <summary>
+    /// The provider's latest limits snapshot (#45 D7) — how full the context window is and how much of its usage
+    /// windows are spent, which the host polls and renders as the session header's limit bars. The default is
+    /// <see langword="null"/>: a provider that reports no usage (an HTTP model with no such feed) has none, and a
+    /// header shows nothing rather than a made-up zero. A driver that receives usage updates from its provider
+    /// (Codex's <c>thread/tokenUsage/updated</c> and <c>account/rateLimits/updated</c>) keeps the newest snapshot
+    /// here. A default property polled off the event stream, so no already-compiled plugin breaks.
+    /// </summary>
+    PluginSessionStatus? Status => null;
+
     /// <summary>The live, ordered stream of typed transcript events for this session.</summary>
     IAsyncEnumerable<PluginSessionEvent> Events { get; }
 

@@ -31,6 +31,13 @@ public interface ISessionRuntime : IAsyncDisposable
     /// <summary>The process this session runs in, once its driver started one (#78) — what the resource meter weighs, along with everything that process spawns. Null for an HTTP-backed provider.</summary>
     int? ProcessId => null;
 
+    /// <summary>
+    /// The session's latest limits, when its provider reports them (#45 D7) — passed straight from the driver so
+    /// the header can poll one place. Null when the driver has no limits feed (a local model, or Claude, whose
+    /// TTY route carries limits through the statusline relay instead).
+    /// </summary>
+    SessionLimits? CurrentLimits => null;
+
     /// <summary>True once <see cref="StartAsync"/> has brought a driver up and the event pump is running.</summary>
     bool IsRunning { get; }
 

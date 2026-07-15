@@ -22,6 +22,41 @@ public sealed record SessionLimits(
     public bool HasAny => ContextUsedPercent is not null || FiveHourUsedPercent is not null || SevenDayUsedPercent is not null;
 
     /// <summary>
+    /// The hover text for the header's limit bars: what each bar means, spelled out, plus when each window rolls
+    /// over — the one thing a bar cannot show and the thing you want when it is nearly full. Only the numbers the
+    /// provider reported, so nothing here is invented. Shared by every session header that renders limits,
+    /// whatever provider fed them.
+    /// </summary>
+    public string Describe()
+    {
+        var lines = new List<string>(3);
+
+        if (ContextUsedPercent is { } context)
+        {
+            lines.Add($"Context window: {Rounded(context)}% used");
+        }
+
+        if (FiveHourUsedPercent is { } fiveHour)
+        {
+            lines.Add($"Session (5 hours): {Rounded(fiveHour)}% used{Resets(FiveHourResetsAt)}");
+        }
+
+        if (SevenDayUsedPercent is { } sevenDay)
+        {
+            lines.Add($"Week: {Rounded(sevenDay)}% used{Resets(SevenDayResetsAt)}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+
+        static string Resets(DateTimeOffset? resetsAt) =>
+            resetsAt is { } at ? $" — resets {at.ToLocalTime():ddd HH:mm}" : string.Empty;
+
+        // Away from zero, not .NET's default banker's rounding — which turns 42.5% into 42% and would have the
+        // header quietly under-report exactly on the halves.
+        static double Rounded(double value) => Math.Round(value, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
     /// Reads the JSON that Claude Code hands its statusline command on stdin.
     /// <para>
     /// This is the only machine-readable source for the five-hour and weekly limits: they reach Claude Code in

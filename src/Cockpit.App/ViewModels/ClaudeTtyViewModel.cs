@@ -509,34 +509,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// a bar cannot say and the thing you actually want when it is nearly full. Only the numbers Claude reported,
     /// so nothing here is invented.
     /// </summary>
-    internal static string DescribeLimits(SessionLimits limits)
-    {
-        var lines = new List<string>(3);
-
-        if (limits.ContextUsedPercent is { } context)
-        {
-            lines.Add($"Context window: {Percent(context)}% used");
-        }
-
-        if (limits.FiveHourUsedPercent is { } fiveHour)
-        {
-            lines.Add($"Session (5 hours): {Percent(fiveHour)}% used{Resets(limits.FiveHourResetsAt)}");
-        }
-
-        if (limits.SevenDayUsedPercent is { } sevenDay)
-        {
-            lines.Add($"Week: {Percent(sevenDay)}% used{Resets(limits.SevenDayResetsAt)}");
-        }
-
-        return string.Join(Environment.NewLine, lines);
-
-        static string Resets(DateTimeOffset? resetsAt) =>
-            resetsAt is { } at ? $" — resets {at.ToLocalTime():ddd HH:mm}" : string.Empty;
-
-        // Away from zero, not .NET's default banker's rounding — which turns 42.5% into 42% and would have the
-        // header quietly under-report exactly on the halves.
-        static double Percent(double value) => Math.Round(value, MidpointRounding.AwayFromZero);
-    }
+    internal static string DescribeLimits(SessionLimits limits) => limits.Describe();
 
     protected override ValueTask DisposeCoreAsync()
     {

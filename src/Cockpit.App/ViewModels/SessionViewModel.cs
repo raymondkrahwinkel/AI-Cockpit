@@ -166,6 +166,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _usageTooltip = string.Empty;
 
+    /// <summary>
+    /// What this session is spending, each drawn as a small header bar (#45 D7): how full the context window is,
+    /// and how much of the provider's two usage windows are gone. Null until the provider reports it — a bar
+    /// reading "0%" would be a claim rather than a silence. Fed from the driver's limits feed (Codex's app-server
+    /// usage notifications); a provider with no such feed leaves them null and the bars stay hidden.
+    /// </summary>
+    [ObservableProperty]
+    private double? _contextUsedPercent;
+
+    /// <inheritdoc cref="ContextUsedPercent"/>
+    [ObservableProperty]
+    private double? _fiveHourUsedPercent;
+
+    /// <inheritdoc cref="ContextUsedPercent"/>
+    [ObservableProperty]
+    private double? _sevenDayUsedPercent;
+
+    /// <summary>The whole story on hover, including when each window rolls over — the thing a bar cannot say.</summary>
+    [ObservableProperty]
+    private string _limitsTooltip = string.Empty;
+
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
     // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
@@ -174,6 +195,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
         ActiveProfileLabel = "raymond@work";
+
+        // Sample limit bars (#45 D7) so the previewer/Screenshotter renders the header's ctx/5h/wk bars.
+        ContextUsedPercent = 37;
+        FiveHourUsedPercent = 58;
+        SevenDayUsedPercent = 82;
+        LimitsTooltip = "Context window: 37% used";
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "fix the layout bug in SessionView"));
 
@@ -887,6 +914,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _AccumulateUsage(turn);
+                _RefreshLimits();
                 _RecomputeStatus();
                 // "exit" turn finished → ask the cockpit to close this session (T10). Skip draining the
                 // queue: the session is going away, so anything still queued is moot.
@@ -955,6 +983,20 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         HasUsage = _usage.HasData;
         UsageSummary = _usage.Summary;
         UsageTooltip = _usage.Tooltip;
+    }
+
+    // Pulls the driver's latest limits into the header bars. Read at each turn boundary rather than on a timer:
+    // the provider reports how full the context window is when a turn ends, so that is when the numbers change —
+    // and a session with no limits feed simply reads null and keeps the bars hidden.
+    private void _RefreshLimits()
+    {
+        if (_runtime?.CurrentLimits is { HasAny: true } limits)
+        {
+            ContextUsedPercent = limits.ContextUsedPercent;
+            FiveHourUsedPercent = limits.FiveHourUsedPercent;
+            SevenDayUsedPercent = limits.SevenDayUsedPercent;
+            LimitsTooltip = limits.Describe();
+        }
     }
 
     /// <summary>

@@ -49,6 +49,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private Task? _notificationPump;
     private Task? _serverRequestPump;
 
+    // The limits feed (#45 D7). The pump thread is the only writer of the three component fields; the immutable
+    // snapshot it builds is published to the volatile field so the host's poll (a different thread) reads a
+    // consistent value. Context and rate-limits arrive in separate notifications, so each is kept and recombined.
+    private volatile PluginSessionStatus? _status;
+    private double? _contextUsedPercent;
+    private PluginRateLimitWindow? _primaryRateLimit;
+    private PluginRateLimitWindow? _secondaryRateLimit;
+
     public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath)
     {
         _connection = new CodexAppServerConnection(subprocessFactory());
@@ -62,6 +70,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     public string? SessionId => _threadId;
 
     public int? ProcessId => _connection.ProcessId;
+
+    public PluginSessionStatus? Status => _status;
 
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
 
@@ -232,6 +242,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 _HandleTurnCompleted(notification.Params);
                 break;
 
+            case "thread/tokenUsage/updated":
+                _HandleTokenUsage(notification.Params);
+                break;
+
+            case "account/rateLimits/updated":
+                _HandleRateLimits(notification.Params);
+                break;
+
             case "error":
                 _events.Writer.TryWrite(new PluginSessionError { SessionId = _threadId, Message = _ExtractErrorMessage(notification.Params) });
                 break;
@@ -285,6 +303,90 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         });
         _currentTurnId = null;
     }
+
+    // thread/tokenUsage/updated carries how full the context window is: the last turn's footprint (falling back to
+    // the thread total) over the model's window. "last" is the most recent turn's usage, which is the running
+    // context going into the next turn — the closest analogue to Claude's context_window.used_percentage.
+    private void _HandleTokenUsage(JsonElement parameters)
+    {
+        // Guard the entry, not just the nested reads: a notification with no "params" reaches here as
+        // default(JsonElement), and TryGetProperty on a non-object throws — which would kill the whole pump.
+        if (parameters.ValueKind != JsonValueKind.Object
+            || !parameters.TryGetProperty("tokenUsage", out var usage) || usage.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var contextWindow = _TryGetLong(usage, "modelContextWindow");
+        var usedTokens = _TryGetLong(_ObjectOrDefault(usage, "last"), "totalTokens")
+            ?? _TryGetLong(_ObjectOrDefault(usage, "total"), "totalTokens");
+
+        if (contextWindow is > 0 && usedTokens is not null)
+        {
+            _contextUsedPercent = Math.Clamp((double)usedTokens.Value / contextWindow.Value * 100, 0, 100);
+            _PublishStatus();
+        }
+    }
+
+    // account/rateLimits/updated carries the whole snapshot, so primary/secondary are replaced wholesale rather
+    // than merged: a window the snapshot no longer reports is a window that no longer applies.
+    private void _HandleRateLimits(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object
+            || !parameters.TryGetProperty("rateLimits", out var snapshot) || snapshot.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        _primaryRateLimit = _ParseWindow(snapshot, "primary");
+        _secondaryRateLimit = _ParseWindow(snapshot, "secondary");
+        _PublishStatus();
+    }
+
+    private void _PublishStatus()
+    {
+        var status = new PluginSessionStatus(_contextUsedPercent, _primaryRateLimit, _secondaryRateLimit);
+        _status = status.HasAny ? status : null;
+    }
+
+    private static PluginRateLimitWindow? _ParseWindow(JsonElement snapshot, string property)
+    {
+        if (!snapshot.TryGetProperty(property, out var window) || window.ValueKind != JsonValueKind.Object
+            || _TryGetDouble(window, "usedPercent") is not { } usedPercent)
+        {
+            return null;
+        }
+
+        var resetsAt = _TryGetLong(window, "resetsAt") is { } epochSeconds
+            ? DateTimeOffset.FromUnixTimeSeconds(epochSeconds)
+            : (DateTimeOffset?)null;
+
+        return new PluginRateLimitWindow(usedPercent, resetsAt, _TryGetInt(window, "windowDurationMins"));
+    }
+
+    private static int? _TryGetInt(JsonElement parent, string property) =>
+        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)
+        && element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var value)
+            ? value
+            : null;
+
+    private static long? _TryGetLong(JsonElement parent, string property) =>
+        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)
+        && element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out var value)
+            ? value
+            : null;
+
+    private static double? _TryGetDouble(JsonElement parent, string property) =>
+        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)
+        && element.ValueKind == JsonValueKind.Number
+            ? element.GetDouble()
+            : null;
+
+    private static JsonElement _ObjectOrDefault(JsonElement parent, string property) =>
+        parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)
+        && element.ValueKind == JsonValueKind.Object
+            ? element
+            : default;
 
     private async Task _PumpServerRequestsAsync(CancellationToken cancellationToken)
     {

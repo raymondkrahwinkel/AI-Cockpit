@@ -39,6 +39,28 @@ public class SessionViewModelTests
     }
 
     [Fact]
+    public async Task TurnCompleted_PullsTheDriversLimits_IntoTheHeaderBars()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var reset = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+        session.CurrentLimits.Returns(new SessionLimits(25, 60, reset, 80, null));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // D7: a completed turn is when the provider's usage changes, so the header pulls the driver's limits then.
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        vm.ContextUsedPercent.Should().Be(25);
+        vm.FiveHourUsedPercent.Should().Be(60);
+        vm.SevenDayUsedPercent.Should().Be(80);
+        vm.LimitsTooltip.Should().Contain("Context window: 25% used");
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public async Task StartConfigured_AppliesTheChosenEffortsBudgetOnceLive()
     {
         var session = Substitute.For<ISessionDriver>();

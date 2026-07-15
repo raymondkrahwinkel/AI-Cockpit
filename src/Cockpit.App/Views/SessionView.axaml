@@ -62,7 +62,7 @@
                 <TextBlock Grid.Column="2" Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
                            VerticalAlignment="Center" Margin="8,0,2,0"/>
 
-                <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="0,0,8,0">
+                <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,8,0">
                     <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
                             CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1" Margin="0,0,8,0"
                             IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -120,10 +120,21 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     </Border>
 
+                    <!-- What the session is spending, one bar each (#45 D7): how full the context window is and how
+                         much of the provider's two usage windows are gone. Fed by the provider's limits feed
+                         (Codex's app-server usage); each bar hides itself until the provider reports it, so a
+                         provider with no feed (a local model) shows nothing rather than a bar sitting at "0%". -->
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
+                                Margin="8,0,0,0" ToolTip.Tip="{Binding LimitsTooltip}">
+                        <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
+                        <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
+                        <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
+                    </StackPanel>
+
                     <!-- Plugin-contributed header items (#: session header items): status belonging to this
                          session — the git state of the repo it works in, say. Takes no space when no plugin
                          contributes one. -->
-                    <controls:PluginSessionHeaderHost Grid.Column="4" Margin="8,0,0,0"/>
+                    <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0"/>
                 </Grid>
             </Grid>
         </Border>

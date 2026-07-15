@@ -18,6 +18,8 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
 
     public int? ProcessId { get; set; }
 
+    public PluginSessionStatus? Status { get; set; }
+
     public string? LastAllowAlwaysToolUseId { get; private set; }
 
     public List<string> SentMessages { get; } = [];

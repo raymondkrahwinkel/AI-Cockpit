@@ -222,7 +222,68 @@ public class CodexAppServerSessionDriverTests
         document.RootElement.TryGetProperty("result", out _).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task TokenUsageNotification_FillsTheContextPercent_FromTheLastTurnOverTheModelWindow()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D7: how full the context window is = the last turn's footprint over the model's window (50k / 200k = 25%).
+        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"threadId":"thread-1","turnId":"turn-1","tokenUsage":{"last":{"inputTokens":40000,"outputTokens":10000,"cachedInputTokens":0,"reasoningOutputTokens":0,"totalTokens":50000},"total":{"inputTokens":100000,"outputTokens":20000,"cachedInputTokens":0,"reasoningOutputTokens":0,"totalTokens":120000},"modelContextWindow":200000}}}""");
+
+        var status = await _WaitForStatusAsync(driver, current => current.ContextUsedPercent is not null);
+        status.ContextUsedPercent.Should().Be(25);
+    }
+
+    [Fact]
+    public async Task Notification_WithoutParams_DoesNotKillThePump()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // A param-less notification reaches the handler as default(JsonElement); the pump must survive it, or one
+        // malformed line would tear down the whole session's event stream. The valid update that follows proves
+        // the pump lived: without the entry guard the first line throws and the second never gets processed.
+        await fake.PushStdoutAsync("""{"method":"account/rateLimits/updated"}""");
+        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"totalTokens":50000},"modelContextWindow":200000}}}""");
+
+        var status = await _WaitForStatusAsync(driver, current => current.ContextUsedPercent is not null);
+        status.ContextUsedPercent.Should().Be(25);
+    }
+
+    [Fact]
+    public async Task RateLimitsNotification_FillsBothWindows_WithTheirUsedPercentSpanAndReset()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D7: the account snapshot's primary/secondary windows carry usedPercent, an epoch reset, and a span.
+        await fake.PushStdoutAsync("""{"method":"account/rateLimits/updated","params":{"rateLimits":{"primary":{"usedPercent":60,"resetsAt":1800000000,"windowDurationMins":300},"secondary":{"usedPercent":80,"resetsAt":1800600000,"windowDurationMins":10080}}}}""");
+
+        var status = await _WaitForStatusAsync(driver, current => current.PrimaryRateLimit is not null);
+        status.PrimaryRateLimit.Should().Be(new PluginRateLimitWindow(60, DateTimeOffset.FromUnixTimeSeconds(1800000000), 300));
+        status.SecondaryRateLimit.Should().Be(new PluginRateLimitWindow(80, DateTimeOffset.FromUnixTimeSeconds(1800600000), 10080));
+    }
+
     // --- helpers -----------------------------------------------------------------------------------------
+
+    private static async Task<PluginSessionStatus> _WaitForStatusAsync(CodexAppServerSessionDriver driver, Func<PluginSessionStatus, bool> predicate)
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            if (driver.Status is { } status && predicate(status))
+            {
+                return status;
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new InvalidOperationException("The driver did not reach the expected status.");
+    }
 
     private static async Task _StartAsync(CodexAppServerSessionDriver driver, FakeCliSubprocess fake, string threadId = "thread-1")
     {
