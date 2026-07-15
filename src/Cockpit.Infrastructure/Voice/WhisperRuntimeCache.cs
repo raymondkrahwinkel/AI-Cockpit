@@ -58,11 +58,13 @@ internal static class WhisperRuntimeCache
     /// planner's order and stops at the first backend that is both usable here and cached (or fetchable).
     /// </summary>
     public static async Task EnsureAvailableAsync(
-        IReadOnlyList<WhisperRuntimeBackend> order, CancellationToken cancellationToken, ILogger? logger = null)
+        IReadOnlyList<WhisperRuntimeBackend> order,
+        WhisperHostPlatform platform,
+        CancellationToken cancellationToken,
+        ILogger? logger = null)
     {
-        var platform = _CurrentPlatform();
         var architecture = _CurrentArchitecture();
-        if (platform is null || architecture is null)
+        if (architecture is null)
         {
             return;
         }
@@ -247,10 +249,15 @@ internal static class WhisperRuntimeCache
         }
     }
 
-    /// <summary>Mirrors the platform names Whisper.net's own loader builds its runtime paths from.</summary>
-    private static string? _CurrentPlatform() =>
-        OperatingSystem.IsWindows() ? "win"
-        : OperatingSystem.IsLinux() ? "linux"
+    /// <summary>
+    /// Which host the cockpit is on, or null on one Whisper.net publishes no runtimes for at all. The caller
+    /// resolves this once and hands it to both the planner and the cache, so the order that gets tried and the
+    /// runtime that gets fetched can never disagree about where they are.
+    /// </summary>
+    public static WhisperHostPlatform? CurrentPlatform =>
+        OperatingSystem.IsWindows() ? WhisperHostPlatform.Windows
+        : OperatingSystem.IsLinux() ? WhisperHostPlatform.Linux
+        : OperatingSystem.IsMacOS() ? WhisperHostPlatform.MacOs
         : null;
 
     private static string? _CurrentArchitecture() => RuntimeInformation.ProcessArchitecture switch

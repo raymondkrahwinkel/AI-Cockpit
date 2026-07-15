@@ -16,12 +16,12 @@ public class WhisperRuntimeCatalogTests
     /// one that carries natives.
     /// </summary>
     [Theory]
-    [InlineData(WhisperRuntimeBackend.Cuda, "win", "Whisper.net.Runtime.Cuda.Windows")]
-    [InlineData(WhisperRuntimeBackend.Cuda, "linux", "Whisper.net.Runtime.Cuda.Linux")]
-    [InlineData(WhisperRuntimeBackend.Cuda12, "win", "Whisper.net.Runtime.Cuda12.Windows")]
-    [InlineData(WhisperRuntimeBackend.Cuda12, "linux", "Whisper.net.Runtime.Cuda12.Linux")]
+    [InlineData(WhisperRuntimeBackend.Cuda, WhisperHostPlatform.Windows, "Whisper.net.Runtime.Cuda.Windows")]
+    [InlineData(WhisperRuntimeBackend.Cuda, WhisperHostPlatform.Linux, "Whisper.net.Runtime.Cuda.Linux")]
+    [InlineData(WhisperRuntimeBackend.Cuda12, WhisperHostPlatform.Windows, "Whisper.net.Runtime.Cuda12.Windows")]
+    [InlineData(WhisperRuntimeBackend.Cuda12, WhisperHostPlatform.Linux, "Whisper.net.Runtime.Cuda12.Linux")]
     public void Resolve_CudaBackends_UseTheOsSplitPackageNotTheMetaPackage(
-        WhisperRuntimeBackend backend, string platform, string expectedPackageId)
+        WhisperRuntimeBackend backend, WhisperHostPlatform platform, string expectedPackageId)
     {
         var package = WhisperRuntimeCatalog.Resolve(backend, platform, "x64");
 
@@ -31,9 +31,9 @@ public class WhisperRuntimeCatalogTests
 
     /// <summary>Vulkan is published as one package carrying both the win-x64 and linux-x64 natives.</summary>
     [Theory]
-    [InlineData("win")]
-    [InlineData("linux")]
-    public void Resolve_Vulkan_UsesTheSameUnsplitPackageOnEveryPlatform(string platform)
+    [InlineData(WhisperHostPlatform.Windows)]
+    [InlineData(WhisperHostPlatform.Linux)]
+    public void Resolve_Vulkan_UsesTheSameUnsplitPackageOnEveryPlatform(WhisperHostPlatform platform)
     {
         var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Vulkan, platform, "x64");
 
@@ -47,17 +47,30 @@ public class WhisperRuntimeCatalogTests
     [InlineData(WhisperRuntimeBackend.CpuNoAvx)]
     public void Resolve_CpuBackends_ResolveToNothingBecauseTheyAreBundled(WhisperRuntimeBackend backend)
     {
-        WhisperRuntimeCatalog.Resolve(backend, "win", "x64").Should().BeNull();
+        WhisperRuntimeCatalog.Resolve(backend, WhisperHostPlatform.Windows, "x64").Should().BeNull();
     }
 
-    /// <summary>A Mac cannot use a byte of CUDA or Vulkan; nothing should be fetched for it.</summary>
+    /// <summary>
+    /// No CUDA or Vulkan package carries a macOS native, so there is nothing to fetch for a Mac. Its GPU
+    /// acceleration is Metal, which ships inside the bundled CPU runtime rather than as a family of its own.
+    /// </summary>
     [Theory]
     [InlineData(WhisperRuntimeBackend.Cuda)]
     [InlineData(WhisperRuntimeBackend.Cuda12)]
     [InlineData(WhisperRuntimeBackend.Vulkan)]
     public void Resolve_OnMacOs_ResolvesToNothing(WhisperRuntimeBackend backend)
     {
-        WhisperRuntimeCatalog.Resolve(backend, "macos", "arm64").Should().BeNull();
+        WhisperRuntimeCatalog.Resolve(backend, WhisperHostPlatform.MacOs, "arm64").Should().BeNull();
+    }
+
+    /// <summary>Whisper.net's loader says "macos", not the NuGet RID's "osx" — a wrong segment finds nothing.</summary>
+    [Theory]
+    [InlineData(WhisperHostPlatform.Windows, "win")]
+    [InlineData(WhisperHostPlatform.Linux, "linux")]
+    [InlineData(WhisperHostPlatform.MacOs, "macos")]
+    public void PathSegment_UsesTheLoadersOwnPlatformNames(WhisperHostPlatform platform, string expected)
+    {
+        WhisperRuntimeCatalog.PathSegment(platform).Should().Be(expected);
     }
 
     /// <summary>
@@ -67,7 +80,7 @@ public class WhisperRuntimeCatalogTests
     [Fact]
     public void Resolve_MapsThePackageFolderOntoTheLayoutTheLoaderSearches()
     {
-        var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Cuda12, "win", "x64");
+        var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Cuda12, WhisperHostPlatform.Windows, "x64");
 
         Assert.NotNull(package);
         package.PackageNativeFolder.Should().Be("build/win-x64");
@@ -77,7 +90,7 @@ public class WhisperRuntimeCatalogTests
     [Fact]
     public void Resolve_Vulkan_LandsInItsOwnRuntimeFamilyFolder()
     {
-        var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Vulkan, "linux", "x64");
+        var package = WhisperRuntimeCatalog.Resolve(WhisperRuntimeBackend.Vulkan, WhisperHostPlatform.Linux, "x64");
 
         Assert.NotNull(package);
         package.PackageNativeFolder.Should().Be("build/linux-x64");

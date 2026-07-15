@@ -12,7 +12,7 @@ namespace Cockpit.Core.Voice;
 /// </summary>
 public static class WhisperRuntimeCatalog
 {
-    public static WhisperRuntimePackage? Resolve(WhisperRuntimeBackend backend, string platform, string architecture)
+    public static WhisperRuntimePackage? Resolve(WhisperRuntimeBackend backend, WhisperHostPlatform platform, string architecture)
     {
         var packageId = _ResolvePackageId(backend, platform);
         var runtimeFolder = _ResolveRuntimeFolder(backend);
@@ -21,11 +21,22 @@ public static class WhisperRuntimeCatalog
             return null;
         }
 
-        return new WhisperRuntimePackage(
-            packageId,
-            $"build/{platform}-{architecture}",
-            Path.Combine("runtimes", runtimeFolder, $"{platform}-{architecture}"));
+        var rid = $"{PathSegment(platform)}-{architecture}";
+
+        return new WhisperRuntimePackage(packageId, $"build/{rid}", Path.Combine("runtimes", runtimeFolder, rid));
     }
+
+    /// <summary>
+    /// What Whisper.net's own loader calls this platform when it builds a runtime path — its scheme, which is
+    /// not the NuGet RID's (<c>macos</c>, not <c>osx</c>).
+    /// </summary>
+    public static string PathSegment(WhisperHostPlatform platform) => platform switch
+    {
+        WhisperHostPlatform.Windows => "win",
+        WhisperHostPlatform.Linux => "linux",
+        WhisperHostPlatform.MacOs => "macos",
+        _ => throw new ArgumentOutOfRangeException(nameof(platform), platform, "Unmapped Whisper host platform."),
+    };
 
     /// <summary>
     /// Turns the directory holding the cached <c>runtimes/</c> tree into the value Whisper.net wants as
@@ -48,25 +59,28 @@ public static class WhisperRuntimeCatalog
         return buildMetadata < 0 ? informationalVersion : informationalVersion[..buildMetadata];
     }
 
-    private static string? _ResolvePackageId(WhisperRuntimeBackend backend, string platform) => backend switch
+    private static string? _ResolvePackageId(WhisperRuntimeBackend backend, WhisperHostPlatform platform) => backend switch
     {
         // The un-suffixed Whisper.net.Runtime.Cuda/Cuda12 are meta-packages carrying nothing but a readme and a
         // dependency on these two. Fetching those would cache an empty runtime, which the loader skips in
         // silence — the failure is a slow CPU transcription nobody can see the cause of.
         WhisperRuntimeBackend.Cuda => platform switch
         {
-            "win" => "Whisper.net.Runtime.Cuda.Windows",
-            "linux" => "Whisper.net.Runtime.Cuda.Linux",
+            WhisperHostPlatform.Windows => "Whisper.net.Runtime.Cuda.Windows",
+            WhisperHostPlatform.Linux => "Whisper.net.Runtime.Cuda.Linux",
             _ => null,
         },
         WhisperRuntimeBackend.Cuda12 => platform switch
         {
-            "win" => "Whisper.net.Runtime.Cuda12.Windows",
-            "linux" => "Whisper.net.Runtime.Cuda12.Linux",
+            WhisperHostPlatform.Windows => "Whisper.net.Runtime.Cuda12.Windows",
+            WhisperHostPlatform.Linux => "Whisper.net.Runtime.Cuda12.Linux",
             _ => null,
         },
-        // Vulkan is not split per OS: one package holds both the win-x64 and linux-x64 natives.
-        WhisperRuntimeBackend.Vulkan => platform is "win" or "linux" ? "Whisper.net.Runtime.Vulkan" : null,
+        // Vulkan is not split per OS: one package holds both the win-x64 and the linux-x64 natives.
+        WhisperRuntimeBackend.Vulkan =>
+            platform is WhisperHostPlatform.Windows or WhisperHostPlatform.Linux ? "Whisper.net.Runtime.Vulkan" : null,
+        // The CPU runtimes are bundled, and macOS has no GPU package at all — its Metal acceleration ships
+        // inside that bundled CPU runtime rather than as a family of its own.
         _ => null,
     };
 
