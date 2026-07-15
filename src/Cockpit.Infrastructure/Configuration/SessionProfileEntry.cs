@@ -44,8 +44,12 @@ internal sealed class SessionProfileEntry
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
-        ConfigDir = profile.Claude?.ConfigDir ?? string.Empty,
-        ExecutablePath = profile.Claude?.ExecutablePath,
+        // Only a legacy in-tree ClaudeConfig profile still writes its settings to the top-level fields; a plugin
+        // profile (including a migrated Claude one) keeps them inside its own PluginConfigJson, so these stay blank and
+        // the config directory is not duplicated. Uses the raw ProviderConfig, not SessionProfile.Claude, which now
+        // also reconstructs a plugin Claude profile's config.
+        ConfigDir = (profile.ProviderConfig as ClaudeConfig)?.ConfigDir ?? string.Empty,
+        ExecutablePath = (profile.ProviderConfig as ClaudeConfig)?.ExecutablePath,
         Purpose = profile.Purpose,
         Defaults = profile.Defaults is null ? null : ProfileDefaultsEntry.FromDomain(profile.Defaults),
         Provider = ProviderConfigEntry.FromDomain(profile.ProviderConfig),

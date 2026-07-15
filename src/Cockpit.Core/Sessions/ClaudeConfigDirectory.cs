@@ -16,7 +16,9 @@ public static class ClaudeConfigDirectory
 
     public static string Resolve(ClaudeConfig? claude, string? environmentConfigDir, string userProfileDirectory)
     {
-        if (claude is not null)
+        // A blank ConfigDir (a config-less/default Claude profile, reconstructed from the plugin's config) means the
+        // CLI default, same as a profile-less session — not the literal empty path.
+        if (claude is not null && !string.IsNullOrWhiteSpace(claude.ConfigDir))
         {
             return claude.ConfigDir;
         }
