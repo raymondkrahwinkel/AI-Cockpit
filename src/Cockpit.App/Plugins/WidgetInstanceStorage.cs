@@ -24,5 +24,20 @@ public sealed class WidgetInstanceStorage(IPluginStorage inner, string instanceI
 
     public string? GetSecret(string key) => inner.GetSecret(_Scope(key));
 
+    /// <summary>
+    /// This instance's own keys, unprefixed — what an export carries. Returns nothing unless the plugin's
+    /// storage can be snapshotted (a test double, for instance), since there is no way to enumerate through the
+    /// plugin contract and no reason to add one.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Snapshot()
+    {
+        var prefix = _Scope(string.Empty);
+        return inner is not PluginStorage storage
+            ? new Dictionary<string, string>()
+            : storage.Snapshot()
+                .Where(entry => entry.Key.StartsWith(prefix, StringComparison.Ordinal))
+                .ToDictionary(entry => entry.Key[prefix.Length..], entry => entry.Value);
+    }
+
     private string _Scope(string key) => $"widget:{instanceId}:{key}";
 }

@@ -208,6 +208,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// Answers "no" without asking when there is no dialog service (design-time/tests): a graph with no way to
     /// ask must not answer yes on the operator's behalf.
     /// </summary>
+    /// <summary>Picks a dashboard file to import; null without a dialog service, or when the operator backed out.</summary>
+    public Task<string?> PickDashboardToImportAsync() =>
+        _dialogService is null ? Task.FromResult<string?>(null) : _dialogService.PickDashboardToImportAsync();
+
+    /// <summary>Picks where to write a dashboard; null without a dialog service, or when the operator backed out.</summary>
+    public Task<string?> PickDashboardExportPathAsync(string suggestedName) =>
+        _dialogService is null ? Task.FromResult<string?>(null) : _dialogService.PickDashboardExportPathAsync(suggestedName);
+
     public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
         _dialogService is null
             ? Task.FromResult(false)

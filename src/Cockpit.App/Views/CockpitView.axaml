@@ -445,6 +445,17 @@
                                                    FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxWidth="190"/>
                                         <CheckBox Content="Show grid lines" IsChecked="{Binding Workspaces.DashboardShowGridLines}"
                                                   ToolTip.Tip="Draw the cells widgets snap to — handy while arranging"/>
+
+                                        <!-- Export/import live with the dashboard's other controls rather than in
+                                             the toolbar: they are things you do once, not affordances the
+                                             arranging needs in front of it. -->
+                                        <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Margin="0,4,0,0"/>
+                                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Padding="6,4" Content="Export this dashboard…" Click="OnExportDashboardPressed"
+                                                ToolTip.Tip="Save it to a file — to keep, or to hand to someone. Credentials are left out."/>
+                                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Padding="6,4" Content="Import a dashboard…" Click="OnImportDashboardPressed"
+                                                ToolTip.Tip="Add a dashboard from a file, alongside the ones you have"/>
                                     </StackPanel>
                                 </Flyout>
                             </Button.Flyout>

@@ -43,6 +43,12 @@ public interface ISessionDialogService
     /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
     Task<string?> PickPluginZipAsync();
 
+    /// <summary>Picks a dashboard file to import; returns the chosen path or null if cancelled.</summary>
+    Task<string?> PickDashboardToImportAsync();
+
+    /// <summary>Picks where to write a dashboard, offering <paramref name="suggestedName"/> as the file name; returns the chosen path or null if cancelled.</summary>
+    Task<string?> PickDashboardExportPathAsync(string suggestedName);
+
     /// <summary>Shows the first-load plugin consent dialog (#14); returns true only when the operator explicitly enables the plugin.</summary>
     Task<bool> ShowPluginConsentAsync(PluginConsentInfo info);
 
