@@ -30,8 +30,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     /// <summary>All four modes: a profile's default may be bypass, which the New-session dialog then offers at launch.</summary>
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
 
-    public IReadOnlyList<ModelOption> Models => SessionOptionCatalog.Models;
-
+    // The Claude model field is now an editable AutoCompleteBox bound to each profile's own ClaudeModelSuggestions
+    // (EditableProfileViewModel), so the dialog no longer exposes a shared ModelOption list here.
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
     [ObservableProperty]

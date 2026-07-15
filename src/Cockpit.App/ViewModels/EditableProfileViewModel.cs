@@ -41,8 +41,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode;
 
+    /// <summary>The Claude model default, as free text with suggestions — an alias, or a pinned model/snapshot.</summary>
     [ObservableProperty]
-    private ModelOption _selectedModel;
+    private string _claudeModel = SessionOptionCatalog.DefaultModel.Value;
 
     [ObservableProperty]
     private EffortOption _selectedEffort;
@@ -141,6 +142,9 @@ public partial class EditableProfileViewModel : ViewModelBase
 
     /// <summary>Models the local server reported on the last refresh, offered as suggestions in the model picker.</summary>
     public ObservableCollection<string> AvailableModels { get; } = [];
+
+    /// <summary>The alias suggestions for the editable Claude model field (see <see cref="SessionOptionCatalog.ClaudeModelSuggestions"/>).</summary>
+    public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
     public bool IsClaudeProvider => SelectedProvider.Value == SessionProvider.ClaudeCli;
 
@@ -243,7 +247,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _purpose = profile.Purpose ?? string.Empty;
         _memoryLimitMb = profile.MemoryLimitMb ?? 0;
         _selectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode);
-        _selectedModel = SessionOptionCatalog.ResolveModel(profile.Defaults?.Model);
+        _claudeModel = string.IsNullOrWhiteSpace(profile.Defaults?.Model) ? SessionOptionCatalog.DefaultModel.Value : profile.Defaults.Model;
         _selectedEffort = SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort);
         _autoApproveTools = profile.Defaults?.AutoApproveTools ?? false;
 
@@ -292,7 +296,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         Label.Trim(),
         _ToProviderConfig(),
         string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
-        new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value, AutoApproveTools),
+        new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools),
         _ToDelegationPolicy(),
         MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
 

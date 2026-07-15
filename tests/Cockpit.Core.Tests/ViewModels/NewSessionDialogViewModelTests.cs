@@ -43,7 +43,7 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
 
         vm.SelectedPermissionMode.Value.Should().Be("bypassPermissions");
-        vm.SelectedModel.Value.Should().Be("opus");
+        vm.SelectedClaudeModel.Should().Be("opus");
         vm.SelectedEffort.Value.Should().Be("high");
     }
 
@@ -55,7 +55,7 @@ public class NewSessionDialogViewModelTests
         await vm.LoadAsync();
 
         vm.SelectedPermissionMode.Should().Be(SessionOptionCatalog.DefaultPermissionMode);
-        vm.SelectedModel.Should().Be(SessionOptionCatalog.DefaultModel);
+        vm.SelectedClaudeModel.Should().Be(SessionOptionCatalog.DefaultModel.Value);
         vm.SelectedEffort.Should().Be(SessionOptionCatalog.DefaultEffort);
     }
 
@@ -141,7 +141,7 @@ public class NewSessionDialogViewModelTests
         var vm = NewVm(out var loginChecker, profile);
         loginChecker.IsLoggedIn(profile).Returns(true);
         await vm.LoadAsync();
-        vm.SelectedModel = new ModelOption("Haiku", "haiku");
+        vm.SelectedClaudeModel = "haiku";
 
         NewSessionResult? result = null;
         var closed = false;
@@ -153,6 +153,23 @@ public class NewSessionDialogViewModelTests
         result.Should().NotBeNull();
         result!.Profile.Should().Be(profile);
         result.Model.Value.Should().Be("haiku");
+    }
+
+    [Fact]
+    public async Task Confirm_CarriesATypedCustomModel_NotJustTheKnownAliases()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
+        var vm = NewVm(out var loginChecker, profile);
+        loginChecker.IsLoggedIn(profile).Returns(true);
+        await vm.LoadAsync();
+        // The editable field lets the operator pin a specific model/snapshot, not only the alias suggestions.
+        vm.SelectedClaudeModel = "claude-opus-4-8";
+
+        NewSessionResult? result = null;
+        vm.CloseRequested += r => result = r;
+        vm.ConfirmCommand.Execute(null);
+
+        result!.Model.Value.Should().Be("claude-opus-4-8");
     }
 
     [Fact]

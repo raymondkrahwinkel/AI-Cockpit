@@ -276,9 +276,9 @@
                             </StackPanel>
                             <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                                 <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Models}"
-                                          SelectedItem="{Binding SelectedModel}"
-                                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                                <AutoCompleteBox ItemsSource="{Binding ClaudeModelSuggestions}" Text="{Binding ClaudeModel}"
+                                                 FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
+                                                 HorizontalAlignment="Stretch"/>
                             </StackPanel>
                             <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                                 <TextBlock Text="Effort" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>

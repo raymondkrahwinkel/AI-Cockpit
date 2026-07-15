@@ -165,8 +165,9 @@
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">
                 <TextBlock Grid.Column="0" Text="Model" VerticalAlignment="Center" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ComboBox Grid.Column="1" ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
-                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                <AutoCompleteBox Grid.Column="1" ItemsSource="{Binding ClaudeModelSuggestions}" Text="{Binding SelectedClaudeModel}"
+                                 FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
+                                 HorizontalAlignment="Stretch"/>
             </Grid>
 
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding ShowSessionOptions}">

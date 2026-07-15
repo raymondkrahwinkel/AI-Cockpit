@@ -34,7 +34,7 @@ public class ManageProfilesDialogViewModelTests
         row.Label.Should().Be("work");
         row.ConfigDir.Should().Be("/home/r/.claude-work");
         row.SelectedPermissionMode.Value.Should().Be("plan");
-        row.SelectedModel.Value.Should().Be("opus");
+        row.ClaudeModel.Should().Be("opus");
         row.SelectedEffort.Value.Should().Be("high");
         row.IsLoggedIn.Should().BeTrue();
         vm.SelectedProfile.Should().Be(row);
@@ -148,7 +148,7 @@ public class ManageProfilesDialogViewModelTests
         var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
         await vm.LoadAsync();
         vm.SelectedProfile!.Label = "work-renamed";
-        vm.SelectedProfile.SelectedModel = new ModelOption("Opus 4.8", "opus");
+        vm.SelectedProfile.ClaudeModel = "opus";
         var closed = false;
         vm.CloseRequested += () => closed = true;
 

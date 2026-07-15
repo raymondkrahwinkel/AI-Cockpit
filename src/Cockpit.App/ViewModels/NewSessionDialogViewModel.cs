@@ -99,7 +99,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>All four modes — including the launch-only bypass — since this dialog is the one place bypass can be chosen.</summary>
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
 
-    public IReadOnlyList<ModelOption> Models => SessionOptionCatalog.Models;
+    public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
@@ -210,8 +210,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
 
+    /// <summary>The Claude model for this session, as free text with suggestions — an alias, or a pinned model/snapshot.</summary>
     [ObservableProperty]
-    private ModelOption _selectedModel = SessionOptionCatalog.DefaultModel;
+    private string _selectedClaudeModel = SessionOptionCatalog.DefaultModel.Value;
 
     [ObservableProperty]
     private EffortOption _selectedEffort = SessionOptionCatalog.DefaultEffort;
@@ -443,7 +444,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // which the operator can still override before starting.
         var defaults = value?.Defaults;
         SelectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(defaults?.PermissionMode);
-        SelectedModel = SessionOptionCatalog.ResolveModel(defaults?.Model);
+        SelectedClaudeModel = string.IsNullOrWhiteSpace(defaults?.Model) ? SessionOptionCatalog.DefaultModel.Value : defaults.Model;
         SelectedEffort = SessionOptionCatalog.ResolveEffort(defaults?.Effort);
 
         OnPropertyChanged(nameof(CanStart));
@@ -680,7 +681,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             : null;
 
         CloseRequested?.Invoke(new NewSessionResult(
-            SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name,
+            SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,
             enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions));
     }
 
