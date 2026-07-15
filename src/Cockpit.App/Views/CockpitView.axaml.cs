@@ -67,21 +67,6 @@ public partial class CockpitView : UserControl
         {
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
 
-            // The dashboard's shape follows the active workspace and its widgets, neither of which a Grid can
-            // bind its definitions to.
-            cockpit.Workspaces.PropertyChanged += (_, _) => _RefreshDashboardGrid();
-            _RefreshDashboardGrid();
-
-            // ...and again once the grid itself exists. At startup the dashboard is hidden behind whichever
-            // workspace is active, so its panel is not realised yet and the refresh above finds nothing to
-            // define — leaving the first widget spanning the whole dashboard, because a Grid with no column or
-            // row definitions is one big cell. It only looked fixed after any redraw (Raymond found it by
-            // toggling the grid lines), which is the tell that this is a timing problem, not a placement one.
-            if (DashboardGrid is not null)
-            {
-                DashboardGrid.Loaded += (_, _) => _RefreshDashboardGrid();
-            }
-
             // The idle sweep lives here rather than in the view model so the view model stays free of timers
             // (and testable by calling the sweep with a time of the test's choosing).
             _idleSweepTimer = new DispatcherTimer { Interval = IdleSweepInterval };
@@ -846,33 +831,6 @@ public partial class CockpitView : UserControl
         if (sender is Control { DataContext: WidgetPaneViewModel pane })
         {
             act(pane);
-        }
-    }
-
-    /// <summary>
-    /// Rebuilds the dashboard grid's rows/columns from the active dashboard. A Grid's definitions cannot be
-    /// bound to an int, so they are applied here — the same reason the sidebar's width lives in code-behind.
-    /// The row count comes from the view model rather than the setting, which is what makes "2x2" a starting
-    /// shape the grid grows past instead of a cap that swallows the fifth widget.
-    /// </summary>
-    private void _RefreshDashboardGrid()
-    {
-        if (DataContext is not CockpitViewModel cockpit
-            || DashboardGrid?.ItemsPanelRoot is not Grid grid)
-        {
-            return;
-        }
-
-        grid.ColumnDefinitions.Clear();
-        for (var column = 0; column < cockpit.Workspaces.DashboardColumns; column++)
-        {
-            grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
-        }
-
-        grid.RowDefinitions.Clear();
-        for (var row = 0; row < cockpit.Workspaces.DashboardRows; row++)
-        {
-            grid.RowDefinitions.Add(new RowDefinition(1, GridUnitType.Star));
         }
     }
 
