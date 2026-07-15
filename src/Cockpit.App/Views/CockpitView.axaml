@@ -330,6 +330,8 @@
                                 <Border Classes="workspaceTab" Classes.active="{Binding IsActive}"
                                         CornerRadius="6" Padding="10,4" Background="Transparent"
                                         PointerPressed="OnWorkspaceTabPressed"
+                                        PointerMoved="OnWorkspaceTabPointerMoved"
+                                        PointerReleased="OnWorkspaceTabPointerReleased"
                                         DoubleTapped="OnWorkspaceTabDoubleTapped">
                                     <DockPanel>
                                         <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Content="✕"
@@ -373,18 +375,32 @@
                     <Button Content="+ Add widget" Classes="Accent" HorizontalAlignment="Center"
                             IsEnabled="{Binding Workspaces.HasAvailableWidgets}"
                             ToolTip.Tip="Widgets come from plugins — install one that contributes widgets first">
+                        <!-- A plain Flyout over an ItemsControl of buttons rather than a MenuFlyout with an
+                             ItemsSource: the latter's containers never materialised here, leaving an enabled
+                             button that opened an empty popup. This shape is the gallery — icon, title and the
+                             one-liner the widget describes itself with. -->
                         <Button.Flyout>
-                            <MenuFlyout ItemsSource="{Binding Workspaces.AvailableWidgets}">
-                                <MenuFlyout.ItemContainerTheme>
-                                    <ControlTheme TargetType="MenuItem" x:DataType="widgets:WidgetRegistration">
-                                        <Setter Property="Header" Value="{Binding Title}"/>
-                                        <Setter Property="Icon" Value="{Binding Icon}"/>
-                                        <Setter Property="ToolTip.Tip" Value="{Binding Description}"/>
-                                        <Setter Property="Command" Value="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.PlaceWidgetCommand}"/>
-                                        <Setter Property="CommandParameter" Value="{Binding}"/>
-                                    </ControlTheme>
-                                </MenuFlyout.ItemContainerTheme>
-                            </MenuFlyout>
+                            <Flyout Placement="Bottom">
+                                <ItemsControl ItemsSource="{Binding Workspaces.AvailableWidgets}" MinWidth="220">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="widgets:WidgetRegistration">
+                                            <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left" Padding="8,6"
+                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.PlaceWidgetCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <DockPanel>
+                                                    <TextBlock Text="{Binding Icon}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding Description}" FontSize="11" Opacity="0.7"
+                                                                   TextWrapping="Wrap" MaxWidth="180"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Flyout>
                         </Button.Flyout>
                     </Button>
                 </StackPanel>
