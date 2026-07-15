@@ -410,7 +410,7 @@
                                         <TextBlock Text="Dashboard grid" FontWeight="SemiBold"/>
                                         <DockPanel>
                                             <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
-                                                           Minimum="1" Maximum="24"
+                                                           Minimum="1" Maximum="256"
                                                            Value="{Binding Workspaces.DashboardColumnsSetting}"/>
                                             <TextBlock Text="Columns" VerticalAlignment="Center"/>
                                         </DockPanel>
@@ -418,7 +418,7 @@
                                             <!-- The bounds match DashboardLayout's Min/Max constants; the record
                                                  clamps anyway, so a drifted literal here cannot reach the grid. -->
                                             <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
-                                                           Minimum="1" Maximum="24"
+                                                           Minimum="1" Maximum="256"
                                                            Value="{Binding Workspaces.DashboardRowsSetting}"/>
                                             <TextBlock Text="Rows" VerticalAlignment="Center"/>
                                         </DockPanel>
@@ -434,8 +434,13 @@
                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
 
+                <!-- The grid, its drag ghost and the empty state share one cell. A Panel rather than more
+                     DockPanel children: only a DockPanel's last child fills, so the grid would be docked to the
+                     left the moment anything followed it. -->
+                <Panel>
+
                 <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
-                     configured height as widgets are added (a "2x2" is a starting shape, not a cap). -->
+                     configured height as widgets are added (rows are a starting height, not a cap). -->
                 <!-- The drop lives on the grid, not the panes: an arrangement rebuilds nothing, but the pointer
                      has to be tracked across cells the dragged pane does not occupy. -->
                 <ItemsControl x:Name="DashboardGrid" Margin="12"
@@ -500,6 +505,16 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- Where the dragged or resized widget will land. Shown during the gesture and applied on
+                     release: without it you are dragging blind, and applying on every pointer move rewrote
+                     cockpit.json on every pixel. Its rectangle is set in code — it is measured in the grid's
+                     cells, which nothing here can bind to. -->
+                <Border x:Name="WidgetDropGhost" IsVisible="False" IsHitTestVisible="False" ZIndex="100"
+                        Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
+                        CornerRadius="8" BorderThickness="2"
+                        BorderBrush="{StaticResource CockpitAccentBrush}"
+                        Background="{StaticResource CockpitPanelBgBrush}" Opacity="0.55"/>
+
                 <!-- The dashboard's empty state carries no button of its own: the toolbar's "Add widget" is
                      always there, and two buttons doing one thing is how the old one ended up buried under the
                      widgets it created. -->
@@ -516,6 +531,7 @@
                                TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
+                </Panel>
             </DockPanel>
 
             <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on

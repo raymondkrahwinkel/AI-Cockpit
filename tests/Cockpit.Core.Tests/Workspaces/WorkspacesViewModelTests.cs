@@ -167,7 +167,7 @@ public class WorkspacesViewModelTests
         var viewModel = _Create(out _);
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        await viewModel.SetDashboardLayoutAsync(viewModel.Active!.Id, new DashboardLayout { Columns = 99, Rows = 3 });
+        await viewModel.SetDashboardLayoutAsync(viewModel.Active!.Id, new DashboardLayout { Columns = 9999, Rows = 3 });
 
         viewModel.Active!.Layout.Columns.Should().Be(DashboardLayout.MaxColumns);
         viewModel.Active!.Layout.Rows.Should().Be(3);

@@ -46,7 +46,7 @@ public class WorkspaceSettingsTests
     [Fact]
     public void Normalized_ClampsAnOutOfRangeDashboardLayout_SoAZeroColumnGridCannotReachTheView()
     {
-        var dashboard = Workspace.Create("D", WorkspaceType.Dashboard) with { Layout = new DashboardLayout { Columns = 0, Rows = 99 } };
+        var dashboard = Workspace.Create("D", WorkspaceType.Dashboard) with { Layout = new DashboardLayout { Columns = 0, Rows = 9999 } };
         var settings = new WorkspaceSettings { Workspaces = [dashboard], ActiveWorkspaceId = dashboard.Id };
 
         var layout = settings.Normalized().Workspaces[0].Layout;
