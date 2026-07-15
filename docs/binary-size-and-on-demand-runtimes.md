@@ -60,6 +60,47 @@ The version is read from the **Whisper.net assembly's own informational version*
 
 The version is part of the cache path, so a bump needs no migration: the old natives are not stale, they are simply not where the new loader looks. They are deleted once the new runtime is in place.
 
+## Per platform — checked against the packages, not the README
+
+The planner's job is to say what a host *could* load. It used to answer from a `bool isWindows`, which cannot
+say "macOS": every caller read "not Windows" as Linux. Both of the resulting claims were wrong, and both cost
+the operator their GPU in the way this whole page is about — silently.
+
+| Host | Order `auto` builds | Fetched |
+|---|---|---|
+| Windows | Cuda → Cuda12 → Vulkan → Cpu → CpuNoAvx | the first the probe calls usable |
+| Linux | Cuda → Cuda12 → Vulkan → Cpu → CpuNoAvx | idem |
+| macOS | Cpu | nothing — see below |
+
+- **Vulkan on Linux exists.** `Whisper.net.Runtime.Vulkan` 1.9.1 ships `linux-x64` natives beside `win-x64`
+  (one unsplit package; verified in the real nupkg). The planner called Vulkan Windows-only, citing issue
+  #264, so `auto` on Linux never offered it — an AMD-on-Linux box transcribed on the CPU with a working
+  runtime one download away.
+- **macOS fetches nothing, and does not need to.** No CUDA or Vulkan package carries a macOS native. Its GPU
+  path is **Metal**, which is not a `RuntimeLibrary` at all — `libggml-metal-whisper.dylib` rides *inside* the
+  bundled CPU runtime (`macos-arm64` only). So on Apple Silicon the CPU entry is already the GPU one. An Intel
+  Mac (`macos-x64`) has no Metal native and genuinely is on the CPU.
+- **NoAvx is not published for macOS** (win-x64, win-x86, linux-x64 only), so offering it there was a dead
+  entry — a fallback that cannot be found is not a fallback.
+
+### The Metal shader — the one thing macOS did need
+
+`libggml-metal-whisper.dylib` compiles its kernels from `ggml-metal.metal` **at load time**: Whisper.net ships
+no precompiled `default.metallib`, so ggml goes looking for the source. Its lookup
+(`ggml/src/ggml-metal/ggml-metal-device.m`) is, in order: `GGML_METAL_PATH_RESOURCES` → the app bundle's
+`Contents/Resources` → a bare relative path against the working directory.
+
+`Whisper.net.Runtime.Metal` is a **transitive dependency of `Whisper.net.Runtime`**, so the shader is already
+in every publish (450 KB, next to the binary — it even ships on Windows, where it is inert). But next to the
+binary in a `.app` is `Contents/MacOS`, not `Resources`, and a Finder-launched app's working directory is `/`.
+Both fallbacks miss, ggml logs a line nobody reads, and Metal drops to the CPU.
+
+`WhisperMetalShader.EnsureDiscoverable` sets `GGML_METAL_PATH_RESOURCES` to the directory the shader actually
+ships in, before the first factory. No download, no bundling change — the file was always there, just unfindable.
+
+⚠️ **Not verified on hardware:** there is no Mac here. The lookup order is read from ggml's source and the
+shader's location is measured in a real publish, but no one has watched a Mac come up on Metal.
+
 ## Verified (2026-07-15, this machine — AMD GPU, Windows)
 
 - Publish `win-x64`, `release.yml` flags: **1.8 GB → 294 MB**.
@@ -69,5 +110,7 @@ The version is part of the cache path, so a bump needs no migration: the old nat
 
 ## Open
 
-- **Vulkan on Linux.** `WhisperBackendPlanner` excludes it, citing issue #264 ("no published Linux Vulkan runtime"). But `Whisper.net.Runtime.Vulkan` 1.9.1 *does* contain `build/linux-x64/libggml-vulkan-whisper.so`. The assumption looks stale — worth re-checking; observed in the package, not proven on a Linux host.
+- **CoreML (macOS).** `Whisper.net.Runtime.CoreML` exists for 1.9.1 (~5.7 MB) and would *complement* Metal rather than replace it — the encoder moves to the Neural Engine while the rest stays on Metal. It needs a `.mlmodelc` beside the ggml model, which `WhisperGgmlDownloader.GetEncoderCoreMLModelAsync` fetches precompiled (no Python conversion), so it could be made automatic. Not built: no benchmark exists for what it actually buys, and nothing here can run a Mac to find out. It is an enhancement, not a defect.
+- **Nobody has run a Mac.** The macOS path is reasoned from ggml's source and a measured publish, not observed. First Mac to run this should check the log for `GGML_METAL_PATH_RESOURCES` and a backend that is not the CPU.
 - **Package source.** The fetch depends on nuget.org. A mirror we control would let us pin and verify a SHA the way the plugin store already does.
+- **macOS Gatekeeper.** Fetched dylibs could pick up a quarantine xattr. Moot today — macOS fetches nothing — but it becomes real the moment CoreML lands.

@@ -91,14 +91,25 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
                 var modelType = WhisperModelCatalog.Resolve(settings.ModelName);
                 var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken, logger).ConfigureAwait(false);
 
-                var order = WhisperBackendPlanner.BuildOrder(settings.BackendPreference, OperatingSystem.IsWindows());
+                // Everything below has to happen before the first factory exists: RuntimeOptions is read once,
+                // when the natives are loaded, and ggml reads its shader path from the environment at the same
+                // moment. Get either one late and the loader quietly settles for the CPU.
+                var platform = WhisperRuntimeCache.CurrentPlatform;
+                var order = platform is { } host
+                    ? WhisperBackendPlanner.BuildOrder(settings.BackendPreference, host)
+                    : [WhisperRuntimeBackend.Cpu];
                 RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
 
-                // The GPU runtimes are fetched on first use instead of bundled, and RuntimeOptions only has any
-                // effect before the first factory exists — so the runtime has to be on disk and its location
-                // handed over here, ahead of FromPath, or the loader searches without it and settles for the CPU.
-                await WhisperRuntimeCache.EnsureAvailableAsync(order, cancellationToken, logger).ConfigureAwait(false);
-                RuntimeOptions.LibraryPath = WhisperRuntimeCache.SearchPath;
+                if (platform is { } fetchHost)
+                {
+                    // The GPU runtimes are fetched on first use instead of bundled — only the one this machine
+                    // can actually use, and only if it is not cached already.
+                    await WhisperRuntimeCache.EnsureAvailableAsync(order, fetchHost, cancellationToken, logger).ConfigureAwait(false);
+                    RuntimeOptions.LibraryPath = WhisperRuntimeCache.SearchPath;
+                }
+
+                // macOS only: Metal comes with the bundled CPU runtime, but its shader has to be findable.
+                WhisperMetalShader.EnsureDiscoverable(logger);
 
                 _factory = WhisperFactory.FromPath(modelPath);
                 ActiveBackend = RuntimeOptions.LoadedLibrary is { } loaded ? WhisperRuntimeBackendMapping.FromNative(loaded) : null;
