@@ -20,13 +20,14 @@ public static class ClaudePluginProfile
         new(ProviderId, _SerializeConfig(configDir, executablePath));
 
     /// <summary>
-    /// Keeps a Claude profile's generic <see cref="ProfileDefaults.OptionDefaults"/> in sync with its authoritative
-    /// typed permission-mode/model/effort defaults — the profile-edit dialog writes both together, and the typed
-    /// fields win here, so a profile keeps its saved start settings and recovers if an earlier build seeded
-    /// OptionDefaults with the plugin's own defaults instead of the operator's values. Keys a provider owns itself (a
-    /// sandbox, say) pass through untouched; a blank typed field leaves its key unset (the option's own default then
-    /// applies). Core cannot reference the plugin abstractions, so these key literals — matching the host's
-    /// <c>WellKnownPluginSessionOptions</c> — are the one Claude-specific detail here.
+    /// A one-time migration of a Claude profile's legacy typed permission-mode/model/effort defaults into the generic
+    /// <see cref="ProfileDefaults.OptionDefaults"/> format (Fase 4). A non-blank legacy field wins — so a profile keeps
+    /// its saved start settings, and recovers if an earlier build seeded OptionDefaults with the plugin's own defaults
+    /// instead of the operator's values. Once the profile is re-saved the legacy fields are written blank (the editor's
+    /// <c>ToProfile</c> does that), so this becomes a no-op on later loads and OptionDefaults is the single source.
+    /// Keys a provider owns itself (a sandbox, say) pass through untouched. Core cannot reference the plugin
+    /// abstractions, so these key literals — matching the host's <c>WellKnownPluginSessionOptions</c> — are the one
+    /// Claude-specific detail here.
     /// </summary>
     public static ProfileDefaults WithMigratedOptionDefaults(ProfileDefaults defaults)
     {
@@ -34,22 +35,20 @@ public static class ClaudePluginProfile
             ? new Dictionary<string, string>(existing, StringComparer.Ordinal)
             : new Dictionary<string, string>(StringComparer.Ordinal);
 
-        _ApplyTypedDefault(options, "permission-mode", defaults.PermissionMode);
-        _ApplyTypedDefault(options, "model", defaults.Model);
-        _ApplyTypedDefault(options, "effort", defaults.Effort);
+        // Only a non-blank legacy field carries a value across; a blank one leaves whatever OptionDefaults already
+        // holds (so a re-saved, migrated profile with blank legacy fields keeps its OptionDefaults untouched).
+        _ApplyLegacyDefault(options, "permission-mode", defaults.PermissionMode);
+        _ApplyLegacyDefault(options, "model", defaults.Model);
+        _ApplyLegacyDefault(options, "effort", defaults.Effort);
 
         return options.Count > 0 ? defaults with { OptionDefaults = options } : defaults with { OptionDefaults = null };
     }
 
-    private static void _ApplyTypedDefault(Dictionary<string, string> options, string key, string typedValue)
+    private static void _ApplyLegacyDefault(Dictionary<string, string> options, string key, string legacyValue)
     {
-        if (string.IsNullOrWhiteSpace(typedValue))
+        if (!string.IsNullOrWhiteSpace(legacyValue))
         {
-            options.Remove(key);
-        }
-        else
-        {
-            options[key] = typedValue;
+            options[key] = legacyValue;
         }
     }
 
