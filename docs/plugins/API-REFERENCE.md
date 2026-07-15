@@ -83,6 +83,8 @@ public interface ICockpitHost
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                       // default no-op
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
+    void AddWidget(WidgetRegistration registration);             // default no-op
+    IReadOnlyList<WidgetRegistration> Widgets { get; }           // default []
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
@@ -175,6 +177,76 @@ host.AddSessionProvider(new SessionProviderRegistration(
     Capabilities: new PluginSessionCapabilities(SupportsTools: false, SupportsPermissions: false),
     CreateConfigView: existingConfigJson => new MyProviderConfigView(existingConfigJson)));
 ```
+
+### `void AddWidget(WidgetRegistration registration)`
+Registers a **dashboard widget type** — the widget equivalent of `AddSessionProvider`. It becomes available in
+a Dashboard workspace's "Add widget" gallery, and each placed instance is built by the registration's own view
+factory. The core hosts the grid and the pane chrome; what a widget shows is the plugin's business. See
+[`WidgetRegistration`](#widgetregistration) and [`IWidgetContext`](#iwidgetcontext).
+- **Parameter** `registration` — the widget type's id, title, view factory, and optional icon/description/
+  default span/config-view factory.
+- Default no-op, so existing `ICockpitHost` implementations (test fakes, older plugin builds) keep compiling
+  untouched — only the app's own host renders it.
+```csharp
+host.AddWidget(new WidgetRegistration("my-plugin.cpu", "CPU", context => new CpuWidget(context))
+{
+    Icon = "📈",
+    Description = "Processor usage.",
+    DefaultColumnSpan = 6,
+    DefaultRowSpan = 4,
+    CreateConfigView = context => new CpuWidgetSettings(context),   // omit → the pane has no ⚙
+});
+```
+
+### `IReadOnlyList<WidgetRegistration> Widgets { get; }`
+Every widget type all plugins have contributed — what a Dashboard workspace's "Add widget" gallery reads. A
+plugin that is not building that gallery has no reason to touch it. Default empty.
+
+### `WidgetRegistration`
+```csharp
+public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetContext, Control> CreateView)
+{
+    public string Icon { get; init; } = "🧩";
+    public string Description { get; init; } = string.Empty;
+    public int DefaultColumnSpan { get; init; } = 1;
+    public int DefaultRowSpan { get; init; } = 1;
+    public Func<IWidgetContext, Control>? CreateConfigView { get; init; }
+    public bool HasConfig => CreateConfigView is not null;
+}
+```
+- `Id` — stable, unique id for the widget **type**, namespaced by your plugin. It is persisted with every
+  placed instance so a saved dashboard rebuilds after a restart; **changing it orphans existing instances**, so
+  treat it as an API surface.
+- `CreateView` — builds one instance's control on the UI thread, handed that instance's own `IWidgetContext`.
+  Called once per instance; a widget needing periodic updates owns its timer or listens to `RefreshRequested`.
+- `DefaultColumnSpan`/`DefaultRowSpan` — the size of a freshly placed instance; the operator resizes after.
+  The 1×1 default is tiny on the default 24-column grid, so set real numbers.
+- `CreateConfigView` — the instance's settings form, or **null when there is nothing to configure**. Null is
+  what hides the ⚙ on the pane header, so a widget can never show a gear that opens an empty dialog. You supply
+  the content; the host wraps it with the Save/Close footer, as it does for `AddSettings`. Saving raises
+  `RefreshRequested` on that instance.
+- `HasConfig` — derived from `CreateConfigView` rather than declared next to it, so no flag can claim settings
+  the widget cannot build.
+
+### `IWidgetContext`
+Handed to one placed instance's view and config-view factories — everything that instance needs and nothing
+it does not.
+```csharp
+public interface IWidgetContext
+{
+    string InstanceId { get; }                 // this instance — not the widget type
+    IPluginStorage Storage { get; }            // scoped to InstanceId, under your plugin's storage
+    ICockpitSessionObserver Sessions { get; }  // same surface as host.Sessions
+    event EventHandler RefreshRequested;       // the pane's ↻, or a dashboard-wide refresh
+}
+```
+- `InstanceId` — the key this instance's config is stored under, distinct from the widget *type* id.
+- `Storage` — per-instance, so two "System Monitor" widgets on one dashboard keep separate config and neither
+  collides with the other.
+- `Sessions` — the same read/observe surface as [`ICockpitSessionObserver`](#the-sessions-namespace--provider-plugins),
+  so a widget can follow the active session's working directory or output without the core knowing what it is.
+- `RefreshRequested` — raised when the host asks this instance to refresh, including after its settings are
+  saved. A widget polling on its own timer can ignore it; one showing a snapshot should re-read.
 
 ### `Task AddMcpServer(McpServerContribution contribution)`
 Registers (or updates) an HTTP MCP server in the **shared registry** (#60) — e.g. a remote MCP endpoint your
