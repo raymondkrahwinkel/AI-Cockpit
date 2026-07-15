@@ -596,14 +596,43 @@
 
             <!-- Session grid + zoom, shown once at least one session exists and a Sessions workspace is active. -->
             <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">
-                <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
-                     where it would be a no-op (the single pane is always shown) — no dead control. -->
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
-                            IsVisible="{Binding ShowZoomButton}">
-                    <ToggleButton Content="Zoom" IsChecked="{Binding IsZoomed}"
-                                  IsEnabled="{Binding SelectedSession, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                  ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
-                </StackPanel>
+                <!-- This workspace's toolbar. The ⚙ lives here rather than inside the Zoom row because that row
+                     hides itself in single-session layout (#24) — and that is exactly the layout you would open
+                     the ⚙ to get back out of. -->
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
+                         where it would be a no-op (the single pane is always shown) — no dead control. -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowZoomButton}">
+                        <ToggleButton Content="Zoom" IsChecked="{Binding IsZoomed}"
+                                      IsEnabled="{Binding SelectedSession, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                      ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
+                    </StackPanel>
+
+                    <!-- Mirrors the dashboard's ⚙ (its columns/rows/grid lines): each workspace type sets what it
+                         actually has, in the same place. -->
+                    <Button DockPanel.Dock="Right" HorizontalAlignment="Right" Content="⚙" Padding="8,4"
+                            ToolTip.Tip="How this workspace arranges its sessions">
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <StackPanel Spacing="8" MinWidth="300" Margin="4">
+                                    <TextBlock Text="Layout" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Use the default layout (Options)"
+                                              IsChecked="{Binding WorkspaceFollowsGlobalLayout}"/>
+                                    <TextBlock Text="Off: this workspace arranges itself, and Options no longer moves it."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <!-- Disabled rather than hidden while following: they show what this desk is
+                                         doing, which is the thing you came here to read before changing it. -->
+                                    <CheckBox Content="Show one session at a time (no grid)"
+                                              IsChecked="{Binding WorkspaceSingleSessionLayout}"
+                                              IsEnabled="{Binding !WorkspaceFollowsGlobalLayout}"/>
+                                    <CheckBox Content="Stack sessions vertically (one column)"
+                                              IsChecked="{Binding WorkspaceStackSessionsVertically}"
+                                              IsEnabled="{Binding !WorkspaceFollowsGlobalLayout}"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </DockPanel>
 
                 <!-- One live session grid serves both layouts: grid mode shows every panel; single-pane
                      mode (#24 / Zoom) collapses all but the selected one to a single column so it fills

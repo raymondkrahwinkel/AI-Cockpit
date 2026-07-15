@@ -99,14 +99,20 @@
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
                         <TextBlock Text="Layout" FontWeight="SemiBold"/>
+                        <!-- The cockpit-wide default. These bind to the Global… properties on purpose: a
+                             sessions workspace can override them from its own ⚙, and binding the effective
+                             value here would save that workspace's choice over the default the moment Options
+                             was opened on it. -->
                         <CheckBox Content="Show one session at a time (no grid)"
-                                  IsChecked="{Binding SingleSessionLayout}"/>
+                                  IsChecked="{Binding GlobalSingleSessionLayout}"/>
                         <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <CheckBox Content="Stack sessions vertically (one column)"
-                                  IsChecked="{Binding StackSessionsVertically}"
-                                  IsEnabled="{Binding !SingleSessionLayout}"/>
+                                  IsChecked="{Binding GlobalStackSessionsVertically}"
+                                  IsEnabled="{Binding !GlobalSingleSessionLayout}"/>
                         <TextBlock Text="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <TextBlock Text="This is the default for every sessions workspace. One can arrange itself differently from its own ⚙, above the grid."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <CheckBox Content="Minimize to tray when closing the window"
                                   IsChecked="{Binding MinimizeToTrayOnClose}"/>

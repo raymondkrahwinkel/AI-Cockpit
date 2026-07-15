@@ -17,7 +17,7 @@ public class SessionPaneVisibilityTests
         var vm = new CockpitViewModel();
         vm.SelectedSession = vm.Sessions[0];
 
-        vm.SingleSessionLayout = true;
+        vm.GlobalSingleSessionLayout = true;
 
         vm.Sessions.Where(session => session.IsPaneVisible).Should().ContainSingle()
             .Which.Should().BeSameAs(vm.Sessions[0]);
@@ -28,9 +28,9 @@ public class SessionPaneVisibilityTests
     {
         var vm = new CockpitViewModel();
         vm.SelectedSession = vm.Sessions[0];
-        vm.SingleSessionLayout = true;
+        vm.GlobalSingleSessionLayout = true;
 
-        vm.SingleSessionLayout = false;
+        vm.GlobalSingleSessionLayout = false;
 
         vm.Sessions.Should().OnlyContain(session => session.IsPaneVisible);
     }
@@ -40,7 +40,7 @@ public class SessionPaneVisibilityTests
     {
         var vm = new CockpitViewModel();
         vm.SelectedSession = vm.Sessions[0];
-        vm.SingleSessionLayout = true;
+        vm.GlobalSingleSessionLayout = true;
 
         vm.SelectedSession = vm.Sessions[1];
 
