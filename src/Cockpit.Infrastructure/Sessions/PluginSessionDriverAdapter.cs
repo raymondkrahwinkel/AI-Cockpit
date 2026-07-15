@@ -34,6 +34,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public string? SessionId => inner.SessionId;
 
+    // The plugin driver's process, when it spawns one (Codex app-server), so the host's resource meter has
+    // something to weigh (#78, D10) — null for an HTTP-backed provider, same as the ISessionDriver default.
+    public int? ProcessId => inner.ProcessId;
+
     public SessionProfile? Profile { get; private set; }
 
     public IAsyncEnumerable<SessionEvent> Events => _AdaptEventsAsync();
@@ -116,10 +120,12 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) =>
         inner.SetAutoApproveToolsAsync(enabled, cancellationToken);
 
-    // No always-allow rule persistence in the narrow plugin surface — approve the single outstanding
-    // decision only, same as an operator clicking "Allow" once, rather than silently dropping the call.
+    // Always-allow is session-scoped on the narrow plugin surface (D4): forward the intent so a driver that can
+    // persist it for the session (Codex's acceptForSession) does, and one that cannot falls back to a one-time
+    // allow via the interface default. The Claude rule args (toolName/input/scope) have no equivalent here — a
+    // cross-restart per-profile rule stays a Claude-CLI concern, which is why they are not passed on.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
-        inner.RespondToPermissionAsync(toolUseId, allow: true, cancellationToken);
+        inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
 
     // No live control channel behind the narrow interface — these Claude-CLI-only operations are deliberate no-ops.
     public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;

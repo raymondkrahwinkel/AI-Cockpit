@@ -28,6 +28,9 @@ internal interface ICliSubprocess : IAsyncDisposable
     /// </summary>
     IAsyncEnumerable<string> ReadStderrLinesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>The OS process id once the process has started; <see langword="null"/> before start or after dispose (D10).</summary>
+    int? ProcessId { get; }
+
     /// <summary>True once the process has exited.</summary>
     bool HasExited { get; }
 

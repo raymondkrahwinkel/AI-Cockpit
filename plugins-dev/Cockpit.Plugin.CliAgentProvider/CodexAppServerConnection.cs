@@ -39,6 +39,9 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
 
     public CodexAppServerConnection(ICliSubprocess subprocess) => _subprocess = subprocess;
 
+    /// <summary>The app-server process id once spawned, for the host's resource meter (D10); <see langword="null"/> before start.</summary>
+    public int? ProcessId => _subprocess.ProcessId;
+
     /// <summary>Server-to-client notifications (the streaming transcript), completing when the process exits.</summary>
     public IAsyncEnumerable<CodexNotification> Notifications => _notifications.Reader.ReadAllAsync();
 

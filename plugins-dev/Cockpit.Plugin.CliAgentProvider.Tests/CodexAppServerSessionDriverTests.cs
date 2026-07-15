@@ -138,6 +138,57 @@ public class CodexAppServerSessionDriverTests
     }
 
     [Fact]
+    public async Task Approval_Deny_IsAnsweredWithDecline()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("run rm");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"id":57,"method":"item/commandExecution/requestApproval","params":{"itemId":"cmd-2","command":"rm -rf /","threadId":"thread-1","turnId":"turn-1"}}""");
+        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+
+        // The decline branch shares _RespondDecisionAsync with accept/acceptForSession — cover it so the refactor stays honest.
+        await driver.RespondToPermissionAsync("cmd-2", allow: false);
+
+        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":57");
+        using var document = JsonDocument.Parse(answer);
+        document.RootElement.GetProperty("result").GetProperty("decision").GetString().Should().Be("decline");
+    }
+
+    [Fact]
+    public async Task Approval_AllowAlways_IsAnsweredWithAcceptForSession()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("run ls");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"id":56,"method":"item/fileChange/requestApproval","params":{"itemId":"edit-1","threadId":"thread-1","turnId":"turn-1"}}""");
+        await _NextEventOfTypeAsync<PluginPermissionRequested>(driver);
+
+        // D4: "allow always" is acceptForSession, so the agent stops asking for the like of it this thread.
+        await driver.AllowPermissionAlwaysAsync("edit-1");
+
+        var answer = await _WaitForWrittenLineAsync(fake, "\"id\":56");
+        using var document = JsonDocument.Parse(answer);
+        document.RootElement.GetProperty("result").GetProperty("decision").GetString().Should().Be("acceptForSession");
+    }
+
+    [Fact]
+    public async Task ProcessId_ReflectsTheSpawnedAppServerProcess()
+    {
+        var fake = new FakeCliSubprocess { ProcessId = 9999 };
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D10: the resource meter measures the codex app-server process this session runs in.
+        driver.ProcessId.Should().Be(9999);
+    }
+
+    [Fact]
     public async Task TurnCompleted_WithInterruptedStatus_IsNotReportedAsError()
     {
         var fake = new FakeCliSubprocess();

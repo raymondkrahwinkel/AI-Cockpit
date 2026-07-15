@@ -61,6 +61,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     public string? SessionId => _threadId;
 
+    public int? ProcessId => _connection.ProcessId;
+
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
@@ -154,13 +156,20 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
     }
 
-    public async Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default)
+    public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
+        _RespondDecisionAsync(toolUseId, allow ? "accept" : "decline", cancellationToken);
+
+    // "Allow always" is Codex's acceptForSession (D4): the agent stops asking for the like of this call for the
+    // rest of the thread, where a plain accept clears only this one prompt. Both the command-execution and
+    // file-change approval responses accept it (verified against the generated schema).
+    public Task AllowPermissionAlwaysAsync(string toolUseId, CancellationToken cancellationToken = default) =>
+        _RespondDecisionAsync(toolUseId, "acceptForSession", cancellationToken);
+
+    private async Task _RespondDecisionAsync(string toolUseId, string decision, CancellationToken cancellationToken)
     {
-        // The approval requests we surface all answer with { decision } — accept or decline; the richer
-        // acceptForSession (an always-allow) is increment 2 (AllowPermissionAlwaysAsync has no plugin surface yet).
         if (_pendingApprovals.TryRemove(toolUseId, out var requestId))
         {
-            await _connection.RespondAsync(requestId, new { decision = allow ? "accept" : "decline" }, cancellationToken).ConfigureAwait(false);
+            await _connection.RespondAsync(requestId, new { decision }, cancellationToken).ConfigureAwait(false);
         }
     }
 

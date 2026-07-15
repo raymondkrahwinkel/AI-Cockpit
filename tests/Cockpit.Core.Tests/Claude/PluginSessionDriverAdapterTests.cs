@@ -250,14 +250,27 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
-    public async Task AllowPermissionAlwaysAsync_RespondsAllowOnTheInnerDriver_WithNoRulePersistence()
+    public async Task AllowPermissionAlwaysAsync_ForwardsTheAlwaysAllowIntent_ToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
 
+        // D4: the adapter forwards the always-allow to the plugin driver (a driver that can persist it for the
+        // session does; one that cannot falls back to a one-time allow) rather than always approving once itself.
+        // The Claude rule args (toolName/input/scope) have no equivalent on the narrow surface and are dropped.
         await adapter.AllowPermissionAlwaysAsync("tool_1", "read_file", "{}", PermissionRuleScope.Exact);
 
-        inner.LastPermissionResponse.Should().Be(("tool_1", true));
+        inner.LastAllowAlwaysToolUseId.Should().Be("tool_1");
+    }
+
+    [Fact]
+    public void ProcessId_ForwardsFromTheInnerDriver()
+    {
+        var inner = new FakePluginSessionDriver { ProcessId = 5150 };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        // D10: the resource meter measures the plugin driver's process (Codex app-server), not nothing.
+        adapter.ProcessId.Should().Be(5150);
     }
 
     [Fact]

@@ -17,6 +17,14 @@ public interface IPluginSessionDriver : IAsyncDisposable
     string? SessionId { get; }
 
     /// <summary>
+    /// The OS process this session runs in, when the provider spawns one (#78, D10) — what the host's resource
+    /// meter measures, together with everything that process spawned. The default is <see langword="null"/>: a
+    /// provider that is an HTTP call rather than a local process has nothing to weigh, and a value the host would
+    /// have to treat as a real pid. A default property, so no already-compiled plugin breaks.
+    /// </summary>
+    int? ProcessId => null;
+
+    /// <summary>
     /// Starts the underlying provider session. <paramref name="model"/>, when non-null/whitespace, selects
     /// the model to use for this session. Must be called once before <see cref="SendUserMessageAsync"/> or
     /// <see cref="Events"/> produce anything.
@@ -53,6 +61,17 @@ public interface IPluginSessionDriver : IAsyncDisposable
     /// for a pending tool call, correlated on <paramref name="toolUseId"/>.
     /// </summary>
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Allows the outstanding decision for <paramref name="toolUseId"/> <em>and</em> stops prompting for the like
+    /// of it for the rest of this session (D4) — the operator's "allow always". A provider that can say this to
+    /// its agent (Codex's <c>acceptForSession</c>) overrides this; the default falls back to a one-time allow, so
+    /// a driver that cannot persist the decision still resolves the prompt. The rule is session-scoped only — the
+    /// narrow surface has no profile-rule vocabulary, so cross-restart persistence stays a host/Claude concern.
+    /// A default method, so no already-compiled plugin breaks.
+    /// </summary>
+    Task AllowPermissionAlwaysAsync(string toolUseId, CancellationToken cancellationToken = default) =>
+        RespondToPermissionAsync(toolUseId, allow: true, cancellationToken);
 
     /// <summary>The live, ordered stream of typed transcript events for this session.</summary>
     IAsyncEnumerable<PluginSessionEvent> Events { get; }
