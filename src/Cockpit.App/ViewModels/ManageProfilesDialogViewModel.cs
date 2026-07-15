@@ -136,9 +136,10 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     [RelayCommand]
     private void AddProfile()
     {
-        // A freshly added profile may pick its provider (#26); an existing one is fixed.
+        // A freshly added profile may pick its provider (#26); an existing one is fixed. Defaults to the bundled
+        // Claude provider plugin — Claude is a plugin like every other now (Fase 4), not a built-in CLI provider.
         var added = new EditableProfileViewModel(
-            new SessionProfile("new profile", new ClaudeConfig(string.Empty)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
+            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
         Profiles.Add(added);
         SelectedProfile = added;
     }
