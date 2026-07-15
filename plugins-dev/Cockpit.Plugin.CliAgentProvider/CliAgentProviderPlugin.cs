@@ -35,7 +35,25 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // hence SupportsPermissions: true, where the exec route reported false.
             CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(),
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
-            CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson)));
+            CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson))
+        {
+            // The per-session start defaults the New-session dialog asks about for an SDK Codex session — the
+            // same two the TTY registration below declares, so a profile means the same thing whichever kind of
+            // session it opens. Model choices stay free text until the dialog can query the app-server's
+            // model/list (increment 2 step C).
+            Options =
+            [
+                new PluginSessionLaunchOption(
+                    CodexAppServerSessionDriver.SandboxOptionKey,
+                    "Sandbox",
+                    Choices: ["read-only", "workspace-write", "danger-full-access"],
+                    DefaultValue: "read-only"),
+                new PluginSessionLaunchOption(
+                    CodexAppServerSessionDriver.ModelOptionKey,
+                    "Model",
+                    Choices: []),
+            ],
+        });
 
         // Same provider id as the session provider above — a profile names a provider, and what that
         // provider can do (a headless driver, a TUI, or both, per PluginTtyContracts) is what it registered.

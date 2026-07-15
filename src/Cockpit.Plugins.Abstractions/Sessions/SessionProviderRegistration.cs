@@ -21,4 +21,14 @@ public sealed record SessionProviderRegistration(
     Func<IServiceProvider, IPluginSessionDriverFactory> CreateDriverFactory,
     PluginSessionCapabilities Capabilities,
     Func<string?, IPluginProviderConfigView> CreateConfigView,
-    string DefaultBaseUrl = "");
+    string DefaultBaseUrl = "")
+{
+    /// <summary>
+    /// The per-session start defaults this provider wants the New-session dialog to ask about (sandbox, model, …),
+    /// the SDK-session mirror of <see cref="TtyProviderRegistration.Options"/>. Empty when it wants none. An
+    /// init-only property rather than a primary-ctor parameter so adding it does not change the record's
+    /// constructor signature — an already-compiled plugin keeps constructing this the old way and simply reports
+    /// no options.
+    /// </summary>
+    public IReadOnlyList<PluginSessionLaunchOption> Options { get; init; } = [];
+}

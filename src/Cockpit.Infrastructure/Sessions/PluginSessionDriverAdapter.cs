@@ -36,16 +36,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public IAsyncEnumerable<SessionEvent> Events => _AdaptEventsAsync();
 
-    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, CancellationToken cancellationToken = default)
+    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
     {
-        // workingDirectory and resume are passed through now (#45 D5): a plugin driver that spawns a CLI (Codex
-        // app-server) runs in a cwd and resumes a thread by id, and the cockpit already knows both — dropping
-        // them here is what made the Codex plugin ask the operator for a working directory it already had. A
-        // driver with no cwd/history of its own (an HTTP provider) simply ignores them. Only BySessionId resume
-        // crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
+        // workingDirectory, resume and launchOptions are passed through (#45 D5): a plugin driver that spawns a
+        // CLI (Codex app-server) runs in a cwd, resumes a thread by id, and honours the operator's answers to the
+        // options it declared (sandbox, model). Dropping them here is what made the Codex plugin ask for a working
+        // directory the cockpit already had, and left its sandbox/model unreachable per session. A driver with no
+        // cwd/history/options of its own (an HTTP provider) simply ignores them. Only BySessionId resume crosses
+        // the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
         Profile = profile;
         var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
-        await inner.StartAsync(model, workingDirectory, resumeSessionId, cancellationToken).ConfigureAwait(false);
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, launchOptions, cancellationToken).ConfigureAwait(false);
     }
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>

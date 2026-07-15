@@ -136,7 +136,7 @@ public class DelegationGuardTests
             Arg.Any<string?>(),
             Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(),
-            Arg.Any<SessionResume?>(), Arg.Any<CancellationToken>());
+            Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -178,6 +178,7 @@ public class DelegationGuardTests
                 servers!.Contains("filesystem") && !servers.Contains("cockpit-orchestrator")),
             Arg.Any<string?>(),
             Arg.Any<SessionResume?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -203,6 +204,7 @@ public class DelegationGuardTests
             Arg.Is<IReadOnlySet<string>?>(servers => servers!.Contains("cockpit-orchestrator")),
             Arg.Any<string?>(),
             Arg.Any<SessionResume?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<CancellationToken>());
     }
 

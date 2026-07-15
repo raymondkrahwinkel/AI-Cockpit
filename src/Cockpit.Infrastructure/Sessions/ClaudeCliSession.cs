@@ -71,7 +71,9 @@ internal sealed class ClaudeCliSession : ISessionDriver, ITransientService
 
     public IAsyncEnumerable<SessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, CancellationToken cancellationToken = default)
+    // launchOptions is unused: those are a plugin provider's declared start defaults (sandbox, …). Claude's own
+    // start knobs are the typed parameters above (permission mode, model), not a provider-declared option map.
+    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
     {
         Profile = profile;
         _bypassPermissions = string.Equals(permissionMode, "bypassPermissions", StringComparison.Ordinal);

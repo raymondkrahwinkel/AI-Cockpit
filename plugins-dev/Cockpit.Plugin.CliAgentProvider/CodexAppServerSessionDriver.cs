@@ -26,6 +26,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private const string _ClientName = "cockpit";
     private const string _ClientVersion = "1.0.0";
 
+    /// <summary>Option key for the per-session sandbox choice, declared by the plugin and rendered by the dialog.</summary>
+    public const string SandboxOptionKey = "sandbox";
+
+    /// <summary>Option key for the per-session model override.</summary>
+    public const string ModelOptionKey = "model";
+
     private readonly CodexAppServerConnection _connection;
     private readonly CliAgentConfig _config;
     private readonly string _executablePath;
@@ -58,14 +64,19 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
-        StartAsync(model, workingDirectory: null, resumeSessionId: null, cancellationToken);
+        StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, cancellationToken);
 
-    public async Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, CancellationToken cancellationToken)
+    public async Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(model))
         {
             _model = model;
         }
+
+        // A per-session option the operator picked in the New-session dialog wins over the profile's config
+        // default; absent, the config value (and then the CLI's own default) applies.
+        var sandbox = _OptionOrDefault(options, SandboxOptionKey, _config.SandboxMode);
+        var effectiveModel = _OptionOrDefault(options, ModelOptionKey, _model);
 
         _connection.Start(_executablePath, _ResolveProcessWorkingDirectory(workingDirectory), _config.BuildEnvironmentVariables());
         _notificationPump = Task.Run(() => _PumpNotificationsAsync(_lifetime.Token), CancellationToken.None);
@@ -83,7 +94,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
         else
         {
-            var started = await _connection.SendRequestAsync("thread/start", new { cwd, sandbox = _NullIfBlank(_config.SandboxMode), model = _NullIfBlank(_model) }, cancellationToken).ConfigureAwait(false);
+            var started = await _connection.SendRequestAsync("thread/start", new { cwd, sandbox = _NullIfBlank(sandbox), model = _NullIfBlank(effectiveModel) }, cancellationToken).ConfigureAwait(false);
 
             // The thread id may ride the reply or only the thread/started notification — take whichever arrives,
             // so the driver does not depend on which of the two carries it in a given Codex version.
@@ -379,6 +390,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         item.TryGetProperty("exitCode", out var exitCode) && exitCode.ValueKind == JsonValueKind.Number && exitCode.TryGetInt32(out var code) && code != 0;
 
     private static string? _NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static string? _OptionOrDefault(IReadOnlyDictionary<string, string>? options, string key, string? fallback) =>
+        options is not null && options.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : fallback;
 
     public async ValueTask DisposeAsync()
     {

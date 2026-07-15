@@ -21,7 +21,7 @@ public class CodexAppServerSessionDriverTests
         var fake = new FakeCliSubprocess();
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
 
-        var startTask = driver.StartAsync("gpt-5-codex", "/work/here", resumeSessionId: null, CancellationToken.None);
+        var startTask = driver.StartAsync("gpt-5-codex", "/work/here", resumeSessionId: null, options: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
@@ -36,12 +36,29 @@ public class CodexAppServerSessionDriverTests
     }
 
     [Fact]
+    public async Task Start_UsesThePerSessionSandboxAndModelOptions_OverConfig_InThreadStart()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        // _DefaultConfig has sandbox "read-only"; the dialog's per-session choice must win.
+        var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write", ["model"] = "o3" };
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        threadStart.GetProperty("params").GetProperty("sandbox").GetString().Should().Be("workspace-write");
+        threadStart.GetProperty("params").GetProperty("model").GetString().Should().Be("o3");
+    }
+
+    [Fact]
     public async Task Start_WithResume_SendsThreadResume_ForThatThreadId()
     {
         var fake = new FakeCliSubprocess();
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
 
-        var startTask = driver.StartAsync(null, "/work", resumeSessionId: "thread-99", CancellationToken.None);
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: "thread-99", options: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         var resume = await _RespondAsync(fake, "thread/resume", """{"threadId":"thread-99"}""");
         await startTask;
@@ -130,7 +147,7 @@ public class CodexAppServerSessionDriverTests
 
     private static async Task _StartAsync(CodexAppServerSessionDriver driver, FakeCliSubprocess fake, string threadId = "thread-1")
     {
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, CancellationToken.None);
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         await _RespondAsync(fake, "thread/start", $$"""{"threadId":"{{threadId}}"}""");
         await startTask;

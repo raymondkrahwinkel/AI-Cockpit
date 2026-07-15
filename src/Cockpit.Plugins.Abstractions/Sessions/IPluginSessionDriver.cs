@@ -24,16 +24,19 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task StartAsync(string? model = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Starts the session with the working directory and resume target the cockpit already knows (#45 D5) —
-    /// the surface the host's driver adapter actually calls. <paramref name="workingDirectory"/>, when
-    /// non-null/whitespace, is the directory the session runs in, so a provider that needs one (a spawned CLI)
-    /// takes it from here rather than asking the operator. <paramref name="resumeSessionId"/>, when
-    /// non-null/whitespace, resumes that existing conversation instead of starting fresh. The default drops
-    /// both and calls <see cref="StartAsync(string?, CancellationToken)"/>: a driver with no working directory
-    /// or conversation history of its own (an HTTP provider) needs neither, so it need not override this. Added
-    /// as a default method rather than by changing the signature above so no already-compiled plugin breaks.
+    /// Starts the session with the working directory, resume target and per-session launch options the cockpit
+    /// knows (#45 D5) — the surface the host's driver adapter actually calls. <paramref name="workingDirectory"/>,
+    /// when non-null/whitespace, is the directory the session runs in, so a provider that needs one (a spawned
+    /// CLI) takes it from here rather than asking the operator. <paramref name="resumeSessionId"/>, when
+    /// non-null/whitespace, resumes that existing conversation instead of starting fresh. <paramref name="options"/>
+    /// carries the operator's answers to this provider's declared <see cref="SessionProviderRegistration.Options"/>
+    /// (sandbox, model, …), keyed by each option's <see cref="PluginSessionLaunchOption.Key"/>. The default drops
+    /// all three and calls <see cref="StartAsync(string?, CancellationToken)"/>: a driver with no working
+    /// directory, history or launch options of its own (an HTTP provider) needs none, so it need not override
+    /// this. A default method rather than a signature change on the abstract member above, so no already-compiled
+    /// plugin breaks.
     /// </summary>
-    Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, CancellationToken cancellationToken) =>
+    Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, CancellationToken cancellationToken) =>
         StartAsync(model, cancellationToken);
 
     /// <summary>Sends a user message; the session stays open for further turns afterwards.</summary>
