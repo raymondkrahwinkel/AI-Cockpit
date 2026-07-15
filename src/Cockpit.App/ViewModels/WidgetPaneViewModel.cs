@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.App.Plugins;
@@ -63,4 +64,20 @@ public sealed partial class WidgetPaneViewModel : ObservableObject
 
     /// <summary>Builds this instance's settings form, or null when it has none. The host wraps it in its own dialog chrome.</summary>
     public Control? CreateConfigView() => _configView?.Invoke(_context);
+
+    /// <summary>This instance's stored settings as raw JSON — what an export carries. The host never parses it: the shape is the plugin's business.</summary>
+    public IReadOnlyDictionary<string, string> ReadConfig() =>
+        _context.Storage is WidgetInstanceStorage storage ? storage.Snapshot() : new Dictionary<string, string>();
+
+    /// <summary>Writes settings from an import, then asks the widget to re-read them — which is how it shows what the file said without watching its own storage.</summary>
+    public void WriteConfig(IReadOnlyDictionary<string, string> config)
+    {
+        foreach (var (key, value) in config)
+        {
+            // Stored as the raw JSON it travelled as, so the widget deserialises exactly what it wrote.
+            _context.Storage.Set(key, JsonSerializer.Deserialize<JsonElement>(value));
+        }
+
+        Refresh();
+    }
 }

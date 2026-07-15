@@ -34,6 +34,9 @@ public interface IWidgetRegistry
     /// dashboard, and that pane has to be skippable rather than fatal.
     /// </summary>
     (WidgetRegistration Registration, WidgetContext Context)? CreateInstance(string widgetId, string instanceId);
+
+    /// <summary>Whether a plugin here contributes <paramref name="widgetId"/> — what an import asks before placing a pane it may not be able to render.</summary>
+    bool IsInstalled(string widgetId);
 }
 
 internal sealed class WidgetRegistry : IWidgetRegistry, ISingletonService
@@ -49,6 +52,8 @@ internal sealed class WidgetRegistry : IWidgetRegistry, ISingletonService
         _widgets.Add(new RegisteredWidget(widget, pluginStorage, sessions));
         Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    public bool IsInstalled(string widgetId) => _widgets.Any(widget => widget.Registration.Id == widgetId);
 
     public (WidgetRegistration Registration, WidgetContext Context)? CreateInstance(string widgetId, string instanceId)
     {

@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions.Widgets;
 
@@ -312,6 +314,92 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
         return _ApplyAsync(Settings.WithUpdated(dashboard.WithPaneMoved(paneId, resized)));
     }
+
+    /// <summary>
+    /// The active dashboard as a file. Credentials are dropped on the way out (<see cref="DashboardExporter"/>),
+    /// so a dashboard you hand to someone carries its arrangement and its settings but never a key.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Scrubs by the name rule only. A key a plugin declared itself (<c>pat</c>) is not yet dropped here —
+    /// the registry does not carry the manifest's declared keys. The exporter honours them when told; wiring
+    /// that through is the open half. Until then, a widget storing a credential under a name the rule cannot
+    /// guess would travel with the file.
+    /// </remarks>
+    public string? ExportActiveDashboard()
+    {
+        if (Active is not { Type: WorkspaceType.Dashboard } dashboard || _widgets is null)
+        {
+            return null;
+        }
+
+        var export = DashboardExporter.ToExport(dashboard, _ConfigOf, SecretFields.ByName);
+        return JsonSerializer.Serialize(export, _FileJson);
+    }
+
+    /// <summary>
+    /// Adds a dashboard from an exported file. Returns what came of it — including the widget types this
+    /// cockpit does not have, which were skipped — or null when the file is not one this build can read.
+    /// </summary>
+    public async Task<DashboardImport?> ImportDashboardAsync(string json)
+    {
+        DashboardExport? export;
+        try
+        {
+            export = JsonSerializer.Deserialize<DashboardExport>(json, _FileJson);
+        }
+        catch (JsonException)
+        {
+            // A file that is not a dashboard is a thing to say so about, not to throw over.
+            return null;
+        }
+
+        if (export is null || !DashboardExporter.CanRead(export) || _widgets is null)
+        {
+            return null;
+        }
+
+        var import = DashboardExporter.FromExport(export, _widgets.IsInstalled, _UniqueName(export.Name));
+        await _ApplyAsync(Settings.WithWorkspace(import.Workspace));
+
+        // After the workspace lands, so the instances exist to write to.
+        foreach (var (paneId, config) in import.Config)
+        {
+            if (WidgetPanes.FirstOrDefault(pane => pane.Id == paneId) is { } placed)
+            {
+                placed.WriteConfig(config);
+            }
+        }
+
+        return import;
+    }
+
+    /// <summary>A name that does not collide with what is already there — importing the same dashboard twice gives "Monitoring" and "Monitoring 2", not two of the same tab.</summary>
+    private string _UniqueName(string preferred)
+    {
+        var baseName = string.IsNullOrWhiteSpace(preferred) ? "Dashboard" : preferred.Trim();
+        if (Settings.Workspaces.All(workspace => workspace.Name != baseName))
+        {
+            return baseName;
+        }
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var candidate = $"{baseName} {suffix}";
+            if (Settings.Workspaces.All(workspace => workspace.Name != candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    private IReadOnlyDictionary<string, string> _ConfigOf(string paneId) =>
+        WidgetPanes.FirstOrDefault(pane => pane.Id == paneId)?.ReadConfig() ?? new Dictionary<string, string>();
+
+    private static readonly JsonSerializerOptions _FileJson = new()
+    {
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+    };
 
     private async Task _ApplyAsync(WorkspaceSettings settings)
     {

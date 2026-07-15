@@ -577,6 +577,68 @@ public partial class CockpitView : UserControl
         }
     }
 
+    private void OnExportDashboardPressed(object? sender, RoutedEventArgs e) => _ = _ExportDashboardAsync();
+
+    private void OnImportDashboardPressed(object? sender, RoutedEventArgs e) => _ = _ImportDashboardAsync();
+
+    private async Task _ExportDashboardAsync()
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || cockpit.Workspaces.Active is not { } dashboard
+            || cockpit.Workspaces.ExportActiveDashboard() is not { } json)
+        {
+            return;
+        }
+
+        if (await cockpit.PickDashboardExportPathAsync(dashboard.Name) is { } path)
+        {
+            await File.WriteAllTextAsync(path, json);
+        }
+    }
+
+    /// <summary>
+    /// Adds a dashboard from a file. A widget this cockpit does not have is skipped and named rather than the
+    /// whole file being refused (Raymond's call), so the operator is told what to install rather than left with
+    /// a dashboard that looks broken instead of incomplete.
+    /// </summary>
+    private async Task _ImportDashboardAsync()
+    {
+        if (DataContext is not CockpitViewModel cockpit || await cockpit.PickDashboardToImportAsync() is not { } path)
+        {
+            return;
+        }
+
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await cockpit.ConfirmAsync("Import dashboard", $"That file could not be read.\n\n{exception.Message}", confirmLabel: "OK");
+            return;
+        }
+
+        if (await cockpit.Workspaces.ImportDashboardAsync(json) is not { } import)
+        {
+            await cockpit.ConfirmAsync(
+                "Import dashboard",
+                "That is not a dashboard this version can read — either it is a different kind of file, or it was exported by a newer build.",
+                confirmLabel: "OK");
+            return;
+        }
+
+        if (!import.IsComplete)
+        {
+            await cockpit.ConfirmAsync(
+                "Imported, with widgets missing",
+                $"“{import.Workspace.Name}” was added, but these widgets are not installed here and were left out:\n\n"
+                + string.Join("\n", import.MissingWidgetIds.Select(id => $"  • {id}"))
+                + "\n\nInstall the plugins that provide them from the store, then import the file again to get them.",
+                confirmLabel: "OK");
+        }
+    }
+
     // Widget dragging (F0). A pane is moved by rearranging where the grid puts it — never by rebuilding it —
     // so a widget keeps whatever state it holds across a drag, the same rule the session grid learned on
     // 2026-07-13 when a rebuilt pane lost its pty.
