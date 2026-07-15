@@ -158,6 +158,46 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         await dialog.ShowDialog(owner);
     }
 
+    // A dashboard travels as ordinary JSON with its own extension: readable enough to look at before you trust
+    // one someone sent you, and distinct enough that the picker does not offer every .json on the machine.
+    private static FilePickerFileType DashboardFile { get; } =
+        new("Cockpit dashboard") { Patterns = ["*.cockpit-dashboard.json", "*.json"] };
+
+    public async Task<string?> PickDashboardToImportAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import dashboard",
+            AllowMultiple = false,
+            FileTypeFilter = [DashboardFile],
+        });
+
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> PickDashboardExportPathAsync(string suggestedName)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export dashboard",
+            SuggestedFileName = $"{suggestedName}.cockpit-dashboard.json",
+            DefaultExtension = "json",
+            FileTypeChoices = [DashboardFile],
+        });
+
+        return file?.TryGetLocalPath();
+    }
+
     public async Task<string?> PickPluginZipAsync()
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })

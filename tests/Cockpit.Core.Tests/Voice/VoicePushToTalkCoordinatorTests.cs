@@ -16,6 +16,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -46,8 +47,14 @@ public class VoicePushToTalkCoordinatorTests
         voicePushToTalk.Received(1).BeginHold();
     }
 
+    /// <summary>
+    /// Raymond, holding the key over a cockpit with nothing open: the pill said "Listening" over a waveform
+    /// that never moved, because there was no session to route a microphone to. This test asserted exactly
+    /// that — it was green because it encoded the bug. The overlay still shows and still must not throw; what
+    /// it says had to change.
+    /// </summary>
     [Fact]
-    public void HandleHoldStarted_NoSelectedSession_StillShowsTheOverlay_AndDoesNotThrow()
+    public void HandleHoldStarted_NoSelectedSession_ShowsTheOverlaySayingSo_AndDoesNotThrow()
     {
         var overlayPresenter = new FakeVoiceOverlayPresenter();
         var coordinator = _CreateCoordinator(session: null, overlayPresenter, out var overlay);
@@ -55,7 +62,9 @@ public class VoicePushToTalkCoordinatorTests
         var act = coordinator.HandleHoldStarted;
 
         act.Should().NotThrow();
-        overlay.State.Should().Be(VoiceOverlayState.Listening);
+        overlay.State.Should().Be(VoiceOverlayState.Unavailable);
+        overlay.StatusText.Should().Be("No session selected");
+        overlay.IsListening.Should().BeFalse();
         overlayPresenter.ShowCallCount.Should().Be(1);
     }
 
@@ -67,12 +76,95 @@ public class VoicePushToTalkCoordinatorTests
         var session = _CreateSdkSession(voicePushToTalk);
         var overlayPresenter = new FakeVoiceOverlayPresenter();
         var coordinator = _CreateCoordinator(session, overlayPresenter, out var overlay);
+        _StartARecordingHold(coordinator, session, voicePushToTalk);
 
         await coordinator.HandleHoldEndedAsync();
 
         await voicePushToTalk.Received(1).EndHoldAsync(applyCleanup: true, Arg.Any<CancellationToken>());
         overlay.State.Should().Be(VoiceOverlayState.Hidden);
         overlayPresenter.HideCallCount.Should().Be(1);
+    }
+
+    /// <summary>A session whose voice is switched off declines the hold just as silently — and just as invisibly.</summary>
+    [Fact]
+    public void HandleHoldStarted_WhenTheSessionHasVoiceOff_SaysSoInsteadOfClaimingToListen()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        voicePushToTalk.BeginHold().Returns(false);
+        var session = _CreateSdkSession(voicePushToTalk);
+        session.VoiceEnabled = false;
+        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay);
+
+        coordinator.HandleHoldStarted();
+
+        overlay.State.Should().Be(VoiceOverlayState.Unavailable);
+        overlay.StatusText.Should().Be("Voice is off for this session");
+    }
+
+    /// <summary>
+    /// Nothing was captured, so there is nothing to transcribe — flashing "Transcribing…" over an empty
+    /// recording is the same lie in another word.
+    /// </summary>
+    [Fact]
+    public async Task HandleHoldEndedAsync_WhenNothingWasRecorded_NeverClaimsToTranscribe()
+    {
+        var overlayPresenter = new FakeVoiceOverlayPresenter();
+        var coordinator = _CreateCoordinator(session: null, overlayPresenter, out var overlay);
+        coordinator.HandleHoldStarted();
+
+        await coordinator.HandleHoldEndedAsync();
+
+        overlay.State.Should().Be(VoiceOverlayState.Hidden);
+        overlay.IsTranscribing.Should().BeFalse();
+        overlayPresenter.HideCallCount.Should().Be(1);
+    }
+
+    /// <summary>
+    /// First use downloads the model and a GPU runtime inside the hold, and the pill spent that time on a
+    /// spinner reading "Transcribing…" — for minutes, while nothing was being transcribed. Each step both
+    /// names what is being waited on and claims the pill's state, because on every later run there is nothing
+    /// to prepare and the pill should go straight to the spinner.
+    /// </summary>
+    [Fact]
+    public void HandlePreparing_ShowsTheDownloadInsteadOfAFalseTranscribingSpinner()
+    {
+        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
+        overlay.State = VoiceOverlayState.Transcribing;
+
+        coordinator.HandlePreparing(new VoicePreparationProgress("Downloading Vulkan runtime — 43% of 151 MB", 0.43));
+
+        overlay.State.Should().Be(VoiceOverlayState.Preparing);
+        overlay.StatusText.Should().Be("Downloading Vulkan runtime — 43% of 151 MB");
+        overlay.HasProgress.Should().BeTrue();
+        overlay.ProgressValue.Should().Be(0.43);
+    }
+
+    /// <summary>A step with nothing to measure against passes its missing fraction through, so the bar hides rather than invent one.</summary>
+    [Fact]
+    public void HandlePreparing_WithoutAFraction_LeavesTheOverlayWithNoBar()
+    {
+        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
+
+        coordinator.HandlePreparing(new VoicePreparationProgress("Downloading speech model — 412 MB"));
+
+        overlay.State.Should().Be(VoiceOverlayState.Preparing);
+        overlay.HasProgress.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Without this the last download line would sit on the pill through the transcription itself, which moves
+    /// the lie one step along instead of ending it.
+    /// </summary>
+    [Fact]
+    public void HandlePrepared_HandsThePillBackToTheSpinnerThatIsNowTrue()
+    {
+        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
+        coordinator.HandlePreparing(new VoicePreparationProgress("Loading speech model…"));
+
+        coordinator.HandlePrepared();
+
+        overlay.State.Should().Be(VoiceOverlayState.Transcribing);
+        overlay.StatusText.Should().BeEmpty();
     }
 
     [Fact]
@@ -82,6 +174,7 @@ public class VoicePushToTalkCoordinatorTests
         voicePushToTalk.EndHoldAsync(applyCleanup: false, Arg.Any<CancellationToken>()).Returns("open the file");
         var session = _CreateTtySession(voicePushToTalk);
         var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out _);
+        _StartARecordingHold(coordinator, session, voicePushToTalk);
 
         await coordinator.HandleHoldEndedAsync();
 
@@ -95,6 +188,7 @@ public class VoicePushToTalkCoordinatorTests
         var session = _CreateSdkSession(voicePushToTalk);
         var states = new List<VoiceOverlayState>();
         var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay);
+        _StartARecordingHold(coordinator, session, voicePushToTalk);
         overlay.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(VoiceOverlayViewModel.State))
@@ -116,7 +210,7 @@ public class VoicePushToTalkCoordinatorTests
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = false });
         var coordinator = new VoicePushToTalkCoordinator(
             hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter(),
-            Substitute.For<IVoicePushToTalkService>());
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
 
         await coordinator.StartAsync();
 
@@ -133,7 +227,7 @@ public class VoicePushToTalkCoordinatorTests
         var overlayPresenter = new FakeVoiceOverlayPresenter();
         var coordinator = new VoicePushToTalkCoordinator(
             hotkeyService, NewCockpitViewModel(), voiceSettingsStore, overlay, overlayPresenter,
-            Substitute.For<IVoicePushToTalkService>());
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
 
         await coordinator.StartAsync();
         hotkeyService.RaiseHoldStarted();
@@ -155,6 +249,19 @@ public class VoicePushToTalkCoordinatorTests
         return new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>(), voicePushToTalk, voiceSettingsStore);
     }
 
+    /// <summary>
+    /// Puts a hold that really opened a microphone in progress, which is the only way a hold ever ends. These
+    /// tests used to call the end handler with no hold at all — a state the hotkey service cannot produce, and
+    /// the reason it went unnoticed that the end path never checked whether anything had been recorded.
+    /// </summary>
+    private static void _StartARecordingHold(
+        VoicePushToTalkCoordinator coordinator, SessionPanelViewModel session, IVoicePushToTalkService voicePushToTalk)
+    {
+        session.VoiceEnabled = true;
+        voicePushToTalk.BeginHold().Returns(true);
+        coordinator.HandleHoldStarted();
+    }
+
     private static VoicePushToTalkCoordinator _CreateCoordinator(
         SessionPanelViewModel? session, IVoiceOverlayPresenter overlayPresenter, out VoiceOverlayViewModel overlay)
     {
@@ -164,7 +271,8 @@ public class VoicePushToTalkCoordinatorTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
         return new VoicePushToTalkCoordinator(
-            new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, overlay, overlayPresenter, Substitute.For<IVoicePushToTalkService>());
+            new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, overlay, overlayPresenter, Substitute.For<IVoicePushToTalkService>(),
+            NullLogger<VoicePushToTalkCoordinator>.Instance);
     }
 
     private static CockpitViewModel NewCockpitViewModel()

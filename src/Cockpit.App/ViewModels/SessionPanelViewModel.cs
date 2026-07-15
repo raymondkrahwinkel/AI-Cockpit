@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -218,6 +219,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _globalPushToTalkEnabled;
 
+    /// <summary>
+    /// The workspace this session belongs to — stamped at creation from whichever workspace was active then.
+    /// Two Sessions workspaces are separate desks: each shows only its own sessions, and switching away hides
+    /// the rest rather than closing them, so a session keeps running (and keeps its pty) while you look
+    /// elsewhere. Empty means "not assigned", which the cockpit reads as belonging to the first workspace —
+    /// what a session created before workspaces existed, or in the design-time graph, gets.
+    /// </summary>
+    [ObservableProperty]
+    private string _workspaceId = string.Empty;
+
     /// <summary>Transient status text ("Listening...", "Transcribing...") the view can surface next to the input while a hold is in progress.</summary>
     [ObservableProperty]
     private string _voiceStatus = string.Empty;
@@ -381,6 +392,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         VoiceStatus = "Transcribing...";
+
+        // First use downloads the model and a GPU runtime before it can transcribe a word, and this line said
+        // "Transcribing..." throughout — for minutes. Subscribed only for this hold: the service is shared by
+        // every session, so a lasting subscription would narrate one session's download into all of them.
+        void OnPreparing(object? _, VoicePreparationProgress step) =>
+            Dispatcher.UIThread.Post(() => VoiceStatus = step.Description);
+        void OnPrepared(object? _, EventArgs __) =>
+            Dispatcher.UIThread.Post(() => VoiceStatus = "Transcribing...");
+
+        _voicePushToTalk.Preparing += OnPreparing;
+        _voicePushToTalk.Prepared += OnPrepared;
         try
         {
             var text = await _voicePushToTalk.EndHoldAsync(applyCleanup);
@@ -397,6 +419,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         catch (Exception ex)
         {
             VoiceStatus = $"Voice error: {ex.Message}";
+        }
+        finally
+        {
+            _voicePushToTalk.Preparing -= OnPreparing;
+            _voicePushToTalk.Prepared -= OnPrepared;
         }
     }
 

@@ -97,4 +97,60 @@ public class VoiceOverlayViewModelTests
 
         vm.Bars.Should().OnlyContain(bar => bar.Height == 2);
     }
+
+    /// <summary>
+    /// A step with no measurable total — the model download counts megabytes because its stream carries no
+    /// length — must not draw a bar. One parked at a position we invented states something we do not know.
+    /// </summary>
+    [Fact]
+    public void Progress_WithoutAFraction_HidesTheBar()
+    {
+        var vm = new VoiceOverlayViewModel
+        {
+            State = VoiceOverlayState.Preparing,
+            StatusText = "Downloading speech model — 412 MB",
+        };
+
+        vm.HasProgress.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Progress_WithAFraction_ShowsTheBarAtThatPosition()
+    {
+        var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Preparing, Progress = 0.43 };
+
+        vm.HasProgress.Should().BeTrue();
+        vm.ProgressValue.Should().Be(0.43);
+    }
+
+    /// <summary>
+    /// "Downloading Vulkan runtime — 91%" left behind the next hold's spinner would be a lie the moment this
+    /// hold ends, so the preparing text never outlives its state.
+    /// </summary>
+    [Fact]
+    public void LeavingPreparing_ClearsTheStatusAndTheBar()
+    {
+        var vm = new VoiceOverlayViewModel
+        {
+            State = VoiceOverlayState.Preparing,
+            StatusText = "Downloading Vulkan runtime — 91%",
+            Progress = 0.91,
+        };
+
+        vm.State = VoiceOverlayState.Transcribing;
+
+        vm.StatusText.Should().BeEmpty();
+        vm.HasProgress.Should().BeFalse();
+    }
+
+    /// <summary>The three rows sit in one cell, so exactly one of them may ever be visible.</summary>
+    [Fact]
+    public void Preparing_ShowsOnlyItsOwnRow()
+    {
+        var vm = new VoiceOverlayViewModel { State = VoiceOverlayState.Preparing };
+
+        vm.IsPreparing.Should().BeTrue();
+        vm.IsTranscribing.Should().BeFalse();
+        vm.IsListening.Should().BeFalse();
+    }
 }

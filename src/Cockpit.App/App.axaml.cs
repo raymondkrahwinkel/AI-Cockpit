@@ -93,6 +93,11 @@ public partial class App : Application
         _mainWindow.Show();
         _SetUpTrayIcon();
 
+        // Adopt the saved workspaces. Fire-and-forget: the view model already holds the default single
+        // Sessions workspace, so the window renders today's cockpit immediately and the saved set swaps in
+        // when the read completes, rather than the window waiting on file IO to appear.
+        _ = cockpitViewModel.Workspaces.InitializeAsync();
+
         // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
         // portal/keyboard-hook is only ever touched for an operator who opted in.
         _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
@@ -106,6 +111,10 @@ public partial class App : Application
         // #14 Plugins — phase 2: now the container and the cockpit view model exist, hand each loaded
         // plugin the host built for it so it can register its Options tab / side-menu section.
         _InitializePlugins();
+
+        // Silent unless the operator is carrying a plugin this build has replaced, in which case they are told
+        // and asked — rather than having it cleaned out of their plugins folder behind their back.
+        _ = Program.Services.GetRequiredService<SupersededPluginNotice>().CheckAsync();
 
         // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
         // gets compared), then every 15 minutes for the rest of the run.
@@ -165,7 +174,11 @@ public partial class App : Application
             actions,
             _CreatePluginStorage(discovered, registrationStore, secretFieldStore),
             dialogHost,
-            sessionObserver));
+            sessionObserver,
+            // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
+            // handing them to the host lets a dashboard export drop them too, which is the third place a
+            // declared secret has to be honoured.
+            discovered.Manifest.SecretKeys));
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.

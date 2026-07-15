@@ -21,7 +21,10 @@ namespace Cockpit.Infrastructure.Voice;
 /// session (a clip is seconds; the idle floor is minutes).
 /// </para>
 /// </summary>
-internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsStore, ILogger<WhisperSpeechToTextService> logger)
+internal sealed class WhisperSpeechToTextService(
+    IVoiceSettingsStore settingsStore,
+    WhisperRuntimeProvisioner runtimeProvisioner,
+    ILogger<WhisperSpeechToTextService> logger)
     : ISpeechToTextService, ISingletonService, IAsyncDisposable
 {
     /// <summary>How long the model may sit unused before it is unloaded to free memory. Reloaded on the next dictation.</summary>
@@ -41,6 +44,30 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
 
     public WhisperRuntimeBackend? ActiveBackend { get; private set; }
 
+    /// <summary>Raised for this service's own step — the model download. The runtime fetch is the provisioner's to report.</summary>
+    private event EventHandler<VoicePreparationProgress>? ModelPreparing;
+
+    /// <summary>
+    /// Both halves of a first use, behind one event. The runtime fetch can be triggered from the VAD rather
+    /// than from here — it builds its factory first — so a subscriber that only heard this service would miss
+    /// the download it is waiting on.
+    /// </summary>
+    public event EventHandler<VoicePreparationProgress>? Preparing
+    {
+        add
+        {
+            ModelPreparing += value;
+            runtimeProvisioner.Preparing += value;
+        }
+        remove
+        {
+            ModelPreparing -= value;
+            runtimeProvisioner.Preparing -= value;
+        }
+    }
+
+    public event EventHandler? Prepared;
+
     public async Task<string> TranscribeAsync(float[] samples, CancellationToken cancellationToken = default)
     {
         // Marks the model in-use for the idle unloader: the count keeps it from being disposed mid-transcription,
@@ -50,6 +77,11 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
         {
             Volatile.Write(ref _lastUsedTicks, DateTime.UtcNow.Ticks);
             var processor = await _EnsureProcessorAsync(cancellationToken).ConfigureAwait(false);
+
+            // Whatever was being prepared — here or in the VAD that ran before this call — is done, and the
+            // samples are going in now. Raised unconditionally: it means "transcribing starts", which is always
+            // true here, so nothing has to track whether there was anything to prepare in the first place.
+            Prepared?.Invoke(this, EventArgs.Empty);
 
             var text = new StringBuilder();
             await foreach (var segment in processor.ProcessAsync(samples, cancellationToken).ConfigureAwait(false))
@@ -88,12 +120,21 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
 
             if (_factory is null)
             {
+                // The model is what a first dictation mostly waits on — ~1.6 GB — so it is reported rather than
+                // spent behind a spinner claiming to transcribe.
+                var progress = new ImmediateProgress<VoicePreparationProgress>(step => ModelPreparing?.Invoke(this, step));
+
                 var modelType = WhisperModelCatalog.Resolve(settings.ModelName);
-                var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken).ConfigureAwait(false);
+                var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken, logger, progress).ConfigureAwait(false);
 
-                var order = WhisperBackendPlanner.BuildOrder(settings.BackendPreference, OperatingSystem.IsWindows());
-                RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
+                // Before the factory: RuntimeOptions is read once, when the natives load. Usually a no-op by now
+                // — the VAD gates the audio before this runs and provisions on its way through — but this
+                // service is also reachable without one, so it cannot assume that.
+                await runtimeProvisioner.EnsurePreparedAsync(cancellationToken).ConfigureAwait(false);
 
+                // Loading is seconds, not minutes, but it is seconds after a download that just ended — going
+                // quiet right at the finish line reads as a stall.
+                progress.Report(new VoicePreparationProgress("Loading speech model…"));
                 _factory = WhisperFactory.FromPath(modelPath);
                 ActiveBackend = RuntimeOptions.LoadedLibrary is { } loaded ? WhisperRuntimeBackendMapping.FromNative(loaded) : null;
                 logger.LogInformation(
