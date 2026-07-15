@@ -27,6 +27,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private readonly IVoiceSettingsStore _voiceSettingsStore;
     private readonly ITranscriptCleanupService _cleanup;
     private readonly IVoicePlaybackQueue _playbackQueue;
+    private readonly VoiceOverlayCoordinator _overlay;
 
     private bool _wired;
 
@@ -35,13 +36,15 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         CockpitViewModel cockpit,
         IVoiceSettingsStore voiceSettingsStore,
         ITranscriptCleanupService cleanup,
-        IVoicePlaybackQueue playbackQueue)
+        IVoicePlaybackQueue playbackQueue,
+        VoiceOverlayCoordinator overlay)
     {
         _listener = listener;
         _cockpit = cockpit;
         _voiceSettingsStore = voiceSettingsStore;
         _cleanup = cleanup;
         _playbackQueue = playbackQueue;
+        _overlay = overlay;
     }
 
     /// <summary>True once voice is enabled — open-mic needs the mic pipeline, so the toggle is disabled until then.</summary>
@@ -90,6 +93,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         if (!_wired)
         {
             _listener.UtteranceTranscribed += _OnUtteranceTranscribed;
+            _listener.SpeechStarted += _OnSpeechStarted;
+            _listener.SpeechEnded += _OnSpeechEnded;
+            _listener.AudioLevelSampled += _OnAudioLevelSampled;
             _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
             _wired = true;
         }
@@ -107,6 +113,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
         await _listener.StopAsync();
         IsListening = false;
+
+        // Turned off mid-sentence, the pill would otherwise sit on whatever the last utterance left it.
+        _overlay.SetOpenMic(null);
     }
 
     // Barge-in: pause the mic while read-aloud plays, resume once the queue goes idle.
@@ -120,22 +129,56 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         {
             _listener.Resume();
         }
+
+        Dispatcher.UIThread.Post(() => HandlePlaybackActiveChanged(active));
     }
+
+    private void _OnSpeechStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeechStarted);
+
+    private void _OnSpeechEnded(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeechEnded);
+
+    private void _OnAudioLevelSampled(object? sender, double level) => Dispatcher.UIThread.Post(() => _overlay.PushLevel(level));
+
+    /// <summary>
+    /// Test seam: the VAD heard speech start. Open-mic listens the whole time it is on, so this — not
+    /// <see cref="StartAsync"/> — is the moment there is something to show: a pill that appeared when you
+    /// switched open-mic on and sat there would only be saying the feature is on.
+    /// </summary>
+    internal void HandleSpeechStarted() => _overlay.SetOpenMic(VoiceOverlayState.Listening);
+
+    /// <summary>Test seam: the utterance is over and about to be transcribed — the part worth a spinner.</summary>
+    internal void HandleSpeechEnded() => _overlay.SetOpenMic(VoiceOverlayState.Transcribing);
+
+    /// <summary>Test seam: read-aloud started or stopped. The pill is how the operator sees why their microphone just went quiet.</summary>
+    internal void HandlePlaybackActiveChanged(bool active) => _overlay.SetSpeaking(active);
 
     private void _OnUtteranceTranscribed(object? sender, string rawText) =>
         Dispatcher.UIThread.Post(() => _ = InjectUtteranceAsync(rawText));
 
     /// <summary>Test seam: the UI-thread logic that cleans (for SDK sessions) and injects an utterance into the selected session.</summary>
+    /// <remarks>
+    /// The pill is released here rather than on <c>SpeechEnded</c>: the cleanup pass runs between the two, and a
+    /// spinner that stops before the text lands would be a spinner that lied about the last part of the wait.
+    /// Released in a finally — an utterance that fails to clean up or inject still ends, and the alternative is a
+    /// pill spinning over a sentence that is never coming.
+    /// </remarks>
     internal async Task InjectUtteranceAsync(string rawText)
     {
-        var session = _cockpit.SelectedSession;
-        if (session is null)
+        try
         {
-            return;
-        }
+            var session = _cockpit.SelectedSession;
+            if (session is null)
+            {
+                return;
+            }
 
-        var text = session is ClaudeTtyViewModel ? rawText : await _cleanup.CleanupAsync(rawText);
-        session.InjectVoiceTranscript(text);
+            var text = session is ClaudeTtyViewModel ? rawText : await _cleanup.CleanupAsync(rawText);
+            session.InjectVoiceTranscript(text);
+        }
+        finally
+        {
+            _overlay.SetOpenMic(null);
+        }
     }
 
     partial void OnIsAvailableChanged(bool value) => ToggleOpenMicCommand.NotifyCanExecuteChanged();

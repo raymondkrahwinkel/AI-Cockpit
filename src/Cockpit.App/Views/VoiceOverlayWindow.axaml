@@ -57,6 +57,16 @@
                 <TextBlock Text="Transcribing…" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
+            <!-- Read-aloud is playing (#34, Raymond 2026-07-15). No waveform: the playback queue reports that it
+                 is speaking, not how loudly, and bars driven by nothing are a meter that measures nothing. A
+                 filled coral dot like Listening's — sound is moving — but no glow, because this row yields to
+                 any dictation and should not read as the louder of the two. -->
+            <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsSpeaking}">
+                <Border Width="9" Height="9" VerticalAlignment="Center" CornerRadius="4.5"
+                        Background="{StaticResource CockpitAccentBrush}"/>
+                <TextBlock Text="Reading aloud" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+            </StackPanel>
             <!-- First use only: the model (~1.6 GB) and the GPU runtime come down inside the first dictation.
                  Its own row rather than a re-worded Transcribing one — the pill must not claim to transcribe
                  what it has not started, and this row needs a bar the other does not. The bar binds to

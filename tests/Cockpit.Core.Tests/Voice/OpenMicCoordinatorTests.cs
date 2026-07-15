@@ -109,12 +109,89 @@ public class OpenMicCoordinatorTests
         coordinator.ToggleOpenMicCommand.CanExecute(null).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Open-mic listens the whole time it is on, so the pill has to appear when the VAD hears speech start —
+    /// not when the feature is switched on, and not when the transcript lands, by which time the speaking is
+    /// over. Before this it never appeared at all: dictating with open-mic was completely invisible.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheVadHearsSpeechStart_ThePillAppears()
+    {
+        var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
+        await coordinator.StartAsync();
+
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden, "listening to silence is not worth a pill");
+
+        coordinator.HandleSpeechStarted();
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Listening);
+
+        coordinator.HandleSpeechEnded();
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Transcribing);
+    }
+
+    /// <summary>The pill is released once the text lands, not when the speaking stopped — the cleanup pass runs in between.</summary>
+    [Fact]
+    public async Task OnceTheUtteranceIsInjected_ThePillGoesAway()
+    {
+        var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+            overlay: overlayCoordinator);
+        await coordinator.StartAsync();
+        coordinator.HandleSpeechStarted();
+        coordinator.HandleSpeechEnded();
+
+        await coordinator.InjectUtteranceAsync("open the file");
+
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden);
+    }
+
+    /// <summary>An utterance that cannot be cleaned up or injected still ends. The alternative is a spinner over a sentence that is never coming.</summary>
+    [Fact]
+    public async Task WhenInjectingThrows_ThePillStillGoesAway()
+    {
+        var cleanup = Substitute.For<ITranscriptCleanupService>();
+        cleanup.CleanupAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<string>(_ => throw new InvalidOperationException("the cleanup model is gone"));
+        var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
+        var coordinator = _CreateCoordinator(_CreateSdkSession(), cleanup, out _, out _, overlay: overlayCoordinator);
+        await coordinator.StartAsync();
+        coordinator.HandleSpeechStarted();
+
+        var act = async () => await coordinator.InjectUtteranceAsync("open the file");
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden);
+    }
+
+    /// <summary>Read-aloud pauses the mic; the pill is how you see why it went quiet rather than wondering.</summary>
+    [Fact]
+    public async Task WhenReadAloudPlays_ThePillSaysSo()
+    {
+        var overlayCoordinator = new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter());
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out _,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
+        await coordinator.StartAsync();
+
+        coordinator.HandlePlaybackActiveChanged(true);
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Speaking);
+
+        coordinator.HandlePlaybackActiveChanged(false);
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden);
+    }
+
+    /// <param name="overlay">Pass one to assert on the pill; omit it and the coordinator reports into a throwaway.</param>
     private static OpenMicCoordinator _CreateCoordinator(
         SessionPanelViewModel? session,
         ITranscriptCleanupService cleanup,
         out IOpenMicListener listener,
         out IVoicePlaybackQueue playbackQueue,
-        VoiceSettings? settings = null)
+        VoiceSettings? settings = null,
+        VoiceOverlayCoordinator? overlay = null)
     {
         listener = Substitute.For<IOpenMicListener>();
         playbackQueue = Substitute.For<IVoicePlaybackQueue>();
@@ -122,7 +199,9 @@ public class OpenMicCoordinatorTests
         cockpit.SelectedSession = session;
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(settings ?? new VoiceSettings());
-        return new OpenMicCoordinator(listener, cockpit, voiceSettingsStore, cleanup, playbackQueue);
+        return new OpenMicCoordinator(
+            listener, cockpit, voiceSettingsStore, cleanup, playbackQueue,
+            overlay ?? new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()));
     }
 
     private static SessionPanelViewModel _CreateSdkSession()
