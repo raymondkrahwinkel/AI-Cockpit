@@ -66,6 +66,11 @@ public partial class CockpitView : UserControl
         {
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
 
+            // The dashboard's shape follows the active workspace and its widgets, neither of which a Grid can
+            // bind its definitions to.
+            cockpit.Workspaces.PropertyChanged += (_, _) => _RefreshDashboardGrid();
+            _RefreshDashboardGrid();
+
             // The idle sweep lives here rather than in the view model so the view model stays free of timers
             // (and testable by calling the sweep with a time of the test's choosing).
             _idleSweepTimer = new DispatcherTimer { Interval = IdleSweepInterval };
@@ -382,6 +387,69 @@ public partial class CockpitView : UserControl
         if (sender is Border { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
         {
             cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
+        }
+    }
+
+    // Widget pane chrome. Each button's DataContext is the pane it sits on, so the handler needs no parameter
+    // plumbing — the same shape as the session-row handlers above.
+    private void OnWidgetRefreshPressed(object? sender, RoutedEventArgs e) =>
+        _WithWidgetPane(sender, pane => pane.Refresh());
+
+    private void OnWidgetRemovePressed(object? sender, RoutedEventArgs e) =>
+        _WithWidgetPane(sender, pane =>
+        {
+            if (DataContext is CockpitViewModel cockpit)
+            {
+                _ = cockpit.Workspaces.RemovePaneAsync(pane.Id);
+            }
+        });
+
+    /// <summary>
+    /// The ⚙ on a widget pane. The plugin supplies the form's content; the host puts it in the dialog with the
+    /// Save/Close footer — the same split as a plugin's own settings view, so a widget never builds a window.
+    /// Saving asks that instance to refresh, which is how its view picks up the config the form just wrote.
+    /// </summary>
+    private void OnWidgetConfigPressed(object? sender, RoutedEventArgs e) =>
+        _WithWidgetPane(sender, pane =>
+        {
+            if (DataContext is CockpitViewModel cockpit)
+            {
+                _ = cockpit.ShowWidgetSettingsAsync(pane);
+            }
+        });
+
+    private void _WithWidgetPane(object? sender, Action<WidgetPaneViewModel> act)
+    {
+        if (sender is Control { DataContext: WidgetPaneViewModel pane })
+        {
+            act(pane);
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the dashboard grid's rows/columns from the active dashboard. A Grid's definitions cannot be
+    /// bound to an int, so they are applied here — the same reason the sidebar's width lives in code-behind.
+    /// The row count comes from the view model rather than the setting, which is what makes "2x2" a starting
+    /// shape the grid grows past instead of a cap that swallows the fifth widget.
+    /// </summary>
+    private void _RefreshDashboardGrid()
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || DashboardGrid?.ItemsPanelRoot is not Grid grid)
+        {
+            return;
+        }
+
+        grid.ColumnDefinitions.Clear();
+        for (var column = 0; column < cockpit.Workspaces.DashboardColumns; column++)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+        }
+
+        grid.RowDefinitions.Clear();
+        for (var row = 0; row < cockpit.Workspaces.DashboardRows; row++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition(1, GridUnitType.Star));
         }
     }
 

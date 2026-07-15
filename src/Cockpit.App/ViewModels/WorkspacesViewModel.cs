@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Workspaces;
+using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.App.ViewModels;
 
@@ -21,16 +23,18 @@ namespace Cockpit.App.ViewModels;
 public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonService
 {
     private readonly IWorkspaceSettingsStore? _store;
+    private readonly IWidgetRegistry? _widgets;
 
-    /// <summary>Design-time/test constructor: a manager with no persistence behind it.</summary>
+    /// <summary>Design-time/test constructor: a manager with no persistence and no widgets behind it.</summary>
     public WorkspacesViewModel()
         : this(null)
     {
     }
 
-    public WorkspacesViewModel(IWorkspaceSettingsStore? store)
+    public WorkspacesViewModel(IWorkspaceSettingsStore? store, IWidgetRegistry? widgets = null)
     {
         _store = store;
+        _widgets = widgets;
         _settings = WorkspaceSettings.Default;
         _RefreshTabs();
     }
@@ -40,6 +44,33 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
     /// <summary>The tab strip's items, rebuilt whenever the workspace set or the selection changes.</summary>
     public ObservableCollection<WorkspaceTabViewModel> Tabs { get; } = [];
+
+    /// <summary>
+    /// The active dashboard's widget panes — what the dashboard grid renders. Empty for a Sessions workspace,
+    /// which draws the session grid instead.
+    /// </summary>
+    public ObservableCollection<WidgetPaneViewModel> WidgetPanes { get; } = [];
+
+    /// <summary>How many rows the dashboard has to draw: its configured height, or more once the widgets have grown past it.</summary>
+    public int DashboardRows =>
+        Active is not { Type: WorkspaceType.Dashboard } dashboard
+            ? 0
+            : DashboardGridMath.RequiredRows([.. dashboard.Panes.Select(pane => pane.Cell)], dashboard.Layout);
+
+    /// <summary>The dashboard's column count — what the grid's ColumnDefinitions are built from.</summary>
+    public int DashboardColumns => Active is { Type: WorkspaceType.Dashboard } dashboard ? dashboard.Layout.Columns : 0;
+
+    /// <summary>True when a dashboard is active and holds nothing yet — the "Add widget" empty state, not the session one.</summary>
+    public bool ShowDashboardEmptyState => IsDashboardActive && WidgetPanes.Count == 0;
+
+    /// <summary>Every widget type the installed plugins contribute — what the "Add widget" picker lists. Empty until a widget-providing plugin is installed.</summary>
+    public IReadOnlyList<WidgetRegistration> AvailableWidgets => _widgets?.Widgets ?? [];
+
+    /// <summary>True when at least one plugin contributes a widget; gates the "Add widget" picker so it never opens an empty list.</summary>
+    public bool HasAvailableWidgets => AvailableWidgets.Count > 0;
+
+    /// <summary>Whether the session grid and its empty state apply at all — false on a dashboard, which owns the content area instead.</summary>
+    public bool IsSessionsActive => Active?.Type == WorkspaceType.Sessions;
 
     /// <summary>The active workspace — what the grid renders. Never null once loaded (<see cref="WorkspaceSettings.Normalized"/> guarantees one).</summary>
     public Workspace? Active => Settings.Active;
@@ -119,6 +150,13 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return _ApplyAsync(Settings.WithUpdated(dashboard.WithPane(pane)));
     }
 
+    /// <summary>Places a widget picked from the "Add widget" list, at the size its type asks for.</summary>
+    [RelayCommand]
+    private Task PlaceWidgetAsync(WidgetRegistration? registration) =>
+        registration is null
+            ? Task.CompletedTask
+            : AddWidgetAsync(registration.Id, registration.DefaultColumnSpan, registration.DefaultRowSpan);
+
     /// <summary>Removes a pane from the active workspace (the pane's ✕).</summary>
     public Task RemovePaneAsync(string paneId) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithoutPane(paneId)));
@@ -144,9 +182,38 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     partial void OnSettingsChanged(WorkspaceSettings value)
     {
         _RefreshTabs();
+        _RefreshWidgetPanes();
         OnPropertyChanged(nameof(Active));
         OnPropertyChanged(nameof(ShowTabStrip));
         OnPropertyChanged(nameof(IsDashboardActive));
+        OnPropertyChanged(nameof(IsSessionsActive));
+        OnPropertyChanged(nameof(ShowDashboardEmptyState));
+        OnPropertyChanged(nameof(DashboardRows));
+        OnPropertyChanged(nameof(DashboardColumns));
+    }
+
+    /// <summary>
+    /// Rebuilds the active dashboard's panes. A pane whose widget type no longer resolves is skipped rather
+    /// than fatal: uninstalling or disabling a plugin leaves its widgets behind in a saved dashboard, and that
+    /// must cost the operator the pane, not the workspace.
+    /// </summary>
+    private void _RefreshWidgetPanes()
+    {
+        WidgetPanes.Clear();
+        if (_widgets is null || Active is not { Type: WorkspaceType.Dashboard } dashboard)
+        {
+            return;
+        }
+
+        foreach (var pane in dashboard.Panes)
+        {
+            if (pane.WidgetId is not { } widgetId || _widgets.CreateInstance(widgetId, pane.Id) is not { } instance)
+            {
+                continue;
+            }
+
+            WidgetPanes.Add(new WidgetPaneViewModel(pane, instance.Registration, instance.Context));
+        }
     }
 
     private void _RefreshTabs()
