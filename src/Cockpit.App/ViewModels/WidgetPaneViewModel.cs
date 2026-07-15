@@ -69,13 +69,21 @@ public sealed partial class WidgetPaneViewModel : ObservableObject
     public IReadOnlyDictionary<string, string> ReadConfig() =>
         _context.Storage is WidgetInstanceStorage storage ? storage.Snapshot() : new Dictionary<string, string>();
 
-    /// <summary>Writes settings from an import, then asks the widget to re-read them — which is how it shows what the file said without watching its own storage.</summary>
-    public void WriteConfig(IReadOnlyDictionary<string, string> config)
+    /// <summary>
+    /// Writes settings from an import, then asks the widget to re-read them — which is how it shows what the file
+    /// said without watching its own storage.
+    /// </summary>
+    /// <param name="config">
+    /// Already parsed, so this cannot fail halfway. The caller reads the file's raw JSON before it applies the
+    /// workspace: a malformed value has to stop the import, and it cannot stop anything from in here, with the
+    /// dashboard already on the strip and half its widgets written.
+    /// </param>
+    public void WriteConfig(IReadOnlyDictionary<string, JsonElement> config)
     {
         foreach (var (key, value) in config)
         {
-            // Stored as the raw JSON it travelled as, so the widget deserialises exactly what it wrote.
-            _context.Storage.Set(key, JsonSerializer.Deserialize<JsonElement>(value));
+            // Stored as the JSON it travelled as, so the widget deserialises exactly what it wrote.
+            _context.Storage.Set(key, value);
         }
 
         Refresh();

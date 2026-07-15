@@ -6,6 +6,7 @@ using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Secrets;
+using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions.Widgets;
 
@@ -26,6 +27,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 {
     private readonly IWorkspaceSettingsStore? _store;
     private readonly IWidgetRegistry? _widgets;
+    private readonly ToastHostViewModel? _toasts;
 
     /// <summary>Design-time/test constructor: a manager with no persistence and no widgets behind it.</summary>
     public WorkspacesViewModel()
@@ -33,10 +35,16 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     {
     }
 
-    public WorkspacesViewModel(IWorkspaceSettingsStore? store, IWidgetRegistry? widgets = null)
+    /// <param name="toasts">
+    /// Where a failed save is said out loud. The host <see cref="CockpitViewModel"/> already owns rather than
+    /// <c>IToastService</c>, which is built from that view model and would be a circle — the same reasoning its
+    /// own toasts carry. Null in the design-time and unit-test graphs, where there is no overlay to speak to.
+    /// </param>
+    public WorkspacesViewModel(IWorkspaceSettingsStore? store, IWidgetRegistry? widgets = null, ToastHostViewModel? toasts = null)
     {
         _store = store;
         _widgets = widgets;
+        _toasts = toasts;
         _settings = WorkspaceSettings.Default;
         _RefreshTabs();
 
@@ -339,16 +347,17 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// <summary>
     /// Drops a dragged widget on a cell: the cell takes it, or its occupant swaps places with it
     /// (<see cref="DashboardGridMath.Drop"/>). Applies the whole arrangement at once, so a swap cannot
-    /// half-land and leave two widgets stacked on one cell.
+    /// half-land and leave two widgets stacked on one cell. A drop the math refuses — off the grid, or over more
+    /// than one widget — leaves the dashboard alone, the same way a refused resize does.
     /// </summary>
     public Task DropPaneAsync(string paneId, int column, int row)
     {
-        if (Active is not { Type: WorkspaceType.Dashboard } dashboard)
+        if (Active is not { Type: WorkspaceType.Dashboard } dashboard
+            || DashboardGridMath.Drop([.. dashboard.Panes.Select(pane => (pane.Id, pane.Cell))], paneId, (column, row), dashboard.Layout) is not { } arranged)
         {
             return Task.CompletedTask;
         }
 
-        var arranged = DashboardGridMath.Drop([.. dashboard.Panes.Select(pane => (pane.Id, pane.Cell))], paneId, (column, row));
         var updated = dashboard with
         {
             Panes = [.. dashboard.Panes.Select(pane => pane with { Cell = arranged.First(entry => entry.Id == pane.Id).Cell })],
@@ -416,10 +425,31 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         }
 
         var import = DashboardExporter.FromExport(export, _widgets.IsInstalled, _UniqueName(export.Name));
+
+        // Read before anything lands. A widget's settings travel as the raw JSON it wrote, so a file whose
+        // envelope parses can still carry settings that do not — and finding that out after the workspace was
+        // applied left a dashboard on the strip with its widgets unconfigured and an exception on the way out.
+        // That is the half-landed import the one-write rule exists to prevent, and it made a liar of the promise
+        // above it: a file this build cannot read has to be said, not thrown.
+        Dictionary<string, IReadOnlyDictionary<string, JsonElement>> settings = [];
+        try
+        {
+            foreach (var (paneId, config) in import.Config)
+            {
+                settings[paneId] = config.ToDictionary(
+                    entry => entry.Key,
+                    entry => JsonSerializer.Deserialize<JsonElement>(entry.Value));
+            }
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
         await _ApplyAsync(Settings.WithWorkspace(import.Workspace));
 
         // After the workspace lands, so the instances exist to write to.
-        foreach (var (paneId, config) in import.Config)
+        foreach (var (paneId, config) in settings)
         {
             if (WidgetPanes.FirstOrDefault(pane => pane.Id == paneId) is { } placed)
             {
@@ -458,6 +488,17 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         PropertyNameCaseInsensitive = true,
     };
 
+    /// <summary>
+    /// Puts <paramref name="settings"/> on screen and on disk — every change here settles through this one path.
+    /// </summary>
+    /// <remarks>
+    /// Never throws. Nearly every caller discards the task it returns (<c>_ = _ApplyAsync(…)</c>), because
+    /// arranging a desk is not something the operator waits on — so an exception out of here would land on a task
+    /// nobody observes and simply be gone. The write can genuinely fail: it goes through
+    /// <c>CockpitConfigFileAccess.UpdateAsync</c>, which refuses rather than writes when the config's write gate
+    /// times out or the file is unreadable. Saying nothing would leave the change on screen and absent from disk,
+    /// and the operator would find out at the next start, with their arrangement gone and no reason given.
+    /// </remarks>
     private async Task _ApplyAsync(WorkspaceSettings settings)
     {
         if (ReferenceEquals(settings, Settings))
@@ -466,9 +507,25 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         }
 
         Settings = settings;
-        if (_store is not null)
+        if (_store is null)
+        {
+            return;
+        }
+
+        try
         {
             await _store.SaveAsync(settings);
+        }
+        catch (Exception exception)
+        {
+            // Left on screen rather than reverted: the operator is mid-gesture, and yanking the widget back under
+            // their pointer explains nothing. What they need is to know it did not land, while it is still theirs
+            // to retry.
+            _toasts?.Add(
+                $"This workspace change could not be saved: {exception.Message} It is on screen, but it will be gone after a restart.",
+                ToastSeverity.Error,
+                actionLabel: null,
+                onAction: null);
         }
     }
 
@@ -544,21 +601,6 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     }
 
     /// <summary>"Dashboard", then "Dashboard 2", … — a name the operator can rename, but never a strip of identical tabs.</summary>
-    private string _UniqueName(WorkspaceType type)
-    {
-        var baseName = type == WorkspaceType.Dashboard ? "Dashboard" : "Sessions";
-        if (Settings.Workspaces.All(workspace => workspace.Name != baseName))
-        {
-            return baseName;
-        }
-
-        for (var suffix = 2; ; suffix++)
-        {
-            var candidate = $"{baseName} {suffix}";
-            if (Settings.Workspaces.All(workspace => workspace.Name != candidate))
-            {
-                return candidate;
-            }
-        }
-    }
+    private string _UniqueName(WorkspaceType type) =>
+        _UniqueName(type == WorkspaceType.Dashboard ? "Dashboard" : "Sessions");
 }

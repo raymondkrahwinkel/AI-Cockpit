@@ -1,6 +1,13 @@
+using System.Text.Json;
+using Avalonia.Controls;
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Toasts;
 using Cockpit.Core.Workspaces;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Widgets;
 using FluentAssertions;
 using NSubstitute;
 
@@ -285,6 +292,102 @@ public class WorkspacesViewModelTests
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
         viewModel.Tabs.Count(tab => tab.IsActive).Should().Be(1);
+    }
+
+    /// <summary>
+    /// Every change here is fire-and-forget (<c>_ = _ApplyAsync(…)</c>), so a throwing save used to land on a task
+    /// nobody observes and simply be gone. It is not a hypothetical throw: the write goes through
+    /// <c>CockpitConfigFileAccess.UpdateAsync</c>, which refuses rather than writes when the config's write gate
+    /// times out or the file will not read. Silence there leaves a workspace on screen that is not on disk, and
+    /// the operator finds out at the next start with no reason given.
+    /// </summary>
+    [Fact]
+    public async Task AChangeThatCannotBeSaved_IsSaidOutLoud_RatherThanLostOnATaskNobodyObserves()
+    {
+        var store = Substitute.For<IWorkspaceSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(WorkspaceSettings.Default);
+        store.SaveAsync(Arg.Any<WorkspaceSettings>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new IOException("the write lock could not be taken")));
+
+        var toasts = new ToastHostViewModel((_, _) => { });
+        var viewModel = new WorkspacesViewModel(store, widgets: null, toasts);
+
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+
+        toasts.Toasts.Should().ContainSingle().Which.Severity.Should().Be(ToastSeverity.Error);
+        toasts.Toasts[0].Message.Should().Contain("the write lock could not be taken", "the reason is the point of saying anything at all");
+    }
+
+    [Fact]
+    public async Task AFailedSave_DoesNotThrowOutOfTheCommand()
+    {
+        var store = Substitute.For<IWorkspaceSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(WorkspaceSettings.Default);
+        store.SaveAsync(Arg.Any<WorkspaceSettings>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new IOException("nope")));
+
+        // No toast host, the way the design-time and unit-test graphs are built: having nowhere to report a
+        // failed save must not turn it into a crash.
+        var viewModel = new WorkspacesViewModel(store);
+
+        var act = async () => await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+
+        await act.Should().NotThrowAsync();
+        viewModel.Tabs.Should().HaveCount(2, "what the operator did is still on screen");
+    }
+
+    [Fact]
+    public async Task ImportDashboard_PlacesTheWidgetsTheFileNames()
+    {
+        var viewModel = _CreateWithWidget();
+
+        var import = await viewModel.ImportDashboardAsync(_ExportJson("{\"ShowCpu\":true}"));
+
+        import.Should().NotBeNull();
+        viewModel.Tabs.Should().HaveCount(2);
+        viewModel.Active!.Name.Should().Be("Monitoring");
+        viewModel.Active.Panes.Should().ContainSingle().Which.WidgetId.Should().Be("w");
+    }
+
+    /// <summary>
+    /// The envelope reads and the settings do not. The workspace used to be applied first and the settings parsed
+    /// second, so the JsonException escaped this method entirely — past its own catch, which only ever covered the
+    /// envelope — and left the dashboard on the strip with its widgets unconfigured. A file this build cannot read
+    /// has to be said, not thrown, and nothing of it may land.
+    /// </summary>
+    [Fact]
+    public async Task ImportDashboard_WithSettingsThatDoNotParse_LandsNothing_RatherThanHalfADashboard()
+    {
+        var viewModel = _CreateWithWidget();
+
+        var import = await viewModel.ImportDashboardAsync(_ExportJson("{not json at all"));
+
+        import.Should().BeNull();
+        viewModel.Tabs.Should().ContainSingle("a file that cannot be read must not leave a dashboard behind");
+        viewModel.Settings.Workspaces.Should().ContainSingle();
+    }
+
+    /// <summary>A dashboard export carrying one widget of type "w", whose only setting holds <paramref name="configValue"/> verbatim.</summary>
+    private static string _ExportJson(string configValue) =>
+        JsonSerializer.Serialize(new DashboardExport(
+            DashboardExport.CurrentFormatVersion,
+            "Monitoring",
+            new DashboardLayout { Columns = 2, Rows = 2 },
+            [new DashboardExportPane("w", new GridCell(0, 0), new Dictionary<string, string> { ["metrics"] = configValue })]));
+
+    private static WorkspacesViewModel _CreateWithWidget()
+    {
+        var store = Substitute.For<IWorkspaceSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(WorkspaceSettings.Default);
+
+        var registry = new WidgetRegistry();
+        registry.Register(
+            new WidgetRegistration("w", "W", _ => new TextBlock()),
+            Substitute.For<IPluginStorage>(),
+            Substitute.For<ICockpitSessionObserver>(),
+            []);
+
+        return new WorkspacesViewModel(store, registry);
     }
 
     private static WorkspacesViewModel _Create(out IWorkspaceSettingsStore store)

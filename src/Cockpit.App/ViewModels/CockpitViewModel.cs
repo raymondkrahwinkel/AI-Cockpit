@@ -1123,7 +1123,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
-        Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry);
+        //
+        // The toast host goes in so a refused save is said rather than dropped: the strip's changes are all
+        // fire-and-forget, so without somewhere to report to, a write the config gate turned down would be
+        // silence and a lost arrangement.
+        Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost);
         _WireWorkspaceVisibility();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and

@@ -16,6 +16,9 @@ internal sealed class SystemMonitorWidget : UserControl
     private readonly StackPanel _rows = new() { Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
     private readonly DispatcherTimer _timer;
 
+    /// <summary>This pane's own readings. Shared, the CPU sample point of two monitors cancelled each other out.</summary>
+    private readonly SystemUsage _usage = new();
+
     public SystemMonitorWidget(IWidgetContext context)
     {
         _context = context;
@@ -40,17 +43,17 @@ internal sealed class SystemMonitorWidget : UserControl
         _rows.Children.Clear();
         if (metrics.ShowCpu)
         {
-            _rows.Children.Add(_Row("CPU", SystemUsage.CpuPercent()));
+            _rows.Children.Add(_Row("CPU", _usage.CpuPercent()));
         }
 
         if (metrics.ShowMemory)
         {
-            _rows.Children.Add(_Row("Memory", SystemUsage.MemoryPercent()));
+            _rows.Children.Add(_Row("Memory", _usage.MemoryPercent()));
         }
 
         if (metrics.ShowDisk)
         {
-            _rows.Children.Add(_Row("Disk", SystemUsage.DiskPercent()));
+            _rows.Children.Add(_Row("Disk", _usage.DiskPercent()));
         }
     }
 

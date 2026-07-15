@@ -84,26 +84,75 @@ public static class DashboardGridMath
     /// Where every pane ends up when <paramref name="paneId"/> is dropped on <paramref name="target"/>. Free
     /// placement with holes, the same as the session grid: an empty cell simply takes the pane, and an occupied
     /// one swaps the two. Dropping a pane on itself changes nothing.
+    /// <para>
+    /// Null when the drop is refused — the same answer <see cref="Resize"/> gives at an obstacle, and for the
+    /// same reason: the pane stops and keeps its last good place rather than the gesture inventing an answer
+    /// nobody asked for. Refused when the pane would leave the grid, when it would cover more than one pane, or
+    /// when the pane it swaps with cannot fit where the dragged one came from.
+    /// </para>
     /// </summary>
     /// <remarks>
     /// Returns the whole new arrangement rather than mutating, so the caller persists one settled state — and a
-    /// swap can never half-apply, leaving two panes stacked on one cell.
+    /// swap can never half-apply, leaving two panes stacked on one cell. The view asks this for its drop ghost as
+    /// well as for the release, so what the ghost promises and what the release writes cannot drift apart.
     /// </remarks>
-    public static IReadOnlyList<(string Id, GridCell Cell)> Drop(
-        IReadOnlyList<(string Id, GridCell Cell)> panes, string paneId, (int Column, int Row) target)
+    public static IReadOnlyList<(string Id, GridCell Cell)>? Drop(
+        IReadOnlyList<(string Id, GridCell Cell)> panes,
+        string paneId,
+        (int Column, int Row) target,
+        DashboardLayout layout)
     {
         var dragged = panes.FirstOrDefault(pane => pane.Id == paneId);
-        if (dragged.Id is null || (dragged.Cell.Column == target.Column && dragged.Cell.Row == target.Row))
+        if (dragged.Id is null)
+        {
+            return null;
+        }
+
+        if (dragged.Cell.Column == target.Column && dragged.Cell.Row == target.Row)
         {
             return panes;
         }
 
+        var columns = layout.Clamped().Columns;
         var landing = dragged.Cell with { Column = target.Column, Row = target.Row };
-        var occupant = panes.FirstOrDefault(pane => pane.Id != paneId && pane.Cell.Overlaps(landing));
+
+        // Only the columns are a wall. Rows grow to fit what is on the dashboard (RequiredRows), so dragging past
+        // the last one is how the operator makes it taller — the same asymmetry Resize already keeps. Without this
+        // a pane wider than one cell, dropped against the right edge, was written down reaching past the last
+        // column and drawn clipped ever after.
+        if (landing.ColumnEnd > columns)
+        {
+            return null;
+        }
+
+        var covered = panes.Where(pane => pane.Id != paneId && pane.Cell.Overlaps(landing)).ToList();
+        if (covered.Count > 1)
+        {
+            // A swap is an answer to one occupant. Over two there is no single pane to trade places with, and
+            // moving whichever came first out of the way leaves the other one underneath the dragged pane —
+            // stacked, and persisted that way.
+            return null;
+        }
+
+        if (covered.Count == 0)
+        {
+            return [.. panes.Select(pane => pane.Id == paneId ? (pane.Id, landing) : pane)];
+        }
+
+        // The occupant takes the dragged pane's origin at its own size, and that is not always somewhere it fits:
+        // a wide pane trading with a narrow one needs room the narrow one never took up.
+        var occupant = covered[0];
+        var vacated = occupant.Cell with { Column = dragged.Cell.Column, Row = dragged.Cell.Row };
+        if (vacated.ColumnEnd > columns
+            || vacated.Overlaps(landing)
+            || panes.Any(pane => pane.Id != paneId && pane.Id != occupant.Id && pane.Cell.Overlaps(vacated)))
+        {
+            return null;
+        }
 
         return [.. panes.Select(pane =>
             pane.Id == paneId ? (pane.Id, landing)
-            : occupant.Id is not null && pane.Id == occupant.Id ? (pane.Id, occupant.Cell with { Column = dragged.Cell.Column, Row = dragged.Cell.Row })
+            : pane.Id == occupant.Id ? (pane.Id, vacated)
             : pane)];
     }
 
