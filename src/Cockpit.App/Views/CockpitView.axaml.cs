@@ -368,6 +368,23 @@ public partial class CockpitView : UserControl
         }
     }
 
+    /// <summary>Clicking anywhere on a workspace tab switches to it — same whole-row click target as a session
+    /// row, and the same wiring: the tab is the <see cref="Border"/>'s DataContext. The ✕ inside the tab is a
+    /// Button, so its click is handled there and never reaches this; a press that bubbles up from it would
+    /// otherwise select the workspace it is about to close.</summary>
+    private void OnWorkspaceTabPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
+        {
+            return;
+        }
+
+        if (sender is Border { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
+        }
+    }
+
     // Session context-menu (#right-click): each item's DataContext is the session the menu was opened on;
     // the command lives on the cockpit view model, so route through it with the session as the parameter.
     private void OnRenameSession(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.RenameSessionCommand.Execute(s));

@@ -4,6 +4,7 @@
              xmlns:conv="using:Cockpit.App.Converters"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:layout="using:Cockpit.Core.Layout"
+             xmlns:ws="using:Cockpit.Core.Workspaces"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -23,6 +24,32 @@
             <Setter Property="Opacity" Value="0"/>
         </Style>
         <Style Selector="Border.sessionItem:pointerover Button.closeSession">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+
+        <!-- A workspace tab reads as a tab only once one of them is clearly the current one, so the active tab
+             takes the panel background and full-strength text while the rest stay flat and faint. Same
+             hover-to-reveal ✕ as the session rows, for the same reason: a row of close buttons makes the strip
+             read as a list of things to get rid of. -->
+        <Style Selector="Border.workspaceTab">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Border.workspaceTab TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab:pointerover">
+            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab.active">
+            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab.active TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab Button.closeWorkspace">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Border.workspaceTab:pointerover Button.closeWorkspace">
             <Setter Property="Opacity" Value="1"/>
         </Style>
 
@@ -259,10 +286,63 @@
                       DragCompleted="OnSidebarSplitterDragCompleted"/>
 
         <!-- Main area: empty-state welcome until a session exists (#31), then the grid/zoom. -->
-        <Grid Grid.Column="2">
+        <Grid Grid.Column="2" RowDefinitions="Auto,*">
+
+            <!-- The workspace strip sits ABOVE both the empty state and the grid, deliberately outside the
+                 HasSessions gate below: a Dashboard workspace holds widgets and no sessions at all, so a strip
+                 that only appeared once a session existed would be a strip you could never reach a dashboard
+                 from. Hidden while there is only one workspace (ShowTabStrip) — that is the cockpit as it has
+                 always looked, and a lone tab is chrome that earns nothing — but the + stays, since it is what
+                 makes the second workspace that reveals the strip. -->
+            <Border Grid.Row="0" Margin="12,12,12,0" Padding="0,0,0,6"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <DockPanel>
+                    <!-- Dock the + first so the tab list never pushes it off the edge when the strip fills up. -->
+                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="8,3" Content="+"
+                            ToolTip.Tip="New workspace">
+                        <Button.Flyout>
+                            <!-- The type is asked up front and is an invariant afterwards: it decides which
+                                 panes the workspace can hold, so it cannot be a toggle after the fact. -->
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="💬  Sessions" Command="{Binding Workspaces.AddWorkspaceCommand}"
+                                          CommandParameter="{x:Static ws:WorkspaceType.Sessions}"
+                                          ToolTip.Tip="AI sessions and terminals"/>
+                                <MenuItem Header="📊  Dashboard" Command="{Binding Workspaces.AddWorkspaceCommand}"
+                                          CommandParameter="{x:Static ws:WorkspaceType.Dashboard}"
+                                          ToolTip.Tip="Widgets"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <ItemsControl ItemsSource="{Binding Workspaces.Tabs}" IsVisible="{Binding Workspaces.ShowTabStrip}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="4"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:WorkspaceTabViewModel">
+                                <Border Classes="workspaceTab" Classes.active="{Binding IsActive}"
+                                        CornerRadius="6" Padding="10,4" Background="Transparent"
+                                        PointerPressed="OnWorkspaceTabPressed">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Content="✕"
+                                                Padding="4,0" Margin="6,0,0,0" FontSize="10"
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.CloseWorkspaceCommand}"
+                                                CommandParameter="{Binding Id}"
+                                                ToolTip.Tip="Close workspace"/>
+                                        <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
 
             <!-- Empty state: no session opens on startup; one only exists once the operator creates it. -->
-            <StackPanel IsVisible="{Binding !HasSessions}" MaxWidth="320"
+            <StackPanel Grid.Row="1" IsVisible="{Binding !HasSessions}" MaxWidth="320"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Border Width="56" Height="56" CornerRadius="14"
                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
@@ -281,7 +361,7 @@
             </StackPanel>
 
             <!-- Session grid + zoom, shown once at least one session exists. -->
-            <DockPanel Margin="12" IsVisible="{Binding HasSessions}">
+            <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding HasSessions}">
                 <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
                      where it would be a no-op (the single pane is always shown) — no dead control. -->
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
