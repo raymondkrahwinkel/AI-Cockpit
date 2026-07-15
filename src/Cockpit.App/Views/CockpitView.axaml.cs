@@ -526,6 +526,10 @@ public partial class CockpitView : UserControl
         }
     }
 
+    // Where the gesture currently says the pane will land. Held rather than applied, so the config is written
+    // once on release instead of on every pixel of the drag — and so the ghost has something to draw.
+    private GridCell? _ghostCell;
+
     private void OnDashboardPointerMoved(object? sender, PointerEventArgs e)
     {
         var active = _draggingWidget ?? _resizingWidget;
@@ -536,34 +540,69 @@ public partial class CockpitView : UserControl
         {
             // A move with the button up means the gesture ended somewhere this handler never saw — let go
             // rather than leaving a pane glued to the pointer.
-            (_draggingWidget, _resizingWidget) = (null, null);
+            _EndWidgetGesture();
             return;
         }
 
         var position = e.GetPosition(grid);
-        if (DashboardGridMath.CellAt(
-                position.X, position.Y, grid.Bounds.Width, grid.Bounds.Height,
-                cockpit.Workspaces.DashboardColumns, cockpit.Workspaces.DashboardRows) is not { } target)
+        var (columns, rows) = (cockpit.Workspaces.DashboardColumns, cockpit.Workspaces.DashboardRows);
+        if (DashboardGridMath.CellAt(position.X, position.Y, grid.Bounds.Width, grid.Bounds.Height, columns, rows) is not { } target)
         {
             return;
         }
 
-        if (_resizingWidget is not null)
+        // The math answers both gestures the same way: what rectangle would this land on, or null when the
+        // answer is "nothing legal" — a resize onto a neighbour, off the grid, or inverted past its own origin.
+        var panes = cockpit.Workspaces.WidgetPanes.Select(pane => (pane.Id, pane.Pane.Cell)).ToList();
+        _ghostCell = _resizingWidget is not null
+            ? DashboardGridMath.Resize(panes, _resizingWidget.Id, target, new DashboardLayout { Columns = columns, Rows = rows })
+            : active.Pane.Cell with { Column = target.Column, Row = target.Row };
+
+        _ShowGhost(grid, columns, rows);
+    }
+
+    private void OnDashboardPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_ghostCell is { } cell && DataContext is CockpitViewModel cockpit)
         {
-            // The cell under the pointer is the pane's new bottom-right; a size that does not fit is refused by
-            // the math, so the pane stops at the obstacle rather than jumping over it.
-            _ = cockpit.Workspaces.ResizePaneAsync(_resizingWidget.Id, target.Column, target.Row);
-            return;
+            // Applied once, here — the ghost showed the answer all along, so the drag itself never touched disk.
+            _ = _resizingWidget is { } resizing
+                ? cockpit.Workspaces.ResizePaneAsync(resizing.Id, cell.ColumnEnd - 1, cell.RowEnd - 1)
+                : cockpit.Workspaces.DropPaneAsync(_draggingWidget!.Id, cell.Column, cell.Row);
         }
 
-        if (target.Column != _draggingWidget!.Column || target.Row != _draggingWidget.Row)
+        _EndWidgetGesture();
+    }
+
+    private void _EndWidgetGesture()
+    {
+        (_draggingWidget, _resizingWidget, _ghostCell) = (null, null, null);
+        if (WidgetDropGhost is not null)
         {
-            _ = cockpit.Workspaces.DropPaneAsync(_draggingWidget.Id, target.Column, target.Row);
+            WidgetDropGhost.IsVisible = false;
         }
     }
 
-    private void OnDashboardPointerReleased(object? sender, PointerReleasedEventArgs e) =>
-        (_draggingWidget, _resizingWidget) = (null, null);
+    /// <summary>Lays the ghost over the cells the gesture would take. Hidden when the answer is "nowhere legal", which is itself the feedback: the pane will not go there.</summary>
+    private void _ShowGhost(Control grid, int columns, int rows)
+    {
+        if (WidgetDropGhost is null)
+        {
+            return;
+        }
+
+        if (_ghostCell is not { } cell || columns <= 0 || rows <= 0)
+        {
+            WidgetDropGhost.IsVisible = false;
+            return;
+        }
+
+        var (cellWidth, cellHeight) = (grid.Bounds.Width / columns, grid.Bounds.Height / rows);
+        WidgetDropGhost.Margin = new Thickness(12 + (cell.Column * cellWidth), 12 + (cell.Row * cellHeight), 0, 0);
+        WidgetDropGhost.Width = Math.Max(0, (cell.ColumnSpan * cellWidth) - 8);
+        WidgetDropGhost.Height = Math.Max(0, (cell.RowSpan * cellHeight) - 8);
+        WidgetDropGhost.IsVisible = true;
+    }
 
     // Widget pane chrome. Each button's DataContext is the pane it sits on, so the handler needs no parameter
     // plumbing — the same shape as the session-row handlers above.
