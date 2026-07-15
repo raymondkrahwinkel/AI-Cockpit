@@ -10,7 +10,7 @@
         x:Class="Cockpit.App.Views.PluginStoreDialog"
         x:DataType="vm:PluginStoreDialogViewModel"
         Title="Plugin store"
-        Width="920" Height="640" MinWidth="760" MinHeight="480"
+        Width="1200" Height="820" MinWidth="760" MinHeight="480"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
