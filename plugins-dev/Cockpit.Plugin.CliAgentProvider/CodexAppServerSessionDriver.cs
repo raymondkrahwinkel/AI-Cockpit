@@ -46,6 +46,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private string? _model;
     private string? _threadId;
     private string? _currentTurnId;
+    private string? _workingDirectory;
     private Task? _notificationPump;
     private Task? _serverRequestPump;
 
@@ -55,6 +56,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private volatile PluginSessionStatus? _status;
     private double? _contextUsedPercent;
     private IReadOnlyList<PluginRateLimitWindow> _rateLimits = [];
+
+    // The most recent turn's token breakdown (#45 D3), attached to the next turn/completed so the host's token
+    // meter folds it in. Updated by thread/tokenUsage/updated, which arrives around the end of the turn.
+    private PluginTokenUsage? _lastTurnUsage;
 
     public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath)
     {
@@ -98,7 +103,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             environmentVariables[key] = value;
         }
 
-        _connection.Start(_executablePath, _ResolveProcessWorkingDirectory(workingDirectory), environmentVariables, mcpLaunch.ConfigArgs);
+        _workingDirectory = _ResolveProcessWorkingDirectory(workingDirectory);
+        _connection.Start(_executablePath, _workingDirectory, environmentVariables, mcpLaunch.ConfigArgs);
         _notificationPump = Task.Run(() => _PumpNotificationsAsync(_lifetime.Token), CancellationToken.None);
         _serverRequestPump = Task.Run(() => _PumpServerRequestsAsync(_lifetime.Token), CancellationToken.None);
 
@@ -123,7 +129,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         _threadId = threadId;
         _threadReady.TrySetResult(threadId);
-        _events.Writer.TryWrite(new PluginSessionInitialized { SessionId = threadId, Tools = [] });
+        _events.Writer.TryWrite(new PluginSessionInitialized { SessionId = threadId, Tools = [], Cwd = _workingDirectory });
     }
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
@@ -214,6 +220,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 break;
 
             case "turn/started":
+                // A new turn starts fresh on usage: clear any leftover so a turn that reports no tokenUsage carries
+                // none, rather than the previous turn's totals leaking into it and double-counting in the meter.
+                _lastTurnUsage = null;
                 if (_TryGetNestedString(notification.Params, "turn", "id", out var turnId))
                 {
                     _currentTurnId = turnId;
@@ -225,6 +234,26 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
                 if (_TryGetString(notification.Params, "delta", out var delta))
                 {
                     _events.Writer.TryWrite(new PluginAssistantTextDelta { SessionId = _threadId, BlockIndex = 0, Text = delta });
+                }
+
+                break;
+
+            // The reasoning trace (#45 D3) — streamed as a thinking block so the host renders it dimmed/collapsed,
+            // separate from the visible answer. The raw reasoning and its summary are distinct wire notifications
+            // with their own content; they go to separate blocks so that, if Codex emits both, the two never
+            // concatenate into one jumbled block.
+            case "item/reasoning/textDelta":
+                if (_TryGetString(notification.Params, "delta", out var reasoningText))
+                {
+                    _events.Writer.TryWrite(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 0, Thinking = reasoningText });
+                }
+
+                break;
+
+            case "item/reasoning/summaryTextDelta":
+                if (_TryGetString(notification.Params, "delta", out var reasoningSummary))
+                {
+                    _events.Writer.TryWrite(new PluginAssistantThinkingDelta { SessionId = _threadId, BlockIndex = 1, Thinking = reasoningSummary });
                 }
 
                 break;
@@ -299,6 +328,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             Result = null,
             IsError = isError,
             StopReason = isInterrupted ? "interrupt" : null,
+            Usage = _lastTurnUsage,
         });
         _currentTurnId = null;
     }
@@ -316,6 +346,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             return;
         }
 
+        // The last turn's breakdown feeds the host's token meter (#45 D3); kept for the next turn/completed to carry.
+        _lastTurnUsage = _ParseTurnUsage(_ObjectOrDefault(usage, "last")) ?? _lastTurnUsage;
+
         var contextWindow = _TryGetLong(usage, "modelContextWindow");
         var usedTokens = _TryGetLong(_ObjectOrDefault(usage, "last"), "totalTokens")
             ?? _TryGetLong(_ObjectOrDefault(usage, "total"), "totalTokens");
@@ -325,6 +358,22 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             _contextUsedPercent = Math.Clamp((double)usedTokens.Value / contextWindow.Value * 100, 0, 100);
             _PublishStatus();
         }
+    }
+
+    // Codex's TokenUsageBreakdown → the host's per-turn token counts. Reasoning output is folded into output
+    // tokens (it is completion the turn produced); cached input maps to the cache-read bucket; Codex reports no
+    // cache-creation count, so that stays zero.
+    private static PluginTokenUsage? _ParseTurnUsage(JsonElement breakdown)
+    {
+        if (breakdown.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var input = _TryGetInt(breakdown, "inputTokens") ?? 0;
+        var output = (_TryGetInt(breakdown, "outputTokens") ?? 0) + (_TryGetInt(breakdown, "reasoningOutputTokens") ?? 0);
+        var cachedInput = _TryGetInt(breakdown, "cachedInputTokens") ?? 0;
+        return new PluginTokenUsage(input, output, cachedInput, 0);
     }
 
     // account/rateLimits/updated carries the whole snapshot, so primary/secondary are replaced wholesale rather

@@ -162,8 +162,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         PluginSessionInitialized initialized => new SessionInitialized
         {
             SessionId = initialized.SessionId,
-            Cwd = string.Empty,
+            Cwd = initialized.Cwd ?? string.Empty,
             Tools = initialized.Tools,
+        },
+        PluginAssistantThinkingDelta thinking => new AssistantThinkingDelta
+        {
+            SessionId = thinking.SessionId,
+            BlockIndex = thinking.BlockIndex,
+            Thinking = thinking.Thinking,
         },
         PluginAssistantTextDelta delta => new AssistantTextDelta
         {
@@ -199,6 +205,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             Result = turnCompleted.Result,
             IsError = turnCompleted.IsError,
             StopReason = turnCompleted.StopReason,
+            Usage = turnCompleted.Usage is { } usage
+                ? new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+                : null,
+            TotalCostUsd = turnCompleted.TotalCostUsd,
+            NumTurns = turnCompleted.NumTurns,
         },
         PluginSessionError error => new SessionError
         {

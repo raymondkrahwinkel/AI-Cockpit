@@ -406,5 +406,23 @@ public class PluginSessionDriverAdapterTests
             new PluginSessionError { SessionId = "s1", Message = "boom" },
             (Func<SessionEvent, bool>)(evt => evt is SessionError error && error.Message == "boom"),
         ];
+
+        // #45 D3 — the richer events a plugin can now express: a reasoning trace, the session's cwd, and a turn's
+        // token usage, each mapped to its core counterpart so a plugin session fills the same UI as the CLI.
+        yield return
+        [
+            new PluginAssistantThinkingDelta { SessionId = "s1", BlockIndex = 1, Thinking = "hmm" },
+            (Func<SessionEvent, bool>)(evt => evt is AssistantThinkingDelta thinking && thinking.BlockIndex == 1 && thinking.Thinking == "hmm"),
+        ];
+        yield return
+        [
+            new PluginSessionInitialized { SessionId = "s1", Tools = [], Cwd = "/work/here" },
+            (Func<SessionEvent, bool>)(evt => evt is SessionInitialized init && init.Cwd == "/work/here"),
+        ];
+        yield return
+        [
+            new PluginTurnCompleted { SessionId = "s1", Subtype = "success", Result = null, IsError = false, Usage = new PluginTokenUsage(100, 20, 5, 0), NumTurns = 3 },
+            (Func<SessionEvent, bool>)(evt => evt is TurnCompleted turn && turn.Usage == new TokenUsage(100, 20, 5, 0) && turn.NumTurns == 3),
+        ];
     }
 }

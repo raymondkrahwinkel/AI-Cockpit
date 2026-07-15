@@ -270,6 +270,83 @@ public class CodexAppServerSessionDriverTests
             new PluginRateLimitWindow("7d", 80, DateTimeOffset.FromUnixTimeSeconds(1800600000), 10080));
     }
 
+    [Fact]
+    public async Task SessionInitialized_CarriesTheWorkingDirectory()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var startTask = driver.StartAsync(null, "/work/here", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        // D3: the session reports its cwd so the host's git-status header and active-cwd observer follow it.
+        var initialized = await _NextEventOfTypeAsync<PluginSessionInitialized>(driver);
+        initialized.Cwd.Should().Be("/work/here");
+    }
+
+    [Fact]
+    public async Task ReasoningDelta_IsSurfacedAsAThinkingEvent()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("think");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        // D3: Codex's reasoning trace becomes a thinking event the host renders dimmed, separate from the answer.
+        await fake.PushStdoutAsync("""{"method":"item/reasoning/textDelta","params":{"delta":"Let me consider","itemId":"r1","threadId":"thread-1","turnId":"turn-1"}}""");
+
+        var thinking = await _NextEventOfTypeAsync<PluginAssistantThinkingDelta>(driver);
+        thinking.Thinking.Should().Be("Let me consider");
+    }
+
+    [Fact]
+    public async Task TurnCompleted_CarriesTheLastTurnsTokenUsage_ReasoningFoldedIntoOutput()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        await driver.SendUserMessageAsync("hi");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":1000,"outputTokens":200,"cachedInputTokens":50,"reasoningOutputTokens":30,"totalTokens":1280},"modelContextWindow":200000}}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
+
+        // D3: the turn's usage feeds the host token meter — reasoning output (30) folds into output (200), cached
+        // input (50) maps to cache-read, and Codex reports no cache-creation count.
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        events.OfType<PluginTurnCompleted>().Should().ContainSingle()
+            .Which.Usage.Should().Be(new PluginTokenUsage(1000, 230, 50, 0));
+    }
+
+    [Fact]
+    public async Task TurnWithoutItsOwnUsage_DoesNotInheritThePreviousTurnsUsage()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // Turn 1 reports usage.
+        await driver.SendUserMessageAsync("one");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-1"}}}""");
+        await fake.PushStdoutAsync("""{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":1000,"outputTokens":200,"cachedInputTokens":0,"reasoningOutputTokens":0,"totalTokens":1200},"modelContextWindow":200000}}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}}}""");
+        await _CollectUntilTurnCompletedAsync(driver);
+
+        // Turn 2 reports NO tokenUsage (e.g. an interrupted turn). Its usage must be null — not turn 1's total
+        // leaking in, which the accumulating token meter would then double-count.
+        await driver.SendUserMessageAsync("two");
+        await _WaitForRequestIdAsync(fake, "turn/start");
+        await fake.PushStdoutAsync("""{"method":"turn/started","params":{"threadId":"thread-1","turn":{"id":"turn-2"}}}""");
+        await fake.PushStdoutAsync("""{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-2","status":"completed"}}}""");
+
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+        events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.Usage.Should().BeNull();
+    }
+
     // --- helpers -----------------------------------------------------------------------------------------
 
     private static async Task<PluginSessionStatus> _WaitForStatusAsync(CodexAppServerSessionDriver driver, Func<PluginSessionStatus, bool> predicate)
