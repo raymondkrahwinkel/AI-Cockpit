@@ -317,7 +317,12 @@
                         </Button.Flyout>
                     </Button>
 
-                    <ItemsControl ItemsSource="{Binding Workspaces.Tabs}" IsVisible="{Binding Workspaces.ShowTabStrip}">
+                    <!-- The drag lives on the strip, not on the tabs: a move rebuilds the tabs, so a handler on
+                         the dragged Border would stop firing the moment it did its job once. -->
+                    <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}"
+                                  IsVisible="{Binding Workspaces.ShowTabStrip}"
+                                  PointerMoved="OnWorkspaceTabPointerMoved"
+                                  PointerReleased="OnWorkspaceTabPointerReleased">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
                                 <StackPanel Orientation="Horizontal" Spacing="4"/>
@@ -330,8 +335,6 @@
                                 <Border Classes="workspaceTab" Classes.active="{Binding IsActive}"
                                         CornerRadius="6" Padding="10,4" Background="Transparent"
                                         PointerPressed="OnWorkspaceTabPressed"
-                                        PointerMoved="OnWorkspaceTabPointerMoved"
-                                        PointerReleased="OnWorkspaceTabPointerReleased"
                                         DoubleTapped="OnWorkspaceTabDoubleTapped">
                                     <DockPanel>
                                         <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Content="✕"
@@ -357,24 +360,18 @@
             <!-- Dashboard: the widget grid, shown instead of the session content when a Dashboard workspace is
                  active. Its own empty state says "add a widget", never "no sessions yet" — the workspace type
                  drives the affordance, so a dashboard never asks for something it cannot hold. -->
-            <Grid Grid.Row="1" IsVisible="{Binding Workspaces.IsDashboardActive}">
-                <StackPanel IsVisible="{Binding Workspaces.ShowDashboardEmptyState}" MaxWidth="320"
-                            HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Border Width="56" Height="56" CornerRadius="14"
-                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                            HorizontalAlignment="Center" Margin="0,0,0,16">
-                        <TextBlock Text="📊" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <TextBlock Text="No widgets yet" FontSize="16" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                    <TextBlock Text="Add a widget to this dashboard. Widgets come from plugins — install more from the store."
-                               TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                               Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
-                    <!-- Disabled, not hidden, while no plugin contributes a widget: the button is the answer to
-                         "how do I fill this dashboard", so it has to stay visible and say why it cannot. -->
-                    <Button Content="+ Add widget" Classes="Accent" HorizontalAlignment="Center"
-                            IsEnabled="{Binding Workspaces.HasAvailableWidgets}"
-                            ToolTip.Tip="Widgets come from plugins — install one that contributes widgets first">
+            <DockPanel Grid.Row="1" IsVisible="{Binding Workspaces.IsDashboardActive}">
+
+                <!-- The dashboard's own toolbar. "Add widget" used to live only in the centred empty state,
+                     which put it underneath the widgets the moment there were any — it needs a home that does
+                     not move, and the dashboard's other controls belong beside it rather than scattered. -->
+                <DockPanel DockPanel.Dock="Top" Margin="12,12,12,0">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                        <!-- Disabled, not hidden, while no plugin contributes a widget: the button is the answer
+                             to "how do I fill this dashboard", so it has to stay visible and say why it cannot. -->
+                        <Button Content="+ Add widget" Classes="Accent" Padding="10,4"
+                                IsEnabled="{Binding Workspaces.HasAvailableWidgets}"
+                                ToolTip.Tip="Widgets come from plugins — install one that contributes widgets first">
                         <!-- A plain Flyout over an ItemsControl of buttons rather than a MenuFlyout with an
                              ItemsSource: the latter's containers never materialised here, leaving an enabled
                              button that opened an empty popup. This shape is the gallery — icon, title and the
@@ -402,14 +399,50 @@
                                 </ItemsControl>
                             </Flyout>
                         </Button.Flyout>
-                    </Button>
-                </StackPanel>
+                        </Button>
+
+                        <!-- The dashboard's grid shape. Its own settings, not the app's — each dashboard is laid
+                             out on its own, and this is where §4g's Columns/Rows live. -->
+                        <Button Classes="Subtle" Content="⚙" Padding="7,4" ToolTip.Tip="Dashboard settings">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight">
+                                    <StackPanel Spacing="10" MinWidth="200" Margin="4">
+                                        <TextBlock Text="Dashboard grid" FontWeight="SemiBold"/>
+                                        <DockPanel>
+                                            <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
+                                                           Minimum="1" Maximum="6"
+                                                           Value="{Binding Workspaces.DashboardColumnsSetting}"/>
+                                            <TextBlock Text="Columns" VerticalAlignment="Center"/>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <!-- The bounds match DashboardLayout's Min/Max constants; the record
+                                                 clamps anyway, so a drifted literal here cannot reach the grid. -->
+                                            <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
+                                                           Minimum="1" Maximum="12"
+                                                           Value="{Binding Workspaces.DashboardRowsSetting}"/>
+                                            <TextBlock Text="Rows" VerticalAlignment="Center"/>
+                                        </DockPanel>
+                                        <TextBlock Text="Rows are a starting height — the dashboard grows past it as you add widgets."
+                                                   FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxWidth="190"/>
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Workspaces.Active.Name}" FontWeight="SemiBold"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
 
                 <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
                      configured height as widgets are added (a "2x2" is a starting shape, not a cap). -->
+                <!-- The drop lives on the grid, not the panes: an arrangement rebuilds nothing, but the pointer
+                     has to be tracked across cells the dragged pane does not occupy. -->
                 <ItemsControl x:Name="DashboardGrid" Margin="12"
                               ItemsSource="{Binding Workspaces.WidgetPanes}"
-                              IsVisible="{Binding !Workspaces.ShowDashboardEmptyState}">
+                              IsVisible="{Binding !Workspaces.ShowDashboardEmptyState}"
+                              PointerMoved="OnDashboardPointerMoved"
+                              PointerReleased="OnDashboardPointerReleased">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <Grid x:Name="DashboardCells"/>
@@ -430,7 +463,11 @@
                                 <DockPanel>
                                     <!-- Pane chrome. The ⚙ is bound to HasConfig: a widget that declared no
                                          settings form shows no gear at all, rather than one that opens nothing. -->
-                                    <DockPanel DockPanel.Dock="Top" Margin="8,6,6,6">
+                                    <!-- The header is the drag handle: dragging the widget's own body would fight
+                                         whatever the plugin's control does with a pointer, and a header is where
+                                         a pane is grabbed everywhere else in the cockpit. -->
+                                    <DockPanel DockPanel.Dock="Top" Margin="8,6,6,6" Background="Transparent"
+                                               Cursor="Hand" PointerPressed="OnWidgetHeaderPressed">
                                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
                                             <Button Classes="Subtle" Content="↻" Padding="5,0" Click="OnWidgetRefreshPressed"
                                                     ToolTip.Tip="Refresh"/>
@@ -450,7 +487,24 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </Grid>
+
+                <!-- The dashboard's empty state carries no button of its own: the toolbar's "Add widget" is
+                     always there, and two buttons doing one thing is how the old one ended up buried under the
+                     widgets it created. -->
+                <StackPanel IsVisible="{Binding Workspaces.ShowDashboardEmptyState}" MaxWidth="320"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Border Width="56" Height="56" CornerRadius="14"
+                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                            HorizontalAlignment="Center" Margin="0,0,0,16">
+                        <TextBlock Text="📊" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="No widgets yet" FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                    <TextBlock Text="Use “+ Add widget” above to fill this dashboard. Widgets come from plugins — install more from the store."
+                               TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </DockPanel>
 
             <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on
                  a Sessions workspace being active, so a dashboard never shows it. -->
