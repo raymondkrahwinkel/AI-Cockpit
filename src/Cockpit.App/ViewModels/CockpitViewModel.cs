@@ -924,6 +924,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _voiceAutoSubmit;
 
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudWhenSpeaking"/> (AC-9). Off by default — the threshold cannot tell your voice from the cockpit's own coming out of a speaker.</summary>
+    [ObservableProperty]
+    private bool _voiceStopReadAloudWhenSpeaking;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudLevelThreshold"/>. Decimal because that is what NumericUpDown binds.</summary>
+    [ObservableProperty]
+    private decimal _voiceStopReadAloudLevelThreshold = 0.15m;
+
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicSilenceTimeoutMs"/>: trailing silence (ms) that ends an open-mic utterance. Tunable.</summary>
     [ObservableProperty]
     private int _voiceOpenMicSilenceTimeoutMs = 800;
@@ -2105,6 +2113,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
         VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
+        VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
+        VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
         VoiceNaturalizeReadAloud = settings.NaturalizeReadAloud;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
         SelectedDutchTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceIdDutch) ?? PiperVoiceCatalog.DutchDefault;
@@ -2180,6 +2190,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             AutoSubmitAfterVoice = VoiceAutoSubmit,
             OpenMicEnabled = current.OpenMicEnabled,
             OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
+            StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
+            StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
             NaturalizeReadAloud = VoiceNaturalizeReadAloud,
             TtsVoiceId = SelectedTtsVoice.VoiceId,
             TtsVoiceIdDutch = SelectedDutchTtsVoice.VoiceId,

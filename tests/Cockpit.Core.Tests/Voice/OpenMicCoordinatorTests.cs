@@ -184,6 +184,68 @@ public class OpenMicCoordinatorTests
         overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Hidden);
     }
 
+    /// <summary>
+    /// AC-9's microphone half: talking over read-aloud stops it. The hold half already worked and always has
+    /// (<c>SessionPanelViewModel.BeginVoiceHold</c>) — a held key needs no threshold, because a room does not
+    /// press one by accident. This is the half that has to guess, and it only guesses when asked.
+    /// </summary>
+    [Fact]
+    public async Task TalkingOverReadAloud_StopsIt_WhenTheOperatorAskedForThat()
+    {
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true, StopReadAloudWhenSpeaking = true, StopReadAloudLevelThreshold = 0.15 });
+        await coordinator.StartAsync();
+        coordinator.HandlePlaybackActiveChanged(true);
+
+        coordinator.HandleAudioLevel(0.4);
+
+        playbackQueue.Received().StopAll();
+    }
+
+    [Fact]
+    public async Task TheRoomIsNotTalking_SoAQuietMicrophoneLeavesReadAloudAlone()
+    {
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true, StopReadAloudWhenSpeaking = true, StopReadAloudLevelThreshold = 0.15 });
+        await coordinator.StartAsync();
+        coordinator.HandlePlaybackActiveChanged(true);
+
+        coordinator.HandleAudioLevel(0.05);
+
+        playbackQueue.DidNotReceive().StopAll();
+    }
+
+    /// <summary>Off by default: on speakers the microphone hears the read-aloud itself, and a threshold cannot tell that from you.</summary>
+    [Fact]
+    public async Task WithoutTheSetting_TalkingOverReadAloudDoesNothing()
+    {
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true });
+        await coordinator.StartAsync();
+        coordinator.HandlePlaybackActiveChanged(true);
+
+        coordinator.HandleAudioLevel(0.9);
+
+        playbackQueue.DidNotReceive().StopAll();
+    }
+
+    /// <summary>Nothing is playing, so there is nothing to interrupt — talking is just dictation.</summary>
+    [Fact]
+    public async Task TalkingWhileNothingIsPlaying_StopsNothing()
+    {
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out _, out var playbackQueue,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = true, StopReadAloudWhenSpeaking = true, StopReadAloudLevelThreshold = 0.15 });
+        await coordinator.StartAsync();
+
+        coordinator.HandleAudioLevel(0.9);
+
+        playbackQueue.DidNotReceive().StopAll();
+    }
+
     /// <param name="overlay">Pass one to assert on the pill; omit it and the coordinator reports into a throwaway.</param>
     private static OpenMicCoordinator _CreateCoordinator(
         SessionPanelViewModel? session,

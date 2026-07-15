@@ -111,4 +111,30 @@ public sealed record VoiceSettings
     /// operator's speaking cadence; 800ms is a conversational default.
     /// </summary>
     public int OpenMicSilenceTimeoutMs { get; init; } = 800;
+
+    /// <summary>
+    /// When true, talking while the cockpit is reading aloud stops it (AC-9) — the microphone half of barge-in.
+    /// A push-to-talk hold already interrupts playback and always has; this is the same thing without the key.
+    /// <para>
+    /// Needs <see cref="OpenMicEnabled"/>, and not as a policy: without open-mic there is no microphone held
+    /// open, so there is nothing to hear you with.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// <b>Off by default, and not out of caution.</b> <see cref="StopReadAloudLevelThreshold"/> filters the
+    /// room; it cannot filter the cockpit's own voice. On speakers the microphone hears the read-aloud — which
+    /// is speech, and loud — so any threshold that lets your voice through lets the playback through too, and
+    /// read-aloud would stop itself within a second of starting, every time, leaving an operator who never
+    /// touched this setting to conclude that read-aloud is broken. The only real answer is echo cancellation,
+    /// which this does not have. On a headset none of it applies, which is why the feature exists and why it
+    /// asks first.
+    /// </remarks>
+    public bool StopReadAloudWhenSpeaking { get; init; }
+
+    /// <summary>
+    /// How loud (0..1 RMS, the same scale the waveform is drawn from) the microphone must get before
+    /// <see cref="StopReadAloudWhenSpeaking"/> takes it for you rather than the room. Tunable for the reason the
+    /// silence timeout is: a quiet room and a noisy one do not share a number, and neither do two microphones.
+    /// </summary>
+    public double StopReadAloudLevelThreshold { get; init; } = 0.15;
 }
