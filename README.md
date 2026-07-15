@@ -142,6 +142,8 @@ calling agent cannot delegate to what it cannot see.
 
 ## Workspaces & dashboards
 
+![A Dashboard workspace with two Clock widgets, the workspace tab strip above it and the sidebar collapsed to its rail](docs/images/cockpit-dashboard.png)
+
 A **workspace** is a named, persisted pane layout, switched from a strip of tabs above the grid. There are two
 kinds, and the kind decides what a workspace can hold — so there are no dead controls, and widgets never end up
 mixed into a grid of sessions:
