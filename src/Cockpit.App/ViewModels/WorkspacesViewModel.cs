@@ -320,10 +320,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// so a dashboard you hand to someone carries its arrangement and its settings but never a key.
     /// </summary>
     /// <remarks>
-    /// ⚠️ Scrubs by the name rule only. A key a plugin declared itself (<c>pat</c>) is not yet dropped here —
-    /// the registry does not carry the manifest's declared keys. The exporter honours them when told; wiring
-    /// that through is the open half. Until then, a widget storing a credential under a name the rule cannot
-    /// guess would travel with the file.
+    /// Scrubs by the shared name rule <em>and</em> the keys the widget-providing plugins declared themselves —
+    /// the rule cannot guess a key called "pat", and a declaration that only protected the backup and the
+    /// at-rest encryption but not the file you hand to someone would protect the wrong two of the three.
     /// </remarks>
     public string? ExportActiveDashboard()
     {
@@ -332,7 +331,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             return null;
         }
 
-        var export = DashboardExporter.ToExport(dashboard, _ConfigOf, SecretFields.ByName);
+        var export = DashboardExporter.ToExport(dashboard, _ConfigOf, new SecretFields(_widgets.DeclaredSecretKeys));
         return JsonSerializer.Serialize(export, _FileJson);
     }
 

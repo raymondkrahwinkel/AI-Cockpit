@@ -13,7 +13,13 @@ namespace Cockpit.App.Plugins;
 /// <param name="Registration">What the plugin contributed.</param>
 /// <param name="PluginStorage">The owning plugin's storage; a widget instance gets a per-instance slice of it.</param>
 /// <param name="Sessions">The read/observe surface handed to that plugin's host.</param>
+/// <param name="DeclaredSecretKeys">
+/// The storage keys the owning plugin declared as credentials in its manifest. Carried because an export has
+/// to drop them, and the name rule cannot guess a key called "pat" — without this the declaration would protect
+/// the backup and the at-rest encryption but not the file you hand to someone.
+/// </param>
 internal sealed record RegisteredWidget(
     WidgetRegistration Registration,
     IPluginStorage PluginStorage,
-    ICockpitSessionObserver Sessions);
+    ICockpitSessionObserver Sessions,
+    IReadOnlyList<string> DeclaredSecretKeys);
