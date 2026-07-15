@@ -216,7 +216,9 @@ public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetCon
 ```
 - `Id` — stable, unique id for the widget **type**, namespaced by your plugin. It is persisted with every
   placed instance so a saved dashboard rebuilds after a restart; **changing it orphans existing instances**, so
-  treat it as an API surface.
+  treat it as an API surface. Unique across installed plugins too: the first to claim an id keeps it, and a
+  later claim is refused and logged — two plugins offering one type would put it in the gallery twice and leave
+  the host resolving instances to whichever loaded first.
 - `CreateView` — builds one instance's control on the UI thread, handed that instance's own `IWidgetContext`.
   Called once per instance; a widget needing periodic updates owns its timer or listens to `RefreshRequested`.
 - `DefaultColumnSpan`/`DefaultRowSpan` — the size of a freshly placed instance; the operator resizes after.

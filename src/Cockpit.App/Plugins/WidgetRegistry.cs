@@ -14,8 +14,12 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 public interface IWidgetRegistry
 {
-    /// <summary>Records a widget type along with what its owning plugin brought: storage, the observe surface, and the keys it declared as credentials.</summary>
-    void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys);
+    /// <summary>
+    /// Records a widget type along with what its owning plugin brought: storage, the observe surface, and the
+    /// keys it declared as credentials. A type id that is already registered is refused, first one wins.
+    /// </summary>
+    /// <returns>False when another plugin already contributes this type id — the caller says so; nothing throws.</returns>
+    bool Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys);
 
     /// <summary>Every credential key any widget-providing plugin declared — what an export scrubs beyond the name rule.</summary>
     IReadOnlyList<string> DeclaredSecretKeys { get; }
@@ -59,10 +63,24 @@ internal sealed class WidgetRegistry : IWidgetRegistry, ISingletonService
     public IReadOnlyList<string> DeclaredSecretKeys =>
         [.. _widgets.SelectMany(widget => widget.DeclaredSecretKeys).Distinct(StringComparer.OrdinalIgnoreCase)];
 
-    public void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys)
+    /// <summary>
+    /// First registration of a type id wins, and a later one is refused rather than added beside it. Two
+    /// plugins can claim the same id — nothing stops a third party picking one that exists, and the cockpit's
+    /// own clock did exactly that when it was split out of the reference-widgets plugin. Adding both put the
+    /// type in the gallery twice and left <see cref="CreateInstance"/> silently resolving to whichever plugin
+    /// happened to load first, which is not a thing an operator can see, let alone fix.
+    /// </summary>
+    public bool Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys)
     {
+        if (IsInstalled(widget.Id))
+        {
+            return false;
+        }
+
         _widgets.Add(new RegisteredWidget(widget, pluginStorage, sessions, declaredSecretKeys));
         Changed?.Invoke(this, EventArgs.Empty);
+
+        return true;
     }
 
     public bool IsInstalled(string widgetId) => _widgets.Any(widget => widget.Registration.Id == widgetId);

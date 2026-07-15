@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
@@ -73,8 +74,18 @@ internal sealed class CockpitHost(
     // This plugin's own storage, observe surface and declared secret keys travel with the registration: a placed
     // instance builds its context long after load, and by then the widget id is the only thing linking it back
     // here. The declared keys are what lets an export drop a credential the name rule cannot guess ("pat").
-    public void AddWidget(WidgetRegistration registration) =>
-        services.GetRequiredService<IWidgetRegistry>().Register(registration, storage, sessions, declaredSecretKeys ?? []);
+    public void AddWidget(WidgetRegistration registration)
+    {
+        // Refused means another plugin already contributes this type id. Logged rather than thrown: a plugin
+        // cannot know what else is installed, and taking the cockpit down over a name clash is a worse answer
+        // than the widget being the one that was already there.
+        if (!services.GetRequiredService<IWidgetRegistry>().Register(registration, storage, sessions, declaredSecretKeys ?? []))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                "Widget type '{WidgetId}' is already contributed by another plugin; this registration is ignored",
+                registration.Id);
+        }
+    }
 
     public IReadOnlyList<WidgetRegistration> Widgets =>
         services.GetRequiredService<IWidgetRegistry>().Widgets;

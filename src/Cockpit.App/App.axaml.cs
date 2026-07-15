@@ -112,6 +112,10 @@ public partial class App : Application
         // plugin the host built for it so it can register its Options tab / side-menu section.
         _InitializePlugins();
 
+        // Silent unless the operator is carrying a plugin this build has replaced, in which case they are told
+        // and asked — rather than having it cleaned out of their plugins folder behind their back.
+        _ = Program.Services.GetRequiredService<SupersededPluginNotice>().CheckAsync();
+
         // #59: one check right after plugin phase-2 (so a freshly discovered installed version is what
         // gets compared), then every 15 minutes for the rest of the run.
         // #71: and the cockpit itself. One look on startup, if the operator left that on — an update nobody is
