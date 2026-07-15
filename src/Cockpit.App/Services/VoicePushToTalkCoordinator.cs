@@ -28,7 +28,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly IGlobalHotkeyService _hotkeyService;
     private readonly CockpitViewModel _cockpit;
     private readonly IVoiceSettingsStore _voiceSettingsStore;
-    private readonly IVoiceOverlayPresenter _overlayPresenter;
+    private readonly VoiceOverlayCoordinator _overlayCoordinator;
     private readonly IVoicePushToTalkService _pushToTalk;
     private readonly ILogger<VoicePushToTalkCoordinator> _logger;
 
@@ -39,21 +39,20 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         IGlobalHotkeyService hotkeyService,
         CockpitViewModel cockpit,
         IVoiceSettingsStore voiceSettingsStore,
-        VoiceOverlayViewModel overlay,
-        IVoiceOverlayPresenter overlayPresenter,
+        VoiceOverlayCoordinator overlayCoordinator,
         IVoicePushToTalkService pushToTalk,
         ILogger<VoicePushToTalkCoordinator> logger)
     {
         _hotkeyService = hotkeyService;
         _cockpit = cockpit;
         _voiceSettingsStore = voiceSettingsStore;
-        _overlayPresenter = overlayPresenter;
+        _overlayCoordinator = overlayCoordinator;
         _pushToTalk = pushToTalk;
         _logger = logger;
-        Overlay = overlay;
     }
 
-    public VoiceOverlayViewModel Overlay { get; }
+    /// <summary>The pill's view model. Reports what the hold is doing; what the pill actually shows is <see cref="VoiceOverlayCoordinator"/>'s call, since open-mic and read-aloud want it too.</summary>
+    public VoiceOverlayViewModel Overlay => _overlayCoordinator.Overlay;
 
     /// <summary>Starts listening for the global hotkey. No-op when voice or global push-to-talk is off, so the portal/hook is never touched for an operator who never opted in.</summary>
     /// <remarks>
@@ -95,7 +94,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
 
     private void _OnHoldEnded(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => _ = HandleHoldEndedAsync());
 
-    private void _OnAudioLevelSampled(object? sender, double level) => Dispatcher.UIThread.Post(() => Overlay.PushLevel(level));
+    private void _OnAudioLevelSampled(object? sender, double level) => Dispatcher.UIThread.Post(() => _overlayCoordinator.PushLevel(level));
 
     /// <summary>Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.</summary>
     internal void HandleHoldStarted()
@@ -111,17 +110,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         var blocked = capturing ? null : _WhyNothingIsBeingRecorded(session);
         _isRecording = blocked is null;
 
-        if (blocked is null)
-        {
-            Overlay.State = VoiceOverlayState.Listening;
-        }
-        else
-        {
-            Overlay.StatusText = blocked;
-            Overlay.State = VoiceOverlayState.Unavailable;
-        }
-
-        _overlayPresenter.Show();
+        _overlayCoordinator.SetPushToTalk(
+            blocked is null ? VoiceOverlayState.Listening : VoiceOverlayState.Unavailable,
+            blocked);
 
         // Kept: which session the hold routed to, and whether capture truly began, is still what tells a wrong
         // routing apart from a declined hold when a dictation later yields nothing.
@@ -155,13 +146,12 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         // thing worth leaving on screen for the moment the key is still down.
         if (!_isRecording)
         {
-            Overlay.State = VoiceOverlayState.Hidden;
-            _overlayPresenter.Hide();
+            _overlayCoordinator.SetPushToTalk(null);
 
             return;
         }
 
-        Overlay.State = VoiceOverlayState.Transcribing;
+        _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Transcribing);
 
         // Only for as long as this hold: first use fetches gigabytes before it can transcribe, and the pill
         // spent that time on a spinner that said "Transcribing…". Subscribed here rather than for the
@@ -186,8 +176,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             _pushToTalk.Prepared -= _OnPrepared;
         }
 
-        Overlay.State = VoiceOverlayState.Hidden;
-        _overlayPresenter.Hide();
+        // The hold has nothing left to say. Whether the pill goes away is not this coordinator's call: read-aloud
+        // may have started while the transcript was being produced, and it gets the pill once dictation is done.
+        _overlayCoordinator.SetPushToTalk(null);
     }
 
     /// <summary>
@@ -207,13 +198,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     /// state as well as the text — it cannot be set up front, because on every run after the first there is
     /// nothing to prepare and the pill should go straight to its spinner.
     /// </summary>
-    internal void HandlePreparing(VoicePreparationProgress step)
-    {
-        Overlay.StatusText = step.Description;
-        Overlay.Progress = step.Fraction;
-        Overlay.State = VoiceOverlayState.Preparing;
-    }
+    internal void HandlePreparing(VoicePreparationProgress step) =>
+        _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Preparing, step.Description, step.Fraction);
 
     /// <summary>Test seam: preparation is over, so the pill goes back to the plain spinner — which is now telling the truth.</summary>
-    internal void HandlePrepared() => Overlay.State = VoiceOverlayState.Transcribing;
+    internal void HandlePrepared() => _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Transcribing);
 }
