@@ -443,9 +443,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // Choosing a profile loads its saved start defaults (or the app defaults when it has none),
         // which the operator can still override before starting.
         var defaults = value?.Defaults;
-        SelectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(defaults?.PermissionMode);
-        SelectedClaudeModel = string.IsNullOrWhiteSpace(defaults?.Model) ? SessionOptionCatalog.DefaultModel.Value : defaults.Model;
-        SelectedEffort = SessionOptionCatalog.ResolveEffort(defaults?.Effort);
+        // The typed permission/model/effort back the retired Claude-CLI block (hidden now Claude is a plugin); a plugin
+        // profile's real defaults pre-fill the generic option rows from OptionDefaults instead. Seed the typed fields
+        // with app defaults rather than the profile's legacy typed values, which are migration-only.
+        SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
+        SelectedClaudeModel = SessionOptionCatalog.DefaultModel.Value;
+        SelectedEffort = SessionOptionCatalog.DefaultEffort;
 
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));

@@ -2283,14 +2283,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // An SDK session, always: a plugin's prompt is text handed to a session, and a TTY is a terminal a human
         // drives. Starting one and typing into it on someone's behalf is not the same act at all.
+        // A plugin profile carries its start defaults in the generic OptionDefaults map; the typed Mode/Model/Effort
+        // are the retired Claude-CLI vocabulary and unused for a plugin launch, so they pass app defaults here.
         var result = new NewSessionResult(
             SessionKind.Sdk,
             profile,
-            SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode),
-            SessionOptionCatalog.ResolveModel(profile.Defaults?.Model),
-            SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort),
+            SessionOptionCatalog.DefaultPermissionMode,
+            SessionOptionCatalog.DefaultModel,
+            SessionOptionCatalog.DefaultEffort,
             name,
-            WorkingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory);
+            WorkingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
+            SdkLaunchOptions: profile.Defaults?.OptionDefaults);
 
         await _LaunchSessionFromResultAsync(result);
 

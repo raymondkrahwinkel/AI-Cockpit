@@ -33,18 +33,43 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
-    public async Task SelectingProfile_LoadsItsSavedDefaults()
+    public async Task SelectingProfile_PreFillsTheGenericOptions_FromItsSavedOptionDefaults()
     {
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("claude").Returns(new SessionProviderRegistration(
+            "claude", "Claude",
+            _ => Substitute.For<IPluginSessionDriverFactory>(),
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
+            _ => Substitute.For<IPluginProviderConfigView>())
+        {
+            Options =
+            [
+                new PluginSessionLaunchOption("permission-mode", "Permission mode", ["default", "bypassPermissions"], "default"),
+                new PluginSessionLaunchOption("model", "Model", ["opus", "sonnet"]),
+                new PluginSessionLaunchOption("effort", "Effort", ["low", "medium", "high"], "medium"),
+            ],
+        });
         var profile = new SessionProfile(
             "work",
-            new ClaudeConfig("/home/r/.claude-work"),
-            Defaults: new ProfileDefaults("bypassPermissions", "opus", "high"));
-        var vm = NewVm(out _, profile);
+            new PluginProviderConfig("claude", "{}"),
+            Defaults: new ProfileDefaults(string.Empty, string.Empty, string.Empty)
+            {
+                OptionDefaults = new Dictionary<string, string>
+                {
+                    ["permission-mode"] = "bypassPermissions",
+                    ["model"] = "opus",
+                    ["effort"] = "high",
+                },
+            });
+        var vm = NewVmWithSessionProvider([profile], registry);
+
         await vm.LoadAsync();
 
-        vm.SelectedPermissionMode.Value.Should().Be("bypassPermissions");
-        vm.SelectedClaudeModel.Should().Be("opus");
-        vm.SelectedEffort.Value.Should().Be("high");
+        // Fase 4: the dialog pre-selects the provider's own options from the profile's saved OptionDefaults, not the
+        // retired typed permission/model/effort fields (which are decoupled from the dialog now).
+        vm.SdkLaunchOptions.Single(option => option.Key == "permission-mode").Value.Should().Be("bypassPermissions");
+        vm.SdkLaunchOptions.Single(option => option.Key == "model").Value.Should().Be("opus");
+        vm.SdkLaunchOptions.Single(option => option.Key == "effort").Value.Should().Be("high");
     }
 
     [Fact]
