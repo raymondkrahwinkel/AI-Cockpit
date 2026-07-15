@@ -29,8 +29,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         _command = new TextBox { Text = existing?.Command ?? "codex" };
         _workingDirectory = new TextBox { Text = existing?.WorkingDirectory ?? string.Empty, PlaceholderText = "Directory codex may read (and, in workspace-write, edit)" };
 
-        var sandboxModes = new[] { "read-only", "workspace-write", "danger-full-access" };
-        _sandboxMode = new ComboBox { ItemsSource = sandboxModes, SelectedItem = existing?.SandboxMode ?? "read-only" };
+        _sandboxMode = new ComboBox { ItemsSource = CodexSandbox.Choices, SelectedItem = existing?.SandboxMode ?? "read-only" };
 
         // Free text with live suggestions, not a hard dropdown: a profile default may still pin any model (or one
         // this machine cannot list right now, e.g. logged out) — an AutoCompleteBox is both, a plain ComboBox

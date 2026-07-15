@@ -64,6 +64,11 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // The live approval-policy override (#45 D4 inc2), same shape as effort — null until picked, so Codex keeps its own default.
     private string? _approval;
 
+    // The live sandbox override (#45 D4 inc2b), the kebab choice the operator picked. Pre-filled from the launch
+    // sandbox (there is always one in effect), like the model — so the panel opens on the active sandbox rather than
+    // blank, and each turn re-asserts it as a SandboxPolicy object.
+    private string? _sandbox;
+
     // The controls this session can switch mid-conversation (#45 D4), built once at start from the model listing
     // and the effective model. Set on the starting thread before StartAsync returns and only read afterwards, so
     // it needs no synchronisation of its own — the same publish-on-start shape the host reads Capabilities with.
@@ -121,6 +126,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, _config.SandboxMode);
         var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
         _model = effectiveModel;
+        _sandbox = sandbox;
 
         // The session's MCP servers (#26) become -c config overrides on the app-server spawn; any bearer token
         // rides the process environment, never the command line (see CodexMcpConfig).
@@ -176,20 +182,22 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it here would block the
         // caller for the whole turn. The turn's output streams through the notification pump instead, closed by
         // turn/completed — mirroring how the exec driver runs its turn in the background.
-        // The live model/effort/approval (#45 D4) are captured here, on the caller's thread, so a switch the operator
-        // makes through SetLiveOptionAsync (same thread) is picked up by the next turn and never read mid-write.
+        // The live model/effort/approval/sandbox (#45 D4) are captured here, on the caller's thread, so a switch the
+        // operator makes through SetLiveOptionAsync (same thread) is picked up by the next turn and never read mid-write.
         var input = new object[] { new { type = "text", text } };
-        _ = _SendTurnAsync(threadId, input, _model, _effort, _approval, cancellationToken);
+        _ = _SendTurnAsync(threadId, input, _model, _effort, _approval, _sandbox, cancellationToken);
         return Task.CompletedTask;
     }
 
-    private async Task _SendTurnAsync(string threadId, object[] input, string? model, string? effort, string? approval, CancellationToken cancellationToken)
+    private async Task _SendTurnAsync(string threadId, object[] input, string? model, string? effort, string? approval, string? sandbox, CancellationToken cancellationToken)
     {
         try
         {
-            // model/effort/approvalPolicy are per-turn overrides (#45 D4): TurnStartParams takes them all as optional,
-            // so a null simply leaves the thread's own default in place, the same shape thread/start uses for sandbox/model.
-            await _connection.SendRequestAsync("turn/start", new { threadId, input, model = _NullIfBlank(model), effort = _NullIfBlank(effort), approvalPolicy = _NullIfBlank(approval) }, cancellationToken).ConfigureAwait(false);
+            // model/effort/approvalPolicy/sandboxPolicy are per-turn overrides (#45 D4): TurnStartParams takes them all
+            // as optional, so a null simply leaves the thread's own default in place. sandboxPolicy is the tagged-union
+            // object keyed by its camelCase type (unlike thread/start's SandboxMode string), built from the kebab choice.
+            var sandboxPolicy = CodexSandbox.ToPolicyType(sandbox) is { } policyType ? new { type = policyType } : null;
+            await _connection.SendRequestAsync("turn/start", new { threadId, input, model = _NullIfBlank(model), effort = _NullIfBlank(effort), approvalPolicy = _NullIfBlank(approval), sandboxPolicy }, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -226,6 +234,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
             case ApprovalOptionKey:
                 _approval = _NullIfBlank(value);
+                break;
+
+            case SandboxOptionKey:
+                _sandbox = _NullIfBlank(value);
                 break;
         }
 
@@ -605,7 +617,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     private IReadOnlyList<PluginSessionLaunchOption> _BuildLiveOptions(CodexModelListing models)
     {
-        var options = new List<PluginSessionLaunchOption>(3);
+        var options = new List<PluginSessionLaunchOption>(4);
 
         // Model: the live listing, with the current model guaranteed among the choices — a pinned model or alias the
         // listing omits still shows as the selected value rather than opening the panel blank, so CurrentValue is
@@ -620,6 +632,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         {
             options.Add(new PluginSessionLaunchOption(ModelOptionKey, "Model", modelChoices, _model));
         }
+
+        // Sandbox opens on the active launch sandbox (there is always one), like the model — the same kebab choices
+        // the New-session dialog offers, which the driver turns into the SandboxPolicy object for the wire.
+        options.Add(new PluginSessionLaunchOption(SandboxOptionKey, "Sandbox", CodexSandbox.Choices, _sandbox));
 
         // Effort and approval have no current value until the operator picks one (Codex runs its own default), so
         // they open unset.
