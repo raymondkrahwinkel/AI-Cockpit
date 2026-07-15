@@ -48,6 +48,25 @@
                               VerticalAlignment="Center"
                               IsVisible="{Binding Capabilities.SupportsThinking}"
                               ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
+                    <!-- The provider's own live controls (#45 D4): Codex's model/effort, declared by the driver and
+                         rendered generically. Claude drives its model/effort through the typed combos above, so its
+                         LiveControls are empty and this panel stays hidden — the two never show together. -->
+                    <ItemsControl ItemsSource="{Binding LiveControls}" IsVisible="{Binding HasLiveControls}"
+                                  VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LiveControlViewModel">
+                                <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedValue}"
+                                          PlaceholderText="{Binding Label}" Classes="Compact" MinWidth="90"
+                                          VerticalAlignment="Center"
+                                          ToolTip.Tip="{Binding Label}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <!-- A speaker, struck through when off (#73): the header is a strip, and the word cost more
                          room than the thing it names. The tooltip carries what the icon cannot say. -->
                     <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"

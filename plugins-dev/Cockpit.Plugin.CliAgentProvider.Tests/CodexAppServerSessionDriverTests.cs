@@ -23,6 +23,7 @@ public class CodexAppServerSessionDriverTests
 
         var startTask = driver.StartAsync("gpt-5-codex", "/work/here", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
         var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
@@ -45,6 +46,7 @@ public class CodexAppServerSessionDriverTests
         var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write", ["model"] = "o3" };
         var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
         var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
@@ -67,6 +69,7 @@ public class CodexAppServerSessionDriverTests
 
         var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options: null, mcpServers, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
         await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
@@ -88,6 +91,7 @@ public class CodexAppServerSessionDriverTests
 
         var startTask = driver.StartAsync(null, "/work", resumeSessionId: "thread-99", options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
         var resume = await _RespondAsync(fake, "thread/resume", """{"threadId":"thread-99"}""");
         await startTask;
 
@@ -278,6 +282,7 @@ public class CodexAppServerSessionDriverTests
 
         var startTask = driver.StartAsync(null, "/work/here", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
         await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
 
@@ -347,6 +352,86 @@ public class CodexAppServerSessionDriverTests
         events.OfType<PluginTurnCompleted>().Should().ContainSingle().Which.Usage.Should().BeNull();
     }
 
+    [Fact]
+    public async Task LiveOptions_DeclareTheModelsFromTheListing_AndTheEffortLevels()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var startTask = driver.StartAsync("gpt-5-codex", "/work", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[{"id":"gpt-5-codex","isDefault":true},{"id":"gpt-5"}]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        // D4: the live controls the header renders — the model list read on this connection, opened on the model the
+        // session started with, plus the fixed effort levels which open unset (Codex runs its own default).
+        var model = driver.LiveOptions.Should().ContainSingle(option => option.Key == "model").Subject;
+        model.Choices.Should().Equal("gpt-5-codex", "gpt-5");
+        model.DefaultValue.Should().Be("gpt-5-codex");
+
+        var effort = driver.LiveOptions.Should().ContainSingle(option => option.Key == "effort").Subject;
+        effort.Choices.Should().Equal("low", "medium", "high");
+        effort.DefaultValue.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task LiveOptions_KeepTheCurrentModelSelectable_WhenTheListingOmitsIt()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        // The session runs a pinned model the public listing does not carry; it must still be among the choices so
+        // the panel opens on it rather than blank.
+        var startTask = driver.StartAsync("my-pinned-model", "/work", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[{"id":"gpt-5"}]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        var model = driver.LiveOptions.Should().ContainSingle(option => option.Key == "model").Subject;
+        model.Choices.Should().Contain("my-pinned-model");
+        model.DefaultValue.Should().Be("my-pinned-model");
+    }
+
+    [Fact]
+    public async Task TurnStart_CarriesTheLiveModelAndEffort_AfterASwitch()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D4: the operator switches model and effort mid-session; both ride the next turn/start as per-turn overrides.
+        await driver.SetLiveOptionAsync("model", "gpt-5");
+        await driver.SetLiveOptionAsync("effort", "high");
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        turn.GetProperty("params").GetProperty("model").GetString().Should().Be("gpt-5");
+        turn.GetProperty("params").GetProperty("effort").GetString().Should().Be("high");
+    }
+
+    [Fact]
+    public async Task TurnStart_WithoutASwitch_CarriesTheStartModel_AndNoEffort()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var startTask = driver.StartAsync("gpt-5-codex", "/work", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        await driver.SendUserMessageAsync("go");
+
+        // A turn the operator never touched carries the model the session started on and no effort at all (a null
+        // override is dropped from the wire), so Codex keeps its own effort default rather than one this driver invented.
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        turn.GetProperty("params").GetProperty("model").GetString().Should().Be("gpt-5-codex");
+        turn.GetProperty("params").TryGetProperty("effort", out _).Should().BeFalse();
+    }
+
     // --- helpers -----------------------------------------------------------------------------------------
 
     private static async Task<PluginSessionStatus> _WaitForStatusAsync(CodexAppServerSessionDriver driver, Func<PluginSessionStatus, bool> predicate)
@@ -368,6 +453,9 @@ public class CodexAppServerSessionDriverTests
     {
         var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
+        // The driver lists the live-control models on the same connection right after the handshake (#45 D4); an
+        // empty listing keeps the start moving without asserting on the models here.
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
         await _RespondAsync(fake, "thread/start", $$"""{"threadId":"{{threadId}}"}""");
         await startTask;
     }

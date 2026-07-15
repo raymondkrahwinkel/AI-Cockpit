@@ -29,8 +29,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     /// <summary>Option key for the per-session sandbox choice, declared by the plugin and rendered by the dialog.</summary>
     public const string SandboxOptionKey = "sandbox";
 
-    /// <summary>Option key for the per-session model override.</summary>
+    /// <summary>Option key for the per-session model override — also a live control (#45 D4).</summary>
     public const string ModelOptionKey = "model";
+
+    /// <summary>Option key for the live reasoning-effort control (#45 D4), carried as <c>effort</c> on <c>turn/start</c>.</summary>
+    public const string EffortOptionKey = "effort";
+
+    // Codex's ReasoningEffort values — a fixed set, unlike the model list, so they need no live lookup.
+    private static readonly IReadOnlyList<string> _EffortChoices = ["low", "medium", "high"];
 
     private readonly CodexAppServerConnection _connection;
     private readonly CliAgentConfig _config;
@@ -44,6 +50,16 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     private readonly CancellationTokenSource _lifetime = new();
 
     private string? _model;
+
+    // The live reasoning-effort override (#45 D4). Null until the operator picks one, so a turn that never touched
+    // it carries no effort and Codex uses its own default rather than one this driver invented.
+    private string? _effort;
+
+    // The controls this session can switch mid-conversation (#45 D4), built once at start from the model listing
+    // and the effective model. Set on the starting thread before StartAsync returns and only read afterwards, so
+    // it needs no synchronisation of its own — the same publish-on-start shape the host reads Capabilities with.
+    private IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
+
     private string? _threadId;
     private string? _currentTurnId;
     private string? _workingDirectory;
@@ -77,6 +93,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     public PluginSessionStatus? Status => _status;
 
+    public IReadOnlyList<PluginSessionLaunchOption> LiveOptions => _liveOptions;
+
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
@@ -93,6 +111,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // default; absent, the config value (and then the CLI's own default) applies.
         var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, _config.SandboxMode);
         var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
+        _model = effectiveModel;
 
         // The session's MCP servers (#26) become -c config overrides on the app-server spawn; any bearer token
         // rides the process environment, never the command line (see CodexMcpConfig).
@@ -110,6 +129,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         await _connection.SendRequestAsync("initialize", new { clientInfo = new { name = _ClientName, version = _ClientVersion } }, cancellationToken).ConfigureAwait(false);
         await _connection.SendNotificationAsync("initialized", null, cancellationToken).ConfigureAwait(false);
+
+        // The live-control choices (#45 D4) — resolved on this same handshaked connection, so listing the models
+        // costs one round-trip and no second process (unlike the New-session dialog's CodexModelCatalog, which has
+        // no running server to reuse). Best-effort: an unreadable listing leaves the model control on the current
+        // model alone, and effort's fixed set needs no lookup at all.
+        _liveOptions = _BuildLiveOptions(await _ListLiveModelsAsync(cancellationToken).ConfigureAwait(false));
 
         var cwd = _NullIfBlank(workingDirectory);
         string threadId;
@@ -142,16 +167,20 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it here would block the
         // caller for the whole turn. The turn's output streams through the notification pump instead, closed by
         // turn/completed — mirroring how the exec driver runs its turn in the background.
+        // The live model/effort (#45 D4) are captured here, on the caller's thread, so a switch the operator makes
+        // through SetLiveOptionAsync (same thread) is picked up by the next turn and never read mid-write.
         var input = new object[] { new { type = "text", text } };
-        _ = _SendTurnAsync(threadId, input, cancellationToken);
+        _ = _SendTurnAsync(threadId, input, _model, _effort, cancellationToken);
         return Task.CompletedTask;
     }
 
-    private async Task _SendTurnAsync(string threadId, object[] input, CancellationToken cancellationToken)
+    private async Task _SendTurnAsync(string threadId, object[] input, string? model, string? effort, CancellationToken cancellationToken)
     {
         try
         {
-            await _connection.SendRequestAsync("turn/start", new { threadId, input }, cancellationToken).ConfigureAwait(false);
+            // model/effort are per-turn overrides (#45 D4): TurnStartParams takes both as optional, so a null simply
+            // leaves the thread's own default in place, the same shape thread/start already uses for sandbox/model.
+            await _connection.SendRequestAsync("turn/start", new { threadId, input, model = _NullIfBlank(model), effort = _NullIfBlank(effort) }, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -169,6 +198,25 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         {
             await _connection.SendRequestAsync("turn/interrupt", new { threadId, turnId }, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
+    {
+        // Store only — the new value rides the next turn/start (_SendTurnAsync captures it), so there is nothing to
+        // send to the server now. A key this driver did not declare is ignored: the host renders exactly the options
+        // LiveOptions reported, so an unknown key is contract drift, not an operator mistake to surface mid-session.
+        switch (key)
+        {
+            case ModelOptionKey:
+                _model = _NullIfBlank(value);
+                break;
+
+            case EffortOptionKey:
+                _effort = _NullIfBlank(value);
+                break;
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
@@ -519,6 +567,50 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
 
         return string.IsNullOrWhiteSpace(_config.WorkingDirectory) ? Environment.CurrentDirectory : _config.WorkingDirectory;
+    }
+
+    private async Task<CodexModelListing> _ListLiveModelsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _connection.SendRequestAsync("model/list", new { }, cancellationToken).ConfigureAwait(false);
+            return CodexModelCatalog.ParseListing(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // The caller cancelled the whole start — let it unwind rather than swallowing it into an empty listing
+            // and pressing on to thread/start with a dead token, the way the turn/pump paths in this file do.
+            throw;
+        }
+        catch (Exception)
+        {
+            // Best-effort, as the New-session dialog's listing is: a codex that cannot list (an older build, a
+            // transient failure) leaves the model control on the current model, which _BuildLiveOptions handles.
+            return CodexModelListing.Empty;
+        }
+    }
+
+    private IReadOnlyList<PluginSessionLaunchOption> _BuildLiveOptions(CodexModelListing models)
+    {
+        var options = new List<PluginSessionLaunchOption>(2);
+
+        // Model: the live listing, with the current model guaranteed among the choices — a pinned model or alias the
+        // listing omits still shows as the selected value rather than opening the panel blank, so CurrentValue is
+        // always selectable. No model named at all (the CLI's own default) leaves the control out: nothing to switch.
+        var modelChoices = new List<string>(models.Ids);
+        if (_model is { Length: > 0 } current && !modelChoices.Contains(current))
+        {
+            modelChoices.Insert(0, current);
+        }
+
+        if (modelChoices.Count > 0)
+        {
+            options.Add(new PluginSessionLaunchOption(ModelOptionKey, "Model", modelChoices, _model));
+        }
+
+        // Effort has no current value until the operator picks one (Codex runs its own default), so it opens unset.
+        options.Add(new PluginSessionLaunchOption(EffortOptionKey, "Effort", _EffortChoices, _effort));
+        return options;
     }
 
     private static string? _ExtractThreadId(JsonElement result)

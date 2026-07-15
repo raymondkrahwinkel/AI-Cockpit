@@ -83,6 +83,19 @@ public interface IPluginSessionDriver : IAsyncDisposable
     /// </summary>
     PluginSessionStatus? Status => null;
 
+    /// <summary>
+    /// The controls this running session can switch mid-conversation (#45 D4) — Codex's model and reasoning
+    /// effort, each a per-turn override the driver applies to the next turn it sends. The provider owns the whole
+    /// vocabulary: it names each control (<see cref="PluginSessionLaunchOption.Key"/>), labels it, and offers the
+    /// values, so the host renders them in a generic panel without knowing what any of them mean — the running-session
+    /// mirror of <see cref="SessionProviderRegistration.Options"/>. The current value rides each option's
+    /// <see cref="PluginSessionLaunchOption.DefaultValue"/> so the panel opens on what the session is actually using.
+    /// The default is empty: a provider with nothing to switch live (an HTTP model) shows no panel. A driver reports
+    /// these once its session is up (the values can depend on what the provider listed at start), the same moment the
+    /// host reads <see cref="Capabilities"/>. A default property, so no already-compiled plugin breaks.
+    /// </summary>
+    IReadOnlyList<PluginSessionLaunchOption> LiveOptions => [];
+
     /// <summary>The live, ordered stream of typed transcript events for this session.</summary>
     IAsyncEnumerable<PluginSessionEvent> Events { get; }
 
@@ -91,4 +104,13 @@ public interface IPluginSessionDriver : IAsyncDisposable
     /// tool source of its own has nothing to gate.
     /// </summary>
     Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Switches one of the <see cref="LiveOptions"/> for the rest of this session (#45 D4) — the operator picked a
+    /// new value in the live-control panel. <paramref name="key"/> is the option's
+    /// <see cref="PluginSessionLaunchOption.Key"/> and <paramref name="value"/> the chosen entry; the driver applies
+    /// it to the next turn it sends (Codex carries model/effort as per-turn overrides on <c>turn/start</c>). Default
+    /// no-op: a driver that declares no live options has none to switch, so it need not implement it.
+    /// </summary>
+    Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

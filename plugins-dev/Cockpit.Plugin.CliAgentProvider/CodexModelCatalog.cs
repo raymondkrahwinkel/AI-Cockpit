@@ -27,13 +27,14 @@ internal static class CodexModelCatalog
         await connection.SendNotificationAsync("initialized", null, cancellationToken).ConfigureAwait(false);
         var result = await connection.SendRequestAsync("model/list", new { }, cancellationToken).ConfigureAwait(false);
 
-        return _Parse(result);
+        return ParseListing(result);
     }
 
     private static string _WorkingDirectory(CliAgentConfig config) =>
         string.IsNullOrWhiteSpace(config.WorkingDirectory) ? Environment.CurrentDirectory : config.WorkingDirectory;
 
-    private static CodexModelListing _Parse(JsonElement result)
+    /// <summary>Parses a <c>model/list</c> reply into the ids it offers and the default, so the live-control path (#45 D4) can reuse it against its own already-running app-server connection instead of spawning a second one.</summary>
+    internal static CodexModelListing ParseListing(JsonElement result)
     {
         if (result.ValueKind != JsonValueKind.Object
             || !result.TryGetProperty("data", out var data)

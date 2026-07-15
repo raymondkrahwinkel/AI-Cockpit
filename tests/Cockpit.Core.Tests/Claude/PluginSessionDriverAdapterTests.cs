@@ -339,6 +339,44 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public void LiveOptions_MapEachPluginOption_ToTheCoreForm_PreservingKeyLabelChoicesAndCurrentValue()
+    {
+        var inner = new FakePluginSessionDriver
+        {
+            LiveOptions =
+            [
+                new PluginSessionLaunchOption("model", "Model", ["gpt-5-codex", "gpt-5"], "gpt-5-codex"),
+                new PluginSessionLaunchOption("effort", "Effort", ["low", "medium", "high"]),
+            ],
+        };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        // D4: the provider's live controls cross the boundary onto the core form the header renders — each option's
+        // key, label and choices carried through, and DefaultValue mapped to CurrentValue (unset for effort).
+        adapter.LiveOptions.Should().HaveCount(2);
+
+        adapter.LiveOptions[0].Key.Should().Be("model");
+        adapter.LiveOptions[0].Label.Should().Be("Model");
+        adapter.LiveOptions[0].Choices.Should().Equal("gpt-5-codex", "gpt-5");
+        adapter.LiveOptions[0].CurrentValue.Should().Be("gpt-5-codex");
+
+        adapter.LiveOptions[1].Key.Should().Be("effort");
+        adapter.LiveOptions[1].Choices.Should().Equal("low", "medium", "high");
+        adapter.LiveOptions[1].CurrentValue.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SetLiveOptionAsync_ForwardsKeyAndValue_ToTheInnerDriver()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        await adapter.SetLiveOptionAsync("model", "gpt-5");
+
+        inner.LastLiveOption.Should().Be(("model", "gpt-5"));
+    }
+
+    [Fact]
     public async Task DisposeAsync_DisposesTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();

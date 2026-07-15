@@ -51,6 +51,8 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public SessionStatusFeed? CurrentStatus => _driver?.CurrentStatus;
 
+    public IReadOnlyList<SessionLiveOption> LiveOptions => _driver?.LiveOptions ?? [];
+
     public bool IsRunning => _pump is not null;
 
     public string? LastAssistantText { get; private set; }
@@ -102,6 +104,9 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) =>
         _driver?.SetMaxThinkingTokensAsync(maxThinkingTokens, cancellationToken) ?? Task.CompletedTask;
+
+    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) =>
+        _driver?.SetLiveOptionAsync(key, value, cancellationToken) ?? Task.CompletedTask;
 
     public Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default) =>
         _driver?.SetAutoApproveToolsAsync(autoApprove, cancellationToken) ?? Task.CompletedTask;
