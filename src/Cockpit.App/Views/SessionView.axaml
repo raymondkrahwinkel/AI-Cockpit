@@ -32,30 +32,10 @@
                     <Button Content="Stop" Command="{Binding StopCommand}" Classes="Compact"
                             VerticalAlignment="Center"
                             ToolTip.Tip="Interrupts the running turn (control_request/interrupt)"/>
-                    <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding Capabilities.SupportsPermissionModeSwitch}"
-                              IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
-                              ToolTip.Tip="Permission mode for this session (live-switchable; bypass is locked once the session is launched in it)"/>
-                    <!-- Editable, not a fixed dropdown (like the New-session dialog): the aliases are only
-                         suggestions, so a specific model or snapshot can be pinned live. The switch applies on
-                         commit (Enter / focus-loss / picking a suggestion), wired in code-behind, so a keystroke
-                         does not fire a set_model per character. -->
-                    <AutoCompleteBox x:Name="LiveModelBox" ItemsSource="{Binding ClaudeModelSuggestions}"
-                                     Text="{Binding LiveModelText}"
-                                     FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
-                                     Classes="Compact" MinWidth="110" VerticalAlignment="Center"
-                                     IsVisible="{Binding Capabilities.SupportsLiveModelSwitch}"
-                                     ToolTip.Tip="Model for this session (--model at launch, live-switchable; type a model or snapshot, Enter to apply)"/>
-                    <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding Capabilities.SupportsThinking}"
-                              ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
-                    <!-- The provider's own live controls (#45 D4): Codex's model/effort, declared by the driver and
-                         rendered generically. Claude drives its model/effort through the typed combos above, so its
-                         LiveControls are empty and this panel stays hidden — the two never show together. -->
+                    <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
+                         driver and rendered generically. Now that Claude is a provider plugin like Codex, both drive
+                         their live switches through this one panel — the driver names, labels and values each control,
+                         so the header offers them without any built-in provider vocabulary. -->
                     <ItemsControl ItemsSource="{Binding LiveControls}" IsVisible="{Binding HasLiveControls}"
                                   VerticalAlignment="Center">
                         <ItemsControl.ItemsPanel>
