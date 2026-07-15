@@ -401,16 +401,88 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _isZoomed;
 
     /// <summary>
-    /// When true, the cockpit always shows one session at a time (single-session layout, #24), switched
-    /// from the sidebar — instead of the multi-session grid. Persisted; the Zoom button is a transient
-    /// per-view version of the same thing.
+    /// Options' "show one session at a time" (#24) — the cockpit-wide default, persisted to
+    /// <c>LayoutSettings</c>. What a desk actually does is <see cref="SingleSessionLayout"/>: a Sessions
+    /// workspace may override this (Raymond, 2026-07-15). Options edits the default and nothing else, or
+    /// opening it on an overriding workspace would save that workspace's choice over the global one.
     /// </summary>
     [ObservableProperty]
-    private bool _singleSessionLayout;
+    private bool _globalSingleSessionLayout;
 
-    /// <summary>When true, the multi-session grid stacks panels in one column (one above the other) instead of tiling side by side. Bound to the grid's <see cref="Controls.SessionTilePanel.StackVertically"/>.</summary>
+    /// <summary>Options' "stack sessions vertically" — the cockpit-wide default. The effective value is <see cref="StackSessionsVertically"/>.</summary>
     [ObservableProperty]
-    private bool _stackSessionsVertically;
+    private bool _globalStackSessionsVertically;
+
+    /// <summary>
+    /// What the active workspace actually does: its own override, else Options' default. Everything that
+    /// arranges panes reads this; nothing writes it.
+    /// </summary>
+    public bool SingleSessionLayout =>
+        Workspaces?.Active is { Type: WorkspaceType.Sessions, SingleSessionLayout: { } single }
+            ? single
+            : GlobalSingleSessionLayout;
+
+    /// <summary>The active workspace's stacking, its own override else Options'. Bound to the grid's <see cref="Controls.SessionTilePanel.StackVertically"/>.</summary>
+    public bool StackSessionsVertically =>
+        Workspaces?.Active is { Type: WorkspaceType.Sessions, StackSessionsVertically: { } stack }
+            ? stack
+            : GlobalStackSessionsVertically;
+
+    /// <summary>
+    /// Two-way for the Sessions ⚙: whether this desk follows Options. Unticking it starts the override from
+    /// what the desk is doing right now, so taking control changes nothing until the operator changes
+    /// something — a checkbox that rearranges your sessions the moment you tick it is one nobody ticks twice.
+    /// </summary>
+    public bool WorkspaceFollowsGlobalLayout
+    {
+        get => Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions
+            || (sessions.SingleSessionLayout is null && sessions.StackSessionsVertically is null);
+        set
+        {
+            if (Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions || value == WorkspaceFollowsGlobalLayout)
+            {
+                return;
+            }
+
+            _ = Workspaces.SetSessionLayoutAsync(
+                sessions.Id,
+                value ? null : SingleSessionLayout,
+                value ? null : StackSessionsVertically);
+            _OnEffectiveLayoutChanged();
+        }
+    }
+
+    /// <summary>Two-way for the Sessions ⚙'s own "show one session at a time" — writes this workspace's override, never Options.</summary>
+    public bool WorkspaceSingleSessionLayout
+    {
+        get => SingleSessionLayout;
+        set
+        {
+            if (Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions || value == SingleSessionLayout)
+            {
+                return;
+            }
+
+            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, value, StackSessionsVertically);
+            _OnEffectiveLayoutChanged();
+        }
+    }
+
+    /// <summary>Two-way for the Sessions ⚙'s own "stack sessions vertically" — writes this workspace's override, never Options.</summary>
+    public bool WorkspaceStackSessionsVertically
+    {
+        get => StackSessionsVertically;
+        set
+        {
+            if (Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions || value == StackSessionsVertically)
+            {
+                return;
+            }
+
+            _ = Workspaces.SetSessionLayoutAsync(sessions.Id, SingleSessionLayout, value);
+            _OnEffectiveLayoutChanged();
+        }
+    }
 
     /// <summary>
     /// True whenever the multi-pane grid is showing (two or more sessions, not the single-pane/zoom layout):
@@ -606,17 +678,35 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>Pushes the vertical-stack layout signal to every open TTY session as it changes (#54), so a switch to/from stacked-vertically re-docks each panel's header live, the same as flipping the terminal font settings.</summary>
-    partial void OnStackSessionsVerticallyChanged(bool value)
+    partial void OnGlobalStackSessionsVerticallyChanged(bool value) => _OnEffectiveLayoutChanged();
+
+    partial void OnGlobalSingleSessionLayoutChanged(bool value) => _OnEffectiveLayoutChanged();
+
+    /// <summary>
+    /// Re-reads what the active desk is doing and pushes it everywhere. One place, because the effective value
+    /// moves for three different reasons — Options changed, this workspace's override changed, or a different
+    /// workspace became active — and every one of them has to re-dock the TTY headers (#54) and re-lay the grid.
+    /// </summary>
+    internal void _OnEffectiveLayoutChanged()
     {
+        OnPropertyChanged(nameof(SingleSessionLayout));
+        OnPropertyChanged(nameof(StackSessionsVertically));
+        OnPropertyChanged(nameof(WorkspaceFollowsGlobalLayout));
+        OnPropertyChanged(nameof(WorkspaceSingleSessionLayout));
+        OnPropertyChanged(nameof(WorkspaceStackSessionsVertically));
+        OnPropertyChanged(nameof(ShowSinglePane));
+        OnPropertyChanged(nameof(ShowZoomButton));
         OnPropertyChanged(nameof(StackSessionsInStack));
+
         foreach (var session in Sessions)
         {
             if (session is ClaudeTtyViewModel tty)
             {
-                tty.IsVerticalLayout = value;
+                tty.IsVerticalLayout = StackSessionsVertically;
             }
         }
+
+        RefreshPaneVisibility();
     }
 
     /// <summary>True when only the selected session should be shown full-size — either the persisted single layout (#24) or a transient Zoom.</summary>
@@ -629,13 +719,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         RefreshPaneVisibility();
     }
 
-    partial void OnSingleSessionLayoutChanged(bool value)
-    {
-        OnPropertyChanged(nameof(ShowSinglePane));
-        OnPropertyChanged(nameof(ShowZoomButton));
-        OnPropertyChanged(nameof(StackSessionsInStack));
-        RefreshPaneVisibility();
-    }
 
     [ObservableProperty]
     private string _audioStatus = "Ready.";
@@ -926,8 +1009,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(VisibleSessions));
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
-            // The other desks' sessions stay alive; they just stop being shown.
-            RefreshPaneVisibility();
+
+            // A desk can arrange itself differently from the last one, so switching re-reads the effective
+            // layout and re-docks the TTY headers — the same work Options changing does, for the same reason.
+            // It ends in RefreshPaneVisibility, which is also what keeps the other desks' sessions alive but
+            // unshown.
+            _OnEffectiveLayoutChanged();
         };
 
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context —
@@ -1818,8 +1905,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var settings = await _layoutSettingsStore.LoadAsync();
-        SingleSessionLayout = settings.SingleSessionLayout;
-        StackSessionsVertically = settings.StackSessionsVertically;
+        GlobalSingleSessionLayout = settings.SingleSessionLayout;
+        GlobalStackSessionsVertically = settings.StackSessionsVertically;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         SidebarWidth = settings.SidebarWidth;
         SidebarCollapsed = settings.SidebarCollapsed;
@@ -1836,8 +1923,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _layoutSettingsStore.SaveAsync(new LayoutSettings
         {
-            SingleSessionLayout = SingleSessionLayout,
-            StackSessionsVertically = StackSessionsVertically,
+            SingleSessionLayout = GlobalSingleSessionLayout,
+            StackSessionsVertically = GlobalStackSessionsVertically,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
             SidebarCollapsed = SidebarCollapsed,
@@ -1863,8 +1950,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _layoutSettingsStore.SaveAsync(new LayoutSettings
         {
-            SingleSessionLayout = SingleSessionLayout,
-            StackSessionsVertically = StackSessionsVertically,
+            SingleSessionLayout = GlobalSingleSessionLayout,
+            StackSessionsVertically = GlobalStackSessionsVertically,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
             SidebarCollapsed = SidebarCollapsed,
@@ -1887,8 +1974,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _layoutSettingsStore.SaveAsync(new LayoutSettings
         {
-            SingleSessionLayout = SingleSessionLayout,
-            StackSessionsVertically = StackSessionsVertically,
+            SingleSessionLayout = GlobalSingleSessionLayout,
+            StackSessionsVertically = GlobalStackSessionsVertically,
             MinimizeToTrayOnClose = MinimizeToTrayOnClose,
             SidebarWidth = SidebarWidth,
             SidebarCollapsed = SidebarCollapsed,

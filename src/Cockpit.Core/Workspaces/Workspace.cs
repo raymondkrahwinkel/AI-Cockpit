@@ -15,9 +15,23 @@ public sealed record Workspace(string Id, string Name, WorkspaceType Type)
 
     /// <summary>
     /// The grid settings, meaningful only for <see cref="WorkspaceType.Dashboard"/>. A Sessions workspace
-    /// keeps the adaptive session grid it has today and ignores this.
+    /// arranges itself with the two overrides below instead.
     /// </summary>
     public DashboardLayout Layout { get; init; } = DashboardLayout.Default;
+
+    /// <summary>
+    /// Overrides Options' "show one session at a time" for this workspace; null follows Options (Raymond,
+    /// 2026-07-15: "by default volgt die de algemene instellingen, maar overriden per session workspace").
+    /// <para>
+    /// Null rather than a copy of the global value beside a "use global" flag: two fields that can disagree
+    /// eventually will, and then what the desk actually does depends on which one you read. Meaningful only
+    /// for <see cref="WorkspaceType.Sessions"/>.
+    /// </para>
+    /// </summary>
+    public bool? SingleSessionLayout { get; init; }
+
+    /// <summary>Overrides Options' "stack sessions vertically" for this workspace; null follows Options. See <see cref="SingleSessionLayout"/>.</summary>
+    public bool? StackSessionsVertically { get; init; }
 
     /// <summary>A new, empty workspace of <paramref name="type"/> with a generated id.</summary>
     public static Workspace Create(string name, WorkspaceType type) =>

@@ -247,6 +247,26 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     }
 
     /// <summary>
+    /// Overrides how this Sessions workspace arranges its panes, or hands it back to Options — null follows the
+    /// global setting (Raymond, 2026-07-15). Both are written together because they are one decision made on
+    /// one ⚙: a desk either arranges itself or it follows, and a half-override is a state nothing in the UI can
+    /// express. Ignored for a Dashboard, which has its own grid.
+    /// </summary>
+    public Task SetSessionLayoutAsync(string workspaceId, bool? singleSession, bool? stackVertically)
+    {
+        if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { Type: WorkspaceType.Sessions } sessions)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _ApplyAsync(Settings.WithUpdated(sessions with
+        {
+            SingleSessionLayout = singleSession,
+            StackSessionsVertically = stackVertically,
+        }));
+    }
+
+    /// <summary>
     /// Places a widget on the active dashboard, at the first free cell its size fits
     /// (<see cref="DashboardGridMath.PlaceNext"/>). Ignored unless a dashboard is active — a Sessions
     /// workspace cannot hold a widget, and the affordance that calls this is hidden there anyway.
