@@ -51,6 +51,10 @@
          can load its real assembly and prove AddSessionProvider registers it too. -->
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitHubModelsProvider\Cockpit.Plugin.GitHubModelsProvider.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <!-- Claude as a provider plugin (Fase 4): the loader integration test loads its real assembly and proves
+         AddTtyProvider registers Claude's TTY route through the actual PluginActivator. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\Cockpit.Plugin.ClaudeProvider.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>
