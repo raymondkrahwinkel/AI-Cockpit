@@ -56,17 +56,39 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     public VoiceOverlayViewModel Overlay { get; }
 
     /// <summary>Starts listening for the global hotkey. No-op when voice or global push-to-talk is off, so the portal/hook is never touched for an operator who never opted in.</summary>
+    /// <remarks>
+    /// Never throws. Its one caller discards the task (<c>App.axaml.cs</c>: <c>_ = …StartAsync()</c>), so anything
+    /// thrown here used to land on a task nobody observes and be gone — and what it took with it was the hotkey.
+    /// Reading the voice settings goes through the shared <c>cockpit.json</c>, which a write elsewhere in this
+    /// process can briefly lock; on 2026-07-15 that raced at startup and F9 was dead for the whole session with
+    /// not one line in the log to say so. It still cannot start if the read fails — but now it says which.
+    /// </remarks>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
-        if (!settings.IsEnabled || !settings.GlobalPushToTalk)
+        try
         {
-            return;
-        }
+            var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
+            if (!settings.IsEnabled || !settings.GlobalPushToTalk)
+            {
+                return;
+            }
 
-        _hotkeyService.HoldStarted += _OnHoldStarted;
-        _hotkeyService.HoldEnded += _OnHoldEnded;
-        await _hotkeyService.StartAsync(cancellationToken);
+            _hotkeyService.HoldStarted += _OnHoldStarted;
+            _hotkeyService.HoldEnded += _OnHoldEnded;
+            await _hotkeyService.StartAsync(cancellationToken);
+
+            _logger.LogInformation("Global push-to-talk armed on '{Key}'.", settings.PushToTalkKeyName);
+        }
+        catch (Exception exception)
+        {
+            // Leave nothing subscribed to a hook that never armed.
+            _hotkeyService.HoldStarted -= _OnHoldStarted;
+            _hotkeyService.HoldEnded -= _OnHoldEnded;
+
+            _logger.LogError(
+                exception,
+                "Global push-to-talk could not start; the hotkey will not fire until the cockpit is restarted.");
+        }
     }
 
     private void _OnHoldStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleHoldStarted);
