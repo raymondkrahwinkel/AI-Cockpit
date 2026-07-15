@@ -18,7 +18,9 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class TtyReadAloudTests
 {
-    private static readonly SessionProfile Work = new("work", new ClaudeConfig("/config/work"));
+    // A migrated Claude profile is a plugin profile now; its config dir is reconstructed via SessionProfile.Claude, so
+    // this exercises the real post-Fase-4 shape rather than the legacy in-tree ClaudeConfig that no longer occurs.
+    private static readonly SessionProfile Work = new("work", ClaudePluginProfile.Create("/config/work", null));
 
     [Fact]
     public void ReadResponsesAloud_Off_NeverStartsTailingOrEnqueuesAnything()
