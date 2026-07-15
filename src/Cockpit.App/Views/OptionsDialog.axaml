@@ -216,6 +216,23 @@
                             <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
                                            Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
                         </StackPanel>
+                        <!-- AC-9's microphone half. Off by default and it says why on the row: a threshold filters
+                             the room, not the cockpit's own voice, so on speakers this stops read-aloud the moment
+                             it starts. Under open-mic's tuning because it needs the same open microphone. -->
+                        <CheckBox Content="Stop read-aloud when I start talking"
+                                  IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"
+                                  IsVisible="{Binding VoiceEnabled}"/>
+                        <TextBlock Text="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops read-aloud and needs neither. Use headphones: on speakers the microphone hears the read-aloud itself and stops it straight away."
+                                   IsVisible="{Binding VoiceEnabled}"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                    IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                            <TextBlock Text="…when the microphone is louder than"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
+                                           Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
+                        </StackPanel>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
                         <TextBlock Text="Transcription" FontWeight="SemiBold"/>
                         <TextBlock Text="Turns your speech into text with Whisper, on-device. This is the speech-to-text model — separate from the local LLM that tidies the text below."
