@@ -41,7 +41,7 @@ public sealed partial class SecurityOptionsViewModel(ISecretProtectionService pr
             "Encrypting your credentials…",
             progress => protection.EnableAsync(password, progress)).ConfigureAwait(true);
 
-        Status = "Your keys and tokens are encrypted. You will be asked for this password the next time the cockpit starts.";
+        Status = "Your keys and tokens are encrypted. You will be asked for this password the next time AI-Cockpit starts.";
     }
 
     public async Task DisableAsync()
@@ -50,7 +50,7 @@ public sealed partial class SecurityOptionsViewModel(ISecretProtectionService pr
             "Writing your credentials back in the clear…",
             progress => protection.DisableAsync(progress)).ConfigureAwait(true);
 
-        Status = "Encryption is off. Your keys and tokens are readable in cockpit.json again, and the cockpit starts without asking for a password.";
+        Status = "Encryption is off. Your keys and tokens are readable in cockpit.json again, and AI-Cockpit starts without asking for a password.";
     }
 
     public async Task ChangePasswordAsync(string currentPassword, string newPassword)

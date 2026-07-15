@@ -23,6 +23,9 @@ public sealed record LayoutSettings
     /// </summary>
     public double SidebarWidth { get; init; } = DefaultSidebarWidth;
 
+    /// <summary>When true, the left sidebar is collapsed out of view (its width taken by the session content) until expanded again. Off by default; the last-dragged <see cref="SidebarWidth"/> is kept and restored on expand.</summary>
+    public bool SidebarCollapsed { get; init; }
+
     public const double DefaultSidebarWidth = 180;
     public const double MinSidebarWidth = 180;
     public const double MaxSidebarWidth = 480;

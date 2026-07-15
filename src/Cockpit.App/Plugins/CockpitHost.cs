@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
@@ -13,6 +14,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.App.Plugins;
 
@@ -31,7 +33,8 @@ internal sealed class CockpitHost(
     ICockpitActions actions,
     IPluginStorage storage,
     IPluginDialogHost dialogHost,
-    ICockpitSessionObserver sessions) : ICockpitHost
+    ICockpitSessionObserver sessions,
+    IReadOnlyList<string>? declaredSecretKeys = null) : ICockpitHost
 {
     public IServiceProvider Services => services;
 
@@ -68,6 +71,25 @@ internal sealed class CockpitHost(
 
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
+
+    // This plugin's own storage, observe surface and declared secret keys travel with the registration: a placed
+    // instance builds its context long after load, and by then the widget id is the only thing linking it back
+    // here. The declared keys are what lets an export drop a credential the name rule cannot guess ("pat").
+    public void AddWidget(WidgetRegistration registration)
+    {
+        // Refused means another plugin already contributes this type id. Logged rather than thrown: a plugin
+        // cannot know what else is installed, and taking the cockpit down over a name clash is a worse answer
+        // than the widget being the one that was already there.
+        if (!services.GetRequiredService<IWidgetRegistry>().Register(registration, storage, sessions, declaredSecretKeys ?? []))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                "Widget type '{WidgetId}' is already contributed by another plugin; this registration is ignored",
+                registration.Id);
+        }
+    }
+
+    public IReadOnlyList<WidgetRegistration> Widgets =>
+        services.GetRequiredService<IWidgetRegistry>().Widgets;
 
     public void AddWorkflowStep(IWorkflowStep step) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Register(step);

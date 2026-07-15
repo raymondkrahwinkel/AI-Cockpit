@@ -7,7 +7,7 @@
         x:Class="Cockpit.App.Views.UnlockWindow"
         x:DataType="vm:UnlockViewModel"
         Icon="/Assets/AppIcon.ico"
-        Title="Cockpit"
+        Title="AI-Cockpit"
         Width="420" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource CockpitPanelBgBrush}">

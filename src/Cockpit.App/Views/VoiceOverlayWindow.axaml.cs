@@ -22,6 +22,11 @@ public partial class VoiceOverlayWindow : Window
     {
         InitializeComponent();
         Opened += _OnOpened;
+        // Re-centre once the window actually has a size. On the very first show the pre-show/Opened calls run
+        // before SizeToContent has measured the pill, so Bounds is still 0 and the maths lands it in the wrong
+        // place; this fires when the real size settles. It also re-centres when the pill grows/shrinks between
+        // its "Listening" and "Transcribing" states, keeping it anchored bottom-centre throughout.
+        SizeChanged += (_, _) => PositionBottomCenter();
     }
 
     /// <summary>Re-centres the pill bottom-centre — called before every show to cover a screen/resolution change between holds.</summary>

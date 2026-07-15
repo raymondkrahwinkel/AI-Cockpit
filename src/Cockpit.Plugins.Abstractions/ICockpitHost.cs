@@ -3,6 +3,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugins.Abstractions;
@@ -230,6 +231,24 @@ public interface ICockpitHost
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null)
     {
     }
+
+    /// <summary>
+    /// Registers a dashboard widget type (see <see cref="WidgetRegistration"/>) — the widget equivalent of
+    /// <see cref="AddSessionProvider"/>: it becomes available in a Dashboard workspace's "Add widget" gallery,
+    /// and each placed instance is built by the registration's own view factory. The core hosts the grid and the
+    /// pane chrome; what a widget shows is the plugin's business. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host renders it.
+    /// </summary>
+    void AddWidget(WidgetRegistration registration)
+    {
+    }
+
+    /// <summary>
+    /// The widget types every plugin has contributed — what a Dashboard workspace's "Add widget" gallery reads.
+    /// A plugin that is not building that gallery has no reason to call this. Default empty.
+    /// </summary>
+    IReadOnlyList<WidgetRegistration> Widgets => [];
 
     /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds

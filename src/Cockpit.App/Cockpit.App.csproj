@@ -77,6 +77,13 @@
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The clock: a Dashboard workspace with nothing to put on it is a worse first impression than one that
+         already has a clock, and it proves the widget SDK end to end from outside the host. Its former other
+         half, the system monitor, is its own plugin from the store — one plugin per widget, so wanting a clock
+         is not also wanting a CPU meter. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Clock\Cockpit.Plugin.Clock.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <!-- A single-file build is one file, so the bundled plugins ride inside it: the same dll/deps/plugin.json are
@@ -107,6 +114,19 @@
       <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\plugin.json">
         <LogicalName>bundled-plugins/git-status/plugin.json</LogicalName>
       </EmbeddedResource>
+
+      <!-- The clock was missing here while its predecessor was bundled: it was copied beside the exe but never
+           embedded, so a single file handed over on its own carried two of the three bundled plugins and no
+           widget at all. -->
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.dll">
+        <LogicalName>bundled-plugins/clock/Cockpit.Plugin.Clock.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.deps.json">
+        <LogicalName>bundled-plugins/clock/Cockpit.Plugin.Clock.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\plugin.json">
+        <LogicalName>bundled-plugins/clock/plugin.json</LogicalName>
+      </EmbeddedResource>
     </ItemGroup>
   </Target>
 
@@ -118,15 +138,21 @@
       <GitStatusFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.dll;
                                $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.deps.json;
                                $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\plugin.json" />
+      <ClockFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.dll;
+                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.deps.json;
+                           $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\plugin.json" />
     </ItemGroup>
     <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(OutDir)bundled-plugins\transcript-search" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(OutDir)bundled-plugins\git-status" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(OutDir)bundled-plugins\clock" SkipUnchangedFiles="true" />
 
     <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a
          cockpit missing the features that used to be core. -->
     <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(PublishDir)bundled-plugins\transcript-search"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(PublishDir)bundled-plugins\git-status"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(PublishDir)bundled-plugins\clock"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
   </Target>
 </Project>

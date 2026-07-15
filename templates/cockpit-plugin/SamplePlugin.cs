@@ -41,6 +41,15 @@ public sealed class SamplePlugin : ICockpitPlugin
         //   host.AddShortcut(new PluginShortcut("sample.open", "Sample", "Shift+S", OpenSample));
         //       A gesture plus a command-palette entry, listed alongside the app's own shortcuts.
         //
+        //   host.AddWidget(new WidgetRegistration("sample.widget", "Sample", context => new YourWidget(context))
+        //   {
+        //       Icon = "🧩", Description = "What it shows.", DefaultColumnSpan = 6, DefaultRowSpan = 4,
+        //       CreateConfigView = context => new YourWidgetSettings(context),   // omit it and the pane has no ⚙
+        //   });
+        //       A pane on a Dashboard workspace. Each placed instance gets its own IWidgetContext — storage
+        //       scoped to that instance, so two of your widgets on one dashboard keep separate config. Publish
+        //       with "category": "Widgets" to land in the store's Widgets section.
+        //
         //   host.AddSideMenuSection("Sample", () => new YourSectionControl());   // inline, always visible
         //   host.AddSessionProvider(registration);   // your own model/CLI as a selectable provider
         //   _ = host.AddMcpServer(contribution);     // put an MCP server in the shared registry

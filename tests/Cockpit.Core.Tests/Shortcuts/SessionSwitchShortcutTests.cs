@@ -25,12 +25,14 @@ public class SessionSwitchShortcutTests
     }
 
     [Fact]
-    public void StaysActiveInTerminal_HoldsForTheSessionManagementActions()
+    public void StaysActiveInTerminal_HoldsForTheNavigationActions()
     {
-        // The session-management shortcuts fire over a focused terminal (Raymond's call): switch, plus
-        // create and duplicate a session — the actions you reach for while driving a running TUI.
+        // The navigation shortcuts fire over a focused terminal (Raymond's call): switching session or
+        // workspace, plus create and duplicate — the actions you reach for while driving a running TUI.
         ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.PreviousSession).Should().BeTrue();
         ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NextSession).Should().BeTrue();
+        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.PreviousWorkspace).Should().BeTrue();
+        ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NextWorkspace).Should().BeTrue();
         ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.NewSession).Should().BeTrue();
         ShortcutCatalog.StaysActiveInTerminal(ShortcutAction.DuplicateSession).Should().BeTrue();
 
@@ -39,6 +41,7 @@ public class SessionSwitchShortcutTests
         var staysActive = new[]
         {
             ShortcutAction.PreviousSession, ShortcutAction.NextSession,
+            ShortcutAction.PreviousWorkspace, ShortcutAction.NextWorkspace,
             ShortcutAction.NewSession, ShortcutAction.DuplicateSession,
         };
 

@@ -4,6 +4,8 @@
              xmlns:conv="using:Cockpit.App.Converters"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:layout="using:Cockpit.Core.Layout"
+             xmlns:ws="using:Cockpit.Core.Workspaces"
+             xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -23,6 +25,46 @@
             <Setter Property="Opacity" Value="0"/>
         </Style>
         <Style Selector="Border.sessionItem:pointerover Button.closeSession">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+
+        <!-- A workspace tab reads as a tab only once one of them is clearly the current one, so the active tab
+             takes the panel background and full-strength text while the rest stay flat and faint. Same
+             hover-to-reveal ✕ as the session rows, for the same reason: a row of close buttons makes the strip
+             read as a list of things to get rid of. -->
+        <Style Selector="Border.workspaceTab">
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Border.workspaceTab TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab:pointerover">
+            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab.active">
+            <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab.active TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
+        <!-- A widget is being dragged over this tab and would land there: the same coral outline the drop ghost
+             draws on the grid, because it answers the same question in the same gesture — only here the answer
+             is "on that desk" rather than "on this cell".
+             The class goes on the generated container (the strip's children) and the selector reaches through to
+             the Border. Outline only, deliberately: the tab sets Background="Transparent" inline — it has to, or
+             it would not be hit-testable — and a local value beats a style setter, so a Background here would
+             silently do nothing. BorderBrush/BorderThickness carry no local value, so they land. -->
+        <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab">
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
+        <Style Selector="Border.workspaceTab Button.closeWorkspace">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Border.workspaceTab:pointerover Button.closeWorkspace">
             <Setter Property="Opacity" Value="1"/>
         </Style>
 
@@ -63,7 +105,7 @@
     </UserControl.Styles>
 
     <Grid x:Name="RootGrid">
-        <!-- One row for the cockpit, one for the status bar (#78). Everything that was here before stays in
+        <!-- One row for AI-Cockpit, one for the status bar (#78). Everything that was here before stays in
              row 0 by default, so adding the bar did not have to touch a single existing panel. -->
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
@@ -84,17 +126,22 @@
 
         <!-- Sidebar: always visible in both grid and zoom mode — the constant overview/status anchor. -->
         <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+                IsVisible="{Binding !SidebarCollapsed}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8">
 
                 <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+                    <!-- Collapse the sidebar out of the way; a matching » button appears over the content to bring it back. -->
+                    <Button Content="«" HorizontalAlignment="Right" Padding="8,2" Classes="Subtle"
+                            Command="{Binding ToggleSidebarCommand}"
+                            ToolTip.Tip="Collapse the sidebar"/>
                     <!-- SDK vs TTY is chosen inside the New-session dialog (#32) — one button covers both. -->
                     <Button Content="+ New session" Command="{Binding NewSessionCommand}"
                             Classes="Accent" HorizontalAlignment="Stretch"/>
                 </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
-                     primary session overview per the cockpit's design goal (sidebar = sessions, not tools). -->
+                     primary session overview per AI-Cockpit's design goal (sidebar = sessions, not tools). -->
                 <StackPanel DockPanel.Dock="Bottom" Spacing="4">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
                     <!-- Runtime open-mic toggle: listens continuously and types into the selected session.
@@ -144,7 +191,9 @@
                 <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
 
                 <ScrollViewer>
-                    <ItemsControl ItemsSource="{Binding Sessions}">
+                    <!-- The sidebar lists only the workspace now showing, so it never offers a session the grid
+                         is hiding. Safe to filter here, unlike the grid below: these rows carry no pty. -->
+                    <ItemsControl ItemsSource="{Binding VisibleSessions}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:SessionPanelViewModel">
                                 <!-- Selection + attention are driven entirely by the style classes below
@@ -232,16 +281,316 @@
             </DockPanel>
         </Border>
 
+        <!-- Collapsed rail: a slim strip in the sidebar's own column (so it never overlaps the session
+             content) with the expand chevron and a compact New session. Shown only while collapsed. -->
+        <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+                IsVisible="{Binding SidebarCollapsed}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,1,0">
+            <StackPanel Margin="4,8" Spacing="6" HorizontalAlignment="Center">
+                <Button Content="»" Classes="Subtle" Padding="6,2"
+                        Command="{Binding ToggleSidebarCommand}"
+                        ToolTip.Tip="Expand the sidebar"/>
+                <Button Content="+" Classes="Accent" Padding="7,2"
+                        Command="{Binding NewSessionCommand}"
+                        ToolTip.Tip="New session"/>
+            </StackPanel>
+        </Border>
+
         <!-- Sidebar-width splitter (#49): drags SidebarColumn between its min/max, then
              OnSidebarSplitterDragCompleted reads the settled width back and persists it. -->
         <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns"
+                      IsVisible="{Binding !SidebarCollapsed}"
                       DragCompleted="OnSidebarSplitterDragCompleted"/>
 
         <!-- Main area: empty-state welcome until a session exists (#31), then the grid/zoom. -->
-        <Grid Grid.Column="2">
+        <Grid Grid.Column="2" RowDefinitions="Auto,*">
 
-            <!-- Empty state: no session opens on startup; one only exists once the operator creates it. -->
-            <StackPanel IsVisible="{Binding !HasSessions}" MaxWidth="320"
+            <!-- The workspace strip sits ABOVE both the empty state and the grid, deliberately outside the
+                 HasSessions gate below: a Dashboard workspace holds widgets and no sessions at all, so a strip
+                 that only appeared once a session existed would be a strip you could never reach a dashboard
+                 from. Hidden while there is only one workspace (ShowTabStrip) — that is the cockpit as it has
+                 always looked, and a lone tab is chrome that earns nothing — but the + stays, since it is what
+                 makes the second workspace that reveals the strip. -->
+            <Border Grid.Row="0" Margin="12,12,12,0" Padding="0,0,0,6"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1">
+                <DockPanel>
+                    <!-- Dock the + first so the tab list never pushes it off the edge when the strip fills up. -->
+                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="8,3" Content="+"
+                            ToolTip.Tip="New workspace">
+                        <Button.Flyout>
+                            <!-- The type is asked up front and is an invariant afterwards: it decides which
+                                 panes the workspace can hold, so it cannot be a toggle after the fact. -->
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuItem Header="💬  Sessions" Command="{Binding Workspaces.AddWorkspaceCommand}"
+                                          CommandParameter="{x:Static ws:WorkspaceType.Sessions}"
+                                          ToolTip.Tip="AI sessions and terminals"/>
+                                <MenuItem Header="📊  Dashboard" Command="{Binding Workspaces.AddWorkspaceCommand}"
+                                          CommandParameter="{x:Static ws:WorkspaceType.Dashboard}"
+                                          ToolTip.Tip="Widgets"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <!-- The drag lives on the strip, not on the tabs: a move rebuilds the tabs, so a handler on
+                         the dragged Border would stop firing the moment it did its job once. -->
+                    <ItemsControl x:Name="WorkspaceTabStrip" ItemsSource="{Binding Workspaces.Tabs}"
+                                  IsVisible="{Binding Workspaces.ShowTabStrip}"
+                                  PointerMoved="OnWorkspaceTabPointerMoved"
+                                  PointerReleased="OnWorkspaceTabPointerReleased">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="4"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:WorkspaceTabViewModel">
+                                <!-- Double-click renames in place — the same inline edit a session row uses,
+                                     rather than a dialog for one short string. -->
+                                <Border Classes="workspaceTab" Classes.active="{Binding IsActive}"
+                                        CornerRadius="6" Padding="10,4" Background="Transparent"
+                                        PointerPressed="OnWorkspaceTabPressed"
+                                        DoubleTapped="OnWorkspaceTabDoubleTapped">
+                                    <!-- Right-click is where people look for "rename"; the double-click stays as
+                                         the shortcut for those who know it, but it is not discoverable on its
+                                         own (Raymond). Same menu shape as the session rows' own. -->
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested"/>
+                                            <MenuItem Header="Close" Click="OnCloseWorkspaceRequested"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <DockPanel>
+                                        <!-- Routed through the same handler as the menu's Close, so the ✕ asks
+                                             before discarding a workspace too — it is the easier of the two to
+                                             hit by accident. -->
+                                        <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Content="✕"
+                                                Padding="4,0" Margin="6,0,0,0" FontSize="10"
+                                                IsVisible="{Binding !IsRenaming}"
+                                                Click="OnCloseWorkspaceRequested"
+                                                ToolTip.Tip="Close workspace"/>
+                                        <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
+                                                   IsVisible="{Binding !IsRenaming}"/>
+                                        <!-- Sized and aligned to sit in the tab rather than on top of it: a
+                                             default TextBox brings its own padding and min-height, which made
+                                             the tab jump and the box hang out of it. Attached, it takes focus
+                                             and selects everything, so the first keystroke replaces the name —
+                                             which is what you came to do. -->
+                                        <TextBox Text="{Binding EditName}" IsVisible="{Binding IsRenaming}"
+                                                 MinWidth="90" MinHeight="0" Height="19" Padding="4,0"
+                                                 FontSize="12" VerticalAlignment="Center"
+                                                 VerticalContentAlignment="Center"
+                                                 AttachedToVisualTree="OnWorkspaceRenameAttached"
+                                                 KeyDown="OnWorkspaceRenameKeyDown" LostFocus="OnWorkspaceRenameLostFocus"/>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+
+            <!-- Dashboard: the widget grid, shown instead of the session content when a Dashboard workspace is
+                 active. Its own empty state says "add a widget", never "no sessions yet" — the workspace type
+                 drives the affordance, so a dashboard never asks for something it cannot hold. -->
+            <DockPanel Grid.Row="1" IsVisible="{Binding Workspaces.IsDashboardActive}">
+
+                <!-- The dashboard's own toolbar. "Add widget" used to live only in the centred empty state,
+                     which put it underneath the widgets the moment there were any — it needs a home that does
+                     not move, and the dashboard's other controls belong beside it rather than scattered. -->
+                <DockPanel DockPanel.Dock="Top" Margin="12,12,12,0">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                        <!-- Disabled, not hidden, while no plugin contributes a widget: the button is the answer
+                             to "how do I fill this dashboard", so it has to stay visible and say why it cannot. -->
+                        <Button Content="+ Add widget" Classes="Accent" Padding="10,4"
+                                IsEnabled="{Binding Workspaces.HasAvailableWidgets}"
+                                ToolTip.Tip="Widgets come from plugins — install one that contributes widgets first">
+                        <!-- A plain Flyout over an ItemsControl of buttons rather than a MenuFlyout with an
+                             ItemsSource: the latter's containers never materialised here, leaving an enabled
+                             button that opened an empty popup. This shape is the gallery — icon, title and the
+                             one-liner the widget describes itself with. -->
+                        <Button.Flyout>
+                            <Flyout Placement="Bottom">
+                                <ItemsControl ItemsSource="{Binding Workspaces.AvailableWidgets}" MinWidth="220">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="widgets:WidgetRegistration">
+                                            <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left" Padding="8,6"
+                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.PlaceWidgetCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <DockPanel>
+                                                    <TextBlock Text="{Binding Icon}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding Description}" FontSize="11" Opacity="0.7"
+                                                                   TextWrapping="Wrap" MaxWidth="180"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Flyout>
+                        </Button.Flyout>
+                        </Button>
+
+                        <!-- The dashboard's grid shape. Its own settings, not the app's — each dashboard is laid
+                             out on its own, and this is where §4g's Columns/Rows live. -->
+                        <Button Classes="Subtle" Content="⚙" Padding="7,4" ToolTip.Tip="Dashboard settings">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight">
+                                    <StackPanel Spacing="10" MinWidth="200" Margin="4">
+                                        <TextBlock Text="Dashboard grid" FontWeight="SemiBold"/>
+                                        <DockPanel>
+                                            <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
+                                                           Minimum="1" Maximum="256"
+                                                           Value="{Binding Workspaces.DashboardColumnsSetting}"/>
+                                            <TextBlock Text="Columns" VerticalAlignment="Center"/>
+                                        </DockPanel>
+                                        <DockPanel>
+                                            <!-- The bounds match DashboardLayout's Min/Max constants; the record
+                                                 clamps anyway, so a drifted literal here cannot reach the grid. -->
+                                            <NumericUpDown DockPanel.Dock="Right" Width="104" Increment="1" FormatString="0"
+                                                           Minimum="1" Maximum="256"
+                                                           Value="{Binding Workspaces.DashboardRowsSetting}"/>
+                                            <TextBlock Text="Rows" VerticalAlignment="Center"/>
+                                        </DockPanel>
+                                        <TextBlock Text="Rows are a starting height — the dashboard grows past it as you add widgets."
+                                                   FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxWidth="190"/>
+                                        <CheckBox Content="Show grid lines" IsChecked="{Binding Workspaces.DashboardShowGridLines}"
+                                                  ToolTip.Tip="Draw the cells widgets snap to — handy while arranging"/>
+
+                                        <!-- Export/import live with the dashboard's other controls rather than in
+                                             the toolbar: they are things you do once, not affordances the
+                                             arranging needs in front of it. -->
+                                        <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Margin="0,4,0,0"/>
+                                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Padding="6,4" Content="Export this dashboard…" Click="OnExportDashboardPressed"
+                                                ToolTip.Tip="Save it to a file — to keep, or to hand to someone. Credentials are left out."/>
+                                        <Button Classes="Subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Padding="6,4" Content="Import a dashboard…" Click="OnImportDashboardPressed"
+                                                ToolTip.Tip="Add a dashboard from a file, alongside the ones you have"/>
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Workspaces.Active.Name}" FontWeight="SemiBold"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+
+                <!-- The grid, its drag ghost and the empty state share one cell. A Panel rather than more
+                     DockPanel children: only a DockPanel's last child fills, so the grid would be docked to the
+                     left the moment anything followed it. -->
+                <Panel>
+
+                <!-- The cells, under everything and never in the way of a pointer. Same margin as the grid it
+                     traces, so the lines land on the boundaries the widgets actually snap to. -->
+                <controls:DashboardGridLines Margin="12" IsHitTestVisible="False"
+                                             IsVisible="{Binding Workspaces.DashboardShowGridLines}"
+                                             Columns="{Binding Workspaces.DashboardColumns}"
+                                             Rows="{Binding Workspaces.DashboardRows}"
+                                             LineBrush="{StaticResource CockpitHairlineBrush}"/>
+
+                <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
+                     configured height as widgets are added (rows are a starting height, not a cap). -->
+                <!-- The drop lives on the grid, not the panes: an arrangement rebuilds nothing, but the pointer
+                     has to be tracked across cells the dragged pane does not occupy. -->
+                <ItemsControl x:Name="DashboardGrid" Margin="12"
+                              ItemsSource="{Binding Workspaces.WidgetPanes}"
+                              IsVisible="{Binding !Workspaces.ShowDashboardEmptyState}"
+                              PointerMoved="OnDashboardPointerMoved"
+                              PointerReleased="OnDashboardPointerReleased">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Grid x:Name="DashboardCells"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerTheme>
+                        <ControlTheme TargetType="ContentPresenter" x:DataType="vm:WidgetPaneViewModel">
+                            <Setter Property="Grid.Column" Value="{Binding Column}"/>
+                            <Setter Property="Grid.Row" Value="{Binding Row}"/>
+                            <Setter Property="Grid.ColumnSpan" Value="{Binding ColumnSpan}"/>
+                            <Setter Property="Grid.RowSpan" Value="{Binding RowSpan}"/>
+                        </ControlTheme>
+                    </ItemsControl.ItemContainerTheme>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:WidgetPaneViewModel">
+                            <Border Margin="4" CornerRadius="8" Background="{StaticResource CockpitPanelBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                <DockPanel>
+                                    <!-- Pane chrome. The ⚙ is bound to HasConfig: a widget that declared no
+                                         settings form shows no gear at all, rather than one that opens nothing. -->
+                                    <!-- The header is the drag handle: dragging the widget's own body would fight
+                                         whatever the plugin's control does with a pointer, and a header is where
+                                         a pane is grabbed everywhere else in the cockpit. -->
+                                    <DockPanel DockPanel.Dock="Top" Margin="8,6,6,6" Background="Transparent"
+                                               Cursor="Hand" PointerPressed="OnWidgetHeaderPressed">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
+                                            <Button Classes="Subtle" Content="↻" Padding="5,0" Click="OnWidgetRefreshPressed"
+                                                    ToolTip.Tip="Refresh"/>
+                                            <Button Classes="Subtle" Content="⚙" Padding="5,0" Click="OnWidgetConfigPressed"
+                                                    IsVisible="{Binding HasConfig}" ToolTip.Tip="Widget settings"/>
+                                            <Button Classes="Subtle" Content="✕" Padding="5,0" Click="OnWidgetRemovePressed"
+                                                    ToolTip.Tip="Remove widget"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                    <!-- The plugin's own control, built once per instance and hosted as-is. The
+                                         resize grip sits over its bottom-right corner: a widget is sized by
+                                         dragging the corner, and the grip has to be reachable whatever the
+                                         plugin drew underneath it. -->
+                                    <Panel>
+                                        <ContentControl Margin="8,0,8,8" Content="{Binding View}"/>
+                                        <Border Width="14" Height="14" Margin="0,0,2,2" Background="Transparent"
+                                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                Cursor="BottomRightCorner" PointerPressed="OnWidgetResizePressed"
+                                                ToolTip.Tip="Drag to resize">
+                                            <Path Data="M 10,0 L 10,10 L 0,10" Stroke="{StaticResource CockpitTextFaintBrush}"
+                                                  StrokeThickness="1.5" Margin="2"/>
+                                        </Border>
+                                    </Panel>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Where the dragged or resized widget will land. Shown during the gesture and applied on
+                     release: without it you are dragging blind, and applying on every pointer move rewrote
+                     cockpit.json on every pixel. Its rectangle is set in code — it is measured in the grid's
+                     cells, which nothing here can bind to. -->
+                <Border x:Name="WidgetDropGhost" IsVisible="False" IsHitTestVisible="False" ZIndex="100"
+                        Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
+                        CornerRadius="8" BorderThickness="2"
+                        BorderBrush="{StaticResource CockpitAccentBrush}"
+                        Background="{StaticResource CockpitPanelBgBrush}" Opacity="0.55"/>
+
+                <!-- The dashboard's empty state carries no button of its own: the toolbar's "Add widget" is
+                     always there, and two buttons doing one thing is how the old one ended up buried under the
+                     widgets it created. -->
+                <StackPanel IsVisible="{Binding Workspaces.ShowDashboardEmptyState}" MaxWidth="320"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Border Width="56" Height="56" CornerRadius="14"
+                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                            HorizontalAlignment="Center" Margin="0,0,0,16">
+                        <TextBlock Text="📊" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="No widgets yet" FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                    <TextBlock Text="Use “+ Add widget” above to fill this dashboard. Widgets come from plugins — install more from the store."
+                               TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+                </Panel>
+            </DockPanel>
+
+            <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on
+                 a Sessions workspace being active, so a dashboard never shows it. -->
+            <StackPanel Grid.Row="1" MaxWidth="320" IsVisible="{Binding ShowSessionEmptyState}"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Border Width="56" Height="56" CornerRadius="14"
                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
@@ -259,16 +608,45 @@
                         Classes="Accent" HorizontalAlignment="Center"/>
             </StackPanel>
 
-            <!-- Session grid + zoom, shown once at least one session exists. -->
-            <DockPanel Margin="12" IsVisible="{Binding HasSessions}">
-                <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
-                     where it would be a no-op (the single pane is always shown) — no dead control. -->
-                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
-                            IsVisible="{Binding ShowZoomButton}">
-                    <ToggleButton Content="Zoom" IsChecked="{Binding IsZoomed}"
-                                  IsEnabled="{Binding SelectedSession, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                  ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
-                </StackPanel>
+            <!-- Session grid + zoom, shown once at least one session exists and a Sessions workspace is active. -->
+            <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">
+                <!-- This workspace's toolbar. The ⚙ lives here rather than inside the Zoom row because that row
+                     hides itself in single-session layout (#24) — and that is exactly the layout you would open
+                     the ⚙ to get back out of. -->
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
+                         where it would be a no-op (the single pane is always shown) — no dead control. -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowZoomButton}">
+                        <ToggleButton Content="Zoom" IsChecked="{Binding IsZoomed}"
+                                      IsEnabled="{Binding SelectedSession, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                      ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
+                    </StackPanel>
+
+                    <!-- Mirrors the dashboard's ⚙ (its columns/rows/grid lines): each workspace type sets what it
+                         actually has, in the same place. -->
+                    <Button DockPanel.Dock="Right" HorizontalAlignment="Right" Content="⚙" Padding="8,4"
+                            ToolTip.Tip="How this workspace arranges its sessions">
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <StackPanel Spacing="8" MinWidth="300" Margin="4">
+                                    <TextBlock Text="Layout" FontWeight="SemiBold"/>
+                                    <CheckBox Content="Use the default layout (Options)"
+                                              IsChecked="{Binding WorkspaceFollowsGlobalLayout}"/>
+                                    <TextBlock Text="Off: this workspace arranges itself, and Options no longer moves it."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    <!-- Disabled rather than hidden while following: they show what this desk is
+                                         doing, which is the thing you came here to read before changing it. -->
+                                    <CheckBox Content="Show one session at a time (no grid)"
+                                              IsChecked="{Binding WorkspaceSingleSessionLayout}"
+                                              IsEnabled="{Binding !WorkspaceFollowsGlobalLayout}"/>
+                                    <CheckBox Content="Stack sessions vertically (one column)"
+                                              IsChecked="{Binding WorkspaceStackSessionsVertically}"
+                                              IsEnabled="{Binding !WorkspaceFollowsGlobalLayout}"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </DockPanel>
 
                 <!-- One live session grid serves both layouts: grid mode shows every panel; single-pane
                      mode (#24 / Zoom) collapses all but the selected one to a single column so it fills
@@ -422,10 +800,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <!-- The local model servers (#78). They run beside the cockpit rather than under it — one Ollama serves
+                <!-- The local model servers (#78). They run beside AI-Cockpit rather than under it — one Ollama serves
                      every session — so they are shown apart from the total above rather than folded into it: a model
                      can weigh more than the whole app, and putting it in a figure the operator reads as "what the
-                     cockpit costs" would be a lie. -->
+                     AI-Cockpit costs" would be a lie. -->
                 <StackPanel Spacing="10" IsVisible="{Binding HasModelServers}">
                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
 
@@ -464,14 +842,14 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <TextBlock Text="Runs beside the cockpit, not under it: one server answers every session, so this is not part of the total above."
+                    <TextBlock Text="Runs beside AI-Cockpit, not under it: one server answers every session, so this is not part of the total above."
                                FontSize="10.5" TextWrapping="Wrap"
                                Foreground="{StaticResource CockpitTextFaintBrush}"/>
                 </StackPanel>
             </StackPanel>
         </Border>
 
-        <!-- Status bar (#78): what the cockpit is using right now. The total is the cockpit's own process tree,
+        <!-- Status bar (#78): what AI-Cockpit is using right now. The total is AI-Cockpit's own process tree,
              so it already contains every session it spawned; the figures open the breakdown per session. -->
         <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
                 Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -489,7 +867,7 @@
                         Classes="statusMeter"
                         Padding="8,2"
                         Command="{Binding ToggleResourcePanelCommand}"
-                        ToolTip.Tip="What the cockpit and its sessions are using — click for the breakdown per session">
+                        ToolTip.Tip="What AI-Cockpit and its sessions are using — click for the breakdown per session">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
                         <TextBlock Text="{Binding ResourceCpu}"
                                    FontSize="11"
