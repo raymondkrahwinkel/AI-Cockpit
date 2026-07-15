@@ -81,8 +81,7 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
         try
         {
             var arguments = BuildArguments(text);
-            var environmentVariables = _BuildEnvironmentVariables();
-            subprocess.Start(_executablePath, arguments, _config.WorkingDirectory, environmentVariables);
+            subprocess.Start(_executablePath, arguments, _config.WorkingDirectory, _config.BuildEnvironmentVariables());
 
             if (_config.IsStdinPromptMode)
             {
@@ -206,25 +205,6 @@ internal sealed class CliSubprocessPluginSessionDriver : IPluginSessionDriver
         }
 
         return arguments;
-    }
-
-    private Dictionary<string, string?> _BuildEnvironmentVariables()
-    {
-        var environmentVariables = new Dictionary<string, string?>();
-
-        if (!string.IsNullOrWhiteSpace(_config.AuthEnvVar) && !string.IsNullOrEmpty(_config.ApiKey))
-        {
-            // The key is set as an env-var for this one spawn only — never as a CLI argument (visible in the
-            // process list) and never logged (CliAgentConfig.ToString() masks it too).
-            environmentVariables[_config.AuthEnvVar] = _config.ApiKey;
-        }
-
-        if (!string.IsNullOrWhiteSpace(_config.ConfigDir))
-        {
-            environmentVariables["CODEX_HOME"] = _config.ConfigDir;
-        }
-
-        return environmentVariables;
     }
 
     public async Task InterruptAsync(CancellationToken cancellationToken = default)

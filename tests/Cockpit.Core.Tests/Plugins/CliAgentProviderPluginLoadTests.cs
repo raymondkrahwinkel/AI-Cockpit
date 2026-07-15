@@ -49,7 +49,9 @@ public class CliAgentProviderPluginLoadTests
         registration.ProviderId.Should().Be("cli-agent-provider.codex");
         registration.DisplayName.Should().Be("Codex (CLI)");
         registration.Capabilities.SupportsTools.Should().BeTrue();
-        registration.Capabilities.SupportsPermissions.Should().BeFalse();
+        // The interactive Codex provider is now the app-server driver (#45 fase 3), which does support live
+        // approvals — where the headless exec driver it replaced reported no permission support.
+        registration.Capabilities.SupportsPermissions.Should().BeTrue();
 
         // The driver factory is usable through the narrow plugin contract without the host ever seeing this
         // plugin's concrete types. CreateConfigView is not exercised here — it builds a real Avalonia Control,

@@ -81,6 +81,32 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public async Task StartAsync_ForwardsTheWorkingDirectory_AndAByIdResume_ToTheInnerDriver()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        await adapter.StartAsync(workingDirectory: "/work/here", resume: SessionResume.BySessionId("thread-7"));
+
+        // #45 D5: the adapter no longer drops the cwd and resume the cockpit already knows.
+        inner.LastWorkingDirectory.Should().Be("/work/here");
+        inner.LastResumeSessionId.Should().Be("thread-7");
+    }
+
+    [Fact]
+    public async Task StartAsync_PassesNoResumeId_ForAFreshOrMostRecentSession()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        // Only a BySessionId resume crosses the narrow surface; New and MostRecent become no resume id
+        // (MostRecent needs a provider-side "list newest" step — increment 2).
+        await adapter.StartAsync(resume: SessionResume.MostRecent);
+
+        inner.LastResumeSessionId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task SendUserMessageAsync_ForwardsTheText()
     {
         var inner = new FakePluginSessionDriver();

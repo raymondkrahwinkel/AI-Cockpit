@@ -20,6 +20,10 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
 
     public string? LastModel { get; private set; }
 
+    public string? LastWorkingDirectory { get; private set; }
+
+    public string? LastResumeSessionId { get; private set; }
+
     public bool Started { get; private set; }
 
     public bool Interrupted { get; private set; }
@@ -37,6 +41,13 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
         Started = true;
         LastModel = model;
         return Task.CompletedTask;
+    }
+
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, CancellationToken cancellationToken)
+    {
+        LastWorkingDirectory = workingDirectory;
+        LastResumeSessionId = resumeSessionId;
+        return StartAsync(model, cancellationToken);
     }
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)

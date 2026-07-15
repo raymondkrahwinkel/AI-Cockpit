@@ -38,10 +38,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, CancellationToken cancellationToken = default)
     {
-        // workingDirectory is unused: a plugin session driver is not a spawned claude process with a cwd — it
-        // runs however the plugin implements it (HTTP, etc.).
+        // workingDirectory and resume are passed through now (#45 D5): a plugin driver that spawns a CLI (Codex
+        // app-server) runs in a cwd and resumes a thread by id, and the cockpit already knows both — dropping
+        // them here is what made the Codex plugin ask the operator for a working directory it already had. A
+        // driver with no cwd/history of its own (an HTTP provider) simply ignores them. Only BySessionId resume
+        // crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
         Profile = profile;
-        await inner.StartAsync(model, cancellationToken).ConfigureAwait(false);
+        var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, cancellationToken).ConfigureAwait(false);
     }
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>

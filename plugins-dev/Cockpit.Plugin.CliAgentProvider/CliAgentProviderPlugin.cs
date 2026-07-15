@@ -30,8 +30,11 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
-            CreateDriverFactory: _ => new CliSubprocessPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: false),
+            // The app-server driver replaces the headless exec driver as the interactive Codex provider (#45
+            // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals —
+            // hence SupportsPermissions: true, where the exec route reported false.
+            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson)));
 
         // Same provider id as the session provider above — a profile names a provider, and what that
