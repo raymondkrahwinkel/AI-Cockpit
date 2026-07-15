@@ -143,6 +143,16 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <summary>Models the local server reported on the last refresh, offered as suggestions in the model picker.</summary>
     public ObservableCollection<string> AvailableModels { get; } = [];
 
+    /// <summary>
+    /// Per-profile default editors for the selected plugin provider's own declared launch options (Claude's
+    /// permission mode/model/effort, Codex's sandbox) — rendered generically from the plugin's declaration, so the
+    /// host imposes no provider vocabulary. Empty for a built-in provider or a plugin that declares none.
+    /// </summary>
+    public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginOptionDefaults { get; } = [];
+
+    /// <summary>Whether the selected plugin provider declares any start-option defaults to edit.</summary>
+    public bool HasPluginOptionDefaults => PluginOptionDefaults.Count > 0;
+
     /// <summary>The alias suggestions for the editable Claude model field (see <see cref="SessionOptionCatalog.ClaudeModelSuggestions"/>).</summary>
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
@@ -216,7 +226,35 @@ public partial class EditableProfileViewModel : ViewModelBase
             PluginConfigView = value.Value == SessionProvider.Plugin && value.PluginProviderId is { } providerId
                 ? _pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView(null)
                 : null;
+
+            // A freshly added profile has no stored defaults yet — start each option on its own declared default.
+            _RefreshPluginOptionDefaults(storedDefaults: null);
         }
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="PluginOptionDefaults"/> from the selected plugin provider's declared launch options,
+    /// each pre-filled from <paramref name="storedDefaults"/> (the profile's saved value) or the option's own
+    /// declared default. Rendered the same generic way the New-session dialog renders a plugin's options, so a
+    /// profile can remember its preferred permission mode/model/effort (Claude) or sandbox (Codex).
+    /// </summary>
+    private void _RefreshPluginOptionDefaults(IReadOnlyDictionary<string, string>? storedDefaults)
+    {
+        PluginOptionDefaults.Clear();
+
+        if (_pluginProviderRegistry is not null
+            && SelectedProvider.Value == SessionProvider.Plugin
+            && SelectedProvider.PluginProviderId is { } providerId
+            && _pluginProviderRegistry.Resolve(providerId) is { } registration)
+        {
+            foreach (var option in registration.Options)
+            {
+                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+            }
+        }
+
+        OnPropertyChanged(nameof(HasPluginOptionDefaults));
     }
 
     partial void OnPluginConfigViewChanged(IPluginProviderConfigView? value) => OnPropertyChanged(nameof(IsPluginProviderMissing));
@@ -289,6 +327,10 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             _selectedProvider = SessionProviderCatalog.Resolve(profile.Provider);
         }
+
+        // Build the generic per-profile option-default editors from the (possibly plugin) provider, pre-filled from
+        // the profile's saved defaults — the provider-neutral successor to the typed permission/model/effort combos.
+        _RefreshPluginOptionDefaults(profile.Defaults?.OptionDefaults);
     }
 
     /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
@@ -296,9 +338,27 @@ public partial class EditableProfileViewModel : ViewModelBase
         Label.Trim(),
         _ToProviderConfig(),
         string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
-        new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools),
+        new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools)
+        {
+            OptionDefaults = _CollectPluginOptionDefaults(),
+        },
         _ToDelegationPolicy(),
         MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
+
+    // The per-profile option defaults the operator set, keyed by option key; only the ones actually chosen (a blank
+    // value leaves the option on the plugin's own default). Null when the provider declares no options.
+    private IReadOnlyDictionary<string, string>? _CollectPluginOptionDefaults()
+    {
+        if (!HasPluginOptionDefaults)
+        {
+            return null;
+        }
+
+        var defaults = PluginOptionDefaults
+            .Where(option => !string.IsNullOrWhiteSpace(option.Value))
+            .ToDictionary(option => option.Key, option => option.Value!);
+        return defaults.Count > 0 ? defaults : null;
+    }
 
     // A profile that is not a target carries no policy at all, so cockpit.json stays quiet about the profiles
     // that have nothing to do with delegation.

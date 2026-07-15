@@ -120,6 +120,52 @@ public class EditableProfileViewModelPluginProviderTests
         editable.PluginConfigView.Should().Be(configView);
     }
 
+    [Fact]
+    public void PluginOptionDefaults_ArePreFilledFromTheStoredDefaults_AndRoundTripThroughToProfile()
+    {
+        var registry = new PluginProviderRegistry();
+        registry.Register(new SessionProviderRegistration(
+            ProviderId: "claude",
+            DisplayName: "Claude",
+            CreateDriverFactory: _ => throw new NotSupportedException("Not exercised by these view-model tests."),
+            Capabilities: new PluginSessionCapabilities(true, true),
+            CreateConfigView: _ => new FakePluginProviderConfigView("{}"))
+        {
+            Options =
+            [
+                new PluginSessionLaunchOption("permission-mode", "Permission mode", ["default", "plan"], "default")
+                {
+                    ChoiceLabels = new Dictionary<string, string> { ["default"] = "Ask permissions", ["plan"] = "Plan mode" },
+                },
+                new PluginSessionLaunchOption("effort", "Effort", ["low", "medium", "high"], "medium"),
+            ],
+        });
+        var providers = SessionProviderCatalog.AllProviders(registry);
+        var profile = new SessionProfile(
+            "work",
+            new PluginProviderConfig("claude", "{}"),
+            Defaults: new ProfileDefaults("default", "sonnet", "medium")
+            {
+                OptionDefaults = new Dictionary<string, string> { ["permission-mode"] = "plan" },
+            });
+
+        var editable = new EditableProfileViewModel(profile, isLoggedIn: true, providers: providers, pluginProviderRegistry: registry);
+
+        // Fase 4: a plugin profile's per-profile defaults are rendered generically from the plugin's declared options.
+        // The saved default (plan) pre-fills the permission-mode editor and reads its friendly label; the un-stored
+        // effort falls back to the option's own declared default (medium).
+        editable.HasPluginOptionDefaults.Should().BeTrue();
+        var permission = editable.PluginOptionDefaults.Single(option => option.Key == "permission-mode");
+        permission.Value.Should().Be("plan");
+        permission.ChoiceItems.Single(choice => choice.Value == "plan").Label.Should().Be("Plan mode");
+        editable.PluginOptionDefaults.Single(option => option.Key == "effort").Value.Should().Be("medium");
+
+        // The selection is written back into the profile's option defaults on save.
+        var saved = editable.ToProfile();
+        saved.Defaults!.OptionDefaults!["permission-mode"].Should().Be("plan");
+        saved.Defaults!.OptionDefaults!["effort"].Should().Be("medium");
+    }
+
     private static SessionProviderRegistration _Registration(string providerId, string displayName, IPluginProviderConfigView configView) => new(
         ProviderId: providerId,
         DisplayName: displayName,
