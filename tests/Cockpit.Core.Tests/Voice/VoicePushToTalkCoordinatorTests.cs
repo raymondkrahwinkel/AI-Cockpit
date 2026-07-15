@@ -16,6 +16,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace Cockpit.Core.Tests.Voice;
@@ -116,7 +117,7 @@ public class VoicePushToTalkCoordinatorTests
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = false });
         var coordinator = new VoicePushToTalkCoordinator(
             hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter(),
-            Substitute.For<IVoicePushToTalkService>());
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
 
         await coordinator.StartAsync();
 
@@ -133,7 +134,7 @@ public class VoicePushToTalkCoordinatorTests
         var overlayPresenter = new FakeVoiceOverlayPresenter();
         var coordinator = new VoicePushToTalkCoordinator(
             hotkeyService, NewCockpitViewModel(), voiceSettingsStore, overlay, overlayPresenter,
-            Substitute.For<IVoicePushToTalkService>());
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
 
         await coordinator.StartAsync();
         hotkeyService.RaiseHoldStarted();
@@ -164,7 +165,8 @@ public class VoicePushToTalkCoordinatorTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
         return new VoicePushToTalkCoordinator(
-            new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, overlay, overlayPresenter, Substitute.For<IVoicePushToTalkService>());
+            new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, overlay, overlayPresenter, Substitute.For<IVoicePushToTalkService>(),
+            NullLogger<VoicePushToTalkCoordinator>.Instance);
     }
 
     private static CockpitViewModel NewCockpitViewModel()
