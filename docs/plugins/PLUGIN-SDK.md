@@ -427,7 +427,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
   "entryAssembly": "My.Plugin.dll",
   "entryType": "My.Plugin.MyPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "1.0.0",
+  "minHostVersion": "0.1.0",
   "description": "What it does, one line.",
   "author": "You"
 }
@@ -442,7 +442,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
 | `entryType` | no | Fully-qualified entry type; omit to let the host find the single `ICockpitPlugin` in the entry assembly. |
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
-| `minHostVersion` | no | Informational only today — the host parses and stores it but does **not** currently enforce it as a gate. Set it anyway so a future host version can. |
+| `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer AI-Cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
 
 ## Project setup
@@ -524,11 +524,22 @@ public void Initialize(ICockpitHost host)
 
 ## Build, package, install
 
-1. **Build:** `dotnet build -c Release`. The output folder holds your DLL, `.deps.json` and `plugin.json`
-   (and none of the shared assemblies — verify that).
-2. **Package:** zip the output folder's contents so `plugin.json` sits at the **zip root**:
+1. **Build:** `dotnet build -c Release`. The three files that matter are your DLL, its `.deps.json` and
+   `plugin.json` — and **none of the shared assemblies**, which is the thing to verify: an Avalonia or
+   abstractions DLL in there means a `PackageReference` is missing its `<ExcludeAssets>runtime</ExcludeAssets>`,
+   and the plugin will load a second copy of a type the host already has.
+2. **Package:** zip so `plugin.json` sits at the **zip root**. The build also drops a `.pdb`, an `.xml` and a
+   `.runtimeconfig.json` beside those three; the installer ignores them, so including them costs nothing but
+   size. The plugins in the official store carry the three and nothing else:
    ```powershell
+   # Everything the build produced — simplest, and what the installer accepts.
    Compress-Archive -Path bin/Release/net10.0/* -DestinationPath my-plugin-1.0.0.zip
+
+   # Or just what is needed, which is what the official store ships:
+   Compress-Archive -Path bin/Release/net10.0/My.Plugin.dll,
+                          bin/Release/net10.0/My.Plugin.deps.json,
+                          bin/Release/net10.0/plugin.json `
+                    -DestinationPath my-plugin-1.0.0.zip
    ```
 3. **Install:** in the cockpit, **Options → Plugins → Install from zip…**, pick the zip, then **Review &
    enable** and consent. Enabling takes effect on the **next restart** (a plugin can't be loaded live) — a
@@ -735,7 +746,7 @@ offer theirs.
 | `version` | yes | This version's version string. |
 | `path` | yes | Zip location, **relative to the index's own location** (e.g. `github-issues/github-issues-1.1.0.zip`). |
 | `abstractionsVersion` | yes | The `AbstractionsContract.Version` major this build targets — checked the same as a manual zip install. |
-| `minHostVersion` | yes | Informational (not currently enforced as a gate, same as the manifest field). |
+| `minHostVersion` | yes | The oldest cockpit this build works against — same meaning and same gate as the manifest field: enforced from host 1.0 onwards, ignored while the host is 0.x. Keep it in step with the `plugin.json` inside the zip; a catalogue that promises one thing and a manifest that says another is a bug report waiting to happen. |
 | `sha256` | no (recommended) | Hex-lowercase SHA-256 of the zip. A mismatch on download is rejected before the zip is ever handed to the installer. |
 | `notes` | no | Shown as this version's changelog line in the detail panel. |
 
@@ -766,14 +777,21 @@ store, or open a PR against it to list your plugin alongside the official ones.
 
 ## Plugins that ship with the app
 
-Two plugins are **bundled**: they are built with the cockpit, copied into its `bundled-plugins/` output, and
+Three plugins are **bundled**: they are built with the cockpit, copied into its `bundled-plugins/` output, and
 installed into the operator's plugins directory on startup — enabled, and without the consent dialog (it asks
 whether you trust third-party code, and these came out of the very build that is asking).
 
-They exist because they *used* to be core features. Transcript search parses Claude's own JSONL format, and git
-status describes the repo one session works in; neither belongs in a core that drives several providers. Making
-them plugins kept the core honest, and bundling them means an operator does not have to know they exist to have
-what they always had.
+Two of them exist because they *used* to be core features. Transcript search parses Claude's own JSONL format,
+and git status describes the repo one session works in; neither belongs in a core that drives several providers.
+Making them plugins kept the core honest, and bundling them means an operator does not have to know they exist to
+have what they always had.
+
+The **clock** is bundled for a different reason: a Dashboard workspace with nothing to put on it is a worse first
+impression than one that already has a clock. That is also the whole argument for where the line sits — the
+system monitor is *not* bundled, because a CPU meter nobody asked for is not the price of a working dashboard.
+Both are in the [official store](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) as well, the same way
+git status and transcript search are: bundling decides what you get without asking, the store decides what you
+can update, remove and put back on its own.
 
 Bundling never overrides the operator: a plugin they disable stays disabled and untouched on disk, and a version
 they updated past ours from the store is not rolled back — only a newer bundled version replaces an older
