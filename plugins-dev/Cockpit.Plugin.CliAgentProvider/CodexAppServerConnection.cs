@@ -35,6 +35,7 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
 
     private long _nextId;
     private Task? _readLoop;
+    private Task? _stderrDrain;
 
     public CodexAppServerConnection(ICliSubprocess subprocess) => _subprocess = subprocess;
 
@@ -54,6 +55,26 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
         string[] arguments = configArgs is { Count: > 0 } ? [.. configArgs, "app-server"] : ["app-server"];
         _subprocess.Start(executablePath, arguments, workingDirectory, environmentVariables);
         _readLoop = Task.Run(() => _ReadLoopAsync(_readCancellation.Token));
+
+        // Drain stderr to nothing, concurrently with stdout: codex app-server writes progress there, and a full,
+        // unread stderr pipe would block the child mid-handshake (the deadlock ICliSubprocess warns about). We do
+        // not surface these lines — the protocol lives on stdout — we just keep the pipe empty.
+        _stderrDrain = Task.Run(() => _DrainStderrAsync(_readCancellation.Token));
+    }
+
+    private async Task _DrainStderrAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var _ in _subprocess.ReadStderrLinesAsync(cancellationToken).ConfigureAwait(false))
+            {
+                // Discarded on purpose — see Start.
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on dispose — the read cancellation was tripped.
+        }
     }
 
     /// <summary>Sends a request and awaits its correlated reply's <c>result</c>; throws <see cref="CodexAppServerException"/> on a JSON-RPC <c>error</c>.</summary>
@@ -199,15 +220,18 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
     {
         await _readCancellation.CancelAsync().ConfigureAwait(false);
 
-        if (_readLoop is { } readLoop)
+        foreach (var loop in new[] { _readLoop, _stderrDrain })
         {
-            try
+            if (loop is not null)
             {
-                await readLoop.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected — the loop observes the cancellation we just requested.
+                try
+                {
+                    await loop.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected — the loops observe the cancellation we just requested.
+                }
             }
         }
 

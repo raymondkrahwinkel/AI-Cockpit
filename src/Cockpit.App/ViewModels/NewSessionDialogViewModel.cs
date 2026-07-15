@@ -41,6 +41,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
     private readonly IPluginProviderRegistry? _sessionProviderRegistry;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
+    private CancellationTokenSource? _sdkOptionsRefreshCts;
+
+    /// <summary>How long the background model/list refresh may run before the dialog gives up and keeps the declared options.</summary>
+    private static readonly TimeSpan _SdkOptionsRefreshTimeout = TimeSpan.FromSeconds(8);
+
+    /// <summary>The in-flight background refresh of the SDK launch options (Codex's model/list), so a test can await it. Completed when none is running.</summary>
+    internal Task SdkOptionsRefresh { get; private set; } = Task.CompletedTask;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
     public event Action<NewSessionResult?>? CloseRequested;
@@ -459,6 +466,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// </summary>
     private void _RefreshSdkLaunchOptions(SessionProfile? profile)
     {
+        // A profile switch supersedes any refresh still running for the previous one.
+        _sdkOptionsRefreshCts?.Cancel();
+        _sdkOptionsRefreshCts = null;
         SdkLaunchOptions.Clear();
 
         if (_sessionProviderRegistry is not null
@@ -469,6 +479,68 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             {
                 SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue));
             }
+
+            // Render those declared options right away, then let a provider that can refresh them with live
+            // values (Codex's model/list) upgrade the rows in the background — opening the dialog never waits.
+            if (registration.ResolveOptionsAsync is { } resolveOptionsAsync)
+            {
+                var cts = new CancellationTokenSource(_SdkOptionsRefreshTimeout);
+                _sdkOptionsRefreshCts = cts;
+                SdkOptionsRefresh = _RefreshSdkLaunchOptionChoicesAsync(resolveOptionsAsync, plugin.ConfigJson, cts);
+            }
+        }
+
+        OnPropertyChanged(nameof(HasSdkLaunchOptions));
+        OnPropertyChanged(nameof(ShowSdkLaunchOptions));
+    }
+
+    private async Task _RefreshSdkLaunchOptionChoicesAsync(
+        Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>> resolveOptionsAsync,
+        string configJson,
+        CancellationTokenSource cts)
+    {
+        try
+        {
+            // Task.Run so the synchronous spawn prefix (Process.Start) never runs on the UI thread; ConfigureAwait
+            // keeps the continuation on it, since ApplyResolvedSdkOptions mutates a bound collection.
+            var resolved = await Task.Run(() => resolveOptionsAsync(configJson, cts.Token), cts.Token).ConfigureAwait(true);
+
+            // Ignore a result the operator has already moved past (a newer refresh replaced this cts).
+            if (ReferenceEquals(_sdkOptionsRefreshCts, cts))
+            {
+                _ApplyResolvedSdkOptions(resolved);
+            }
+        }
+        catch (Exception)
+        {
+            // codex missing, logged out, timed out, or refused — keep the declared options (Model as free text).
+        }
+        finally
+        {
+            if (ReferenceEquals(_sdkOptionsRefreshCts, cts))
+            {
+                _sdkOptionsRefreshCts = null;
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Swaps the declared SDK option rows for the provider's refreshed ones, carrying over any value the operator
+    /// already picked (so a Sandbox choice or a typed model survives the model/list arriving) and otherwise
+    /// taking the refreshed default. <see cref="PluginTtyOptionSelectionViewModel.Choices"/> is fixed per row, so
+    /// turning a free-text field into a dropdown means replacing the row, not mutating it.
+    /// </summary>
+    private void _ApplyResolvedSdkOptions(IReadOnlyList<PluginSessionLaunchOption> resolved)
+    {
+        var pickedByKey = SdkLaunchOptions.ToDictionary(option => option.Key, option => option.Value);
+        SdkLaunchOptions.Clear();
+        foreach (var option in resolved)
+        {
+            var picked = pickedByKey.GetValueOrDefault(option.Key);
+            var value = string.IsNullOrWhiteSpace(picked) ? option.DefaultValue : picked;
+            SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value));
         }
 
         OnPropertyChanged(nameof(HasSdkLaunchOptions));

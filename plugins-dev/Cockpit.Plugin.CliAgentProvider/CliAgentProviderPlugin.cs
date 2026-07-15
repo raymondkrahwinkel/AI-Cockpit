@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -27,6 +28,20 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        // The per-session start defaults the New-session dialog asks about for an SDK Codex session — the same
+        // two the TTY registration below declares, so a profile means the same thing whichever kind of session it
+        // opens. Sandbox is a fixed set; Model is declared as free text (the fallback) but the dialog upgrades it
+        // to the live model/list at open (ResolveOptionsAsync below).
+        var sandboxOption = new PluginSessionLaunchOption(
+            CodexAppServerSessionDriver.SandboxOptionKey,
+            "Sandbox",
+            Choices: ["read-only", "workspace-write", "danger-full-access"],
+            DefaultValue: "read-only");
+        var modelFallbackOption = new PluginSessionLaunchOption(
+            CodexAppServerSessionDriver.ModelOptionKey,
+            "Model",
+            Choices: []);
+
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
@@ -37,22 +52,22 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson))
         {
-            // The per-session start defaults the New-session dialog asks about for an SDK Codex session — the
-            // same two the TTY registration below declares, so a profile means the same thing whichever kind of
-            // session it opens. Model choices stay free text until the dialog can query the app-server's
-            // model/list (increment 2 step C).
-            Options =
-            [
-                new PluginSessionLaunchOption(
-                    CodexAppServerSessionDriver.SandboxOptionKey,
-                    "Sandbox",
-                    Choices: ["read-only", "workspace-write", "danger-full-access"],
-                    DefaultValue: "read-only"),
-                new PluginSessionLaunchOption(
-                    CodexAppServerSessionDriver.ModelOptionKey,
-                    "Model",
-                    Choices: []),
-            ],
+            Options = [sandboxOption, modelFallbackOption],
+            // Fill the Model dropdown from the real models this profile's codex offers (increment 2 step C). The
+            // dialog runs this in the background and falls back to the free-text Model above on any failure, so a
+            // missing or logged-out codex never blocks opening a session.
+            ResolveOptionsAsync = async (configJson, cancellationToken) =>
+            {
+                var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();
+                var executablePath = CliExecutableLocator.Resolve(config.Command);
+                var listing = await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken).ConfigureAwait(false);
+
+                var modelOption = listing.Ids.Count == 0
+                    ? modelFallbackOption
+                    : new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", listing.Ids, listing.DefaultId ?? config.Model);
+
+                return [sandboxOption, modelOption];
+            },
         });
 
         // Same provider id as the session provider above — a profile names a provider, and what that

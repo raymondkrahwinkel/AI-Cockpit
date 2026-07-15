@@ -422,7 +422,87 @@ public class NewSessionDialogViewModelTests
         result.SdkLaunchOptions["sandbox"].Should().Be("workspace-write");
     }
 
-    private static SessionProviderRegistration _SessionRegistration(IReadOnlyList<PluginSessionLaunchOption> options) =>
+    [Fact]
+    public async Task SelectingAnSdkPluginProfile_UpgradesTheModelOption_FromTheProvidersLiveResolver()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(_SessionRegistration(
+            [
+                new PluginSessionLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"], "read-only"),
+                new PluginSessionLaunchOption("model", "Model", []),
+            ],
+            resolveOptionsAsync: (_, _) => Task.FromResult<IReadOnlyList<PluginSessionLaunchOption>>(
+            [
+                new PluginSessionLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"], "read-only"),
+                new PluginSessionLaunchOption("model", "Model", ["gpt-5.6-terra", "gpt-5.6-luna"], "gpt-5.6-terra"),
+            ])));
+        var vm = NewVmWithSessionProvider([plugin], registry);
+
+        await vm.LoadAsync();
+        await vm.SdkOptionsRefresh;
+
+        // The free-text Model becomes a dropdown of the provider's live models, defaulted to its chosen default.
+        var model = vm.SdkLaunchOptions.Single(option => option.Key == "model");
+        model.Choices.Should().Equal("gpt-5.6-terra", "gpt-5.6-luna");
+        model.Value.Should().Be("gpt-5.6-terra");
+    }
+
+    [Fact]
+    public async Task SelectingAnSdkPluginProfile_KeepsTheDeclaredFreeTextModel_WhenTheLiveResolverFails()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(_SessionRegistration(
+            [new PluginSessionLaunchOption("model", "Model", [])],
+            resolveOptionsAsync: (_, _) => Task.FromException<IReadOnlyList<PluginSessionLaunchOption>>(
+                new InvalidOperationException("codex is not logged in"))));
+        var vm = NewVmWithSessionProvider([plugin], registry);
+
+        await vm.LoadAsync();
+        await vm.SdkOptionsRefresh;
+
+        // A failing model/list must never blow away the declared option — Model stays a free-text field.
+        var model = vm.SdkLaunchOptions.Single(option => option.Key == "model");
+        model.Choices.Should().BeEmpty();
+        model.IsFreeText.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SdkOptionRefresh_ForASupersededProfile_DoesNotClobberTheNewlySelectedProfilesOptions()
+    {
+        var profileA = new SessionProfile("codex-a", new PluginProviderConfig("cli-agent-provider.codex", """{"tag":"A"}"""));
+        var profileB = new SessionProfile("codex-b", new PluginProviderConfig("cli-agent-provider.codex", """{"tag":"B"}"""));
+
+        // Profile A's resolve is gated open (still running); B's returns immediately. Both resolve through the one
+        // registration, told apart by the config JSON the dialog passes.
+        var gateA = new TaskCompletionSource<IReadOnlyList<PluginSessionLaunchOption>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(_SessionRegistration(
+            [new PluginSessionLaunchOption("model", "Model", [])],
+            resolveOptionsAsync: (configJson, _) => configJson.Contains("\"A\"")
+                ? gateA.Task
+                : Task.FromResult<IReadOnlyList<PluginSessionLaunchOption>>([new PluginSessionLaunchOption("model", "Model", ["b-model"], "b-model")])));
+        var vm = NewVmWithSessionProvider([profileA, profileB], registry);
+
+        await vm.LoadAsync();
+        vm.SelectedProfile = profileA;
+        var refreshA = vm.SdkOptionsRefresh;
+        vm.SelectedProfile = profileB;
+        await vm.SdkOptionsRefresh;
+
+        vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("b-model");
+
+        // A's resolve now completes, late. The stale-guard must drop it rather than overwrite B's options.
+        gateA.SetResult([new PluginSessionLaunchOption("model", "Model", ["a-model"], "a-model")]);
+        await refreshA;
+
+        vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("b-model");
+    }
+
+    private static SessionProviderRegistration _SessionRegistration(
+        IReadOnlyList<PluginSessionLaunchOption> options,
+        Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>>? resolveOptionsAsync = null) =>
         new(
             "cli-agent-provider.codex",
             "Codex (CLI)",
@@ -431,6 +511,7 @@ public class NewSessionDialogViewModelTests
             _ => Substitute.For<IPluginProviderConfigView>())
         {
             Options = options,
+            ResolveOptionsAsync = resolveOptionsAsync,
         };
 
     private static NewSessionDialogViewModel NewVmWithSessionProvider(SessionProfile[] profiles, IPluginProviderRegistry sessionProviderRegistry)
