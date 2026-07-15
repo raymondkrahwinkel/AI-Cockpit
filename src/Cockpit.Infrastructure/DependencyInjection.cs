@@ -12,6 +12,7 @@ using Cockpit.Infrastructure.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Notifications;
+using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice.GlobalHotkey;
 
 namespace Cockpit.Infrastructure;
@@ -69,15 +70,12 @@ public static class DependencyInjection
         }
     }
 
-    /// <summary>
-    /// Whether this Linux session is Wayland. <c>XDG_SESSION_TYPE</c> is what the session's own login sets and
-    /// what every desktop reports itself by; <c>WAYLAND_DISPLAY</c> is the socket actually being talked to, and
-    /// covers a session that never set the first. Neither present means X11 — the older, plainer case, where a
-    /// keyboard hook works.
-    /// </summary>
+    // Reading the two variables is all this does; what they mean is LinuxSession.IsWayland's, so that half is
+    // testable off a Wayland session. Nothing here can be, which is the split.
     private static bool _IsWaylandSession() =>
-        string.Equals(Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"), "wayland", StringComparison.OrdinalIgnoreCase)
-        || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
+        LinuxSession.IsWayland(
+            Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"),
+            Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
 
     // TTY mode's pty host (#9) is OS-specific for the same reason presence/toast are: it is
     // registered by platform here rather than via the Scrutor marker scan, which would otherwise
