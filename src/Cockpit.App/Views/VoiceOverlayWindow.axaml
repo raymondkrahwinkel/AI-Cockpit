@@ -48,6 +48,22 @@
                 <TextBlock Text="Transcribing…" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
+            <!-- First use only: the model (~1.6 GB) and the GPU runtime come down inside the first dictation.
+                 Its own row rather than a re-worded Transcribing one — the pill must not claim to transcribe
+                 what it has not started, and this row needs a bar the other does not. The bar binds to
+                 HasProgress, so a step with no known total (the model stream carries no length) shows its
+                 counting text alone instead of a bar parked at a position we made up. -->
+            <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsPreparing}">
+                <Ellipse Width="16" Height="16" VerticalAlignment="Center" StrokeThickness="2"
+                         Stroke="{StaticResource CockpitAccentBrush}" Opacity="0.6"/>
+                <StackPanel Spacing="6" VerticalAlignment="Center" MinWidth="220">
+                    <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium"
+                               Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                    <ProgressBar IsVisible="{Binding HasProgress}" Value="{Binding ProgressValue}"
+                                 Minimum="0" Maximum="1" Height="3" CornerRadius="2"
+                                 Foreground="{StaticResource CockpitAccentBrush}"/>
+                </StackPanel>
+            </StackPanel>
         </Grid>
     </Border>
 </Window>

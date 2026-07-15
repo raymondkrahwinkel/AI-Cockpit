@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
@@ -391,6 +392,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         VoiceStatus = "Transcribing...";
+
+        // First use downloads the model and a GPU runtime before it can transcribe a word, and this line said
+        // "Transcribing..." throughout — for minutes. Subscribed only for this hold: the service is shared by
+        // every session, so a lasting subscription would narrate one session's download into all of them.
+        void OnPreparing(object? _, VoicePreparationProgress step) =>
+            Dispatcher.UIThread.Post(() => VoiceStatus = step.Description);
+        void OnPrepared(object? _, EventArgs __) =>
+            Dispatcher.UIThread.Post(() => VoiceStatus = "Transcribing...");
+
+        _voicePushToTalk.Preparing += OnPreparing;
+        _voicePushToTalk.Prepared += OnPrepared;
         try
         {
             var text = await _voicePushToTalk.EndHoldAsync(applyCleanup);
@@ -407,6 +419,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         catch (Exception ex)
         {
             VoiceStatus = $"Voice error: {ex.Message}";
+        }
+        finally
+        {
+            _voicePushToTalk.Preparing -= OnPreparing;
+            _voicePushToTalk.Prepared -= OnPrepared;
         }
     }
 

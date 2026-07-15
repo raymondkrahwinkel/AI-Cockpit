@@ -29,6 +29,23 @@ internal sealed class VoicePushToTalkService(
 
     public event EventHandler<double>? AudioLevelSampled;
 
+    /// <summary>
+    /// Straight through from the STT service, so the views driving a hold do not each need their own handle on
+    /// it: they already have this interface, and this is one more thing a hold is doing.
+    /// </summary>
+    public event EventHandler<VoicePreparationProgress>? Preparing
+    {
+        add => speechToText.Preparing += value;
+        remove => speechToText.Preparing -= value;
+    }
+
+    /// <inheritdoc/>
+    public event EventHandler? Prepared
+    {
+        add => speechToText.Prepared += value;
+        remove => speechToText.Prepared -= value;
+    }
+
     public bool BeginHold()
     {
         if (!_holdGuard.TryBeginHold())

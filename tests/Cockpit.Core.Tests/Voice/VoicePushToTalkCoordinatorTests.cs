@@ -76,6 +76,54 @@ public class VoicePushToTalkCoordinatorTests
         overlayPresenter.HideCallCount.Should().Be(1);
     }
 
+    /// <summary>
+    /// First use downloads the model and a GPU runtime inside the hold, and the pill spent that time on a
+    /// spinner reading "Transcribing…" — for minutes, while nothing was being transcribed. Each step both
+    /// names what is being waited on and claims the pill's state, because on every later run there is nothing
+    /// to prepare and the pill should go straight to the spinner.
+    /// </summary>
+    [Fact]
+    public void HandlePreparing_ShowsTheDownloadInsteadOfAFalseTranscribingSpinner()
+    {
+        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
+        overlay.State = VoiceOverlayState.Transcribing;
+
+        coordinator.HandlePreparing(new VoicePreparationProgress("Downloading Vulkan runtime — 43% of 151 MB", 0.43));
+
+        overlay.State.Should().Be(VoiceOverlayState.Preparing);
+        overlay.StatusText.Should().Be("Downloading Vulkan runtime — 43% of 151 MB");
+        overlay.HasProgress.Should().BeTrue();
+        overlay.ProgressValue.Should().Be(0.43);
+    }
+
+    /// <summary>A step with nothing to measure against passes its missing fraction through, so the bar hides rather than invent one.</summary>
+    [Fact]
+    public void HandlePreparing_WithoutAFraction_LeavesTheOverlayWithNoBar()
+    {
+        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
+
+        coordinator.HandlePreparing(new VoicePreparationProgress("Downloading speech model — 412 MB"));
+
+        overlay.State.Should().Be(VoiceOverlayState.Preparing);
+        overlay.HasProgress.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Without this the last download line would sit on the pill through the transcription itself, which moves
+    /// the lie one step along instead of ending it.
+    /// </summary>
+    [Fact]
+    public void HandlePrepared_HandsThePillBackToTheSpinnerThatIsNowTrue()
+    {
+        var coordinator = _CreateCoordinator(session: null, new FakeVoiceOverlayPresenter(), out var overlay);
+        coordinator.HandlePreparing(new VoicePreparationProgress("Loading speech model…"));
+
+        coordinator.HandlePrepared();
+
+        overlay.State.Should().Be(VoiceOverlayState.Transcribing);
+        overlay.StatusText.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task HandleHoldEndedAsync_TtySession_EndsTheHoldWithoutCleanup()
     {
