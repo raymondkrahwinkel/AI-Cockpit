@@ -42,6 +42,15 @@
                 <TextBlock Text="Listening" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
                            Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
             </StackPanel>
+            <!-- The key is held but nothing is being recorded. Deliberately unlike the other three rows: no
+                 waveform and no spinner, because nothing is moving — a flat waveform under "Listening" is
+                 exactly what this replaces. The dot is hollow and grey rather than the coral of a live mic. -->
+            <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsUnavailable}">
+                <Ellipse Width="9" Height="9" VerticalAlignment="Center" StrokeThickness="1.5"
+                         Stroke="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBlock Text="{Binding StatusText}" FontSize="15" FontWeight="Medium" VerticalAlignment="Center"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="13" IsVisible="{Binding IsTranscribing}">
                 <Ellipse Width="16" Height="16" VerticalAlignment="Center" StrokeThickness="2"
                          Stroke="{StaticResource CockpitTextSecondaryBrush}" Opacity="0.5"/>

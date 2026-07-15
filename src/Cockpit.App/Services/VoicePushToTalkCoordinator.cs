@@ -32,6 +32,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly IVoicePushToTalkService _pushToTalk;
     private readonly ILogger<VoicePushToTalkCoordinator> _logger;
 
+    /// <summary>Whether the hold in progress actually opened a microphone — see <see cref="HandleHoldStarted"/>.</summary>
+    private bool _isRecording;
+
     public VoicePushToTalkCoordinator(
         IGlobalHotkeyService hotkeyService,
         CockpitViewModel cockpit,
@@ -75,16 +78,31 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     /// <summary>Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.</summary>
     internal void HandleHoldStarted()
     {
-        Overlay.State = VoiceOverlayState.Listening;
-        _overlayPresenter.Show();
         _pushToTalk.AudioLevelSampled += _OnAudioLevelSampled;
         var session = _cockpit.SelectedSession;
         var capturing = session?.BeginVoiceHold() ?? false;
 
-        // The overlay flips to "Listening" before any of this resolves, so seeing it says nothing about
-        // whether the microphone actually opened. Record what the hold resolved to — the session it routed
-        // to, whether that session had voice on, and whether capture truly began — so a dictation that
-        // yields no text can be told apart at a glance: wrong session (routing) versus a declined hold.
+        // Resolved before the pill is shown, not after. It used to flip to "Listening" unconditionally and this
+        // very comment admitted that seeing it "says nothing about whether the microphone actually opened" —
+        // and then wrote the truth to the log. An operator holding the key over an empty cockpit watched a flat
+        // waveform and had no way to know why nothing came out.
+        var blocked = capturing ? null : _WhyNothingIsBeingRecorded(session);
+        _isRecording = blocked is null;
+
+        if (blocked is null)
+        {
+            Overlay.State = VoiceOverlayState.Listening;
+        }
+        else
+        {
+            Overlay.StatusText = blocked;
+            Overlay.State = VoiceOverlayState.Unavailable;
+        }
+
+        _overlayPresenter.Show();
+
+        // Kept: which session the hold routed to, and whether capture truly began, is still what tells a wrong
+        // routing apart from a declined hold when a dictation later yields nothing.
         _logger.LogInformation(
             "Push-to-talk hold started: session='{Session}' voiceEnabled={VoiceEnabled} capturing={Capturing} sessions={SessionCount}",
             session?.Title ?? "<none selected>",
@@ -93,10 +111,34 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             _cockpit.Sessions.Count);
     }
 
+    /// <summary>
+    /// Why a hold is not recording, in words for the pill — or null when there is nothing to explain. A
+    /// declined hold with no reason here means one is already running (the OS repeating the held key), which is
+    /// the guard doing its job: that pill is already listening and must be left alone.
+    /// </summary>
+    private static string? _WhyNothingIsBeingRecorded(SessionPanelViewModel? session) => session switch
+    {
+        null => "No session selected",
+        { VoiceEnabled: false } => "Voice is off for this session",
+        _ => null,
+    };
+
     /// <summary>Test seam: the UI-thread logic for a hold ending — see the threading remarks on this class.</summary>
     internal async Task HandleHoldEndedAsync()
     {
         _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
+
+        // Nothing was captured, so there is nothing to transcribe. Flashing "Transcribing…" over an empty
+        // recording would be the same lie in a different word — and the reason the pill is showing is the one
+        // thing worth leaving on screen for the moment the key is still down.
+        if (!_isRecording)
+        {
+            Overlay.State = VoiceOverlayState.Hidden;
+            _overlayPresenter.Hide();
+
+            return;
+        }
+
         Overlay.State = VoiceOverlayState.Transcribing;
 
         // Only for as long as this hold: first use fetches gigabytes before it can transcribe, and the pill
