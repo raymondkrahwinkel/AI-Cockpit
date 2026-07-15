@@ -336,6 +336,15 @@
                                         CornerRadius="6" Padding="10,4" Background="Transparent"
                                         PointerPressed="OnWorkspaceTabPressed"
                                         DoubleTapped="OnWorkspaceTabDoubleTapped">
+                                    <!-- Right-click is where people look for "rename"; the double-click stays as
+                                         the shortcut for those who know it, but it is not discoverable on its
+                                         own (Raymond). Same menu shape as the session rows' own. -->
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Rename…" Click="OnRenameWorkspaceRequested"/>
+                                            <MenuItem Header="Close" Click="OnCloseWorkspaceRequested"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
                                     <DockPanel>
                                         <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Content="✕"
                                                 Padding="4,0" Margin="6,0,0,0" FontSize="10"

@@ -72,6 +72,16 @@ public partial class CockpitView : UserControl
             cockpit.Workspaces.PropertyChanged += (_, _) => _RefreshDashboardGrid();
             _RefreshDashboardGrid();
 
+            // ...and again once the grid itself exists. At startup the dashboard is hidden behind whichever
+            // workspace is active, so its panel is not realised yet and the refresh above finds nothing to
+            // define — leaving the first widget spanning the whole dashboard, because a Grid with no column or
+            // row definitions is one big cell. It only looked fixed after any redraw (Raymond found it by
+            // toggling the grid lines), which is the tell that this is a timing problem, not a placement one.
+            if (DashboardGrid is not null)
+            {
+                DashboardGrid.Loaded += (_, _) => _RefreshDashboardGrid();
+            }
+
             // The idle sweep lives here rather than in the view model so the view model stays free of timers
             // (and testable by calling the sweep with a time of the test's choosing).
             _idleSweepTimer = new DispatcherTimer { Interval = IdleSweepInterval };
@@ -453,6 +463,24 @@ public partial class CockpitView : UserControl
         if (sender is Border { DataContext: WorkspaceTabViewModel tab })
         {
             tab.BeginRename();
+        }
+    }
+
+    // The tab's right-click menu. Each item's DataContext is the tab the menu was opened on, so both handlers
+    // read it straight off the sender — the same shape as the session rows' context menu.
+    private void OnRenameWorkspaceRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab })
+        {
+            tab.BeginRename();
+        }
+    }
+
+    private void OnCloseWorkspaceRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.CloseWorkspaceCommand.Execute(tab.Id);
         }
     }
 
