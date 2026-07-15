@@ -6,10 +6,11 @@ namespace Cockpit.Plugin.ClaudeProvider;
 
 /// <summary>
 /// Claude as a provider plugin (Fase 4): the plan overturns the 2026-07-13 "Claude wordt geen provider-plugin"
-/// decision now the contract has grown enough to carry it. Increment 1 registers Claude's <em>TTY</em> route as a
-/// plugin (the interactive TUI in a pane); the SDK/session-driver route follows in later increments. The provider
-/// id matches the host's existing Claude TTY id (<c>claude</c>) so the resolver can prefer this plugin over the
-/// in-tree provider while the old route stays as a fallback during the transition.
+/// decision now the contract has grown enough to carry it. Registers both of Claude's routes under the id
+/// <c>claude</c> (matching the host's existing Claude id, so the resolver prefers this plugin while the in-tree route
+/// stays as a fallback during the transition): the <em>TTY</em> route (the interactive TUI in a pane) and the
+/// <em>SDK/session-driver</em> route (headless stream-json), whose permissions ride the control protocol rather than an
+/// HTTP MCP server (<see cref="ClaudeSdkSessionDriver"/>) — weg A, the plugin owns its own machinery.
 /// </summary>
 public sealed class ClaudeProviderPlugin : ICockpitPlugin
 {
@@ -47,6 +48,23 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
                 new PluginTtyLaunchOption(ClaudeTtyProvider.ModelKey, "Model", _ModelSuggestions),
                 new PluginTtyLaunchOption(ClaudeTtyProvider.EffortKey, "Effort", _EffortLevels),
             ]));
+
+        // The SDK/session-driver route (weg A): the headless stream-json driver, whose tool-approval prompts ride the
+        // control protocol in-band (no HTTP MCP permission server) — hence SupportsPermissions: true. Same provider id
+        // as the TTY route above: a profile names "claude" and gets whichever route its session opens.
+        host.AddSessionProvider(new SessionProviderRegistration(
+            ProviderId: ClaudeProviderIds.Claude,
+            DisplayName: "Claude",
+            CreateDriverFactory: _ => new ClaudeSdkSessionDriverFactory(),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
+            CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson))
+        {
+            Options =
+            [
+                new PluginSessionLaunchOption(ClaudeSdkSessionDriver.PermissionModeOptionKey, "Permission mode", _PermissionModes, "default"),
+                new PluginSessionLaunchOption(ClaudeSdkSessionDriver.ModelOptionKey, "Model", _ModelSuggestions),
+            ],
+        });
     }
 
     public void Dispose()

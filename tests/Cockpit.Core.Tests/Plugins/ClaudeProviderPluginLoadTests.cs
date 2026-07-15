@@ -12,14 +12,15 @@ namespace Cockpit.Core.Tests.Plugins;
 /// <summary>
 /// End-to-end loader proof for the Claude provider plugin (Fase 4): loads the real compiled plugin through the
 /// actual <see cref="PluginActivator"/>/<see cref="PluginLoadContext"/> and asserts type-identity holds, its
-/// metadata is right, and it registers Claude's TTY route via <see cref="ICockpitHost.AddTtyProvider"/> — the seam
-/// the running app's plugin manager exercises. No session provider yet: the SDK/session-driver route follows in a
-/// later increment. Mirrors <see cref="CliAgentProviderPluginLoadTests"/>.
+/// metadata is right, and it registers both of Claude's routes under the id <c>claude</c> — the TTY route via
+/// <see cref="ICockpitHost.AddTtyProvider"/> and the SDK/session-driver route (control-protocol permissions, weg A)
+/// via <see cref="ICockpitHost.AddSessionProvider"/>, the seams the running app's plugin manager exercises.
+/// Mirrors <see cref="CliAgentProviderPluginLoadTests"/>.
 /// </summary>
 public class ClaudeProviderPluginLoadTests
 {
     [Fact]
-    public void ActivatesAndRegistersTheClaudeTtyProvider_WhenBuilt()
+    public void ActivatesAndRegistersBothClaudeRoutes_WhenBuilt()
     {
         var folder = _LocatePluginOutput();
         folder.Should().NotBeNull("the Claude provider plugin is built as a test dependency");
@@ -43,9 +44,7 @@ public class ClaudeProviderPluginLoadTests
         var host = new RecordingHost();
         plugin.Initialize(host);
 
-        // Increment 1 registers only the TTY route (the SDK/session-driver route follows), under the id the resolver
-        // routes a Claude profile to.
-        host.SessionProviders.Should().BeEmpty();
+        // Both routes register under the id the resolver routes a Claude profile to.
         host.TtyProviders.Should().ContainSingle();
         var ttyRegistration = host.TtyProviders.Single();
         ttyRegistration.ProviderId.Should().Be("claude");
@@ -54,6 +53,18 @@ public class ClaudeProviderPluginLoadTests
         ttyRegistration.Options.Should().Contain(option => option.Key == "model");
         ttyRegistration.Options.Should().Contain(option => option.Key == "effort");
         ttyRegistration.CreateProvider(host.Services).Should().NotBeNull();
+
+        // The SDK/session-driver route (weg A): control-protocol permissions, so it reports SupportsPermissions and
+        // mints a driver factory through the real activator.
+        host.SessionProviders.Should().ContainSingle();
+        var sessionRegistration = host.SessionProviders.Single();
+        sessionRegistration.ProviderId.Should().Be("claude");
+        sessionRegistration.DisplayName.Should().Be("Claude");
+        sessionRegistration.Capabilities.SupportsPermissions.Should().BeTrue();
+        sessionRegistration.Options.Should().Contain(option => option.Key == "permission-mode");
+        sessionRegistration.Options.Should().Contain(option => option.Key == "model");
+        sessionRegistration.CreateDriverFactory(host.Services).Should().NotBeNull();
+        // CreateConfigView is not exercised here — it builds a real Avalonia Control (see CliAgentProviderPluginLoadTests).
 
         plugin.Dispose();
     }
