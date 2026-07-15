@@ -101,6 +101,65 @@ public class DashboardDropTests
         DashboardGridMath.CellAt(199.9, 199.9, 200, 200, columns: 2, rows: 2).Should().Be((1, 1));
     }
 
+    [Fact]
+    public void Resize_DraggingTheCornerOut_GrowsThePaneToThatCell()
+    {
+        var panes = _Panes(("a", 0, 0));
+
+        DashboardGridMath.Resize(panes, "a", (2, 1), _Grid).Should().Be(new GridCell(0, 0, 3, 2));
+    }
+
+    [Fact]
+    public void Resize_BackToItsOrigin_IsASingleCell()
+    {
+        List<(string, GridCell)> panes = [("a", new GridCell(0, 0, 4, 3))];
+
+        DashboardGridMath.Resize(panes, "a", (0, 0), _Grid).Should().Be(new GridCell(0, 0, 1, 1));
+    }
+
+    [Fact]
+    public void Resize_AboveOrLeftOfItsOwnOrigin_IsRefused_RatherThanInverting()
+    {
+        List<(string, GridCell)> panes = [("a", new GridCell(2, 2, 2, 2))];
+
+        DashboardGridMath.Resize(panes, "a", (1, 2), _Grid).Should().BeNull();
+        DashboardGridMath.Resize(panes, "a", (2, 1), _Grid).Should().BeNull();
+    }
+
+    [Fact]
+    public void Resize_PastTheLastColumn_IsRefused_SoAPaneCannotLeaveTheGrid()
+    {
+        var panes = _Panes(("a", 0, 0));
+
+        DashboardGridMath.Resize(panes, "a", (_Grid.Columns, 0), _Grid).Should().BeNull();
+    }
+
+    [Fact]
+    public void Resize_OntoANeighbour_IsRefused_SoThePaneStopsAtTheObstacle()
+    {
+        var panes = _Panes(("a", 0, 0), ("b", 2, 0));
+
+        DashboardGridMath.Resize(panes, "a", (1, 0), _Grid).Should().Be(new GridCell(0, 0, 2, 1), "up to the neighbour is fine");
+        DashboardGridMath.Resize(panes, "a", (2, 0), _Grid).Should().BeNull("onto it is not");
+    }
+
+    [Fact]
+    public void Resize_PastTheLastRow_IsAllowed_BecauseRowsGrow()
+    {
+        var panes = _Panes(("a", 0, 0));
+
+        DashboardGridMath.Resize(panes, "a", (0, _Grid.Rows), _Grid)
+            .Should().Be(new GridCell(0, 0, 1, _Grid.Rows + 1), "rows are a starting height, not a cap");
+    }
+
+    [Fact]
+    public void Resize_AnUnknownPane_IsRefused()
+    {
+        DashboardGridMath.Resize(_Panes(("a", 0, 0)), "gone", (1, 1), _Grid).Should().BeNull();
+    }
+
+    private static readonly DashboardLayout _Grid = new() { Columns = 4, Rows = 4 };
+
     private static IReadOnlyList<(string Id, GridCell Cell)> _Panes(params (string Id, int Column, int Row)[] panes) =>
         [.. panes.Select(pane => (pane.Id, new GridCell(pane.Column, pane.Row)))];
 

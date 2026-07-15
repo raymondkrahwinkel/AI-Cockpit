@@ -238,6 +238,22 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         return _ApplyAsync(Settings.WithUpdated(updated));
     }
 
+    /// <summary>
+    /// Resizes a widget by dragging its corner: the cell under the pointer becomes its new bottom-right. A size
+    /// that would leave the grid or cover a neighbour is refused, so the pane stops at the obstacle and keeps
+    /// its last good size (<see cref="DashboardGridMath.Resize"/>).
+    /// </summary>
+    public Task ResizePaneAsync(string paneId, int column, int row)
+    {
+        if (Active is not { Type: WorkspaceType.Dashboard } dashboard
+            || DashboardGridMath.Resize([.. dashboard.Panes.Select(pane => (pane.Id, pane.Cell))], paneId, (column, row), dashboard.Layout) is not { } resized)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _ApplyAsync(Settings.WithUpdated(dashboard.WithPaneMoved(paneId, resized)));
+    }
+
     private async Task _ApplyAsync(WorkspaceSettings settings)
     {
         if (ReferenceEquals(settings, Settings))
@@ -274,20 +290,42 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// </summary>
     private void _RefreshWidgetPanes()
     {
-        WidgetPanes.Clear();
         if (_widgets is null || Active is not { Type: WorkspaceType.Dashboard } dashboard)
         {
+            WidgetPanes.Clear();
             return;
         }
 
-        foreach (var pane in dashboard.Panes)
+        // Reconcile rather than rebuild. Clearing and re-creating every pane on any change threw away each
+        // plugin's control — so moving one widget silently reset the others, and a clock that had been placed
+        // before its plugin finished registering came back as a second copy stacked on the first. Same rule as
+        // the session grid (2026-07-13): a pane is updated in place, never rebuilt, or it loses what it holds.
+        var wanted = dashboard.Panes
+            .Where(pane => pane.WidgetId is not null)
+            .ToList();
+
+        foreach (var stale in WidgetPanes.Where(existing => wanted.All(pane => pane.Id != existing.Id)).ToList())
         {
-            if (pane.WidgetId is not { } widgetId || _widgets.CreateInstance(widgetId, pane.Id) is not { } instance)
+            WidgetPanes.Remove(stale);
+        }
+
+        foreach (var pane in wanted)
+        {
+            if (WidgetPanes.FirstOrDefault(existing => existing.Id == pane.Id) is { } known)
             {
+                // Only the placement can have changed; the widget behind it is the same instance.
+                known.Pane = pane;
                 continue;
             }
 
-            WidgetPanes.Add(new WidgetPaneViewModel(pane, instance.Registration, instance.Context));
+            if (_widgets.CreateInstance(pane.WidgetId!, pane.Id) is { } instance)
+            {
+                WidgetPanes.Add(new WidgetPaneViewModel(pane, instance.Registration, instance.Context));
+            }
+
+            // A pane whose widget type does not resolve is skipped, not fatal: uninstalling or disabling a
+            // plugin leaves its widgets behind in a saved dashboard, and that must cost the pane, not the
+            // workspace. It reappears when the plugin registers (the registry raises Changed).
         }
     }
 

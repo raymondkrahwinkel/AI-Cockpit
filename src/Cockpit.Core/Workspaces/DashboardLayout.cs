@@ -29,12 +29,17 @@ public sealed record DashboardLayout
     /// <summary>How many rows the dashboard starts with. Grows as needed; clamped to <see cref="MinRows"/>..<see cref="MaxRows"/>.</summary>
     public int Rows { get; init; } = DefaultRows;
 
-    public const int DefaultColumns = 2;
-    public const int DefaultRows = 2;
+    /// <remarks>
+    /// The defaults are a canvas, not a shape: a widget is placed and sized freely on it, so the grid is the
+    /// resolution you snap to rather than a slot count. 12×8 leaves room to arrange without every cell being a
+    /// pixel; the maxima allow the 20×20 Raymond asked for and a little past it.
+    /// </remarks>
+    public const int DefaultColumns = 12;
+    public const int DefaultRows = 8;
     public const int MinColumns = 1;
-    public const int MaxColumns = 6;
+    public const int MaxColumns = 24;
     public const int MinRows = 1;
-    public const int MaxRows = 12;
+    public const int MaxRows = 24;
 
     /// <summary>The default 2x2 dashboard.</summary>
     public static DashboardLayout Default { get; } = new();
