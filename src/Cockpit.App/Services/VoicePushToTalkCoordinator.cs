@@ -148,7 +148,12 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     /// <summary>Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.</summary>
     internal void HandleHoldStarted()
     {
+        // Detached first so this cannot stack, whatever the backend does with a repeated key. Today neither of
+        // them repeats a hold, so the -= finds nothing — but that is a promise another class makes, and the one
+        // subscription per hold this needs should not depend on it being kept.
+        _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
         _pushToTalk.AudioLevelSampled += _OnAudioLevelSampled;
+
         var session = _cockpit.SelectedSession;
         var capturing = session?.BeginVoiceHold() ?? false;
 
@@ -174,10 +179,20 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     }
 
     /// <summary>
-    /// Why a hold is not recording, in words for the pill — or null when there is nothing to explain. A
-    /// declined hold with no reason here means one is already running (the OS repeating the held key), which is
-    /// the guard doing its job: that pill is already listening and must be left alone.
+    /// Why a hold is not recording, in words for the pill — or null when there is nothing to explain. A declined
+    /// hold with no reason here means <see cref="PushToTalkHoldGuard"/> still has one running: that pill is
+    /// already listening and must be left alone.
     /// </summary>
+    /// <remarks>
+    /// It is <em>not</em> the OS repeating the held key, which this used to say. Key-repeat is real on the local
+    /// per-view F9 handlers — Avalonia raises KeyDown for every repeat, which is what the hold guard was written
+    /// for — but it cannot reach this coordinator: both hotkey backends collapse a hold to a single edge
+    /// (<c>SharpHookGlobalHotkeyService</c> and <c>PortalGlobalHotkeyService</c> each gate their
+    /// <c>HoldStarted</c> on an <c>_isHolding</c> flag), and the local handlers stand down entirely while global
+    /// push-to-talk is on (<see cref="PushToTalkKeyGate"/>). The claim came from the local path and was carried
+    /// here, where it is not true — and it later cost a code review a finding chased against a comment rather
+    /// than the code.
+    /// </remarks>
     private static string? _WhyNothingIsBeingRecorded(SessionPanelViewModel? session) => session switch
     {
         null => "No session selected",
