@@ -24,13 +24,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // mapped straight through instead of forced false: every built-in example plugin already reports it
     // false (IPluginSessionDriver.SendUserMessageAsync has no images parameter yet, #64 fase 2), so this
     // stays honest without another host-side change once that surface can actually carry images.
+    // Live model switch and permission-mode switch are now mapped straight through (Fase 4 D4): the narrow surface can
+    // back them via SetLiveOptionAsync, which SetModelAsync/SetPermissionModeAsync below are wired to, so a plugin that
+    // declares it (the Claude provider) drives the host's native model/permission dropdowns. Plan mode and thinking
+    // budget still have no equivalent on the narrow surface and stay false.
     public SessionCapabilities Capabilities { get; } = new(
         SupportsTools: pluginCapabilities.SupportsTools,
         SupportsPermissions: pluginCapabilities.SupportsPermissions,
-        SupportsLiveModelSwitch: false,
+        SupportsLiveModelSwitch: pluginCapabilities.SupportsLiveModelSwitch,
         SupportsPlanMode: false,
         SupportsThinking: false,
-        SupportsVision: pluginCapabilities.SupportsVision);
+        SupportsVision: pluginCapabilities.SupportsVision,
+        SupportsPermissionModeSwitch: pluginCapabilities.SupportsPermissionModeSwitch);
 
     public string? SessionId => inner.SessionId;
 
@@ -175,9 +180,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
 
     // No live control channel behind the narrow interface — these Claude-CLI-only operations are deliberate no-ops.
-    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    // The host's native permission-mode / model dropdowns switch mid-session through these; wire them to the plugin's
+    // generic live-option surface under the well-known keys (Fase 4 D4). A plugin that does not declare the matching
+    // SupportsLiveModelSwitch / SupportsPermissionModeSwitch capability never has the host call these, and one that
+    // declares no such live option no-ops it in SetLiveOptionAsync — so this is safe for every plugin.
+    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
+        inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
 
-    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
+        inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.Model, model ?? string.Empty, cancellationToken);
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

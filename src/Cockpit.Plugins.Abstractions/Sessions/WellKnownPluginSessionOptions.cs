@@ -13,4 +13,11 @@ public static class WellKnownPluginSessionOptions
 {
     /// <summary>The option key by which a plugin driver receives the host's Claude-style permission-mode selection.</summary>
     public const string PermissionMode = "permission-mode";
+
+    /// <summary>
+    /// The option key for the model — the host's driver adapter wires its typed <c>SetModelAsync</c> to a live
+    /// <see cref="IPluginSessionDriver.SetLiveOptionAsync"/> under this key, so a plugin that declares
+    /// <see cref="PluginSessionCapabilities.SupportsLiveModelSwitch"/> receives a mid-session model change.
+    /// </summary>
+    public const string Model = "model";
 }

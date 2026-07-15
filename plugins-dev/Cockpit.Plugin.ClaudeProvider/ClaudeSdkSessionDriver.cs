@@ -30,8 +30,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     /// </summary>
     public const string PermissionModeOptionKey = WellKnownPluginSessionOptions.PermissionMode;
 
-    /// <summary>Option key for the per-session model override (also a live control, #45 D4).</summary>
-    public const string ModelOptionKey = "model";
+    /// <summary>Option key for the per-session model override (also a live control, #45 D4) — the well-known key the host adapter wires its live model switch to.</summary>
+    public const string ModelOptionKey = WellKnownPluginSessionOptions.Model;
 
     // The CLI's four real --permission-mode launch values (matching the host's SessionOptionCatalog.AllPermissionModes;
     // there is no "auto" mode — the CLI rejects it).
@@ -68,7 +68,12 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _executablePath = executablePath;
     }
 
-    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true, SupportsVision: true);
+    public PluginSessionCapabilities Capabilities { get; } = new(
+        SupportsTools: true,
+        SupportsPermissions: true,
+        SupportsVision: true,
+        SupportsLiveModelSwitch: true,
+        SupportsPermissionModeSwitch: true);
 
     public string? SessionId => _sessionId;
 

@@ -68,6 +68,28 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public async Task Capabilities_MapLiveModelAndPermissionModeSwitch_WhenThePluginDeclaresThem_AndWireTheSetters()
+    {
+        // Fase 4 D4: a plugin that can switch model/permission-mode live (the Claude provider, via SetLiveOptionAsync)
+        // declares it, and the adapter maps the flags through AND routes the host's native SetModelAsync/
+        // SetPermissionModeAsync to the plugin's live-option surface — proven red before the wiring (both were no-ops).
+        var inner = new FakePluginSessionDriver
+        {
+            Capabilities = new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: true, SupportsPermissionModeSwitch: true),
+        };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        adapter.Capabilities.SupportsLiveModelSwitch.Should().BeTrue();
+        adapter.Capabilities.SupportsPermissionModeSwitch.Should().BeTrue();
+
+        await adapter.SetModelAsync("opus");
+        await adapter.SetPermissionModeAsync("plan");
+
+        inner.LiveOptionSwitches.Should().Contain(("model", "opus"));
+        inner.LiveOptionSwitches.Should().Contain(("permission-mode", "plan"));
+    }
+
+    [Fact]
     public void CurrentStatus_IsNull_WhenTheDriverReportsNoStatus()
     {
         var inner = new FakePluginSessionDriver { Status = null };
