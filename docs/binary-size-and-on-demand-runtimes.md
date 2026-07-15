@@ -1,61 +1,73 @@
 # Binary size & on-demand GPU runtimes
 
-*Investigation + design. Raised by Raymond 2026-07-15: "why is the Cockpit binary so big, and can the local-LLM / voice drivers (ROCm, CUDA, Vulkan, …) be made on-demand — kept up to date, only downloading the runtime the PC actually needs?"*
+*Raised by Raymond 2026-07-15: "why is the Cockpit binary so big, and can the local-LLM / voice drivers (ROCm, CUDA, Vulkan, …) be made on-demand — kept up to date, only downloading the runtime the PC actually needs?" Built 2026-07-15.*
 
 ## TL;DR
 
-- The nightly self-contained build is **~968 MB**. The dominant cost is **~1.4 GB of Whisper GPU native runtimes** (CUDA + CUDA12 + Vulkan) that a self-contained publish copies into the output **for every platform**, plus the ~150 MB self-contained .NET/Avalonia runtime. (The on-disk 968 MB is after single-file compression of that payload.)
-- The **local-LLM providers (Ollama / LM Studio) are not bundled at all** — they are external servers the user installs and runs themselves, reached over HTTP. So they add no driver weight. The only heavy "drivers" in the binary are the **Whisper (voice) GPU runtimes**.
-- **ROCm is not a factor**: Whisper.net publishes no ROCm runtime, so AMD-on-Linux already falls back to CPU (see the `Cockpit.Infrastructure.csproj` comment). There is nothing to trim or fetch for ROCm today.
-- **Now shipped (this branch):** a build-time opt-out `-p:BundleGpuWhisperRuntimes=false` that drops the 1.4 GB and produces a slim, CPU-only build. Default is unchanged.
-- **Designed next (needs a GPU + slim-build validation before wiring):** fetch only the matching GPU runtime on first use, cache it next to the model, and keep it current — the same lazy pattern `WhisperModelCache` already uses for the 1.6 GB model.
+- A self-contained `win-x64` publish was **1.8 GB** and is now **294 MB** — measured before and after on the same machine with the flags `release.yml` uses. The difference is the **~1.2 GB of Whisper GPU native runtimes** (CUDA + CUDA12 + Vulkan) that a self-contained publish copied into the output for every platform.
+- Those runtimes are now **fetched on first dictation** and cached under `%APPDATA%/Cockpit/whisper-runtimes/<whisperNetVersion>/` — only the one this machine can actually use. The **CPU runtimes stay bundled** as the floor transcription always falls back to.
+- The **local-LLM providers (Ollama / LM Studio) are not bundled at all** — external servers the user installs, reached over HTTP. They add no driver weight. The only heavy "drivers" were the Whisper GPU runtimes.
+- **ROCm is not a factor**: Whisper.net publishes no ROCm runtime, so AMD-on-Linux falls back to CPU. Nothing to trim or fetch.
 
-## Why it is big — measured
+## Why a build flag was the wrong answer
 
-The weight is native, not managed. From `src/Cockpit.Infrastructure/Cockpit.Infrastructure.csproj`:
+An earlier iteration of this branch shipped `-p:BundleGpuWhisperRuntimes=false`: a build-time opt-out that dropped the GPU runtimes for a slim, CPU-only publish. It has been removed, and it is worth writing down why so it is not proposed again (Raymond, 2026-07-15: *"gaat tegen de auto option in / sloopt hem waarschijnlijk zelfs"*).
+
+Which GPU a machine has **is not knowable at build time**. A flag decides it for a machine nobody has seen. `WhisperBackendPlanner`'s `auto` exists precisely to decide it per machine at load time — and a slim build hollows that out: `auto` can only choose from what was shipped, so it "detects" its way to CPU every time, while the Options backend dropdown still offers CUDA/Vulkan that cannot work there. The flag did not make `auto` crash; it made it **pointless**, silently. Users see a flag they never set, only slow transcription.
+
+Per-backend flags (`BundleCudaWhisperRuntime` etc.) are the same mistake sliced thinner.
+
+## Why it was big — measured
+
+The weight is native, not managed:
 
 ```
-Whisper.net.Runtime          ~68 MB   CPU (AVX) — every platform, needed as the universal fallback
-Whisper.net.Runtime.NoAvx    ~10 MB   CPU without AVX — every platform
-Whisper.net.Runtime.Cuda    ─┐
-Whisper.net.Runtime.Cuda12  ─┼─ ~1.4 GB CUDA + Vulkan GPU natives, bundled on every non-macOS publish
-Whisper.net.Runtime.Vulkan  ─┘
+Whisper.net.Runtime          ~68 MB   CPU (AVX) — bundled, the universal fallback
+Whisper.net.Runtime.NoAvx    ~10 MB   CPU without AVX — bundled
+Whisper.net.Runtime.Cuda.Windows     286 MB  ─┐
+Whisper.net.Runtime.Cuda12.Windows   779 MB  ─┼─ ~1.2 GB, was bundled on every non-macOS publish
+Whisper.net.Runtime.Vulkan           151 MB  ─┘
 ```
 
-A self-contained publish resolves every referenced runtime's `runtimes/<rid>/native/*` into the output. Whisper.net's `NativeLibraryLoader` then picks the first one that actually loads on the host at model-load time (`RuntimeOptions.RuntimeLibraryOrder`, ordered by `WhisperBackendPlanner`). So on any single machine, **at most one** of those GPU runtimes is ever loaded — the rest are dead weight carried for portability.
+On any single machine **at most one** of those GPU runtimes is ever loaded — the rest was dead weight carried for portability. The model itself (`large-v3-turbo`, ~1.6 GB) was already on-demand via `WhisperModelCache`; the runtimes were the last thing bundled-for-all instead of fetched-for-one.
 
-The model itself (`large-v3-turbo`, ~1.6 GB) is **already** on-demand: `WhisperModelCache.EnsureDownloadedAsync` fetches it on first dictation into `%APPDATA%/Cockpit/models`, never bundled. The GPU runtimes are the remaining thing that is bundled-for-all instead of fetched-for-one.
+## How it works now
 
-## The design: fetch the runtime the PC needs
+`WhisperRuntimeCache.EnsureAvailableAsync` runs in `WhisperSpeechToTextService` just before the factory is built:
 
-Mirror the model-cache pattern for the native runtime.
+1. **`WhisperBackendPlanner`** yields the try-order for the operator's preference + OS (unchanged).
+2. **`WhisperGpuProbe`** answers, per backend, whether this machine can use it — *before* spending a download. It mirrors Whisper.net's own `CudaHelper`: load `cudart64_13`/`cudart64_12` (or `libcudart.so.13`/`.12`), check the major version matches, check the device count. Probing before downloading is not circular: cudart comes from a system CUDA install, not from the runtime packages.
+3. **`WhisperRuntimeCatalog`** maps the first usable backend to its NuGet package and target layout.
+4. **The fetch** downloads that one `.nupkg` from `api.nuget.org/v3-flatcontainer`, extracts its natives into a staging dir and swaps it in whole.
+5. **`RuntimeOptions.LibraryPath`** points the loader at the cache, then `WhisperFactory.FromPath` loads as usual.
 
-1. **Ship CPU-only by default.** Keep `Whisper.net.Runtime` (+ NoAvx) bundled — it is small (~78 MB), works everywhere, and guarantees voice always functions with zero network. Drop the CUDA/Vulkan packages from the publish (the `BundleGpuWhisperRuntimes=false` lever below already does this).
-2. **Detect the hardware once.** `WhisperBackendPlanner.BuildOrder(preference, isWindows)` already yields the ordered candidate list (Cuda12 → Cuda → Vulkan → Cpu → NoAvx per host). The first *GPU* entry is the runtime to provision.
-3. **Provision on first use.** A `WhisperRuntimeCache`, parallel to `WhisperModelCache`:
-   - target dir `%APPDATA%/Cockpit/runtimes/<backend>-<whisperNetVersion>/`;
-   - if absent, download that one runtime's native payload (the `Whisper.net.Runtime.Cuda12` etc. NuGet package for the host RID, or a mirror we host) and extract `runtimes/<rid>/native/*` into the dir;
-   - point the loader at it before `WhisperFactory.FromPath` (Whisper.net resolves natives next to the app / on the native search path — the cache dir is prepended to the DLL search path on Windows via `AddDllDirectory`, and to `LD_LIBRARY_PATH`/`dlopen` handling on Linux; **this seam is the part that must be validated on a real GPU host — see Risks**).
-4. **Keep it current.** The cache key includes the Whisper.net version, so bumping the package invalidates the old runtime and re-provisions. A stale/partial download uses the same `*.download` temp-then-move guard `WhisperModelCache` already uses.
-5. **Always degrade to CPU.** If provisioning fails (offline, mirror down), the bundled CPU runtime still loads — voice keeps working, slower. The failure is logged (same observability fix as `fix/voice-observability`), never silent.
+Nothing usable, or the fetch fails → the bundled CPU runtime carries it. A missing GPU runtime is slower, never fatal.
 
-Net effect: base binary drops by ~1.4 GB; an NVIDIA box fetches ~0.9 GB of CUDA once; a CPU-only box fetches nothing; a Mac (already CPU-only) is unchanged.
+### Four things the loader's source dictates
 
-### Local-LLM providers
+Read from `sandrohanea/whisper.net` at tag **`1.9.1`** (note: no `v` prefix, and paths have no `src/`), because each of these silently ends on the CPU if guessed wrong:
 
-No change needed for size — Ollama/LM Studio are user-installed and external. The relevant robustness (endpoint auto-detect + graceful fallback when the server is absent) already lives in `LocalLlmEndpointResolver` / `OpenAiCompatTranscriptCleanupService`. The "user provides Ollama or LM Studio themselves" contract stays: Cockpit never bundles or installs them.
+- **`Whisper.net.Runtime.Cuda` / `.Cuda12` are meta-packages.** They hold a readme and a dependency on `.Windows`/`.Linux`. Fetching them caches an empty runtime. The split packages carry the natives, under `build/{rid}/` — *not* the NuGet `runtimes/**/native/` layout.
+- **It is not one DLL.** The loader opens a dependency chain out of the same directory — `ggml-base-whisper`, `ggml-cpu-whisper`, `ggml-cuda-whisper`, `ggml-whisper`, then `whisper` — and a missing link makes it move on to the next backend without a word.
+- **`LibraryPath` is a *file* path.** `NativeLibraryLoader` runs `Path.GetDirectoryName()` over it, so a bare directory resolves to its parent and nothing is ever found. `WhisperRuntimeCatalog.ToLibrarySearchPath` appends the separator; a test pins the round-trip.
+- **Backend is the outer loop, search path the inner one.** So the cache dir does not hijack the order: per backend it tries the cache, then the app dir. `RuntimeLibraryOrder` stays authoritative and the bundled CPU runtimes next to the exe keep working — which is what makes `auto` remain meaningful.
 
-## What this branch ships
+Expected layout: `<LibraryPath dir>/runtimes/{cuda|cuda12|vulkan}/{win|linux}-{x64|arm64}/` (CPU has no family segment).
 
-`-p:BundleGpuWhisperRuntimes=false` — a reversible, default-off build lever that excludes the CUDA/Vulkan runtime packages, producing a slim CPU-only publish. Default `true` keeps today's behaviour byte-for-byte. This is the build-time half; it also de-risks the design by proving the "drop the runtimes, CPU still works" half independently.
+### Keeping it current
 
-```bash
-# slim, CPU-only (no ~1.4 GB GPU natives)
-dotnet publish src/Cockpit.App -c Release -r win-x64 --self-contained -p:BundleGpuWhisperRuntimes=false
-```
+The version is read from the **Whisper.net assembly's own informational version** (`1.9.1+<sha>` → `1.9.1`), not from asking NuGet for the newest. The natives must match the library that loads them: a mismatch is exactly the bug this avoids — CUDA-13 natives on a CUDA-12.8 host detect it and fall silently back to CPU, which is worse than an old version because it is invisible. Bumping the `Whisper.net` package moves the fetch with it, automatically.
 
-## Risks / what to validate before wiring the runtime fetch
+The version is part of the cache path, so a bump needs no migration: the old natives are not stale, they are simply not where the new loader looks. They are deleted once the new runtime is in place.
 
-- **Native load path from a non-default dir.** Whisper.net 1.9's loader walks `RuntimeLibraryOrder` but resolves the actual `.dll`/`.so` from the app's runtime dirs. Loading a CUDA runtime from an arbitrary cache dir needs the OS loader pointed there first (`AddDllDirectory` + `SetDefaultDllDirectories` on Windows; `dlopen` search / rpath on Linux). This must be proven on Raymond's RTX-4070 host with a slim build before the fetch path replaces the bundled runtimes — it is the one step that can't be unit-tested.
-- **Package source.** Pulling the runtime nupkg at runtime means depending on nuget.org (or a mirror we control). A hosted mirror is more predictable and lets us pin/verify a SHA the way the plugin store already does.
-- **First-use latency.** A GPU box waits once for ~0.9 GB on the first dictation — same UX as the model download, so the same "downloading, first use" logging (now in `WhisperModelCache`) should cover the runtime fetch too.
+## Verified (2026-07-15, this machine — AMD GPU, Windows)
+
+- Publish `win-x64`, `release.yml` flags: **1.8 GB → 294 MB**.
+- Live, from an empty cache: probe reported `Cuda=False, Cuda12=False, Vulkan=True` → fetched `Whisper.net.Runtime.Vulkan` → **loader reported `LoadedLibrary = Vulkan`**, not CPU. Extracted files byte-identical to the NuGet package; no `.download`/`.fetching` leftovers.
+- Second run hit the cache (no download), and a planted `1.8.0/` cache directory was removed.
+- ⚠️ **The CUDA path is not live-proven yet** — this machine has an AMD card. It needs the RTX-4070 Fedora host. The probe's CUDA branch mirrors `CudaHelper` line for line, but mirroring is an argument, not a measurement.
+
+## Open
+
+- **Vulkan on Linux.** `WhisperBackendPlanner` excludes it, citing issue #264 ("no published Linux Vulkan runtime"). But `Whisper.net.Runtime.Vulkan` 1.9.1 *does* contain `build/linux-x64/libggml-vulkan-whisper.so`. The assumption looks stale — worth re-checking; observed in the package, not proven on a Linux host.
+- **Package source.** The fetch depends on nuget.org. A mirror we control would let us pin and verify a SHA the way the plugin store already does.
