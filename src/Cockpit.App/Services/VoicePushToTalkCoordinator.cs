@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
 
 namespace Cockpit.App.Services;
 
@@ -98,16 +99,57 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _pushToTalk.AudioLevelSampled -= _OnAudioLevelSampled;
         Overlay.State = VoiceOverlayState.Transcribing;
 
-        var session = _cockpit.SelectedSession;
-        if (session is not null)
+        // Only for as long as this hold: first use fetches gigabytes before it can transcribe, and the pill
+        // spent that time on a spinner that said "Transcribing…". Subscribed here rather than for the
+        // coordinator's lifetime so a step can never repaint the pill after its hold is over.
+        _pushToTalk.Preparing += _OnPreparing;
+        _pushToTalk.Prepared += _OnPrepared;
+
+        try
         {
-            // SDK sessions get the Ollama cleanup pass; TTY has none, since its transcript is written
-            // as raw pty bytes — the same split SessionView/ClaudeTtyView's local F9 handlers
-            // already make.
-            await session.EndVoiceHoldAsync(applyCleanup: session is not ClaudeTtyViewModel);
+            var session = _cockpit.SelectedSession;
+            if (session is not null)
+            {
+                // SDK sessions get the Ollama cleanup pass; TTY has none, since its transcript is written
+                // as raw pty bytes — the same split SessionView/ClaudeTtyView's local F9 handlers
+                // already make.
+                await session.EndVoiceHoldAsync(applyCleanup: session is not ClaudeTtyViewModel);
+            }
+        }
+        finally
+        {
+            _pushToTalk.Preparing -= _OnPreparing;
+            _pushToTalk.Prepared -= _OnPrepared;
         }
 
         Overlay.State = VoiceOverlayState.Hidden;
         _overlayPresenter.Hide();
     }
+
+    /// <summary>
+    /// Fires off the UI thread (the download's own), so it marshals like the level feed does. Each step both
+    /// puts the pill into <see cref="VoiceOverlayState.Preparing"/> and names what it is waiting on — the
+    /// state cannot be set up front, because on every run after the first there is nothing to prepare and the
+    /// pill should go straight to transcribing.
+    /// </summary>
+    private void _OnPreparing(object? sender, VoicePreparationProgress step) =>
+        Dispatcher.UIThread.Post(() => HandlePreparing(step));
+
+    private void _OnPrepared(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(HandlePrepared);
+
+    /// <summary>
+    /// Test seam, like the hold handlers above: the UI-thread half of a preparation step. Each step sets the
+    /// state as well as the text — it cannot be set up front, because on every run after the first there is
+    /// nothing to prepare and the pill should go straight to its spinner.
+    /// </summary>
+    internal void HandlePreparing(VoicePreparationProgress step)
+    {
+        Overlay.StatusText = step.Description;
+        Overlay.Progress = step.Fraction;
+        Overlay.State = VoiceOverlayState.Preparing;
+    }
+
+    /// <summary>Test seam: preparation is over, so the pill goes back to the plain spinner — which is now telling the truth.</summary>
+    internal void HandlePrepared() => Overlay.State = VoiceOverlayState.Transcribing;
 }

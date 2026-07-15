@@ -61,7 +61,8 @@ internal static class WhisperRuntimeCache
         IReadOnlyList<WhisperRuntimeBackend> order,
         WhisperHostPlatform platform,
         CancellationToken cancellationToken,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        IProgress<VoicePreparationProgress>? progress = null)
     {
         var architecture = _CurrentArchitecture();
         if (architecture is null)
@@ -87,7 +88,7 @@ internal static class WhisperRuntimeCache
                     continue;
                 }
 
-                if (_IsCached(package) || await _TryFetchAsync(package, backend, cancellationToken, logger).ConfigureAwait(false))
+                if (_IsCached(package) || await _TryFetchAsync(package, backend, cancellationToken, logger, progress).ConfigureAwait(false))
                 {
                     return;
                 }
@@ -106,7 +107,11 @@ internal static class WhisperRuntimeCache
         File.Exists(Path.Combine(VersionRoot, package.CacheSubPath, WhisperLibraryFileName));
 
     private static async Task<bool> _TryFetchAsync(
-        WhisperRuntimePackage package, WhisperRuntimeBackend backend, CancellationToken cancellationToken, ILogger? logger)
+        WhisperRuntimePackage package,
+        WhisperRuntimeBackend backend,
+        CancellationToken cancellationToken,
+        ILogger? logger,
+        IProgress<VoicePreparationProgress>? progress)
     {
         var destination = Path.Combine(VersionRoot, package.CacheSubPath);
 
@@ -125,7 +130,8 @@ internal static class WhisperRuntimeCache
             var stopwatch = Stopwatch.StartNew();
 
             Directory.CreateDirectory(VersionRoot);
-            await _DownloadPackageAsync(package, packageFile, cancellationToken).ConfigureAwait(false);
+            await _DownloadPackageAsync(package, packageFile, backend, cancellationToken, progress).ConfigureAwait(false);
+            progress?.Report(new VoicePreparationProgress($"Unpacking {backend} runtime…"));
 
             // Extract beside the destination and swap it in only once it is whole, so an interrupted fetch can
             // never leave a half-filled directory that the next run reads as a complete, cached runtime.
@@ -173,7 +179,11 @@ internal static class WhisperRuntimeCache
     /// so it goes to a file first rather than into several hundred megabytes of memory.
     /// </summary>
     private static async Task _DownloadPackageAsync(
-        WhisperRuntimePackage package, string packageFile, CancellationToken cancellationToken)
+        WhisperRuntimePackage package,
+        string packageFile,
+        WhisperRuntimeBackend backend,
+        CancellationToken cancellationToken,
+        IProgress<VoicePreparationProgress>? progress)
     {
         var id = package.PackageId.ToLowerInvariant();
         var version = RuntimeVersion.ToLowerInvariant();
@@ -186,7 +196,11 @@ internal static class WhisperRuntimeCache
 
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         await using var target = File.Create(packageFile);
-        await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
+
+        // nuget.org sends a Content-Length, so this one can honestly show a percentage.
+        await VoiceDownloadReporter.CopyAsync(
+            source, target, $"Downloading {backend} runtime", response.Content.Headers.ContentLength, progress, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
