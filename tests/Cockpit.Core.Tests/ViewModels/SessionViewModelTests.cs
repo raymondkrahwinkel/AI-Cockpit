@@ -245,6 +245,42 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    [Fact]
+    public async Task CommitLiveModel_LiveSwitchesTheClaudeModel_ToAPinnedSnapshot()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // The running-session model field is free text like the New-session dialog, so a specific snapshot can be
+        // pinned live rather than only the three aliases — applied on commit (the view calls CommitLiveModel).
+        vm.LiveModelText = "claude-sonnet-4-5-20250929";
+        vm.CommitLiveModel();
+
+        await session.Received(1).SetModelAsync("claude-sonnet-4-5-20250929", Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task CommitLiveModel_WithTheSameModel_FiresNoSwitch()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, new ModelOption("Sonnet", "sonnet"), SessionOptionCatalog.DefaultEffort);
+
+        // A commit that changed nothing (the field still holds the launch model) must not fire a redundant switch.
+        vm.CommitLiveModel();
+
+        await session.DidNotReceive().SetModelAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
     /// <summary>
     /// <see cref="SessionViewModel.CanPasteImages"/> (#64) follows <see cref="SessionCapabilities.SupportsVision"/>
     /// once the session has actually started — a Claude-CLI session reports it true since
