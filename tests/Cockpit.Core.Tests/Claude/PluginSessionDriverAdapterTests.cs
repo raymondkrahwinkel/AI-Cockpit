@@ -75,7 +75,11 @@ public class PluginSessionDriverAdapterTests
         // SetPermissionModeAsync to the plugin's live-option surface — proven red before the wiring (both were no-ops).
         var inner = new FakePluginSessionDriver
         {
-            Capabilities = new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: true, SupportsPermissionModeSwitch: true),
+            Capabilities = new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true)
+            {
+                SupportsLiveModelSwitch = true,
+                SupportsPermissionModeSwitch = true,
+            },
         };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
 

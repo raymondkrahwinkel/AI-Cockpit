@@ -14,21 +14,27 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// Whether this plugin's driver sends pasted image attachments to the model (#64). Defaults to
 /// <see langword="false"/> for back-compat with existing 2-arg construction.
 /// </param>
-/// <param name="SupportsLiveModelSwitch">
-/// Whether this driver can switch the model mid-session (Fase 4 D4) — backed by
-/// <see cref="IPluginSessionDriver.SetLiveOptionAsync"/> with the <c>"model"</c> key, which the host's driver adapter
-/// wires its own <c>SetModelAsync</c> to. Defaults to <see langword="false"/>: an already-compiled plugin, or one that
-/// cannot switch models live, leaves it off and the host renders no live model control.
-/// </param>
-/// <param name="SupportsPermissionModeSwitch">
-/// Whether this driver can switch the Claude-style permission mode mid-session (Fase 4 D4) — backed by
-/// <see cref="IPluginSessionDriver.SetLiveOptionAsync"/> with the <see cref="WellKnownPluginSessionOptions.PermissionMode"/>
-/// key, which the host's driver adapter wires its own <c>SetPermissionModeAsync</c> to. Defaults to
-/// <see langword="false"/>, so a provider with no permission modes (an HTTP model, Codex's sandbox) never advertises it.
-/// </param>
 public sealed record PluginSessionCapabilities(
     bool SupportsTools,
     bool SupportsPermissions,
-    bool SupportsVision = false,
-    bool SupportsLiveModelSwitch = false,
-    bool SupportsPermissionModeSwitch = false);
+    bool SupportsVision = false)
+{
+    /// <summary>
+    /// Whether this driver can switch the model mid-session (Fase 4 D4) — backed by
+    /// <see cref="IPluginSessionDriver.SetLiveOptionAsync"/> with the <see cref="WellKnownPluginSessionOptions.Model"/>
+    /// key, which the host's driver adapter wires its own <c>SetModelAsync</c> to. An init-only property (not a
+    /// primary-constructor parameter) so adding it does not change the record's constructor signature — an
+    /// already-compiled plugin that constructs this the old way keeps loading. Defaults to <see langword="false"/>.
+    /// </summary>
+    public bool SupportsLiveModelSwitch { get; init; }
+
+    /// <summary>
+    /// Whether this driver can switch the Claude-style permission mode mid-session (Fase 4 D4) — backed by
+    /// <see cref="IPluginSessionDriver.SetLiveOptionAsync"/> with the
+    /// <see cref="WellKnownPluginSessionOptions.PermissionMode"/> key, which the host's driver adapter wires its own
+    /// <c>SetPermissionModeAsync</c> to. Init-only for the same back-compat reason as
+    /// <see cref="SupportsLiveModelSwitch"/>; defaults to <see langword="false"/>, so a provider with no permission
+    /// modes (an HTTP model, Codex's sandbox) never advertises it.
+    /// </summary>
+    public bool SupportsPermissionModeSwitch { get; init; }
+}

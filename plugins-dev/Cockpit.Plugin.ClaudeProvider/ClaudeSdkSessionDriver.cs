@@ -71,9 +71,11 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     public PluginSessionCapabilities Capabilities { get; } = new(
         SupportsTools: true,
         SupportsPermissions: true,
-        SupportsVision: true,
-        SupportsLiveModelSwitch: true,
-        SupportsPermissionModeSwitch: true);
+        SupportsVision: true)
+    {
+        SupportsLiveModelSwitch = true,
+        SupportsPermissionModeSwitch = true,
+    };
 
     public string? SessionId => _sessionId;
 
