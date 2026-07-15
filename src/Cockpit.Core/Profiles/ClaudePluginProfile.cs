@@ -19,6 +19,41 @@ public static class ClaudePluginProfile
     public static PluginProviderConfig Create(string? configDir, string? executablePath) =>
         new(ProviderId, _SerializeConfig(configDir, executablePath));
 
+    /// <summary>
+    /// Carries a Claude profile's typed permission-mode/model/effort defaults into the generic
+    /// <see cref="ProfileDefaults.OptionDefaults"/> map when it has none yet — the defaults half of the migration, so a
+    /// profile keeps its saved start settings after Claude becomes a plugin (the profile-edit and New-session dialogs
+    /// read them generically now). Idempotent: a profile that already has <see cref="ProfileDefaults.OptionDefaults"/>
+    /// is returned untouched.
+    /// </summary>
+    public static ProfileDefaults WithMigratedOptionDefaults(ProfileDefaults defaults)
+    {
+        if (defaults.OptionDefaults is { Count: > 0 })
+        {
+            return defaults;
+        }
+
+        // The Claude plugin declares its options under these keys (matching the host's WellKnownPluginSessionOptions);
+        // Core cannot reference the plugin abstractions, so these literals are the one Claude-specific detail here.
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(defaults.PermissionMode))
+        {
+            options["permission-mode"] = defaults.PermissionMode;
+        }
+
+        if (!string.IsNullOrWhiteSpace(defaults.Model))
+        {
+            options["model"] = defaults.Model;
+        }
+
+        if (!string.IsNullOrWhiteSpace(defaults.Effort))
+        {
+            options["effort"] = defaults.Effort;
+        }
+
+        return options.Count > 0 ? defaults with { OptionDefaults = options } : defaults;
+    }
+
     // Matches the plugin's own ClaudeProviderConfig shape: camelCase keys, blank fields omitted (both blank means a
     // default session against the machine's own ~/.claude login).
     private static string _SerializeConfig(string? configDir, string? executablePath)

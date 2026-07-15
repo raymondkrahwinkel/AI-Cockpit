@@ -144,11 +144,11 @@ public class ManageProfilesDialogViewModelTests
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>())
-            .Returns([new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"))]);
+            .Returns([new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"),
+                Defaults: new ProfileDefaults("default", "sonnet", "medium"))]);
         var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
         await vm.LoadAsync();
-        vm.SelectedProfile!.Label = "work-renamed";
-        vm.SelectedProfile.ClaudeModel = "opus";
+        vm.SelectedProfile!.Label = "local-renamed";
         var closed = false;
         vm.CloseRequested += () => closed = true;
 
@@ -157,8 +157,8 @@ public class ManageProfilesDialogViewModelTests
         await store.Received(1).SaveAsync(
             Arg.Is<IReadOnlyList<SessionProfile>>(list =>
                 list.Count == 1 &&
-                list[0].Label == "work-renamed" &&
-                list[0].Defaults!.Model == "opus"),
+                list[0].Label == "local-renamed" &&
+                list[0].Defaults!.Model == "sonnet"),
             Arg.Any<CancellationToken>());
         closed.Should().BeTrue();
     }
@@ -293,17 +293,17 @@ public class ManageProfilesDialogViewModelTests
     }
 
     [Fact]
-    public void ToProfile_CollapsesEmptyExecutableAndPurposeToNull()
+    public void ToProfile_CollapsesEmptyPurposeToNull()
     {
-        var editable = new EditableProfileViewModel(new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")), isLoggedIn: false)
+        // The executable-path collapse is the Claude provider plugin's concern now (its config view); this covers the
+        // provider-neutral Purpose collapse on a core provider.
+        var editable = new EditableProfileViewModel(new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1")), isLoggedIn: false)
         {
-            ExecutablePath = "   ",
-            Purpose = "",
+            Purpose = "   ",
         };
 
         var profile = editable.ToProfile();
 
-        profile.Claude!.ExecutablePath.Should().BeNull();
         profile.Purpose.Should().BeNull();
         profile.Defaults.Should().NotBeNull();
     }

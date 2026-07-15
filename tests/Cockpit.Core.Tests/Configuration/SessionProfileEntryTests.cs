@@ -57,4 +57,26 @@ public class SessionProfileEntryTests
         resaved.Provider!.PluginProviderId.Should().Be(ClaudePluginProfile.ProviderId);
         resaved.Provider!.PluginConfigJson.Should().Contain("/home/raymond/.claude-work").And.Contain("/usr/local/bin/claude");
     }
+
+    [Fact]
+    public void ToDomain_MigratesALegacyClaudeProfilesTypedDefaults_IntoTheGenericOptionDefaults()
+    {
+        var entry = new SessionProfileEntry
+        {
+            Label = "work",
+            ConfigDir = "/home/raymond/.claude-work",
+            Provider = null,
+            Defaults = new ProfileDefaultsEntry { PermissionMode = "bypassPermissions", Model = "opus", Effort = "high" },
+        };
+
+        var profile = entry.ToDomain();
+
+        // Fase 4: a migrated Claude profile keeps its saved permission/model/effort as the generic OptionDefaults the
+        // profile-edit and New-session dialogs read now, keyed by the plugin's own option keys — so the operator's
+        // start settings survive the move to the plugin instead of silently resetting to the option defaults.
+        profile.Defaults!.OptionDefaults.Should().NotBeNull();
+        profile.Defaults!.OptionDefaults!["permission-mode"].Should().Be("bypassPermissions");
+        profile.Defaults!.OptionDefaults!["model"].Should().Be("opus");
+        profile.Defaults!.OptionDefaults!["effort"].Should().Be("high");
+    }
 }

@@ -53,12 +53,19 @@ internal sealed class SessionProfileEntry
         MemoryLimitMb = profile.MemoryLimitMb,
     };
 
-    public SessionProfile ToDomain() =>
-        new(
-            Label,
-            Provider?.ToDomain(ConfigDir, ExecutablePath) ?? ClaudePluginProfile.Create(ConfigDir, ExecutablePath),
-            Purpose,
-            Defaults?.ToDomain(),
-            Delegation?.ToDomain(),
-            MemoryLimitMb);
+    public SessionProfile ToDomain()
+    {
+        var providerConfig = Provider?.ToDomain(ConfigDir, ExecutablePath) ?? ClaudePluginProfile.Create(ConfigDir, ExecutablePath);
+        var defaults = Defaults?.ToDomain();
+
+        // A Claude profile migrated to the plugin carries its typed permission/model/effort defaults into the generic
+        // OptionDefaults, so the migrated profile keeps its saved start settings — the profile-edit and New-session
+        // dialogs read those generically now. Idempotent: an already-migrated profile with OptionDefaults is untouched.
+        if (defaults is not null && providerConfig is PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId })
+        {
+            defaults = ClaudePluginProfile.WithMigratedOptionDefaults(defaults);
+        }
+
+        return new(Label, providerConfig, Purpose, defaults, Delegation?.ToDomain(), MemoryLimitMb);
+    }
 }

@@ -58,8 +58,18 @@ public class SessionProfileStoreTests : IDisposable
         var store = new SessionProfileStore(_configFilePath);
         var profiles = new List<SessionProfile>
         {
+            // A migrated Claude profile carries its permission/model/effort defaults in the generic OptionDefaults map
+            // (the typed fields stay too); the round-trip through the store is idempotent on that shape.
             new("personal", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-personal", null),
-                Defaults: new ProfileDefaults("bypassPermissions", "opus", "high")),
+                Defaults: new ProfileDefaults("bypassPermissions", "opus", "high")
+                {
+                    OptionDefaults = new Dictionary<string, string>
+                    {
+                        ["permission-mode"] = "bypassPermissions",
+                        ["model"] = "opus",
+                        ["effort"] = "high",
+                    },
+                }),
             new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", null)),
         };
 
