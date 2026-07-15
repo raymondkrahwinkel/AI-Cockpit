@@ -17,4 +17,6 @@ public enum ShortcutAction
     CommandPalette,
     PreviousSession,
     NextSession,
+    PreviousWorkspace,
+    NextWorkspace,
 }
