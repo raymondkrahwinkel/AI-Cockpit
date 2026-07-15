@@ -114,15 +114,15 @@ public interface ISessionDriver : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The session's latest limits, when the provider reports them (#45 D7) — how full the context window is and
-    /// how much of the operator's usage windows are spent. The host polls this and renders the header's limit
-    /// bars from it, so a provider that can report limits fills them without the host owning any provider-specific
-    /// status code. Null for a driver whose provider reports none: the Claude CLI reports its limits through the
-    /// TTY statusline relay instead of this seam, and a local model (Ollama, LM Studio) has no such windows — a
-    /// header shows nothing rather than a made-up zero. A default property, so a driver with no limits feed need
+    /// The session's latest status, when the provider reports it (#45 D7) — how full the context window is and the
+    /// usage windows it reports, each self-labelled. The host polls this and renders the header's bars from it, so
+    /// a provider that can report limits fills them without the host owning any provider-specific status code or
+    /// window vocabulary. Null for a driver whose provider reports none: the Claude CLI reports its limits through
+    /// the TTY statusline relay instead of this seam, and a local model (Ollama, LM Studio) has no such windows —
+    /// a header shows nothing rather than a made-up zero. A default property, so a driver with no status feed need
     /// not implement it.
     /// </summary>
-    SessionLimits? CurrentLimits => null;
+    SessionStatusFeed? CurrentStatus => null;
 
     /// <summary>
     /// The live, ordered stream of typed transcript events for this session.

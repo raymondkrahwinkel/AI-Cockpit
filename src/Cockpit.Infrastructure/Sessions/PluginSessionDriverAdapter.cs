@@ -42,36 +42,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public IAsyncEnumerable<SessionEvent> Events => _AdaptEventsAsync();
 
-    // The plugin driver reports its limits as a provider-neutral snapshot (#45 D7); map it to the core model the
-    // header renders. The Claude-CLI-only live-control no-ops above have no state to poll — this one does, because
-    // a plugin provider (Codex) genuinely reports usage the narrow surface can carry.
-    public SessionLimits? CurrentLimits => _MapStatus(inner.Status);
+    // The plugin driver reports its status as a provider-neutral snapshot (#45 D7); map it to the core model the
+    // header renders — each window carried through with the label the provider chose, so the host imposes no
+    // window vocabulary. The Claude-CLI-only live-control no-ops above have no state to poll; this one does,
+    // because a plugin provider (Codex) genuinely reports usage the narrow surface can carry.
+    public SessionStatusFeed? CurrentStatus => _MapStatus(inner.Status);
 
-    private static SessionLimits? _MapStatus(PluginSessionStatus? status)
-    {
-        if (status is not { HasAny: true })
-        {
-            return null;
-        }
-
-        // The plugin surface reports two usage windows as primary/secondary carrying their own spans; the core
-        // model has a shorter (five-hour) and a longer (weekly) slot. Order by span so the shorter window fills
-        // the shorter slot whatever the provider called it; absent spans, primary is taken as the shorter one
-        // (Codex reports its immediate limit first).
-        var (shorter, longer) = _OrderBySpan(status.PrimaryRateLimit, status.SecondaryRateLimit);
-
-        return new SessionLimits(
-            status.ContextUsedPercent,
-            shorter?.UsedPercent,
-            shorter?.ResetsAt,
-            longer?.UsedPercent,
-            longer?.ResetsAt);
-    }
-
-    private static (PluginRateLimitWindow? Shorter, PluginRateLimitWindow? Longer) _OrderBySpan(PluginRateLimitWindow? primary, PluginRateLimitWindow? secondary) =>
-        primary is { WindowMinutes: { } primarySpan } && secondary is { WindowMinutes: { } secondarySpan } && secondarySpan < primarySpan
-            ? (secondary, primary)
-            : (primary, secondary);
+    private static SessionStatusFeed? _MapStatus(PluginSessionStatus? status) =>
+        status is { HasAny: true }
+            ? new SessionStatusFeed(
+                status.ContextUsedPercent,
+                [.. status.RateLimits.Select(window => new SessionRateWindow(window.Label, window.UsedPercent, window.ResetsAt))])
+            : null;
 
     public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
     {

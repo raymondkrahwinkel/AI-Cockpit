@@ -4,6 +4,7 @@
              xmlns:views="using:Cockpit.App.Views"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:sessions="using:Cockpit.Core.Sessions"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
@@ -120,15 +121,26 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     </Border>
 
-                    <!-- What the session is spending, one bar each (#45 D7): how full the context window is and how
-                         much of the provider's two usage windows are gone. Fed by the provider's limits feed
-                         (Codex's app-server usage); each bar hides itself until the provider reports it, so a
+                    <!-- What the session is spending, one bar each (#45 D7): how full the context window is, and the
+                         provider's own usage windows — the provider labels each ("5h", "wk", …), so the header
+                         renders whatever it reports without baking in window vocabulary. Fed by the provider's
+                         status feed (Codex's app-server usage); each bar hides until the provider reports it, so a
                          provider with no feed (a local model) shows nothing rather than a bar sitting at "0%". -->
                     <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
                                 Margin="8,0,0,0" ToolTip.Tip="{Binding LimitsTooltip}">
                         <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
-                        <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
-                        <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
+                        <ItemsControl ItemsSource="{Binding RateLimits}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="10"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sessions:SessionRateWindow">
+                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" FontSize="10" Height="14"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
 
                     <!-- Plugin-contributed header items (#: session header items): status belonging to this

@@ -54,8 +54,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // consistent value. Context and rate-limits arrive in separate notifications, so each is kept and recombined.
     private volatile PluginSessionStatus? _status;
     private double? _contextUsedPercent;
-    private PluginRateLimitWindow? _primaryRateLimit;
-    private PluginRateLimitWindow? _secondaryRateLimit;
+    private IReadOnlyList<PluginRateLimitWindow> _rateLimits = [];
 
     public CodexAppServerSessionDriver(Func<ICliSubprocess> subprocessFactory, CliAgentConfig config, string executablePath)
     {
@@ -338,14 +337,26 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             return;
         }
 
-        _primaryRateLimit = _ParseWindow(snapshot, "primary");
-        _secondaryRateLimit = _ParseWindow(snapshot, "secondary");
+        // The whole snapshot is replaced (not merged): a window it no longer reports is a window that no longer
+        // applies. Order preserved as the provider gave it — the host renders the windows in that order.
+        var windows = new List<PluginRateLimitWindow>(2);
+        if (_ParseWindow(snapshot, "primary") is { } primary)
+        {
+            windows.Add(primary);
+        }
+
+        if (_ParseWindow(snapshot, "secondary") is { } secondary)
+        {
+            windows.Add(secondary);
+        }
+
+        _rateLimits = windows;
         _PublishStatus();
     }
 
     private void _PublishStatus()
     {
-        var status = new PluginSessionStatus(_contextUsedPercent, _primaryRateLimit, _secondaryRateLimit);
+        var status = new PluginSessionStatus(_contextUsedPercent, _rateLimits);
         _status = status.HasAny ? status : null;
     }
 
@@ -357,12 +368,23 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             return null;
         }
 
+        var windowMinutes = _TryGetInt(window, "windowDurationMins");
         var resetsAt = _TryGetLong(window, "resetsAt") is { } epochSeconds
             ? DateTimeOffset.FromUnixTimeSeconds(epochSeconds)
             : (DateTimeOffset?)null;
 
-        return new PluginRateLimitWindow(usedPercent, resetsAt, _TryGetInt(window, "windowDurationMins"));
+        return new PluginRateLimitWindow(_WindowLabel(windowMinutes), usedPercent, resetsAt, windowMinutes);
     }
+
+    // The provider owns the header label (#45 D7): derive it from the window's span so a five-hour window reads
+    // "5h" and a weekly one "7d", and a window with no span falls back to a neutral "rate".
+    private static string _WindowLabel(int? windowMinutes) => windowMinutes switch
+    {
+        null => "rate",
+        < 60 => $"{windowMinutes}m",
+        < 1440 => $"{windowMinutes / 60}h",
+        _ => $"{windowMinutes / 1440}d",
+    };
 
     private static int? _TryGetInt(JsonElement parent, string property) =>
         parent.ValueKind == JsonValueKind.Object && parent.TryGetProperty(property, out var element)

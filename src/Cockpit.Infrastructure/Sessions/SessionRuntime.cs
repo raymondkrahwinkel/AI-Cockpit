@@ -49,7 +49,7 @@ internal sealed class SessionRuntime : ISessionRuntime
     /// <summary>The process this session runs in, once its driver started one (#78) — null for a provider that is an HTTP call rather than a process.</summary>
     public int? ProcessId => _driver?.ProcessId;
 
-    public SessionLimits? CurrentLimits => _driver?.CurrentLimits;
+    public SessionStatusFeed? CurrentStatus => _driver?.CurrentStatus;
 
     public bool IsRunning => _pump is not null;
 

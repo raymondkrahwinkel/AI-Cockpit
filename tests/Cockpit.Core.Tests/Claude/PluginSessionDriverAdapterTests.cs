@@ -54,16 +54,21 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
-    public void CurrentLimits_IsNull_WhenTheDriverReportsNoStatus()
+    public void CurrentStatus_IsNull_WhenTheDriverReportsNoStatus()
     {
         var inner = new FakePluginSessionDriver { Status = null };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
 
-        adapter.CurrentLimits.Should().BeNull();
+        adapter.CurrentStatus.Should().BeNull();
     }
 
+    /// <summary>
+    /// The adapter carries the provider's status through to the core model unchanged: context percent, and each
+    /// window with the label the provider chose, in the order it reported them — no host-side slotting or window
+    /// vocabulary.
+    /// </summary>
     [Fact]
-    public void CurrentLimits_MapsTheDriverStatus_ContextAndBothWindows_ToTheCoreModel()
+    public void CurrentStatus_MapsContextAndWindows_PreservingEachWindowsLabelAndOrder()
     {
         var resetShort = DateTimeOffset.FromUnixTimeSeconds(1800000000);
         var resetLong = DateTimeOffset.FromUnixTimeSeconds(1800600000);
@@ -71,63 +76,19 @@ public class PluginSessionDriverAdapterTests
         {
             Status = new PluginSessionStatus(
                 ContextUsedPercent: 25,
-                PrimaryRateLimit: new PluginRateLimitWindow(60, resetShort, 300),
-                SecondaryRateLimit: new PluginRateLimitWindow(80, resetLong, 10080)),
+                RateLimits:
+                [
+                    new PluginRateLimitWindow("5h", 60, resetShort, 300),
+                    new PluginRateLimitWindow("wk", 80, resetLong, 10080),
+                ]),
         };
         var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
 
-        adapter.CurrentLimits.Should().Be(new SessionLimits(25, 60, resetShort, 80, resetLong));
-    }
-
-    /// <summary>
-    /// The plugin surface names its windows primary/secondary; the core model has a shorter (five-hour) and a
-    /// longer (weekly) slot. The adapter orders by span, so the shorter window fills the shorter slot even when
-    /// the provider reported the longer one first.
-    /// </summary>
-    [Fact]
-    public void CurrentLimits_OrdersWindowsBySpan_SoTheShorterFillsTheFiveHourSlot()
-    {
-        var resetShort = DateTimeOffset.FromUnixTimeSeconds(1800000000);
-        var resetLong = DateTimeOffset.FromUnixTimeSeconds(1800600000);
-        var inner = new FakePluginSessionDriver
-        {
-            // Primary is the longer window here; the shorter (secondary) must still land in the five-hour slot.
-            Status = new PluginSessionStatus(
-                ContextUsedPercent: null,
-                PrimaryRateLimit: new PluginRateLimitWindow(80, resetLong, 10080),
-                SecondaryRateLimit: new PluginRateLimitWindow(60, resetShort, 300)),
-        };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
-
-        var limits = adapter.CurrentLimits!;
-        limits.FiveHourUsedPercent.Should().Be(60);
-        limits.FiveHourResetsAt.Should().Be(resetShort);
-        limits.SevenDayUsedPercent.Should().Be(80);
-        limits.SevenDayResetsAt.Should().Be(resetLong);
-    }
-
-    /// <summary>
-    /// The single-window fallback the span-ordering cannot reach by comparison: only one window reported (and with
-    /// no span to compare), the adapter takes primary as the shorter/five-hour one — the leftover slot stays null
-    /// rather than borrowing the same window. Pins the branch the two-window tests never exercise.
-    /// </summary>
-    [Fact]
-    public void CurrentLimits_WithOnlyThePrimaryWindow_PutsItInTheFiveHourSlot_AndLeavesTheWeeklySlotEmpty()
-    {
-        var reset = DateTimeOffset.FromUnixTimeSeconds(1800000000);
-        var inner = new FakePluginSessionDriver
-        {
-            Status = new PluginSessionStatus(
-                ContextUsedPercent: null,
-                PrimaryRateLimit: new PluginRateLimitWindow(60, reset, null)),
-        };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
-
-        var limits = adapter.CurrentLimits!;
-        limits.FiveHourUsedPercent.Should().Be(60);
-        limits.FiveHourResetsAt.Should().Be(reset);
-        limits.SevenDayUsedPercent.Should().BeNull();
-        limits.SevenDayResetsAt.Should().BeNull();
+        var status = adapter.CurrentStatus!;
+        status.ContextUsedPercent.Should().Be(25);
+        status.RateLimits.Should().Equal(
+            new SessionRateWindow("5h", 60, resetShort),
+            new SessionRateWindow("wk", 80, resetLong));
     }
 
     /// <summary>

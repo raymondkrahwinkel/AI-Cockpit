@@ -260,12 +260,14 @@ public class CodexAppServerSessionDriverTests
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
         await _StartAsync(driver, fake);
 
-        // D7: the account snapshot's primary/secondary windows carry usedPercent, an epoch reset, and a span.
+        // D7: the account snapshot's windows carry usedPercent, an epoch reset, and a span the driver turns into a
+        // label the header shows (300 min → "5h", 10080 min → "7d") — the provider owns the label, not the host.
         await fake.PushStdoutAsync("""{"method":"account/rateLimits/updated","params":{"rateLimits":{"primary":{"usedPercent":60,"resetsAt":1800000000,"windowDurationMins":300},"secondary":{"usedPercent":80,"resetsAt":1800600000,"windowDurationMins":10080}}}}""");
 
-        var status = await _WaitForStatusAsync(driver, current => current.PrimaryRateLimit is not null);
-        status.PrimaryRateLimit.Should().Be(new PluginRateLimitWindow(60, DateTimeOffset.FromUnixTimeSeconds(1800000000), 300));
-        status.SecondaryRateLimit.Should().Be(new PluginRateLimitWindow(80, DateTimeOffset.FromUnixTimeSeconds(1800600000), 10080));
+        var status = await _WaitForStatusAsync(driver, current => current.RateLimits.Count > 0);
+        status.RateLimits.Should().Equal(
+            new PluginRateLimitWindow("5h", 60, DateTimeOffset.FromUnixTimeSeconds(1800000000), 300),
+            new PluginRateLimitWindow("7d", 80, DateTimeOffset.FromUnixTimeSeconds(1800600000), 10080));
     }
 
     // --- helpers -----------------------------------------------------------------------------------------

@@ -167,21 +167,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private string _usageTooltip = string.Empty;
 
     /// <summary>
-    /// What this session is spending, each drawn as a small header bar (#45 D7): how full the context window is,
-    /// and how much of the provider's two usage windows are gone. Null until the provider reports it — a bar
-    /// reading "0%" would be a claim rather than a silence. Fed from the driver's limits feed (Codex's app-server
-    /// usage notifications); a provider with no such feed leaves them null and the bars stay hidden.
+    /// How full the context window is (#45 D7), drawn as the header's "ctx" bar. Null until the provider reports
+    /// it — a bar reading "0%" would be a claim rather than a silence. Fed from the driver's status feed (Codex's
+    /// app-server usage); a provider with no feed leaves it null and the bar stays hidden.
     /// </summary>
     [ObservableProperty]
     private double? _contextUsedPercent;
 
-    /// <inheritdoc cref="ContextUsedPercent"/>
-    [ObservableProperty]
-    private double? _fiveHourUsedPercent;
-
-    /// <inheritdoc cref="ContextUsedPercent"/>
-    [ObservableProperty]
-    private double? _sevenDayUsedPercent;
+    /// <summary>
+    /// The provider's usage windows, each a self-labelled header bar (#45 D7) — the provider chooses the label
+    /// ("5h", "wk", …), so the header renders whatever it reports without baking in window vocabulary. Empty when
+    /// the provider reports none.
+    /// </summary>
+    public ObservableCollection<SessionRateWindow> RateLimits { get; } = [];
 
     /// <summary>The whole story on hover, including when each window rolls over — the thing a bar cannot say.</summary>
     [ObservableProperty]
@@ -196,10 +194,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
         ActiveProfileLabel = "raymond@work";
 
-        // Sample limit bars (#45 D7) so the previewer/Screenshotter renders the header's ctx/5h/wk bars.
+        // Sample status bars (#45 D7) so the previewer/Screenshotter renders the header's ctx bar and the
+        // provider-labelled window bars.
         ContextUsedPercent = 37;
-        FiveHourUsedPercent = 58;
-        SevenDayUsedPercent = 82;
+        RateLimits.Add(new SessionRateWindow("5h", 58, null));
+        RateLimits.Add(new SessionRateWindow("wk", 82, null));
         LimitsTooltip = "Context window: 37% used";
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "fix the layout bug in SessionView"));
@@ -990,12 +989,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // and a session with no limits feed simply reads null and keeps the bars hidden.
     private void _RefreshLimits()
     {
-        if (_runtime?.CurrentLimits is { HasAny: true } limits)
+        if (_runtime?.CurrentStatus is { HasAny: true } status)
         {
-            ContextUsedPercent = limits.ContextUsedPercent;
-            FiveHourUsedPercent = limits.FiveHourUsedPercent;
-            SevenDayUsedPercent = limits.SevenDayUsedPercent;
-            LimitsTooltip = limits.Describe();
+            ContextUsedPercent = status.ContextUsedPercent;
+            RateLimits.Clear();
+            foreach (var window in status.RateLimits)
+            {
+                RateLimits.Add(window);
+            }
+
+            LimitsTooltip = status.Describe();
         }
     }
 
