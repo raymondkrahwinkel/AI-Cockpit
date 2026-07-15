@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
@@ -378,6 +379,73 @@ public class NewSessionDialogViewModelTests
         result!.PluginTtyOptions.Should().NotBeNull();
         result.PluginTtyOptions!.Should().ContainSingle();
         result.PluginTtyOptions["sandbox"].Should().Be("workspace-write");
+    }
+
+    [Fact]
+    public async Task SelectingAnSdkPluginProfile_RendersItsDeclaredLaunchOptions()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(_SessionRegistration(
+            [new PluginSessionLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"])]));
+        var vm = NewVmWithSessionProvider([plugin], registry);
+
+        await vm.LoadAsync();
+
+        // A plugin profile with no TTY provider forces SDK kind, where its declared options render.
+        vm.SelectedKind.Should().Be(SessionKind.Sdk);
+        vm.ShowSdkLaunchOptions.Should().BeTrue();
+        vm.SdkLaunchOptions.Should().ContainSingle(option => option.Key == "sandbox" && option.Label == "Sandbox");
+    }
+
+    [Fact]
+    public async Task Confirm_ForAnSdkPluginSession_CarriesTheChosenSdkOptionsButNotABlankOne()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(_SessionRegistration(
+        [
+            new PluginSessionLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"]),
+            new PluginSessionLaunchOption("model", "Model", []),
+        ]));
+        var vm = NewVmWithSessionProvider([plugin], registry);
+        await vm.LoadAsync();
+        vm.SdkLaunchOptions.Single(option => option.Key == "sandbox").Value = "workspace-write";
+
+        NewSessionResult? result = null;
+        vm.CloseRequested += r => result = r;
+        vm.ConfirmCommand.Execute(null);
+
+        result.Should().NotBeNull();
+        result!.SdkLaunchOptions.Should().NotBeNull();
+        result.SdkLaunchOptions!.Should().ContainSingle();
+        result.SdkLaunchOptions["sandbox"].Should().Be("workspace-write");
+    }
+
+    private static SessionProviderRegistration _SessionRegistration(IReadOnlyList<PluginSessionLaunchOption> options) =>
+        new(
+            "cli-agent-provider.codex",
+            "Codex (CLI)",
+            _ => Substitute.For<IPluginSessionDriverFactory>(),
+            new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
+            _ => Substitute.For<IPluginProviderConfigView>())
+        {
+            Options = options,
+        };
+
+    private static NewSessionDialogViewModel NewVmWithSessionProvider(SessionProfile[] profiles, IPluginProviderRegistry sessionProviderRegistry)
+    {
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
+        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        foreach (var profile in profiles)
+        {
+            loginChecker.IsLoggedIn(profile).Returns(true);
+        }
+
+        return new NewSessionDialogViewModel(
+            store, loginChecker, mcpServerStore: null, workingPathStore: null, conversationPickers: null,
+            ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry);
     }
 
     private static NewSessionDialogViewModel NewVm(out IClaudeProfileLoginChecker loginChecker, params SessionProfile[] profiles)

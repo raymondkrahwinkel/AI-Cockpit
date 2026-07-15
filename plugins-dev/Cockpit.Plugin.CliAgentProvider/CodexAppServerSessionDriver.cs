@@ -75,8 +75,8 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
         // A per-session option the operator picked in the New-session dialog wins over the profile's config
         // default; absent, the config value (and then the CLI's own default) applies.
-        var sandbox = _OptionOrDefault(options, SandboxOptionKey, _config.SandboxMode);
-        var effectiveModel = _OptionOrDefault(options, ModelOptionKey, _model);
+        var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, _config.SandboxMode);
+        var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
 
         _connection.Start(_executablePath, _ResolveProcessWorkingDirectory(workingDirectory), _config.BuildEnvironmentVariables());
         _notificationPump = Task.Run(() => _PumpNotificationsAsync(_lifetime.Token), CancellationToken.None);
@@ -390,9 +390,6 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         item.TryGetProperty("exitCode", out var exitCode) && exitCode.ValueKind == JsonValueKind.Number && exitCode.TryGetInt32(out var code) && code != 0;
 
     private static string? _NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
-
-    private static string? _OptionOrDefault(IReadOnlyDictionary<string, string>? options, string key, string? fallback) =>
-        options is not null && options.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : fallback;
 
     public async ValueTask DisposeAsync()
     {

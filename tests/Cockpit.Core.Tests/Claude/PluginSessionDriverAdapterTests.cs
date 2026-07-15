@@ -107,6 +107,19 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public async Task StartAsync_ForwardsTheLaunchOptions_ToTheInnerDriver()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var launchOptions = new Dictionary<string, string> { ["sandbox"] = "workspace-write", ["model"] = "o3" };
+
+        // The operator's per-session option answers must reach the plugin driver, not be dropped.
+        await adapter.StartAsync(launchOptions: launchOptions);
+
+        inner.LastLaunchOptions.Should().BeSameAs(launchOptions);
+    }
+
+    [Fact]
     public async Task SendUserMessageAsync_ForwardsTheText()
     {
         var inner = new FakePluginSessionDriver();

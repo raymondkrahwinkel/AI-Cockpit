@@ -94,14 +94,14 @@ internal sealed class CodexTtyProvider : IPluginTtyProvider
             }
         }
 
-        var sandbox = _Resolve(options, SandboxOptionKey, config.SandboxMode);
+        var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, config.SandboxMode);
         if (!string.IsNullOrWhiteSpace(sandbox))
         {
             arguments.Add("--sandbox");
             arguments.Add(sandbox);
         }
 
-        var model = _Resolve(options, ModelOptionKey, config.Model);
+        var model = CliAgentConfig.ResolveOption(options, ModelOptionKey, config.Model);
         if (!string.IsNullOrWhiteSpace(model))
         {
             arguments.Add("--model");
@@ -110,10 +110,6 @@ internal sealed class CodexTtyProvider : IPluginTtyProvider
 
         return arguments;
     }
-
-    /// <summary>The operator's start-default choice from the New-session dialog wins; the profile's own configured default is the fallback.</summary>
-    private static string? _Resolve(IReadOnlyDictionary<string, string> options, string key, string? configDefault) =>
-        options.TryGetValue(key, out var chosen) && !string.IsNullOrWhiteSpace(chosen) ? chosen : configDefault;
 
     /// <summary>Only <c>CODEX_HOME</c> — the API key goes nowhere near a TTY spawn's environment overlay: the interactive TUI prompts for <c>codex login</c> itself, same as Claude's TTY mode never carries an API key either.</summary>
     internal static IReadOnlyDictionary<string, string?> BuildEnvironmentOverlay(CliAgentConfig config)
