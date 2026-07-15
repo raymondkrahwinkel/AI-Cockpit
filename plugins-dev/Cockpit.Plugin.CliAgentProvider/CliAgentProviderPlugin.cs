@@ -26,21 +26,16 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         // session from the profile's config JSON, so there is nothing to register here.
     }
 
+    private static readonly IReadOnlyList<string> _SandboxChoices = ["read-only", "workspace-write", "danger-full-access"];
+
     public void Initialize(ICockpitHost host)
     {
-        // The per-session start defaults the New-session dialog asks about for an SDK Codex session — the same
-        // two the TTY registration below declares, so a profile means the same thing whichever kind of session it
-        // opens. Sandbox is a fixed set; Model is declared as free text (the fallback) but the dialog upgrades it
-        // to the live model/list at open (ResolveOptionsAsync below).
-        var sandboxOption = new PluginSessionLaunchOption(
-            CodexAppServerSessionDriver.SandboxOptionKey,
-            "Sandbox",
-            Choices: ["read-only", "workspace-write", "danger-full-access"],
-            DefaultValue: "read-only");
-        var modelFallbackOption = new PluginSessionLaunchOption(
-            CodexAppServerSessionDriver.ModelOptionKey,
-            "Model",
-            Choices: []);
+        // The per-session start defaults the New-session dialog asks about — the same two whichever kind of
+        // session a profile opens, so it means the same thing either way. Sandbox is a fixed set; Model is
+        // declared as free text (the fallback) but the dialog upgrades it to the live model/list at open
+        // (ResolveOptionsAsync below), for both the SDK and the TTY route.
+        var sdkSandbox = new PluginSessionLaunchOption(CodexAppServerSessionDriver.SandboxOptionKey, "Sandbox", _SandboxChoices, DefaultValue: "read-only");
+        var sdkModelFallback = new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", Choices: []);
 
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
@@ -52,43 +47,47 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson))
         {
-            Options = [sandboxOption, modelFallbackOption],
-            // Fill the Model dropdown from the real models this profile's codex offers (increment 2 step C). The
-            // dialog runs this in the background and falls back to the free-text Model above on any failure, so a
-            // missing or logged-out codex never blocks opening a session.
+            Options = [sdkSandbox, sdkModelFallback],
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
-                var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();
-                var executablePath = CliExecutableLocator.Resolve(config.Command);
-                var listing = await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken).ConfigureAwait(false);
-
-                var modelOption = listing.Ids.Count == 0
-                    ? modelFallbackOption
-                    : new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", listing.Ids, listing.DefaultId ?? config.Model);
-
-                return [sandboxOption, modelOption];
+                var listing = await _ListModelsAsync(configJson, cancellationToken).ConfigureAwait(false);
+                var model = listing.Ids.Count == 0
+                    ? sdkModelFallback
+                    : new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
+                return [sdkSandbox, model];
             },
         });
 
-        // Same provider id as the session provider above — a profile names a provider, and what that
-        // provider can do (a headless driver, a TUI, or both, per PluginTtyContracts) is what it registered.
-        // Codex's own words for its start defaults (see CodexTtyProvider's remarks for why these are not
-        // Claude's permission-mode/effort): the sandbox policy and the model override.
+        // Same provider id as the session provider above — a profile names a provider, and what that provider can
+        // do (a headless driver, a TUI, or both, per PluginTtyContracts) is what it registered. Codex's own words
+        // for its start defaults (see CodexTtyProvider's remarks for why these are not Claude's permission-mode/
+        // effort): the sandbox policy and the model override — same live model/list upgrade as the SDK route.
+        var ttySandbox = new PluginTtyLaunchOption(CodexTtyProvider.SandboxOptionKey, "Sandbox", _SandboxChoices);
+        var ttyModelFallback = new PluginTtyLaunchOption(CodexTtyProvider.ModelOptionKey, "Model", Choices: []);
+
         host.AddTtyProvider(new TtyProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
             CreateProvider: _ => new CodexTtyProvider(),
-            Options:
-            [
-                new PluginTtyLaunchOption(
-                    CodexTtyProvider.SandboxOptionKey,
-                    "Sandbox",
-                    Choices: ["read-only", "workspace-write", "danger-full-access"]),
-                new PluginTtyLaunchOption(
-                    CodexTtyProvider.ModelOptionKey,
-                    "Model",
-                    Choices: []),
-            ]));
+            Options: [ttySandbox, ttyModelFallback])
+        {
+            ResolveOptionsAsync = async (configJson, cancellationToken) =>
+            {
+                var listing = await _ListModelsAsync(configJson, cancellationToken).ConfigureAwait(false);
+                var model = listing.Ids.Count == 0
+                    ? ttyModelFallback
+                    : new PluginTtyLaunchOption(CodexTtyProvider.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
+                return [ttySandbox, model];
+            },
+        });
+    }
+
+    /// <summary>Reads the models this profile's codex offers (increment 2 step C) — shared by the SDK and TTY option resolvers.</summary>
+    private static async Task<CodexModelListing> _ListModelsAsync(string configJson, CancellationToken cancellationToken)
+    {
+        var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();
+        var executablePath = CliExecutableLocator.Resolve(config.Command);
+        return await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken).ConfigureAwait(false);
     }
 
     public void Dispose()

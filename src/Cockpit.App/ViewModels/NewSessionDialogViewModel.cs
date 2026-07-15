@@ -41,13 +41,19 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
     private readonly IPluginProviderRegistry? _sessionProviderRegistry;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
-    private CancellationTokenSource? _sdkOptionsRefreshCts;
+    private CancellationTokenSource? _launchOptionsRefreshCts;
+
+    /// <summary>
+    /// Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
+    /// dynamic-options refresh — the profile switch fires exactly one refresh at its end, for whatever kind won.
+    /// </summary>
+    private bool _suppressDynamicOptionsRefresh;
 
     /// <summary>How long the background model/list refresh may run before the dialog gives up and keeps the declared options.</summary>
-    private static readonly TimeSpan _SdkOptionsRefreshTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan _LaunchOptionsRefreshTimeout = TimeSpan.FromSeconds(8);
 
-    /// <summary>The in-flight background refresh of the SDK launch options (Codex's model/list), so a test can await it. Completed when none is running.</summary>
-    internal Task SdkOptionsRefresh { get; private set; } = Task.CompletedTask;
+    /// <summary>The in-flight background refresh of the active kind's launch options (Codex's model/list), so a test can await it. Completed when none is running.</summary>
+    internal Task LaunchOptionsRefresh { get; private set; } = Task.CompletedTask;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
     public event Action<NewSessionResult?>? CloseRequested;
@@ -414,10 +420,19 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // A profile with no TTY provider to run only runs as an SDK session (a local HTTP provider has none;
         // neither does a plugin provider that registered no IPluginTtyProvider) — force SDK and let the view
         // hide the kind selector, rather than leaving Kind on whatever it was and silently launching the
-        // wrong CLI once Start is pressed.
-        if (!HasTtyProvider)
+        // wrong CLI once Start is pressed. Suppress the refresh this kind change would otherwise fire, so the
+        // one at the end of this method is the single refresh for the settled kind (no double spawn).
+        _suppressDynamicOptionsRefresh = true;
+        try
         {
-            SelectedKind = SessionKind.Sdk;
+            if (!HasTtyProvider)
+            {
+                SelectedKind = SessionKind.Sdk;
+            }
+        }
+        finally
+        {
+            _suppressDynamicOptionsRefresh = false;
         }
 
         OnPropertyChanged(nameof(ShowSessionOptions));
@@ -434,6 +449,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));
         ConfirmCommand.NotifyCanExecuteChanged();
+
+        // Kind is settled above; upgrade whichever kind is active with its provider's live options.
+        _RefreshDynamicLaunchOptions(value);
     }
 
     /// <summary>
@@ -462,13 +480,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>
     /// Rebuilds <see cref="SdkLaunchOptions"/> from the selected profile's SDK session provider (if any) — the
     /// start defaults it declared via <c>SessionProviderRegistration.Options</c>, rendered generically here the
-    /// same way as the TTY route, since the host must not know what any of them mean.
+    /// same way as the TTY route, since the host must not know what any of them mean. Static only; the live
+    /// upgrade (Codex's model/list) runs from <see cref="_RefreshDynamicLaunchOptions"/> for the active kind.
     /// </summary>
     private void _RefreshSdkLaunchOptions(SessionProfile? profile)
     {
-        // A profile switch supersedes any refresh still running for the previous one.
-        _sdkOptionsRefreshCts?.Cancel();
-        _sdkOptionsRefreshCts = null;
         SdkLaunchOptions.Clear();
 
         if (_sessionProviderRegistry is not null
@@ -479,36 +495,68 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             {
                 SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue));
             }
-
-            // Render those declared options right away, then let a provider that can refresh them with live
-            // values (Codex's model/list) upgrade the rows in the background — opening the dialog never waits.
-            if (registration.ResolveOptionsAsync is { } resolveOptionsAsync)
-            {
-                var cts = new CancellationTokenSource(_SdkOptionsRefreshTimeout);
-                _sdkOptionsRefreshCts = cts;
-                SdkOptionsRefresh = _RefreshSdkLaunchOptionChoicesAsync(resolveOptionsAsync, plugin.ConfigJson, cts);
-            }
         }
 
         OnPropertyChanged(nameof(HasSdkLaunchOptions));
         OnPropertyChanged(nameof(ShowSdkLaunchOptions));
     }
 
-    private async Task _RefreshSdkLaunchOptionChoicesAsync(
-        Func<string, CancellationToken, Task<IReadOnlyList<PluginSessionLaunchOption>>> resolveOptionsAsync,
+    /// <summary>
+    /// Upgrades the <em>active</em> kind's launch options with the provider's live values (Codex's model/list) in
+    /// the background — only the visible kind, so a Codex profile (which registers both a TTY and an SDK provider)
+    /// never runs the query twice, and only when that kind's provider offers a resolver. The declared options are
+    /// already rendered; this replaces their rows when the resolve lands. Runs on a profile change and on a kind
+    /// switch, since the newly active kind may not have been resolved yet.
+    /// </summary>
+    private void _RefreshDynamicLaunchOptions(SessionProfile? profile)
+    {
+        // A profile or kind switch supersedes any refresh still running.
+        _launchOptionsRefreshCts?.Cancel();
+        _launchOptionsRefreshCts = null;
+
+        if (profile?.ProviderConfig is not PluginProviderConfig plugin)
+        {
+            return;
+        }
+
+        if (IsTty && _ttyProviderRegistry?.Resolve(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveTty })
+        {
+            _StartLaunchOptionsRefresh(PluginTtyOptions, plugin.ConfigJson,
+                async (json, token) => (await resolveTty(json, token).ConfigureAwait(false)).Select(_ToSpec).ToList());
+        }
+        else if (IsSdk && _sessionProviderRegistry?.Resolve(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveSdk })
+        {
+            _StartLaunchOptionsRefresh(SdkLaunchOptions, plugin.ConfigJson,
+                async (json, token) => (await resolveSdk(json, token).ConfigureAwait(false)).Select(_ToSpec).ToList());
+        }
+    }
+
+    private void _StartLaunchOptionsRefresh(
+        ObservableCollection<PluginTtyOptionSelectionViewModel> target,
         string configJson,
+        Func<string, CancellationToken, Task<IReadOnlyList<LaunchOptionSpec>>> resolveSpecs)
+    {
+        var cts = new CancellationTokenSource(_LaunchOptionsRefreshTimeout);
+        _launchOptionsRefreshCts = cts;
+        LaunchOptionsRefresh = _RunLaunchOptionsRefreshAsync(target, configJson, resolveSpecs, cts);
+    }
+
+    private async Task _RunLaunchOptionsRefreshAsync(
+        ObservableCollection<PluginTtyOptionSelectionViewModel> target,
+        string configJson,
+        Func<string, CancellationToken, Task<IReadOnlyList<LaunchOptionSpec>>> resolveSpecs,
         CancellationTokenSource cts)
     {
         try
         {
             // Task.Run so the synchronous spawn prefix (Process.Start) never runs on the UI thread; ConfigureAwait
-            // keeps the continuation on it, since ApplyResolvedSdkOptions mutates a bound collection.
-            var resolved = await Task.Run(() => resolveOptionsAsync(configJson, cts.Token), cts.Token).ConfigureAwait(true);
+            // keeps the continuation on it, since applying the result mutates a bound collection.
+            var resolved = await Task.Run(() => resolveSpecs(configJson, cts.Token), cts.Token).ConfigureAwait(true);
 
             // Ignore a result the operator has already moved past (a newer refresh replaced this cts).
-            if (ReferenceEquals(_sdkOptionsRefreshCts, cts))
+            if (ReferenceEquals(_launchOptionsRefreshCts, cts))
             {
-                _ApplyResolvedSdkOptions(resolved);
+                _ApplyResolvedLaunchOptions(target, resolved);
             }
         }
         catch (Exception)
@@ -517,9 +565,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
         finally
         {
-            if (ReferenceEquals(_sdkOptionsRefreshCts, cts))
+            if (ReferenceEquals(_launchOptionsRefreshCts, cts))
             {
-                _sdkOptionsRefreshCts = null;
+                _launchOptionsRefreshCts = null;
             }
 
             cts.Dispose();
@@ -527,25 +575,35 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Swaps the declared SDK option rows for the provider's refreshed ones, carrying over any value the operator
-    /// already picked (so a Sandbox choice or a typed model survives the model/list arriving) and otherwise
-    /// taking the refreshed default. <see cref="PluginTtyOptionSelectionViewModel.Choices"/> is fixed per row, so
-    /// turning a free-text field into a dropdown means replacing the row, not mutating it.
+    /// Swaps the declared option rows in <paramref name="target"/> for the provider's refreshed ones, carrying
+    /// over any value the operator already picked (so a Sandbox choice or a typed model survives the model/list
+    /// arriving) and otherwise taking the refreshed default. <see cref="PluginTtyOptionSelectionViewModel.Choices"/>
+    /// is fixed per row, so turning a free-text field into a dropdown means replacing the row, not mutating it.
     /// </summary>
-    private void _ApplyResolvedSdkOptions(IReadOnlyList<PluginSessionLaunchOption> resolved)
+    private void _ApplyResolvedLaunchOptions(ObservableCollection<PluginTtyOptionSelectionViewModel> target, IReadOnlyList<LaunchOptionSpec> resolved)
     {
-        var pickedByKey = SdkLaunchOptions.ToDictionary(option => option.Key, option => option.Value);
-        SdkLaunchOptions.Clear();
-        foreach (var option in resolved)
+        var pickedByKey = target.ToDictionary(option => option.Key, option => option.Value);
+        target.Clear();
+        foreach (var spec in resolved)
         {
-            var picked = pickedByKey.GetValueOrDefault(option.Key);
-            var value = string.IsNullOrWhiteSpace(picked) ? option.DefaultValue : picked;
-            SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value));
+            var picked = pickedByKey.GetValueOrDefault(spec.Key);
+            var value = string.IsNullOrWhiteSpace(picked) ? spec.DefaultValue : picked;
+            target.Add(new PluginTtyOptionSelectionViewModel(spec.Key, spec.Label, spec.Choices, value));
         }
 
+        // The target is one of the two option collections; raise both pairs rather than thread which through.
         OnPropertyChanged(nameof(HasSdkLaunchOptions));
         OnPropertyChanged(nameof(ShowSdkLaunchOptions));
+        OnPropertyChanged(nameof(HasPluginTtyOptions));
+        OnPropertyChanged(nameof(ShowPluginTtyOptions));
     }
+
+    private static LaunchOptionSpec _ToSpec(PluginSessionLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue);
+
+    private static LaunchOptionSpec _ToSpec(PluginTtyLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue);
+
+    /// <summary>The provider-neutral shape both a TTY and an SDK launch option project to, so one refresh path serves both.</summary>
+    private readonly record struct LaunchOptionSpec(string Key, string Label, IReadOnlyList<string> Choices, string? DefaultValue);
 
     partial void OnIsSelectedProfileLoggedInChanged(bool value)
     {
@@ -569,6 +627,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));
         ConfirmCommand.NotifyCanExecuteChanged();
+
+        // The newly active kind may not have had its live options fetched yet (they are fetched per active kind).
+        // Skipped while a profile switch is settling its kind — that switch fires its own single refresh.
+        if (!_suppressDynamicOptionsRefresh)
+        {
+            _RefreshDynamicLaunchOptions(SelectedProfile);
+        }
     }
 
     [RelayCommand]

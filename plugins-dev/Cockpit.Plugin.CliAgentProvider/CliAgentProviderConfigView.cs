@@ -15,7 +15,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
     private readonly TextBox _command;
     private readonly TextBox _workingDirectory;
     private readonly ComboBox _sandboxMode;
-    private readonly TextBox _model;
+    private readonly AutoCompleteBox _model;
     private readonly TextBox _apiKey;
 
     public Control View { get; }
@@ -32,7 +32,20 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         var sandboxModes = new[] { "read-only", "workspace-write", "danger-full-access" };
         _sandboxMode = new ComboBox { ItemsSource = sandboxModes, SelectedItem = existing?.SandboxMode ?? "read-only" };
 
-        _model = new TextBox { Text = existing?.Model ?? string.Empty, PlaceholderText = "e.g. gpt-5-codex (blank = codex's own default)" };
+        // Free text with live suggestions, not a hard dropdown: a profile default may still pin any model (or one
+        // this machine cannot list right now, e.g. logged out) — an AutoCompleteBox is both, a plain ComboBox
+        // would be only the list. The suggestions are filled in the background from this codex's model/list
+        // (increment 2 step C, the config-view mirror of the New-session dialog's Model dropdown).
+        _model = new AutoCompleteBox
+        {
+            Text = existing?.Model ?? string.Empty,
+            PlaceholderText = "e.g. gpt-5-codex (blank = codex's own default)",
+            FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
+            MinimumPrefixLength = 0,
+            IsTextCompletionEnabled = false,
+        };
+        _ = _PopulateModelSuggestionsAsync(existing?.Command ?? "codex", existing?.ConfigDir);
+
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
 
         View = new StackPanel
@@ -82,6 +95,30 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 
         configJson = JsonSerializer.Serialize(config, CliAgentConfig.JsonOptions);
         return true;
+    }
+
+    /// <summary>
+    /// Fills the Model field's suggestions from the models this codex offers (<c>model/list</c>), best-effort:
+    /// no codex, logged out, or a slow spawn just leaves it free text. Uses the profile's own command and
+    /// CODEX_HOME so a per-profile install/login lists its own models.
+    /// </summary>
+    private async Task _PopulateModelSuggestionsAsync(string command, string? configDir)
+    {
+        try
+        {
+            var config = new CliAgentConfig(Command: command, ConfigDir: configDir);
+            var executablePath = CliExecutableLocator.Resolve(command);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var listing = await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cts.Token).ConfigureAwait(true);
+            if (listing.Ids.Count > 0)
+            {
+                _model.ItemsSource = listing.Ids;
+            }
+        }
+        catch (Exception)
+        {
+            // No suggestions — the field stays free text, which is a perfectly good way to set a model.
+        }
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };

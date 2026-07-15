@@ -440,7 +440,7 @@ public class NewSessionDialogViewModelTests
         var vm = NewVmWithSessionProvider([plugin], registry);
 
         await vm.LoadAsync();
-        await vm.SdkOptionsRefresh;
+        await vm.LaunchOptionsRefresh;
 
         // The free-text Model becomes a dropdown of the provider's live models, defaulted to its chosen default.
         var model = vm.SdkLaunchOptions.Single(option => option.Key == "model");
@@ -460,7 +460,7 @@ public class NewSessionDialogViewModelTests
         var vm = NewVmWithSessionProvider([plugin], registry);
 
         await vm.LoadAsync();
-        await vm.SdkOptionsRefresh;
+        await vm.LaunchOptionsRefresh;
 
         // A failing model/list must never blow away the declared option — Model stays a free-text field.
         var model = vm.SdkLaunchOptions.Single(option => option.Key == "model");
@@ -487,9 +487,9 @@ public class NewSessionDialogViewModelTests
 
         await vm.LoadAsync();
         vm.SelectedProfile = profileA;
-        var refreshA = vm.SdkOptionsRefresh;
+        var refreshA = vm.LaunchOptionsRefresh;
         vm.SelectedProfile = profileB;
-        await vm.SdkOptionsRefresh;
+        await vm.LaunchOptionsRefresh;
 
         vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("b-model");
 
@@ -498,6 +498,80 @@ public class NewSessionDialogViewModelTests
         await refreshA;
 
         vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("b-model");
+    }
+
+    [Fact]
+    public async Task SelectingATtyPluginProfile_UpgradesTheModelOption_FromTheProvidersLiveResolver()
+    {
+        var plugin = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
+        var registry = Substitute.For<IPluginTtyProviderRegistry>();
+        registry.Resolve("cli-agent-provider.codex").Returns(new TtyProviderRegistration(
+            "cli-agent-provider.codex",
+            "Codex (CLI)",
+            _ => Substitute.For<IPluginTtyProvider>(),
+            Options:
+            [
+                new PluginTtyLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"]),
+                new PluginTtyLaunchOption("model", "Model", []),
+            ])
+        {
+            ResolveOptionsAsync = (_, _) => Task.FromResult<IReadOnlyList<PluginTtyLaunchOption>>(
+            [
+                new PluginTtyLaunchOption("sandbox", "Sandbox", ["read-only", "workspace-write"]),
+                new PluginTtyLaunchOption("model", "Model", ["gpt-5.6-terra", "gpt-5.6-luna"], "gpt-5.6-terra"),
+            ]),
+        });
+        var resolver = Substitute.For<ITtySessionProviderResolver>();
+        resolver.Resolve(plugin).Returns(Substitute.For<ITtySessionProvider>());
+        var vm = NewVmWithTty(out _, [plugin], resolver, registry);
+
+        await vm.LoadAsync();
+        vm.SelectTtyCommand.Execute(null);
+        await vm.LaunchOptionsRefresh;
+
+        // The TTY route gets the same live model/list upgrade as the SDK route.
+        var model = vm.PluginTtyOptions.Single(option => option.Key == "model");
+        model.Choices.Should().Equal("gpt-5.6-terra", "gpt-5.6-luna");
+        model.Value.Should().Be("gpt-5.6-terra");
+    }
+
+    [Fact]
+    public async Task SelectingANoTtyProfileThatForcesSdk_FromATtyState_RunsTheLiveResolverExactlyOnce()
+    {
+        var ttyProfile = new SessionProfile("codex-tty", new PluginProviderConfig("tty-only", "{}"));
+        var sdkOnlyProfile = new SessionProfile("codex-sdk", new PluginProviderConfig("sdk-only", "{}"));
+
+        // The first profile has a TTY provider (so the operator can be on the Tty kind); the second has none, so
+        // selecting it forces the kind back to Sdk — the path where the kind change used to fire a second refresh.
+        var ttyResolver = Substitute.For<ITtySessionProviderResolver>();
+        ttyResolver.Resolve(ttyProfile).Returns(Substitute.For<ITtySessionProvider>());
+        ttyResolver.Resolve(sdkOnlyProfile).Returns((ITtySessionProvider?)null);
+
+        var invocations = new int[1];
+        var sessionRegistry = Substitute.For<IPluginProviderRegistry>();
+        sessionRegistry.Resolve("sdk-only").Returns(_SessionRegistration(
+            [new PluginSessionLaunchOption("model", "Model", [])],
+            resolveOptionsAsync: (_, _) =>
+            {
+                Interlocked.Increment(ref invocations[0]);
+                return Task.FromResult<IReadOnlyList<PluginSessionLaunchOption>>([new PluginSessionLaunchOption("model", "Model", ["m"], "m")]);
+            }));
+
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<SessionProfile> { ttyProfile, sdkOnlyProfile });
+        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
+        var vm = new NewSessionDialogViewModel(
+            store, loginChecker, mcpServerStore: null, workingPathStore: null, conversationPickers: null,
+            ttyResolver, ttyProviderRegistry: null, sessionRegistry);
+
+        await vm.LoadAsync();          // selects the TTY profile
+        vm.SelectTtyCommand.Execute(null);
+        vm.SelectedProfile = sdkOnlyProfile;   // forces Tty -> Sdk, which must not double-fire the refresh
+        await vm.LaunchOptionsRefresh;
+
+        invocations[0].Should().Be(1);
+        vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("m");
     }
 
     private static SessionProviderRegistration _SessionRegistration(

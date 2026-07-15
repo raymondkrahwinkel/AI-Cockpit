@@ -52,6 +52,10 @@ public class CliAgentProviderPluginLoadTests
         // The interactive Codex provider is now the app-server driver (#45 fase 3), which does support live
         // approvals — where the headless exec driver it replaced reported no permission support.
         registration.Capabilities.SupportsPermissions.Should().BeTrue();
+        // The real registration must carry the live model/list resolver (increment 2 step C), not just the
+        // static options — asserted on the actual plugin object, since the dialog-side test only proves the
+        // host renders a hand-rolled one. Not invoked here: doing so would spawn a real codex app-server.
+        registration.ResolveOptionsAsync.Should().NotBeNull("the Codex SDK provider fills its Model dropdown from model/list");
 
         // The driver factory is usable through the narrow plugin contract without the host ever seeing this
         // plugin's concrete types. CreateConfigView is not exercised here — it builds a real Avalonia Control,
@@ -70,6 +74,8 @@ public class CliAgentProviderPluginLoadTests
         ttyRegistration.DisplayName.Should().Be("Codex (CLI)");
         ttyRegistration.Options.Should().Contain(option => option.Key == "sandbox");
         ttyRegistration.Options.Should().Contain(option => option.Key == "model");
+        // Same live model/list upgrade on the TTY route (increment 2 step C) — the real registration carries it.
+        ttyRegistration.ResolveOptionsAsync.Should().NotBeNull("the Codex TTY provider fills its Model dropdown from model/list too");
         ttyRegistration.CreateProvider(host.Services).Should().NotBeNull();
 
         plugin.Dispose();

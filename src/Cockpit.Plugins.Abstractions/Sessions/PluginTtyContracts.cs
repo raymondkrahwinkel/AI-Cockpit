@@ -96,4 +96,17 @@ public sealed record TtyProviderRegistration(
     string ProviderId,
     string DisplayName,
     Func<IServiceProvider, IPluginTtyProvider> CreateProvider,
-    IReadOnlyList<PluginTtyLaunchOption> Options);
+    IReadOnlyList<PluginTtyLaunchOption> Options)
+{
+    /// <summary>
+    /// An optional way to refresh <see cref="Options"/> with live values when the New-session dialog opens for a
+    /// profile under this provider — the TTY mirror of <see cref="SessionProviderRegistration.ResolveOptionsAsync"/>,
+    /// so Codex fills its Model choices from the app-server's <c>model/list</c> in TTY mode too. The argument is the
+    /// profile's opaque config JSON; the result replaces the declared options for that dialog. The dialog renders
+    /// the declared <see cref="Options"/> first and calls this in the background, so opening is never blocked; on
+    /// <see langword="null"/>, a timeout, or any failure it keeps the declared options. Init-only rather than a
+    /// primary-ctor parameter so adding it does not change the record's constructor signature — an already-compiled
+    /// plugin keeps constructing this the old way and simply reports no dynamic options.
+    /// </summary>
+    public Func<string, CancellationToken, Task<IReadOnlyList<PluginTtyLaunchOption>>>? ResolveOptionsAsync { get; init; }
+}
