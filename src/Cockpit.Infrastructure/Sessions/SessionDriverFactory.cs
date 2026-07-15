@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
@@ -14,22 +15,45 @@ namespace Cockpit.Infrastructure.Sessions;
 /// profile grows one more arm (#45): the registered plugin's own driver factory is resolved from
 /// <see cref="IPluginProviderRegistry"/> and wrapped in a <see cref="PluginSessionDriverAdapter"/>.
 /// </summary>
+/// <remarks>
+/// Fase 4: a Claude profile (and a profile-less session) prefers the Claude provider <em>plugin</em>'s SDK route when
+/// it is installed, falling back to the in-tree <see cref="ClaudeCliSession"/> during the transition — the
+/// session-driver mirror of <see cref="Tty.TtySessionProviderResolver"/>'s Claude preference, so moving Claude out to
+/// a plugin never leaves a Claude session unable to start.
+/// </remarks>
 internal sealed class SessionDriverFactory(IServiceProvider services, IPluginProviderRegistry pluginProviderRegistry) : ISessionDriverFactory, ISingletonService
 {
     public ISessionDriver Create(SessionProfile? profile)
     {
         if (profile is null)
         {
-            return services.GetRequiredService<ClaudeCliSession>();
+            return _ResolveClaude(claude: null);
         }
 
         return profile.Provider switch
         {
             SessionProvider.Ollama or SessionProvider.LmStudio => services.GetRequiredService<OpenAiCompatSessionDriver>(),
             SessionProvider.Plugin => _CreatePluginDriver(profile),
-            _ => services.GetRequiredService<ClaudeCliSession>(),
+            _ => _ResolveClaude(profile.Claude),
         };
     }
+
+    private ISessionDriver _ResolveClaude(ClaudeConfig? claude)
+    {
+        // Prefer the Claude provider plugin's SDK route when installed (its permissions ride the control protocol, no
+        // HTTP MCP server), falling back to the in-tree driver otherwise. The plugin reads the same two fields (config
+        // dir, executable path) from the profile's config JSON that the in-tree driver read straight off ClaudeConfig.
+        if (pluginProviderRegistry.Resolve(Tty.ClaudeTtySessionProvider.Id) is { } registration)
+        {
+            var driver = registration.CreateDriverFactory(services).Create(_SerializeClaudeConfig(claude));
+            return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetService<IMcpServerStore>());
+        }
+
+        return services.GetRequiredService<ClaudeCliSession>();
+    }
+
+    private static string _SerializeClaudeConfig(ClaudeConfig? claude) =>
+        JsonSerializer.Serialize(new { configDir = claude?.ConfigDir, executablePath = claude?.ExecutablePath });
 
     private ISessionDriver _CreatePluginDriver(SessionProfile profile)
     {
