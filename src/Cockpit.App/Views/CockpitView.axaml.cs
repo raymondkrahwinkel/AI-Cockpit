@@ -634,11 +634,22 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        if (sender is Control { DataContext: WidgetPaneViewModel pane })
+        if (sender is Control { DataContext: WidgetPaneViewModel pane } header)
         {
             _draggingWidget = pane;
+
+            // Captured so the gesture keeps reporting once the pointer leaves the grid — without it the moves
+            // simply stop at the dashboard's edge and the release lands nowhere this view ever hears about,
+            // which is why a widget could never be dragged to another workspace's tab. The handlers still run:
+            // they sit on DashboardGrid, an ancestor of this header, and a captured pointer's events bubble
+            // from the capture target as usual.
+            e.Pointer.Capture(header);
         }
     }
+
+    // The workspace tab a drag is currently over, if any. Held rather than acted on, for the same reason the
+    // grid's ghost is: the move is one write on release, not one per pixel.
+    private WorkspaceTabViewModel? _dropTargetTab;
 
     // Where the gesture currently says the pane will land. Held rather than applied, so the config is written
     // once on release instead of on every pixel of the drag — and so the ghost has something to draw.
@@ -655,6 +666,22 @@ public partial class CockpitView : UserControl
             // A move with the button up means the gesture ended somewhere this handler never saw — let go
             // rather than leaving a pane glued to the pointer.
             _EndWidgetGesture();
+            return;
+        }
+
+        // Over another workspace's tab, the answer is "not on this grid at all" — so the cell ghost goes away
+        // and the tab lights up instead. Only for a move: a resize is about this dashboard's own geometry and
+        // means nothing on a tab.
+        _dropTargetTab = _draggingWidget is null ? null : _WorkspaceTabAt(e);
+        _HighlightDropTargetTab();
+        if (_dropTargetTab is not null)
+        {
+            _ghostCell = null;
+            if (WidgetDropGhost is not null)
+            {
+                WidgetDropGhost.IsVisible = false;
+            }
+
             return;
         }
 
@@ -677,23 +704,81 @@ public partial class CockpitView : UserControl
 
     private void OnDashboardPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (_ghostCell is { } cell && DataContext is CockpitViewModel cockpit)
+        if (DataContext is CockpitViewModel cockpit)
         {
-            // Applied once, here — the ghost showed the answer all along, so the drag itself never touched disk.
-            _ = _resizingWidget is { } resizing
-                ? cockpit.Workspaces.ResizePaneAsync(resizing.Id, cell.ColumnEnd - 1, cell.RowEnd - 1)
-                : cockpit.Workspaces.DropPaneAsync(_draggingWidget!.Id, cell.Column, cell.Row);
+            // Applied once, here — the ghost (or the lit tab) showed the answer all along, so the drag itself
+            // never touched disk.
+            if (_dropTargetTab is { } tab && _draggingWidget is { } moving)
+            {
+                _ = cockpit.Workspaces.MovePaneToWorkspaceAsync(moving.Id, tab.Id);
+            }
+            else if (_ghostCell is { } cell)
+            {
+                _ = _resizingWidget is { } resizing
+                    ? cockpit.Workspaces.ResizePaneAsync(resizing.Id, cell.ColumnEnd - 1, cell.RowEnd - 1)
+                    : cockpit.Workspaces.DropPaneAsync(_draggingWidget!.Id, cell.Column, cell.Row);
+            }
         }
 
+        e.Pointer.Capture(null);
         _EndWidgetGesture();
     }
 
     private void _EndWidgetGesture()
     {
-        (_draggingWidget, _resizingWidget, _ghostCell) = (null, null, null);
+        (_draggingWidget, _resizingWidget, _ghostCell, _dropTargetTab) = (null, null, null, null);
+        _HighlightDropTargetTab();
         if (WidgetDropGhost is not null)
         {
             WidgetDropGhost.IsVisible = false;
+        }
+    }
+
+    /// <summary>
+    /// Which workspace tab the pointer is over, or null. Only a dashboard other than the one showing counts: a
+    /// sessions workspace cannot hold a widget (<c>WorkspaceTypeRules.Accepts</c> refuses it), and its own tab
+    /// would be a drop that does nothing.
+    /// <para>
+    /// Hit-tested from the strip rather than by handlers on the tabs, for the reason the strip's own drag
+    /// already found out: a move rebuilds the tabs, so anything attached to one does not survive it.
+    /// </para>
+    /// </summary>
+    private WorkspaceTabViewModel? _WorkspaceTabAt(PointerEventArgs e)
+    {
+        if (WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
+        {
+            return null;
+        }
+
+        var position = e.GetPosition(strip);
+        foreach (var container in strip.Children)
+        {
+            if (container.Bounds.Contains(position)
+                && container.DataContext is WorkspaceTabViewModel tab
+                && tab.Id != cockpit.Workspaces.Active?.Id
+                && cockpit.Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == tab.Id && workspace.Type == WorkspaceType.Dashboard))
+            {
+                return tab;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Lights the tab a drop would land on. Set on the container rather than the view model: it lasts exactly
+    /// as long as the gesture, so it has no business being persisted or reasoned about anywhere else.
+    /// </summary>
+    private void _HighlightDropTargetTab()
+    {
+        if (WorkspaceTabStrip?.ItemsPanelRoot is not { } strip)
+        {
+            return;
+        }
+
+        foreach (var container in strip.Children)
+        {
+            container.Classes.Set("dropTarget", _dropTargetTab is not null && ReferenceEquals(container.DataContext, _dropTargetTab));
         }
     }
 

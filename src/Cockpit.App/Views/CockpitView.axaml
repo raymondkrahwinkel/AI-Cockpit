@@ -47,6 +47,20 @@
         <Style Selector="Border.workspaceTab.active TextBlock">
             <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
         </Style>
+        <!-- A widget is being dragged over this tab and would land there: the same coral outline the drop ghost
+             draws on the grid, because it answers the same question in the same gesture — only here the answer
+             is "on that desk" rather than "on this cell".
+             The class goes on the generated container (the strip's children) and the selector reaches through to
+             the Border. Outline only, deliberately: the tab sets Background="Transparent" inline — it has to, or
+             it would not be hit-testable — and a local value beats a style setter, so a Background here would
+             silently do nothing. BorderBrush/BorderThickness carry no local value, so they land. -->
+        <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab">
+            <Setter Property="BorderBrush" Value="{StaticResource CockpitAccentBrush}"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        <Style Selector="ContentPresenter.dropTarget > Border.workspaceTab TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        </Style>
         <Style Selector="Border.workspaceTab Button.closeWorkspace">
             <Setter Property="Opacity" Value="0"/>
         </Style>
