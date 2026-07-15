@@ -38,8 +38,9 @@ public sealed record DashboardLayout
 
     /// <remarks>
     /// The defaults are a canvas, not a shape: a widget is placed and sized freely on it, so the grid is the
-    /// resolution you snap to rather than a slot count. 12×8 leaves room to arrange without every cell being a
-    /// pixel.
+    /// resolution you snap to rather than a slot count — so it defaults fine (24×24) rather than coarse. A
+    /// coarse default is the one that needs undoing: it decides the shape of everything placed on it, while a
+    /// fine one simply lets a widget be the size it wants.
     /// <para>
     /// The maxima are not a design opinion about how big a dashboard should be — a 49" screen wants something
     /// like 48×24, and that is the operator's call. They are a floor and ceiling on what can reach the view: a
@@ -47,8 +48,8 @@ public sealed record DashboardLayout
     /// thousand definitions and hang the app. 256 is far past any real screen while still bounding that.
     /// </para>
     /// </remarks>
-    public const int DefaultColumns = 12;
-    public const int DefaultRows = 8;
+    public const int DefaultColumns = 24;
+    public const int DefaultRows = 24;
     public const int MinColumns = 1;
     public const int MaxColumns = 256;
     public const int MinRows = 1;
