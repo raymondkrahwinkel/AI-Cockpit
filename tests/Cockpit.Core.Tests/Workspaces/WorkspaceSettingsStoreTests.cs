@@ -56,6 +56,32 @@ public class WorkspaceSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveThenLoad_RoundTripsTheGridLinesToggle_SoItSurvivesARestart()
+    {
+        var store = new WorkspaceSettingsStore(_configPath);
+        var dashboard = Workspace.Create("D", WorkspaceType.Dashboard) with { Layout = new DashboardLayout { ShowGridLines = true } };
+
+        await store.SaveAsync(WorkspaceSettings.Default.WithWorkspace(dashboard));
+        var loaded = await store.LoadAsync();
+
+        loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id).Layout.ShowGridLines.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LoadAsync_ADashboardSavedBeforeGridLinesExisted_DefaultsToThemBeingOff()
+    {
+        await File.WriteAllTextAsync(_configPath, """
+            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[
+              {"Id":"w1","Name":"D","Type":"Dashboard","Layout":{"Columns":4,"Rows":4},"Panes":[]}]}}
+            """);
+
+        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
+
+        loaded.Workspaces[0].Layout.ShowGridLines.Should().BeFalse("a dashboard is something you look at, not a worksheet");
+        loaded.Workspaces[0].Layout.Columns.Should().Be(4);
+    }
+
+    [Fact]
     public async Task SaveAsync_LeavesSiblingSectionsUntouched()
     {
         await File.WriteAllTextAsync(_configPath, """{"Layout":{"SidebarWidth":240},"Profiles":[]}""");

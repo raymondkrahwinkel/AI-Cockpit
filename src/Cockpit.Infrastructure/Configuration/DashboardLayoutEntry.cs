@@ -9,12 +9,16 @@ internal sealed class DashboardLayoutEntry
 
     public int Rows { get; set; } = DashboardLayout.DefaultRows;
 
+    public bool ShowGridLines { get; set; }
+
     public static DashboardLayoutEntry FromDomain(DashboardLayout layout) => new()
     {
         Columns = layout.Columns,
         Rows = layout.Rows,
+        ShowGridLines = layout.ShowGridLines,
     };
 
     /// <summary>Clamped on the way in, so a hand-edited zero-column grid cannot reach the view and divide by zero.</summary>
-    public DashboardLayout ToDomain() => new DashboardLayout { Columns = Columns, Rows = Rows }.Clamped();
+    public DashboardLayout ToDomain() =>
+        new DashboardLayout { Columns = Columns, Rows = Rows, ShowGridLines = ShowGridLines }.Clamped();
 }
