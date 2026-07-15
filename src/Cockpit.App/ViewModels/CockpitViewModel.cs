@@ -178,6 +178,32 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public WorkspacesViewModel Workspaces { get; }
 
     /// <summary>
+    /// Closes a workspace and everything running on it (Raymond, 2026-07-15). Its sessions go first, through the
+    /// ordinary close path so each is disposed the way it would be on its own — otherwise they keep running with
+    /// a WorkspaceId pointing at a workspace that no longer exists: no tab shows them, nothing can reach them,
+    /// and their pty and child process outlive the desk they belonged to. Invisible-but-alive is the worst of
+    /// the three states a closed session can be in.
+    /// </summary>
+    public async Task CloseWorkspaceAsync(string workspaceId)
+    {
+        // The last workspace is not closable, and killing the sessions of a workspace that then stays is worse
+        // than doing nothing: the desk survives, its work does not. Ask before touching either.
+        if (!Workspaces.CanClose(workspaceId))
+        {
+            return;
+        }
+
+        // Snapshot first: closing a session mutates Sessions, and enumerating a collection you are removing from
+        // is how you silently skip half of it.
+        foreach (var session in Sessions.Where(session => session.WorkspaceId == workspaceId).ToList())
+        {
+            await CloseSessionCommand.ExecuteAsync(session);
+        }
+
+        await Workspaces.CloseWorkspaceCommand.ExecuteAsync(workspaceId);
+    }
+
+    /// <summary>
     /// Asks before something irreversible, through the same confirmation dialog the rest of the cockpit uses.
     /// Answers "no" without asking when there is no dialog service (design-time/tests): a graph with no way to
     /// ask must not answer yes on the operator's behalf.

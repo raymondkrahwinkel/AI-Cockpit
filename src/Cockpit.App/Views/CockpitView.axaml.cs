@@ -503,11 +503,15 @@ public partial class CockpitView : UserControl
 
         var message = loses is null
             ? $"Close “{workspace.Name}”?"
-            : $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}. Closing the workspace discards its layout, and this cannot be undone.";
+            : workspace.Type == WorkspaceType.Dashboard
+                ? $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}. Closing the workspace discards its layout, and this cannot be undone."
+                // Sessions are stopped, not just forgotten — so the prompt says so rather than letting the
+                // operator find out afterwards.
+                : $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}, which will be stopped. This cannot be undone.";
 
         if (await cockpit.ConfirmAsync("Close workspace", message, confirmLabel: "Close"))
         {
-            cockpit.Workspaces.CloseWorkspaceCommand.Execute(tab.Id);
+            await cockpit.CloseWorkspaceAsync(tab.Id);
         }
     }
 
