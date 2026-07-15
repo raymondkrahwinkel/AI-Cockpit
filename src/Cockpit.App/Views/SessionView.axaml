@@ -35,7 +35,7 @@
                     <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
                               DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104"
                               VerticalAlignment="Center"
-                              IsVisible="{Binding Capabilities.SupportsPermissions}"
+                              IsVisible="{Binding Capabilities.SupportsPermissionModeSwitch}"
                               IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
                               ToolTip.Tip="Permission mode for this session (live-switchable; bypass is locked once the session is launched in it)"/>
                     <!-- Editable, not a fixed dropdown (like the New-session dialog): the aliases are only

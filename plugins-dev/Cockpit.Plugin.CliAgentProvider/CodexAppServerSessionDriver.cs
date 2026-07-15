@@ -35,8 +35,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     /// <summary>Option key for the live reasoning-effort control (#45 D4), carried as <c>effort</c> on <c>turn/start</c>.</summary>
     public const string EffortOptionKey = "effort";
 
+    /// <summary>Option key for the live approval-policy control (#45 D4 inc2), carried as <c>approvalPolicy</c> on <c>turn/start</c>.</summary>
+    public const string ApprovalOptionKey = "approvalPolicy";
+
     // Codex's ReasoningEffort values — a fixed set, unlike the model list, so they need no live lookup.
     private static readonly IReadOnlyList<string> _EffortChoices = ["low", "medium", "high"];
+
+    // Codex's AskForApproval enum, the simple string form (the granular-object form is not modelled here).
+    private static readonly IReadOnlyList<string> _ApprovalChoices = ["untrusted", "on-request", "never"];
 
     private readonly CodexAppServerConnection _connection;
     private readonly CliAgentConfig _config;
@@ -54,6 +60,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // The live reasoning-effort override (#45 D4). Null until the operator picks one, so a turn that never touched
     // it carries no effort and Codex uses its own default rather than one this driver invented.
     private string? _effort;
+
+    // The live approval-policy override (#45 D4 inc2), same shape as effort — null until picked, so Codex keeps its own default.
+    private string? _approval;
 
     // The controls this session can switch mid-conversation (#45 D4), built once at start from the model listing
     // and the effective model. Set on the starting thread before StartAsync returns and only read afterwards, so
@@ -167,20 +176,20 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // Fire-and-forget: turn/start's reply lands only when the turn ends, so awaiting it here would block the
         // caller for the whole turn. The turn's output streams through the notification pump instead, closed by
         // turn/completed — mirroring how the exec driver runs its turn in the background.
-        // The live model/effort (#45 D4) are captured here, on the caller's thread, so a switch the operator makes
-        // through SetLiveOptionAsync (same thread) is picked up by the next turn and never read mid-write.
+        // The live model/effort/approval (#45 D4) are captured here, on the caller's thread, so a switch the operator
+        // makes through SetLiveOptionAsync (same thread) is picked up by the next turn and never read mid-write.
         var input = new object[] { new { type = "text", text } };
-        _ = _SendTurnAsync(threadId, input, _model, _effort, cancellationToken);
+        _ = _SendTurnAsync(threadId, input, _model, _effort, _approval, cancellationToken);
         return Task.CompletedTask;
     }
 
-    private async Task _SendTurnAsync(string threadId, object[] input, string? model, string? effort, CancellationToken cancellationToken)
+    private async Task _SendTurnAsync(string threadId, object[] input, string? model, string? effort, string? approval, CancellationToken cancellationToken)
     {
         try
         {
-            // model/effort are per-turn overrides (#45 D4): TurnStartParams takes both as optional, so a null simply
-            // leaves the thread's own default in place, the same shape thread/start already uses for sandbox/model.
-            await _connection.SendRequestAsync("turn/start", new { threadId, input, model = _NullIfBlank(model), effort = _NullIfBlank(effort) }, cancellationToken).ConfigureAwait(false);
+            // model/effort/approvalPolicy are per-turn overrides (#45 D4): TurnStartParams takes them all as optional,
+            // so a null simply leaves the thread's own default in place, the same shape thread/start uses for sandbox/model.
+            await _connection.SendRequestAsync("turn/start", new { threadId, input, model = _NullIfBlank(model), effort = _NullIfBlank(effort), approvalPolicy = _NullIfBlank(approval) }, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -213,6 +222,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
             case EffortOptionKey:
                 _effort = _NullIfBlank(value);
+                break;
+
+            case ApprovalOptionKey:
+                _approval = _NullIfBlank(value);
                 break;
         }
 
@@ -592,7 +605,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     private IReadOnlyList<PluginSessionLaunchOption> _BuildLiveOptions(CodexModelListing models)
     {
-        var options = new List<PluginSessionLaunchOption>(2);
+        var options = new List<PluginSessionLaunchOption>(3);
 
         // Model: the live listing, with the current model guaranteed among the choices — a pinned model or alias the
         // listing omits still shows as the selected value rather than opening the panel blank, so CurrentValue is
@@ -608,8 +621,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
             options.Add(new PluginSessionLaunchOption(ModelOptionKey, "Model", modelChoices, _model));
         }
 
-        // Effort has no current value until the operator picks one (Codex runs its own default), so it opens unset.
+        // Effort and approval have no current value until the operator picks one (Codex runs its own default), so
+        // they open unset.
         options.Add(new PluginSessionLaunchOption(EffortOptionKey, "Effort", _EffortChoices, _effort));
+        options.Add(new PluginSessionLaunchOption(ApprovalOptionKey, "Approval", _ApprovalChoices, _approval));
         return options;
     }
 

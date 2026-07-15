@@ -412,6 +412,35 @@ public class CodexAppServerSessionDriverTests
     }
 
     [Fact]
+    public async Task LiveOptions_IncludeTheApprovalPolicyControl()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D4 inc2: Codex's approval policy is a live control — the simple AskForApproval enum — opening unset so
+        // Codex keeps its own default until the operator picks one.
+        var approval = driver.LiveOptions.Should().ContainSingle(option => option.Key == "approvalPolicy").Subject;
+        approval.Choices.Should().Equal("untrusted", "on-request", "never");
+        approval.DefaultValue.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task TurnStart_CarriesTheApprovalPolicy_AfterASwitch()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D4 inc2: switching the approval policy rides the next turn/start as a per-turn override, like model/effort.
+        await driver.SetLiveOptionAsync("approvalPolicy", "never");
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        turn.GetProperty("params").GetProperty("approvalPolicy").GetString().Should().Be("never");
+    }
+
+    [Fact]
     public async Task TurnStart_WithoutASwitch_CarriesTheStartModel_AndNoEffort()
     {
         var fake = new FakeCliSubprocess();
@@ -425,11 +454,12 @@ public class CodexAppServerSessionDriverTests
 
         await driver.SendUserMessageAsync("go");
 
-        // A turn the operator never touched carries the model the session started on and no effort at all (a null
-        // override is dropped from the wire), so Codex keeps its own effort default rather than one this driver invented.
+        // A turn the operator never touched carries the model the session started on and no effort or approval at all
+        // (a null override is dropped from the wire), so Codex keeps its own defaults rather than ones this driver invented.
         var turn = await _WaitForRequestAsync(fake, "turn/start");
         turn.GetProperty("params").GetProperty("model").GetString().Should().Be("gpt-5-codex");
         turn.GetProperty("params").TryGetProperty("effort", out _).Should().BeFalse();
+        turn.GetProperty("params").TryGetProperty("approvalPolicy", out _).Should().BeFalse();
     }
 
     // --- helpers -----------------------------------------------------------------------------------------

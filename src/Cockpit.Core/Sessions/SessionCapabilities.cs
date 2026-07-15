@@ -18,6 +18,13 @@ namespace Cockpit.Core.Sessions;
 /// fresh one — true for the Claude CLI, which keeps its own transcript history; false for the HTTP providers,
 /// which keep no history to resume from. Gates the New-session dialog's resume controls.</param>
 /// </param>
+/// <param name="SupportsPermissionModeSwitch">
+/// Whether this driver can live-switch Claude's permission <em>mode</em> (default/acceptEdits/plan) mid-session
+/// via <c>SetPermissionModeAsync</c> — true only for the Claude CLI. Distinct from <see cref="SupportsPermissions"/>,
+/// which a plugin like Codex reports true because it does tool approvals, yet it has no permission-mode vocabulary:
+/// Codex switches its approval <em>policy</em> instead, through the generic live-control panel (#45 D4). Gates the
+/// header's Claude permission-mode dropdown so it no longer shows as a dead control on a provider that cannot honour
+/// it. Defaults to <see langword="false"/> so existing construction stays non-switching.</param>
 public sealed record SessionCapabilities(
     bool SupportsTools,
     bool SupportsPermissions,
@@ -25,7 +32,8 @@ public sealed record SessionCapabilities(
     bool SupportsPlanMode,
     bool SupportsThinking,
     bool SupportsVision = false,
-    bool SupportsResume = false)
+    bool SupportsResume = false,
+    bool SupportsPermissionModeSwitch = false)
 {
     /// <summary>The Claude-CLI driver: native tools, permission prompts, live model/permission control, plan mode, thinking, image input, and resuming an earlier conversation.</summary>
     public static SessionCapabilities ClaudeCli { get; } = new(
@@ -35,5 +43,6 @@ public sealed record SessionCapabilities(
         SupportsPlanMode: true,
         SupportsThinking: true,
         SupportsVision: true,
-        SupportsResume: true);
+        SupportsResume: true,
+        SupportsPermissionModeSwitch: true);
 }

@@ -54,6 +54,20 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public void Capabilities_ReportPermissionModeSwitch_UnsupportedForAPlugin_EvenWhenItDoesApprovals()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        // #45 D4 inc2: a plugin (Codex) does tool approvals — SupportsPermissions is true — but has no Claude
+        // permission-mode vocabulary, so the header's permission-mode dropdown must stay hidden for it (it switches
+        // its approval policy through the generic live-control panel instead). Claude alone reports it supported.
+        adapter.Capabilities.SupportsPermissions.Should().BeTrue();
+        adapter.Capabilities.SupportsPermissionModeSwitch.Should().BeFalse();
+        SessionCapabilities.ClaudeCli.SupportsPermissionModeSwitch.Should().BeTrue();
+    }
+
+    [Fact]
     public void CurrentStatus_IsNull_WhenTheDriverReportsNoStatus()
     {
         var inner = new FakePluginSessionDriver { Status = null };
