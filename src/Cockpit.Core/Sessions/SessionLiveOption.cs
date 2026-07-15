@@ -16,4 +16,14 @@ public sealed record SessionLiveOption(
     string Key,
     string Label,
     IReadOnlyList<string> Choices,
-    string? CurrentValue);
+    string? CurrentValue)
+{
+    /// <summary>
+    /// A friendly label per <see cref="Choices"/> value the operator reads instead of the raw value (Claude's "Ask
+    /// permissions" for <c>default</c>, "Low"/"Medium"/"High" for an effort key). Keyed by value; a value with no
+    /// entry shows itself, and the value sent back to the driver is always the raw <see cref="Choices"/> entry. The
+    /// driver adapter carries the plugin option's own labels onto this at the plugin boundary. <see langword="null"/>
+    /// means unlabelled — every value renders as itself.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ChoiceLabels { get; init; }
+}

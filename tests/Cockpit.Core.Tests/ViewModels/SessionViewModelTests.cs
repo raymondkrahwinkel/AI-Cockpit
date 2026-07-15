@@ -225,6 +225,32 @@ public class SessionViewModelTests
     }
 
     [Fact]
+    public async Task StartConfigured_LiveControls_ShowTheProviderChoiceLabels_WhileValuesRoundTripRaw()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("permissionMode", "Permissions", ["default", "plan"], "default")
+            {
+                ChoiceLabels = new Dictionary<string, string> { ["default"] = "Ask permissions", ["plan"] = "Plan mode" },
+            },
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // Fase 4 step 1: the live-control dropdown reads the provider's friendly labels, while the value the driver
+        // gets back on a switch stays the raw CLI value.
+        var control = vm.LiveControls[0];
+        control.ChoiceItems.Select(choice => choice.Label).Should().Equal("Ask permissions", "Plan mode");
+        control.ChoiceItems.Select(choice => choice.Value).Should().Equal("default", "plan");
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public async Task PickingALiveControlValue_SwitchesItOnTheDriver()
     {
         var session = Substitute.For<ISessionDriver>();

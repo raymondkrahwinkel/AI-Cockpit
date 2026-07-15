@@ -65,7 +65,9 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:LiveControlViewModel">
-                                <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedValue}"
+                                <ComboBox ItemsSource="{Binding ChoiceItems}"
+                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding SelectedValue, Mode=TwoWay}"
+                                          DisplayMemberBinding="{Binding Label}"
                                           PlaceholderText="{Binding Label}" Classes="Compact" MinWidth="90"
                                           VerticalAlignment="Center"
                                           ToolTip.Tip="{Binding Label}"/>

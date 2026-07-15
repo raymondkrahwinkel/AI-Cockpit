@@ -437,6 +437,29 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public void LiveOptions_CarryTheProviderChoiceLabels_OntoTheCoreForm()
+    {
+        var inner = new FakePluginSessionDriver
+        {
+            LiveOptions =
+            [
+                new PluginSessionLaunchOption("permissionMode", "Permissions", ["default", "acceptEdits"], "default")
+                {
+                    ChoiceLabels = new Dictionary<string, string> { ["default"] = "Ask permissions", ["acceptEdits"] = "Accept edits" },
+                },
+            ],
+        };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        // Fase 4 step 1: the provider owns the friendly labels; the adapter carries them onto the core form so the
+        // header can show "Ask permissions" instead of the raw CLI value "default", while the value still round-trips.
+        adapter.LiveOptions[0].ChoiceLabels.Should().NotBeNull();
+        adapter.LiveOptions[0].ChoiceLabels!["default"].Should().Be("Ask permissions");
+        adapter.LiveOptions[0].ChoiceLabels!["acceptEdits"].Should().Be("Accept edits");
+        adapter.LiveOptions[0].Choices.Should().Equal("default", "acceptEdits");
+    }
+
+    [Fact]
     public async Task SetLiveOptionAsync_ForwardsKeyAndValue_ToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
