@@ -5,9 +5,10 @@ namespace Cockpit.Core.Voice;
 /// expects to find them in. Sits next to <see cref="WhisperBackendPlanner"/> on purpose: the planner decides
 /// the try-order, this decides what has to be on disk for an entry in that order to be tryable at all.
 /// <para>
-/// The GPU runtimes are ~1.2 GB and are fetched on first use instead of shipped (they cannot be picked at
-/// build time — which GPU a machine has is not knowable then). The CPU runtimes are not here because they
-/// stay bundled with the app: small, work everywhere, and the floor transcription always falls back to.
+/// The GPU runtimes are fetched on first use instead of shipped — they cannot be picked at build time, since
+/// which GPU a machine has is not knowable then, and bundling all of them cost a win-x64 publish 1.5 GB (the
+/// natives weigh ~748 MB and a single-file publish carried them twice). The CPU runtimes are not here because
+/// they stay bundled: small, work everywhere, and the floor transcription always falls back to.
 /// </para>
 /// </summary>
 public static class WhisperRuntimeCatalog

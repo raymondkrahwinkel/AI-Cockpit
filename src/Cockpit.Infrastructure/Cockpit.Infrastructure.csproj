@@ -47,7 +47,9 @@
          NativeLibraryLoader walks that order at model-load time and picks the first one that loads here.
          The CPU runtimes stay bundled because they are small, work on every platform, and are the floor
          transcription can always fall back to.
-         The GPU runtimes (CUDA/Vulkan, ~1.2 GB) are deliberately NOT referenced: which GPU a machine has
+         The GPU runtimes (CUDA/Vulkan) are deliberately NOT referenced — they cost a win-x64 publish 1.5 GB,
+         since the natives weigh ~748 MB and a single-file publish shipped them twice (embedded in the exe,
+         and again in runtimes/ via the packages' own .targets). Which GPU a machine has
          is not knowable at build time, so bundling them ships every runtime to every install to serve the
          one that happens to fit. WhisperRuntimeCache fetches the right one from NuGet on first dictation
          and caches it under %APPDATA%\Cockpit — the same lazy shape WhisperModelCache uses for the model,
