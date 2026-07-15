@@ -336,22 +336,18 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
     public SessionProfile ToProfile()
     {
-        // The generic option-default editors are the source of truth for a plugin profile's permission-mode/model/
-        // effort; keep the typed ProfileDefaults fields in sync with them (falling back to the typed value a
-        // non-plugin provider still carries) so the two never diverge and a saved edit survives the next load.
-        var optionDefaults = _CollectPluginOptionDefaults();
+        // A plugin profile stores its start defaults only in the generic OptionDefaults map and writes the legacy
+        // typed permission/model/effort fields blank, so those become a no-op the migration ignores on later loads —
+        // OptionDefaults is the single source. A non-plugin provider (Ollama/LM Studio) keeps the legacy typed fields.
+        var defaults = IsPluginProvider
+            ? new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools) { OptionDefaults = _CollectPluginOptionDefaults() }
+            : new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools);
+
         return new(
             Label.Trim(),
             _ToProviderConfig(),
             string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
-            new ProfileDefaults(
-                optionDefaults?.GetValueOrDefault("permission-mode") ?? SelectedPermissionMode.Value,
-                optionDefaults?.GetValueOrDefault("model") ?? SessionOptionCatalog.ModelForValue(ClaudeModel).Value,
-                optionDefaults?.GetValueOrDefault("effort") ?? SelectedEffort.Value,
-                AutoApproveTools)
-            {
-                OptionDefaults = optionDefaults,
-            },
+            defaults,
             _ToDelegationPolicy(),
             MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
     }
