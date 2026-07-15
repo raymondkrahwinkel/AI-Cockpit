@@ -478,9 +478,59 @@ public partial class CockpitView : UserControl
 
     private void OnCloseWorkspaceRequested(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab })
+        {
+            _ = _CloseWorkspaceAsync(tab);
+        }
+    }
+
+    /// <summary>
+    /// Closing a workspace takes everything on it — a dashboard's whole arrangement, or every session tied to
+    /// it — and none of it comes back, so it asks first (Raymond). The message names what is about to go rather
+    /// than asking "are you sure": "this cannot be undone" tells you nothing you did not assume.
+    /// </summary>
+    private async Task _CloseWorkspaceAsync(WorkspaceTabViewModel tab)
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || cockpit.Workspaces.Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == tab.Id) is not { } workspace)
+        {
+            return;
+        }
+
+        var loses = workspace.Type == WorkspaceType.Dashboard
+            ? _Count(workspace.Panes.Count, "widget")
+            : _Count(cockpit.Sessions.Count(session => session.WorkspaceId == workspace.Id), "session");
+
+        var message = loses is null
+            ? $"Close “{workspace.Name}”?"
+            : $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}. Closing the workspace discards its layout, and this cannot be undone.";
+
+        if (await cockpit.ConfirmAsync("Close workspace", message, confirmLabel: "Close"))
         {
             cockpit.Workspaces.CloseWorkspaceCommand.Execute(tab.Id);
+        }
+    }
+
+    /// <summary>"3 widgets" / "1 session", or null when there is nothing to lose — an empty workspace needs no warning about what it holds.</summary>
+    private static string? _Count(int count, string noun) =>
+        count == 0 ? null : count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+    /// <summary>
+    /// The rename box becomes visible where it was already in the tree, so nothing gives it focus on its own —
+    /// you had to click it before you could type (Raymond). Selecting everything on the way in makes the first
+    /// keystroke replace the name, which is the whole point of asking to rename it.
+    /// </summary>
+    private void OnWorkspaceRenameAttached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            // Posted, not called: the box is being attached right now, and focus does not stick to a control
+            // mid-attach.
+            Dispatcher.UIThread.Post(() =>
+            {
+                box.Focus();
+                box.SelectAll();
+            });
         }
     }
 

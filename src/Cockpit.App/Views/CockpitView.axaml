@@ -346,17 +346,27 @@
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <DockPanel>
+                                        <!-- Routed through the same handler as the menu's Close, so the ✕ asks
+                                             before discarding a workspace too — it is the easier of the two to
+                                             hit by accident. -->
                                         <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Content="✕"
                                                 Padding="4,0" Margin="6,0,0,0" FontSize="10"
                                                 IsVisible="{Binding !IsRenaming}"
-                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.CloseWorkspaceCommand}"
-                                                CommandParameter="{Binding Id}"
+                                                Click="OnCloseWorkspaceRequested"
                                                 ToolTip.Tip="Close workspace"/>
                                         <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                                    IsVisible="{Binding !IsRenaming}"/>
+                                        <!-- Sized and aligned to sit in the tab rather than on top of it: a
+                                             default TextBox brings its own padding and min-height, which made
+                                             the tab jump and the box hang out of it. Attached, it takes focus
+                                             and selects everything, so the first keystroke replaces the name —
+                                             which is what you came to do. -->
                                         <TextBox Text="{Binding EditName}" IsVisible="{Binding IsRenaming}"
-                                                 MinWidth="90" Padding="2,0" FontSize="12"
+                                                 MinWidth="90" MinHeight="0" Height="19" Padding="4,0"
+                                                 FontSize="12" VerticalAlignment="Center"
+                                                 VerticalContentAlignment="Center"
+                                                 AttachedToVisualTree="OnWorkspaceRenameAttached"
                                                  KeyDown="OnWorkspaceRenameKeyDown" LostFocus="OnWorkspaceRenameLostFocus"/>
                                     </DockPanel>
                                 </Border>
