@@ -86,8 +86,9 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // the plugin surface, which has no such parameter). Fold it into the options map under the well-known key so a
         // provider that declared a permission-mode option actually receives the choice — without it, a Claude plugin
         // session always fell back to the driver's own default (e.g. an operator's launch-time "bypassPermissions"
-        // silently became "default"). The typed value wins over any same-key launch option, as it is the host's
-        // authoritative selection.
+        // silently became "default"). The operator's explicit choice in the launch options wins; the typed value only
+        // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
+        // choice is what let a profile's stale default run a write tool ungated.
         var options = _MergePermissionMode(launchOptions, permissionMode);
         await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken).ConfigureAwait(false);
     }

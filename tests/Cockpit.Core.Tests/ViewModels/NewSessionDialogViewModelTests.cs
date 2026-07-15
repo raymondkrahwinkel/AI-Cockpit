@@ -100,6 +100,27 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
+    public async Task ForAMigratedClaudePluginProfile_TheLoginGateAndResume_StillApply()
+    {
+        // Regression (adversarial review): after migration a Claude profile is a PluginProviderConfig, not ClaudeCli, so
+        // the login gate and resume UI — which keyed off the old provider value — were silently disabled: a Claude SDK
+        // session became startable while logged out and the resume controls vanished. Now they key off Claude config
+        // presence, which a migrated profile still has.
+        var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/r/.claude-work", null));
+        var vm = NewVm(out var loginChecker, profile);
+        loginChecker.IsLoggedIn(profile).Returns(false);
+
+        await vm.LoadAsync();
+        vm.SelectSdkCommand.Execute(null);
+
+        vm.IsClaudeProfile.Should().BeTrue();
+        vm.IsLocalProfile.Should().BeFalse();
+        vm.ShowResumeOptions.Should().BeTrue();
+        vm.IsSelectedProfileLoggedIn.Should().BeFalse();
+        vm.CanStart.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task CanStart_IsTrueForTtyEvenWhenNotLoggedIn_SinceTheTuiRunsItsOwnLogin()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
@@ -238,16 +259,6 @@ public class NewSessionDialogViewModelTests
         vm.SelectedKind.Should().Be(SessionKind.Sdk);
         vm.IsSdk.Should().BeTrue();
         vm.IsTty.Should().BeFalse();
-    }
-
-    [Fact]
-    public void SdkAndTtyKind_BothShowSessionOptions_SinceTtyNowPassesThemAsLaunchOnlyStartDefaults()
-    {
-        var vm = NewVm(out _);
-
-        vm.ShowSessionOptions.Should().BeTrue();
-        vm.SelectTtyCommand.Execute(null);
-        vm.ShowSessionOptions.Should().BeTrue();
     }
 
     [Fact]

@@ -34,9 +34,16 @@ public sealed record SessionProfile(
 
     /// <summary>
     /// This profile's Claude settings, or <see langword="null"/> when it runs under another provider. The
-    /// Claude-only plumbing (config directory, login check, the TTY and SDK spawns, the backup of a profile's
-    /// config folder) asks for this rather than reading fields off the profile — so it is visible in the type
-    /// system which code only makes sense for one provider.
+    /// Claude-only plumbing that stays host-side after Fase 4 (the config directory the read-aloud/status transcript
+    /// tailers locate the JSONL under, the login check) asks for this rather than reading fields off the profile.
+    /// A profile is a Claude one whether it still carries a legacy <see cref="ClaudeConfig"/> or the bundled Claude
+    /// provider plugin's config; the latter is reconstructed from that plugin's opaque config here so those host-side
+    /// consumers keep working after a profile is migrated to the plugin (they saw <see langword="null"/> otherwise).
     /// </summary>
-    public ClaudeConfig? Claude => ProviderConfig as ClaudeConfig;
+    public ClaudeConfig? Claude => ProviderConfig switch
+    {
+        ClaudeConfig claude => claude,
+        PluginProviderConfig { ProviderId: ClaudePluginProfile.ProviderId } plugin => ClaudePluginProfile.ReadClaudeConfig(plugin.ConfigJson),
+        _ => null,
+    };
 }

@@ -20,6 +20,36 @@ public static class ClaudePluginProfile
         new(ProviderId, _SerializeConfig(configDir, executablePath));
 
     /// <summary>
+    /// Reads the <c>{configDir,executablePath}</c> blob a Claude plugin profile carries back into a
+    /// <see cref="ClaudeConfig"/> — the inverse of <see cref="Create"/>. Host-side Claude features that predate the
+    /// plugin (the config directory the read-aloud/status transcript tailers locate the JSONL under, the login check)
+    /// ask a profile for its <see cref="SessionProfile.Claude"/>; without this they would see <see langword="null"/>
+    /// for a migrated profile and fall back to <c>~/.claude</c>, tailing the wrong directory for a non-default profile.
+    /// A blank/unreadable blob yields a <see cref="ClaudeConfig"/> with an empty directory, which resolves to the CLI
+    /// default. Pass only a config for this plugin's own id.
+    /// </summary>
+    public static ClaudeConfig ReadClaudeConfig(string? configJson)
+    {
+        if (string.IsNullOrWhiteSpace(configJson))
+        {
+            return new ClaudeConfig(string.Empty);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(configJson);
+            var root = document.RootElement;
+            var configDir = root.TryGetProperty("configDir", out var dir) && dir.ValueKind == JsonValueKind.String ? dir.GetString() : null;
+            var executablePath = root.TryGetProperty("executablePath", out var exe) && exe.ValueKind == JsonValueKind.String ? exe.GetString() : null;
+            return new ClaudeConfig(configDir ?? string.Empty, string.IsNullOrWhiteSpace(executablePath) ? null : executablePath);
+        }
+        catch (JsonException)
+        {
+            return new ClaudeConfig(string.Empty);
+        }
+    }
+
+    /// <summary>
     /// A one-time migration of a Claude profile's legacy typed permission-mode/model/effort defaults into the generic
     /// <see cref="ProfileDefaults.OptionDefaults"/> format (Fase 4). A non-blank legacy field wins — so a profile keeps
     /// its saved start settings, and recovers if an earlier build seeded OptionDefaults with the plugin's own defaults
