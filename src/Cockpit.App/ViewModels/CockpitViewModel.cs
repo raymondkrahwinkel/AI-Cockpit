@@ -28,6 +28,7 @@ using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
@@ -181,10 +182,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// the content area while it is selected, so the grid must stand down even though the sessions themselves
     /// keep running — they are hidden, not closed.
     /// </summary>
-    public bool ShowSessionGrid => HasSessions && Workspaces.IsSessionsActive;
+    public bool ShowSessionGrid => HasSessionsHere && Workspaces.IsSessionsActive;
 
     /// <summary>The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its own empty state.</summary>
-    public bool ShowSessionEmptyState => !HasSessions && Workspaces.IsSessionsActive;
+    public bool ShowSessionEmptyState => !HasSessionsHere && Workspaces.IsSessionsActive;
+
+    /// <summary>
+    /// Whether the workspace now showing holds any session. Deliberately not <see cref="HasSessions"/>: a fresh
+    /// second workspace has to greet you with the empty state, even while the first one is full of running
+    /// sessions.
+    /// </summary>
+    public bool HasSessionsHere => VisibleSessions.Any();
 
     /// <summary>Owns the live toast collection (#61); <see cref="Toasts"/> below is what <c>CockpitView.axaml</c>'s overlay actually binds to.</summary>
     public ToastHostViewModel ToastHost { get; } = new();
@@ -335,10 +343,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// out in two columns (so 3–4 form a 2×2), rather than the old fixed two that left a single session
     /// pinned to the left half.
     /// </summary>
-    public int GridColumns => Sessions.Count <= 1 ? 1 : 2;
+    /// <remarks>Counts the workspace now showing, not every session alive: a second desk with one session must lay out as one, however full the first desk is.</remarks>
+    public int GridColumns => VisibleSessions.Count() <= 1 ? 1 : 2;
 
     /// <summary>The Zoom toggle only makes sense in the grid layout with more than one session — a single session already fills the pane, and single-session layout has no grid to zoom out of.</summary>
-    public bool ShowZoomButton => !SingleSessionLayout && Sessions.Count > 1;
+    public bool ShowZoomButton => !SingleSessionLayout && VisibleSessions.Count() > 1;
 
     [ObservableProperty]
     private SessionPanelViewModel? _selectedSession;
@@ -825,15 +834,67 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var single = ShowSinglePane;
         foreach (var session in Sessions)
         {
-            session.IsPaneVisible = !single || session.IsSelected;
+            session.IsPaneVisible = BelongsToActiveWorkspace(session) && (!single || session.IsSelected);
         }
     }
+
+    /// <summary>
+    /// Whether a session belongs on the workspace now showing. Two Sessions workspaces are separate desks, so
+    /// each shows only its own — but the sessions of the others keep running: they are hidden, never removed
+    /// from <see cref="Sessions"/>. That distinction is the whole point. Rebinding the grid to a filtered list
+    /// would rebuild the panes, which is what cost a dragged TTY its pty on 2026-07-13; gating visibility
+    /// leaves every view (and pty) built exactly once, the same way the single-pane layout already works.
+    /// </summary>
+    private bool BelongsToActiveWorkspace(SessionPanelViewModel session)
+    {
+        if (Workspaces.Active is not { } active)
+        {
+            return true;
+        }
+
+        // A dashboard shows no sessions at all; and a session with no workspace — created before workspaces
+        // existed, or in the design-time graph — belongs to the first one rather than to nothing.
+        return active.Type == WorkspaceType.Sessions
+            && (session.WorkspaceId == active.Id
+                || (session.WorkspaceId.Length == 0 && Workspaces.Settings.Workspaces[0].Id == active.Id));
+    }
+
+    /// <summary>The sessions on the workspace now showing — what the sidebar lists, so it never offers a session the grid is hiding.</summary>
+    public IEnumerable<SessionPanelViewModel> VisibleSessions => Sessions.Where(BelongsToActiveWorkspace);
+
+    /// <summary>
+    /// Ties the session content to the strip: which workspace is active decides which panes belong on screen
+    /// and whether the session grid applies at all. Called from both constructors, right after
+    /// <see cref="Workspaces"/> is built — the design-time/test graph needs this exactly as much as the real
+    /// one, and wiring it in only one of them is how the two quietly drift apart.
+    /// </summary>
+    private void _WireWorkspaceVisibility() =>
+        Workspaces.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is not (nameof(WorkspacesViewModel.IsSessionsActive) or nameof(WorkspacesViewModel.Settings)))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(ShowSessionGrid));
+            OnPropertyChanged(nameof(ShowSessionEmptyState));
+            OnPropertyChanged(nameof(HasSessionsHere));
+            OnPropertyChanged(nameof(VisibleSessions));
+            OnPropertyChanged(nameof(GridColumns));
+            OnPropertyChanged(nameof(ShowZoomButton));
+            // The other desks' sessions stay alive; they just stop being shown.
+            RefreshPaneVisibility();
+        };
 
     // Parameterless constructor kept for the Avalonia previewer/Screenshotter design-time context —
     // seeds three sample sessions across different providers and statuses so the render shows the
     // overview + grid without a real DI-backed session behind each one.
     public CockpitViewModel()
     {
+        // First: selecting a session below raises pane-visibility, which asks which workspace is active.
+        Workspaces = new WorkspacesViewModel();
+        _WireWorkspaceVisibility();
+
         var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
         var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
         var tty = new ClaudeTtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
@@ -845,7 +906,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
-        Workspaces = new WorkspacesViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
 
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
@@ -893,6 +953,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
         Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry);
+        _WireWorkspaceVisibility();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
@@ -935,6 +996,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Sessions.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasSessions));
+            OnPropertyChanged(nameof(HasSessionsHere));
+            OnPropertyChanged(nameof(VisibleSessions));
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
             OnPropertyChanged(nameof(StackSessionsInStack));
@@ -943,16 +1006,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             RefreshPaneVisibility();
         };
 
-        // Which workspace is active decides whether the session content applies at all, so the two properties
-        // that gate it have to follow the strip as well as the session list.
-        Workspaces.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(WorkspacesViewModel.IsSessionsActive) or nameof(WorkspacesViewModel.Settings))
-            {
-                OnPropertyChanged(nameof(ShowSessionGrid));
-                OnPropertyChanged(nameof(ShowSessionEmptyState));
-            }
-        };
         _ = LoadNotificationSettingsAsync();
         _ = LoadTranscriptDisplaySettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
@@ -2262,6 +2315,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void AddSession(SessionPanelViewModel session, string? name, string profileLabel)
     {
         _sessionCounter++;
+        // Born on the workspace that was showing. A session started while a dashboard is up would otherwise
+        // land nowhere visible, so it falls back to the first Sessions workspace.
+        session.WorkspaceId = Workspaces.Active is { Type: WorkspaceType.Sessions } active
+            ? active.Id
+            : Workspaces.Settings.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id ?? string.Empty;
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
         // shows which profile — and therefore which provider — each session runs under.
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();

@@ -218,6 +218,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _globalPushToTalkEnabled;
 
+    /// <summary>
+    /// The workspace this session belongs to — stamped at creation from whichever workspace was active then.
+    /// Two Sessions workspaces are separate desks: each shows only its own sessions, and switching away hides
+    /// the rest rather than closing them, so a session keeps running (and keeps its pty) while you look
+    /// elsewhere. Empty means "not assigned", which the cockpit reads as belonging to the first workspace —
+    /// what a session created before workspaces existed, or in the design-time graph, gets.
+    /// </summary>
+    [ObservableProperty]
+    private string _workspaceId = string.Empty;
+
     /// <summary>Transient status text ("Listening...", "Transcribing...") the view can surface next to the input while a hold is in progress.</summary>
     [ObservableProperty]
     private string _voiceStatus = string.Empty;
