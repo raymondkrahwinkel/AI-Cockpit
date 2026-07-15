@@ -24,6 +24,14 @@ public sealed class PluginStorage : IPluginStorage
         _declareSecret = declareSecret;
     }
 
+    /// <summary>
+    /// Every key/value this plugin holds, as the raw JSON it was stored as. Host-side only — deliberately not on
+    /// <see cref="IPluginStorage"/>, since a plugin has no business reading its own storage wholesale and even
+    /// less another's. The host needs it to export a dashboard: it has to carry a widget's settings without
+    /// knowing their shape.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Snapshot() => new Dictionary<string, string>(_values);
+
     public T? Get<T>(string key) => _values.TryGetValue(key, out var json) ? JsonSerializer.Deserialize<T>(json) : default;
 
     public void Set<T>(string key, T value)

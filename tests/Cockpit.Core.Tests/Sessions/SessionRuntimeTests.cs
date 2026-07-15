@@ -26,7 +26,7 @@ public class SessionRuntimeTests
         runtime.EventAppended += seen.Add;
 
         await runtime.StartAsync(profile: null);
-        await _DrainAsync(runtime);
+        await _DrainAsync(runtime, expectedEvents: 2);
 
         seen.Should().HaveCount(2);
         runtime.IsRunning.Should().BeTrue();
@@ -44,7 +44,7 @@ public class SessionRuntimeTests
         var runtime = new SessionRuntime(_FactoryFor(driver), profile: null);
 
         await runtime.StartAsync(profile: null);
-        await _DrainAsync(runtime);
+        await _DrainAsync(runtime, expectedEvents: 3);
 
         runtime.LastAssistantText.Should().Be("first\n\nsecond");
     }
@@ -58,7 +58,7 @@ public class SessionRuntimeTests
         var runtime = new SessionRuntime(_FactoryFor(driver), profile: null);
 
         await runtime.StartAsync(profile: null);
-        await _DrainAsync(runtime);
+        await _DrainAsync(runtime, expectedEvents: 2);
 
         runtime.LastAssistantText.Should().Be("the final result");
     }
@@ -74,7 +74,7 @@ public class SessionRuntimeTests
         var runtime = new SessionRuntime(_FactoryFor(driver), profile: null);
 
         await runtime.StartAsync(profile: null);
-        await _DrainAsync(runtime);
+        await _DrainAsync(runtime, expectedEvents: 2);
 
         var (events, cursor) = runtime.EventsSince(0);
 
@@ -113,16 +113,30 @@ public class SessionRuntimeTests
         await driver.Received(1).SendUserMessageAsync("hi", Arg.Any<IReadOnlyList<ImageAttachment>?>(), Arg.Any<CancellationToken>());
     }
 
-    // Waits for the pump to have handled everything the fake driver emitted. The stream completes as soon as it
-    // runs out of events, so the runtime's own teardown is what settles it.
-    private static async Task _DrainAsync(SessionRuntime runtime)
+    /// <summary>
+    /// Waits until the runtime has consumed <paramref name="expectedEvents"/> events.
+    /// </summary>
+    /// <remarks>
+    /// This used to wait for the <em>first</em> event and then sleep a flat 20ms for whatever else was coming —
+    /// a guess, not a wait. Under load the later events had not landed yet, so a test expecting a folded
+    /// "first\n\nsecond" saw only "first", and the suite failed about one run in eight. That is the kind of
+    /// flake that teaches you to re-run instead of read, and a suite you re-run past is one that will hide a
+    /// real failure. Waiting for the count the test actually expects removes the guess; the timeout turns a hang
+    /// into a message that says what arrived.
+    /// </remarks>
+    private static async Task _DrainAsync(SessionRuntime runtime, int expectedEvents)
     {
-        for (var attempt = 0; attempt < 50 && runtime.EventsSince(0).Events.Count == 0; attempt++)
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (runtime.EventsSince(0).Events.Count < expectedEvents)
         {
-            await Task.Delay(10);
-        }
+            if (DateTimeOffset.UtcNow > deadline)
+            {
+                throw new TimeoutException(
+                    $"The runtime consumed {runtime.EventsSince(0).Events.Count} of {expectedEvents} events within 5s.");
+            }
 
-        await Task.Delay(20);
+            await Task.Delay(5);
+        }
     }
 
     private static ISessionDriver _DriverEmitting(params SessionEvent[] events)

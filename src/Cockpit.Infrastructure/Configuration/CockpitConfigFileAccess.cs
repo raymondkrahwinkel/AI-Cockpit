@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -30,17 +29,13 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// <summary>The last version that read cleanly, written by every save — and what a damaged config is recovered from.</summary>
     private const string BackupSuffix = ".bak";
 
-    /// <summary>
-    /// One gate per config file, shared by every instance of this class — the seventeen stores each build their
-    /// own, and they all write the same file. Static because the writers are not each other's dependencies and
-    /// never meet: the file is what they share, so the file is what the lock is keyed on.
-    /// <para>
-    /// Within one process this makes the read-modify-write indivisible. Across processes it does not, and cannot:
-    /// a second cockpit on the same config still overwrites, last save wins. That is a loss of a change, never a
-    /// broken file — each save is a whole document renamed into place from a sidecar of its own.
-    /// </para>
-    /// </summary>
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Holds the write gate; empty, and only its existence-while-open means anything.</summary>
+    private const string LockSuffix = ".lock";
+
+    /// <summary>Generous on purpose: a write is milliseconds, so reaching this means something is wrong, not busy.</summary>
+    private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(10);
+
+    private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);
 
     private readonly ISecretKeyHolder _keyHolder = keyHolder ?? SecretKeyHolder.Shared;
 
@@ -114,28 +109,20 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// <summary>
     /// Loads the current file (or a fresh, empty one), applies <paramref name="mutate"/> to a single
     /// section, and writes the whole document back — preserving every other section.
+    /// <para>
+    /// Serialised against every other writer, in this process and in any other cockpit on this machine. It has
+    /// to be: "preserving every other section" is only true if nothing changed a section between the read and
+    /// the write. Without the gate, two writers each read the file, each changed their own section, and each
+    /// wrote the whole document — so the one that finished last silently restored the other's section to what
+    /// it had been. That is how a plugin's freshly pinned hash disappeared and the plugin came back asking for
+    /// consent, and it is why writing atomically was never enough: each write was whole, and one of them was
+    /// whole and stale.
+    /// </para>
     /// </summary>
     public async Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
     {
-        // Read, mutate and write as one indivisible step. Seventeen stores each construct their own instance of
-        // this class over the same file, so "read the whole document, change my section, write it all back" runs
-        // concurrently with itself — and without this gate the second reader starts from a document that predates
-        // the first writer, then writes its stale copy over the top. The section the first store just saved is
-        // simply gone, with nothing to show for it. The gate is per file and shared by every instance.
-        var gate = Gates.GetOrAdd(Path.GetFullPath(configFilePath), _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await _UpdateUnderGateAsync(mutate, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            gate.Release();
-        }
-    }
+        using var gate = await _AcquireWriteGateAsync(cancellationToken).ConfigureAwait(false);
 
-    private async Task _UpdateUnderGateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
-    {
         var configFile = await ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
         mutate(configFile);
 
@@ -152,17 +139,56 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         // Truncating the config and then streaming the new one into it means that for the length of that write the
         // operator's settings exist nowhere: a crash, a kill or the power going leaves a half file — and the next
         // start, finding it unreadable, would have begun with an empty config and saved that emptiness over
-        // everything.
+        // everything. Two writers at once (a second instance, a script) could leave the tail of the longer document
+        // behind the shorter one, which is what happened to Raymond's config on 2026-07-14.
         //
-        // The "two writers" that damaged the operator's config on 2026-07-14 were not a second instance or a script,
-        // as this comment used to guess: they were two of our own stores, in this process, sharing one fixed
-        // "<path>.new" sidecar. Both fixes live where the fault was — the gate above, and a sidecar per write.
+        // A rename is atomic: the file is either entirely the old one or entirely the new one. That makes each write
+        // whole — it never made two writes safe, which is a different problem and the gate above's to solve.
         //
-        // A rename is atomic: the file is either entirely the old one or entirely the new one. The previous version
-        // is kept as .bak, which is what ReadAsync falls back to. Owner-only either way — this file holds provider
-        // API keys, MCP bearer headers and the plugins' tokens.
+        // The previous version is kept as .bak, which is what ReadAsync falls back to. Owner-only either way — this
+        // file holds provider API keys, MCP bearer headers and the plugins' tokens.
         CockpitConfigPath.ReplaceAtomicallyPrivate(configFilePath, document.ToJsonString(SerializerOptions));
 
         await Task.CompletedTask.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Takes the write gate, waiting for whoever holds it. A lock file rather than a named mutex: the operating
+    /// system drops it when the holder exits — including when it is killed mid-write — and it behaves the same
+    /// on the three platforms the cockpit runs on. Reads are deliberately not gated: a rename is atomic, so a
+    /// reader sees the whole old file or the whole new one and never waits on a writer.
+    /// </summary>
+    private async Task<FileStream> _AcquireWriteGateAsync(CancellationToken cancellationToken)
+    {
+        var lockFilePath = configFilePath + LockSuffix;
+        var directory = Path.GetDirectoryName(lockFilePath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var deadline = DateTimeOffset.UtcNow + GateTimeout;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (DateTimeOffset.UtcNow < deadline)
+            {
+                // Someone else is mid-write. Theirs finishes in milliseconds — this is a settings file, not a
+                // database — so waiting is cheaper than any scheme that lets both through and merges after.
+                await Task.Delay(GatePollInterval, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException exception)
+            {
+                // Long past the point where contention explains it. Failing loudly beats writing anyway: a save
+                // that goes through ungated is how a section disappears, and disappearing is what this exists
+                // to stop.
+                throw new IOException(
+                    $"Could not take the write lock on '{lockFilePath}' within {GateTimeout.TotalSeconds:F0}s; the cockpit's settings were not saved.",
+                    exception);
+            }
+        }
     }
 }

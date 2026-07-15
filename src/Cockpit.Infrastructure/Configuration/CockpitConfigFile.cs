@@ -42,6 +42,9 @@ internal sealed class CockpitConfigFile
 
     public LayoutSettingsEntry? Layout { get; set; }
 
+    /// <summary>The workspaces and which one is active; owned by the workspace-settings store.</summary>
+    public WorkspaceSettingsEntry? Workspaces { get; set; }
+
     /// <summary>Whether the diagnostic controls are shown (#73); owned by the debug-settings store.</summary>
     public DebugSettingsEntry? Debug { get; set; }
 

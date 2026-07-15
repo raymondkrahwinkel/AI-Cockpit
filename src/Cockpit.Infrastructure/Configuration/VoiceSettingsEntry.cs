@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Cockpit.Core.Voice;
 
 namespace Cockpit.Infrastructure.Configuration;
@@ -13,9 +14,22 @@ internal sealed class VoiceSettingsEntry
 
     public bool CleanupEnabled { get; set; } = true;
 
+    public bool AutoDetectLocalLlm { get; set; } = true;
+
+    public LocalLlmPreference LocalLlmPreference { get; set; } = LocalLlmPreference.Auto;
+
     public string CleanupModel { get; set; } = "qwen2.5:3b-instruct";
 
-    public string OllamaBaseUrl { get; set; } = "http://localhost:11434";
+    /// <summary>OpenAI-compatible local LLM base URL (Ollama/LM Studio). Null when neither this nor the legacy key was written.</summary>
+    public string? CleanupBaseUrl { get; set; }
+
+    /// <summary>
+    /// Legacy on-disk key from before the Ollama-specific cleanup was generalized to any OpenAI-compatible
+    /// server. Read to migrate an existing config; never written back (see <see cref="FromDomain"/>), so once
+    /// the file is next saved the neutral <see cref="CleanupBaseUrl"/> key is what persists.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OllamaBaseUrl { get; set; }
 
     public string PushToTalkKeyName { get; set; } = "F9";
 
@@ -45,8 +59,10 @@ internal sealed class VoiceSettingsEntry
         ModelName = settings.ModelName,
         BackendPreference = settings.BackendPreference,
         CleanupEnabled = settings.CleanupEnabled,
+        AutoDetectLocalLlm = settings.AutoDetectLocalLlm,
+        LocalLlmPreference = settings.LocalLlmPreference,
         CleanupModel = settings.CleanupModel,
-        OllamaBaseUrl = settings.OllamaBaseUrl,
+        CleanupBaseUrl = settings.CleanupBaseUrl,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
@@ -66,8 +82,11 @@ internal sealed class VoiceSettingsEntry
         ModelName = ModelName,
         BackendPreference = BackendPreference,
         CleanupEnabled = CleanupEnabled,
+        AutoDetectLocalLlm = AutoDetectLocalLlm,
+        LocalLlmPreference = LocalLlmPreference,
         CleanupModel = CleanupModel,
-        OllamaBaseUrl = OllamaBaseUrl,
+        // Prefer the neutral key; fall back to the legacy Ollama key so an existing config migrates cleanly.
+        CleanupBaseUrl = CleanupBaseUrl ?? OllamaBaseUrl ?? "http://localhost:11434",
         PushToTalkKeyName = PushToTalkKeyName,
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,

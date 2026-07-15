@@ -71,7 +71,11 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 
         var root = new DockPanel();
         root.Children.Add(footer);
-        root.Children.Add(new ScrollViewer { Content = view });
+
+        // The view gets the same inset as the footer already had. Without it a plugin's settings sat flush
+        // against the window edge — every plugin would otherwise have to remember its own margin, and they did
+        // not, so the padding belongs here where the host owns the chrome.
+        root.Children.Add(new ScrollViewer { Content = view, Padding = new Thickness(14, 12) });
         window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);

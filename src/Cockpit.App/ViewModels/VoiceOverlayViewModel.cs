@@ -23,6 +23,17 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
     [ObservableProperty]
     private VoiceOverlayState _state = VoiceOverlayState.Hidden;
 
+    /// <summary>What voice is waiting on, shown on the preparing row ("Downloading speech model — 412 MB").</summary>
+    [ObservableProperty]
+    private string _statusText = string.Empty;
+
+    /// <summary>
+    /// 0..1 for the preparing row's bar, or null when the step has no total to measure against. The bar hides
+    /// rather than guess: one that sits at an invented percentage is worse than a number that only counts up.
+    /// </summary>
+    [ObservableProperty]
+    private double? _progress;
+
     public VoiceOverlayViewModel()
     {
         Bars = new ObservableCollection<VoiceOverlayBarViewModel>();
@@ -37,7 +48,18 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
 
     public bool IsListening => State == VoiceOverlayState.Listening;
 
+    /// <summary>The hold is not recording, and <see cref="StatusText"/> says why.</summary>
+    public bool IsUnavailable => State == VoiceOverlayState.Unavailable;
+
+    public bool IsPreparing => State == VoiceOverlayState.Preparing;
+
     public bool IsTranscribing => State == VoiceOverlayState.Transcribing;
+
+    /// <summary>Whether the preparing row can show a bar at all — see <see cref="Progress"/>.</summary>
+    public bool HasProgress => Progress is not null;
+
+    /// <summary>The bar's width fraction as a plain double, since a XAML bar cannot bind a nullable.</summary>
+    public double ProgressValue => Progress ?? 0;
 
     /// <summary>Feeds one captured microphone level (0..1) into the scrolling waveform. Call on the UI thread.</summary>
     public void PushLevel(double level)
@@ -58,10 +80,26 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
         }
     }
 
+    partial void OnProgressChanged(double? value)
+    {
+        OnPropertyChanged(nameof(HasProgress));
+        OnPropertyChanged(nameof(ProgressValue));
+    }
+
     partial void OnStateChanged(VoiceOverlayState value)
     {
         OnPropertyChanged(nameof(IsListening));
+        OnPropertyChanged(nameof(IsUnavailable));
+        OnPropertyChanged(nameof(IsPreparing));
         OnPropertyChanged(nameof(IsTranscribing));
+
+        // A stale "Downloading speech model — 91%" behind the next hold's spinner would be a lie the moment
+        // this one ends, so the text never outlives the two states that have something to say.
+        if (value is not (VoiceOverlayState.Preparing or VoiceOverlayState.Unavailable))
+        {
+            StatusText = string.Empty;
+            Progress = null;
+        }
 
         // Leaving the listening state (transcribing or hidden) flattens the waveform so a fresh hold
         // starts from silence rather than the tail of the previous one.

@@ -89,6 +89,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Conversation picker | `host.AddConversationPicker(registration)` | Lends your history-browsing to the **New-session dialog**: it grows a **Search…** button next to "resume by session id", which runs your picker. See [Conversation pickers](#conversation-pickers--let-the-operator-choose-a-conversation-to-resume). |
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
+| Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
@@ -127,6 +128,7 @@ public interface ICockpitHost
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
                    string? actionLabel = null, Action? onAction = null);      // an in-app notification
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
+    void AddWidget(WidgetRegistration registration);            // a widget type for Dashboard workspaces
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
     ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
@@ -232,6 +234,84 @@ and `IPluginProviderConfigView` (the add/edit-profile panel that produces that c
 against your provider persists `ProviderId` + the config JSON; the host's driver adapter (internal) wraps your
 `IPluginSessionDriver` to satisfy its own full session-driver contract and no-ops whatever your capabilities
 don't support.
+
+## Widget plugins — a pane on a Dashboard workspace
+
+A **Dashboard** workspace hosts widget panes the way a Sessions workspace hosts sessions and terminals. Every
+widget comes from a plugin: the core owns the grid and the pane chrome, and stays as unaware of what a widget
+shows as it is of a provider's transcript format. Register a type with `host.AddWidget(...)` and it appears in
+that workspace's **Add widget** gallery; picking it places an instance.
+
+There is no separate widget package and no second installer — a widget plugin is an ordinary plugin whose
+contribution happens to be `AddWidget`, so it ships, installs and is trusted like any other. The worked
+references are [`plugins-dev/Cockpit.Plugin.Clock`](../../plugins-dev/Cockpit.Plugin.Clock) (no settings, ships
+with the app) and [`plugins-dev/Cockpit.Plugin.SystemMonitor`](../../plugins-dev/Cockpit.Plugin.SystemMonitor)
+(settings, from the store) — together they prove the ⚙ is really gated, and separately they show why one plugin
+per widget is worth it: wanting a clock is not also wanting a CPU meter.
+
+```csharp
+public void Initialize(ICockpitHost host)
+{
+    host.AddWidget(new WidgetRegistration("widgets.clock", "Clock", context => new ClockWidget(context))
+    {
+        Icon = "🕐",
+        Description = "The time and date.",
+        DefaultColumnSpan = 6,
+        DefaultRowSpan = 4,
+    });
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `Id` | Stable, unique id for the widget **type**, namespaced by your plugin (`"system-monitor.usage"`). It is persisted with every placed instance, so **changing it orphans existing instances** — treat it as an API surface, not a name. It also has to be unique across every installed plugin: the first plugin to claim an id keeps it, and a later claim is refused and logged rather than listed beside it. |
+| `Title` | Shown in the gallery and as the pane's default header. |
+| `CreateView` | Builds one instance's control on the UI thread, handed that instance's own `IWidgetContext`. Called once per instance; if you need periodic updates, own a timer or listen to `RefreshRequested`. |
+| `Icon` / `Description` | The gallery card. Defaults: `🧩` and empty. |
+| `DefaultColumnSpan` / `DefaultRowSpan` | How big a freshly placed instance is; the operator resizes afterwards. Default 1×1 — on the default 24-column grid that is very small, so pick real numbers. |
+| `CreateConfigView` | The instance's settings form, or **null when there is nothing to configure**. |
+| `HasConfig` | Derived from `CreateConfigView`, not declared — read-only. |
+
+### Per-instance, not per-plugin
+
+Each placed widget gets its own `IWidgetContext`, which is what lets two "System Monitor" widgets sit on one
+dashboard without fighting:
+
+```csharp
+public interface IWidgetContext
+{
+    string InstanceId { get; }                 // this instance — not the widget type
+    IPluginStorage Storage { get; }            // scoped to InstanceId, under your plugin's storage
+    ICockpitSessionObserver Sessions { get; }  // same read/observe surface as host.Sessions
+    event EventHandler RefreshRequested;       // the pane's ↻, or a dashboard-wide refresh
+}
+```
+
+`Storage` is the same `IPluginStorage` you know, scoped to this instance — so a widget's config survives a
+restart and never collides with a sibling. `Sessions` is there so a widget can follow what the cockpit is
+doing (a git widget tracking the active session's working directory) without the core knowing what it is.
+
+### Settings, and the gear that is never dead
+
+`CreateConfigView` is not just "a form" — it is what puts the ⚙ on the pane header. Leave it null and there is
+no gear, so a widget can never offer one that opens an empty dialog:
+
+```csharp
+host.AddWidget(new WidgetRegistration("widgets.system-monitor", "System Monitor", context => new SystemMonitorWidget(context))
+{
+    CreateConfigView = context => new SystemMonitorSettingsView(context),
+});
+```
+
+You supply the form's content only; the host wraps it in the dialog with the Save/Close footer, exactly as it
+does for `AddSettings` — so implement `IPluginSettingsView` if you want a Save button. Saving raises
+`RefreshRequested` on that instance, which is how the view picks up new config without watching its own storage.
+
+### Publishing a widget plugin to a store
+
+Set the store entry's **`"category": "Widgets"`** and it lands in the store's own Widgets section. That is the
+whole of it — the store builds its sidebar from `PluginStoreEntry.Category`, so there is no widget-specific
+publishing path, no extra field, and no code involved. See [The index — `index.json`](#the-index--indexjson).
 
 ## Session header items — status that belongs to one session
 
@@ -347,7 +427,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
   "entryAssembly": "My.Plugin.dll",
   "entryType": "My.Plugin.MyPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "1.0.0",
+  "minHostVersion": "0.1.0",
   "description": "What it does, one line.",
   "author": "You"
 }
@@ -362,7 +442,7 @@ version-mismatched manifest is rejected with a message rather than crashing mid-
 | `abstractionsVersion` | yes | The SDK **major** you built against (an integer) — must equal the host's (`AbstractionsContract.Version`), or the host refuses to load the plugin with a clear message. |
 | `entryType` | no | Fully-qualified entry type; omit to let the host find the single `ICockpitPlugin` in the entry assembly. |
 | `secretKeys` | no | Storage keys that hold a credential, beyond the names the host recognises itself (`["pat"]`). Read before your plugin loads, so such a value is decrypted on the way in rather than handed to you as ciphertext. See "Credentials". |
-| `minHostVersion` | no | Informational only today — the host parses and stores it but does **not** currently enforce it as a gate. Set it anyway so a future host version can. |
+| `minHostVersion` | no | The oldest cockpit your plugin actually works against. **Enforced from host 1.0 onwards**: an older host refuses to load you, and the Plugins manager says "Needs a newer AI-Cockpit". Ignored entirely while the host is 0.x — enforcing it there would refuse every plugin in existence, because they all claim `1.0.0` and none of them meant it. That is exactly why the 0.x window is when to make it honest: name the first version carrying the contribution points you call, not the number the template happened to ship. |
 | `description`, `author` | no | Shown in the Plugins manager and any store catalogue. |
 
 ## Project setup
@@ -444,11 +524,22 @@ public void Initialize(ICockpitHost host)
 
 ## Build, package, install
 
-1. **Build:** `dotnet build -c Release`. The output folder holds your DLL, `.deps.json` and `plugin.json`
-   (and none of the shared assemblies — verify that).
-2. **Package:** zip the output folder's contents so `plugin.json` sits at the **zip root**:
+1. **Build:** `dotnet build -c Release`. The three files that matter are your DLL, its `.deps.json` and
+   `plugin.json` — and **none of the shared assemblies**, which is the thing to verify: an Avalonia or
+   abstractions DLL in there means a `PackageReference` is missing its `<ExcludeAssets>runtime</ExcludeAssets>`,
+   and the plugin will load a second copy of a type the host already has.
+2. **Package:** zip so `plugin.json` sits at the **zip root**. The build also drops a `.pdb`, an `.xml` and a
+   `.runtimeconfig.json` beside those three; the installer ignores them, so including them costs nothing but
+   size. The plugins in the official store carry the three and nothing else:
    ```powershell
+   # Everything the build produced — simplest, and what the installer accepts.
    Compress-Archive -Path bin/Release/net10.0/* -DestinationPath my-plugin-1.0.0.zip
+
+   # Or just what is needed, which is what the official store ships:
+   Compress-Archive -Path bin/Release/net10.0/My.Plugin.dll,
+                          bin/Release/net10.0/My.Plugin.deps.json,
+                          bin/Release/net10.0/plugin.json `
+                    -DestinationPath my-plugin-1.0.0.zip
    ```
 3. **Install:** in the cockpit, **Options → Plugins → Install from zip…**, pick the zip, then **Review &
    enable** and consent. Enabling takes effect on the **next restart** (a plugin can't be loaded live) — a
@@ -639,7 +730,7 @@ offer theirs.
 | `name` | yes | Display name shown on the catalogue card. |
 | `description` | yes | One-line summary shown on the card and in the detail panel. |
 | `author` | no | Shown on the card/detail panel. |
-| `category` | no | Groups the plugin under a sidebar category in the store dialog (e.g. `"Issue trackers"`, `"AI providers"`). Plugins with no category still show under "All". |
+| `category` | no | Groups the plugin under a sidebar category in the store dialog (e.g. `"Issue trackers"`, `"AI providers"`). Plugins with no category still show under "All". A plugin whose contribution is [dashboard widgets](#widget-plugins--a-pane-on-a-dashboard-workspace) publishes with **`"category": "Widgets"`** — the convention that files it under the store's Widgets section. It is only a category string; there is no widget-specific publishing path. |
 | `icon` | no | A single emoji shown on the card and as the plugin's icon elsewhere in the UI. |
 | `homepage` | no | Link shown in the detail panel — typically your docs or README section for the plugin. |
 | `repository` | no | Link to the plugin's source repository, shown in the detail panel. |
@@ -655,7 +746,7 @@ offer theirs.
 | `version` | yes | This version's version string. |
 | `path` | yes | Zip location, **relative to the index's own location** (e.g. `github-issues/github-issues-1.1.0.zip`). |
 | `abstractionsVersion` | yes | The `AbstractionsContract.Version` major this build targets — checked the same as a manual zip install. |
-| `minHostVersion` | yes | Informational (not currently enforced as a gate, same as the manifest field). |
+| `minHostVersion` | yes | The oldest cockpit this build works against — same meaning and same gate as the manifest field: enforced from host 1.0 onwards, ignored while the host is 0.x. Keep it in step with the `plugin.json` inside the zip; a catalogue that promises one thing and a manifest that says another is a bug report waiting to happen. |
 | `sha256` | no (recommended) | Hex-lowercase SHA-256 of the zip. A mismatch on download is rejected before the zip is ever handed to the installer. |
 | `notes` | no | Shown as this version's changelog line in the detail panel. |
 
@@ -686,14 +777,21 @@ store, or open a PR against it to list your plugin alongside the official ones.
 
 ## Plugins that ship with the app
 
-Two plugins are **bundled**: they are built with the cockpit, copied into its `bundled-plugins/` output, and
+Three plugins are **bundled**: they are built with the cockpit, copied into its `bundled-plugins/` output, and
 installed into the operator's plugins directory on startup — enabled, and without the consent dialog (it asks
 whether you trust third-party code, and these came out of the very build that is asking).
 
-They exist because they *used* to be core features. Transcript search parses Claude's own JSONL format, and git
-status describes the repo one session works in; neither belongs in a core that drives several providers. Making
-them plugins kept the core honest, and bundling them means an operator does not have to know they exist to have
-what they always had.
+Two of them exist because they *used* to be core features. Transcript search parses Claude's own JSONL format,
+and git status describes the repo one session works in; neither belongs in a core that drives several providers.
+Making them plugins kept the core honest, and bundling them means an operator does not have to know they exist to
+have what they always had.
+
+The **clock** is bundled for a different reason: a Dashboard workspace with nothing to put on it is a worse first
+impression than one that already has a clock. That is also the whole argument for where the line sits — the
+system monitor is *not* bundled, because a CPU meter nobody asked for is not the price of a working dashboard.
+Both are in the [official store](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) as well, the same way
+git status and transcript search are: bundling decides what you get without asking, the store decides what you
+can update, remove and put back on its own.
 
 Bundling never overrides the operator: a plugin they disable stays disabled and untouched on disk, and a version
 they updated past ours from the store is not rolled back — only a newer bundled version replaces an older

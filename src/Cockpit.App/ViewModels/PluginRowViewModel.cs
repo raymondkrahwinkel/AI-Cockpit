@@ -51,7 +51,7 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
         PluginLoadDecision.Disabled => "Disabled",
         PluginLoadDecision.NeedsConsent => "Needs your consent",
         PluginLoadDecision.AbstractionsMajorMismatch => "Incompatible — built for another contract version",
-        PluginLoadDecision.HostTooOld => $"Needs a newer cockpit (version {discovered.Manifest.MinHostVersion} or later)",
+        PluginLoadDecision.HostTooOld => $"Needs a newer AI-Cockpit (version {discovered.Manifest.MinHostVersion} or later)",
         _ => string.Empty,
     };
 

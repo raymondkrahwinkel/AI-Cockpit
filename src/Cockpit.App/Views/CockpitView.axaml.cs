@@ -10,6 +10,8 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Layout;
+using Cockpit.Core.Workspaces;
 using Exclr8.Terminal;
 
 namespace Cockpit.App.Views;
@@ -26,6 +28,9 @@ public partial class CockpitView : UserControl
     // Often enough that the number means something while you watch an agent work, rarely enough that reading the
     // process table is not itself the thing burning the CPU.
     private static readonly TimeSpan ResourceSampleInterval = TimeSpan.FromSeconds(2);
+
+    // Width of the collapsed sidebar rail — just enough for the expand chevron and a compact New session.
+    private const double CollapsedRailWidth = 40;
 
     private INotifyCollectionChanged? _observedSideSections;
     private INotifyCollectionChanged? _observedSideButtons;
@@ -61,6 +66,21 @@ public partial class CockpitView : UserControl
         if (DataContext is CockpitViewModel cockpit)
         {
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
+
+            // The dashboard's shape follows the active workspace and its widgets, neither of which a Grid can
+            // bind its definitions to.
+            cockpit.Workspaces.PropertyChanged += (_, _) => _RefreshDashboardGrid();
+            _RefreshDashboardGrid();
+
+            // ...and again once the grid itself exists. At startup the dashboard is hidden behind whichever
+            // workspace is active, so its panel is not realised yet and the refresh above finds nothing to
+            // define — leaving the first widget spanning the whole dashboard, because a Grid with no column or
+            // row definitions is one big cell. It only looked fixed after any redraw (Raymond found it by
+            // toggling the grid lines), which is the tell that this is a timing problem, not a placement one.
+            if (DashboardGrid is not null)
+            {
+                DashboardGrid.Loaded += (_, _) => _RefreshDashboardGrid();
+            }
 
             // The idle sweep lives here rather than in the view model so the view model stays free of timers
             // (and testable by calling the sweep with a time of the test's choosing).
@@ -120,7 +140,7 @@ public partial class CockpitView : UserControl
     // so this only fires for external changes, not its own drag.
     private void OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CockpitViewModel.SidebarWidth))
+        if (e.PropertyName is nameof(CockpitViewModel.SidebarWidth) or nameof(CockpitViewModel.SidebarCollapsed))
         {
             _ApplySidebarWidth();
         }
@@ -139,7 +159,14 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        _SidebarColumn().Width = new GridLength(cockpit.SidebarWidth);
+        // Collapsed: the sidebar column shrinks to the slim rail (which holds the expand chevron) and the
+        // splitter gives up its grip. The column's own MinWidth (the splitter's drag floor) must be lifted
+        // first, or it would refuse to shrink below the sidebar's minimum. Expanded: both are restored.
+        var collapsed = cockpit.SidebarCollapsed;
+        var column = _SidebarColumn();
+        column.MinWidth = collapsed ? 0 : LayoutSettings.MinSidebarWidth;
+        column.Width = new GridLength(collapsed ? CollapsedRailWidth : cockpit.SidebarWidth);
+        RootGrid.ColumnDefinitions[1].Width = new GridLength(collapsed ? 0 : 4);
     }
 
     // The GridSplitter already clamps the drag itself (the column's MinWidth/MaxWidth), so the settled
@@ -354,6 +381,498 @@ public partial class CockpitView : UserControl
         if (sender is Border { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
         {
             cockpit.SelectSessionCommand.Execute(session);
+        }
+    }
+
+    /// <summary>Clicking anywhere on a workspace tab switches to it — same whole-row click target as a session
+    /// row, and the same wiring: the tab is the <see cref="Border"/>'s DataContext. The ✕ inside the tab is a
+    /// Button, so its click is handled there and never reaches this; a press that bubbles up from it would
+    /// otherwise select the workspace it is about to close.</summary>
+    private void OnWorkspaceTabPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
+        {
+            return;
+        }
+
+        if (sender is Border { DataContext: WorkspaceTabViewModel tab } border && DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
+
+            // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did
+            // what a click does, rather than the tab needing two gestures to both switch and move.
+            _draggingTab = tab;
+            _tabDragOrigin = border.Parent is Control strip ? e.GetPosition(strip) : default;
+        }
+    }
+
+    // Tab reordering (Raymond, 2026-07-15). Drag state is two fields rather than a full drag-drop session: the
+    // strip is one row of small targets, so "which tab, and has the pointer moved far enough to mean it" is the
+    // whole problem. The threshold keeps a sloppy click — the gesture that selects a workspace — from being
+    // read as a one-pixel reorder.
+    private WorkspaceTabViewModel? _draggingTab;
+    private Point _tabDragOrigin;
+    private const double TabDragThreshold = 6;
+
+    private void OnWorkspaceTabPointerMoved(object? sender, PointerEventArgs e)
+    {
+        // The strip is the ItemsControl's own panel, reached by name. Walking up from the tab does not get here:
+        // each tab sits inside its generated ContentPresenter, so Border.Parent is that presenter — which has
+        // exactly one child, the tab itself, so the drop target was always the tab being dragged and nothing
+        // ever moved.
+        if (_draggingTab is null || WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(strip);
+        if (Math.Abs(position.X - _tabDragOrigin.X) < TabDragThreshold)
+        {
+            return;
+        }
+
+        // Which container the pointer is over decides the drop index — measured against the tabs themselves
+        // rather than arithmetic on widths, since they are as wide as their names.
+        var containers = strip.GetVisualChildren().OfType<Control>().ToList();
+        var targetIndex = containers.FindIndex(child => position.X >= child.Bounds.Left && position.X <= child.Bounds.Right);
+        if (targetIndex < 0)
+        {
+            return;
+        }
+
+        var currentIndex = cockpit.Workspaces.Tabs.Select((tab, index) => (tab, index))
+            .FirstOrDefault(entry => entry.tab.Id == _draggingTab.Id).index;
+        if (targetIndex == currentIndex)
+        {
+            return;
+        }
+
+        // The tab strip is rebuilt on every move, so the dragged tab object is replaced under us — keep the id
+        // and re-find it, rather than holding a reference to a tab that no longer exists.
+        var draggingId = _draggingTab.Id;
+        _ = cockpit.Workspaces.MoveWorkspaceAsync(draggingId, targetIndex);
+        _draggingTab = cockpit.Workspaces.Tabs.FirstOrDefault(tab => tab.Id == draggingId);
+        _tabDragOrigin = position;
+    }
+
+    private void OnWorkspaceTabPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingTab = null;
+
+    /// <summary>Double-click a tab to rename it in place — the same inline edit a session row uses.</summary>
+    private void OnWorkspaceTabDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Border { DataContext: WorkspaceTabViewModel tab })
+        {
+            tab.BeginRename();
+        }
+    }
+
+    // The tab's right-click menu. Each item's DataContext is the tab the menu was opened on, so both handlers
+    // read it straight off the sender — the same shape as the session rows' context menu.
+    private void OnRenameWorkspaceRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab })
+        {
+            tab.BeginRename();
+        }
+    }
+
+    /// <summary>
+    /// Ask-then-close lives on the view model, so the ✕, the context menu and the command palette all take the
+    /// same path. Two copies of "what is about to be lost" is two chances for the prompt to drift from what
+    /// closing actually does.
+    /// </summary>
+    private void OnCloseWorkspaceRequested(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
+        {
+            _ = cockpit.CloseWorkspaceWithConfirmationAsync(tab.Id);
+        }
+    }
+
+    /// <summary>
+    /// The rename box becomes visible where it was already in the tree, so nothing gives it focus on its own —
+    /// you had to click it before you could type (Raymond). Selecting everything on the way in makes the first
+    /// keystroke replace the name, which is the whole point of asking to rename it.
+    /// </summary>
+    private void OnWorkspaceRenameAttached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is TextBox box)
+        {
+            // Posted, not called: the box is being attached right now, and focus does not stick to a control
+            // mid-attach.
+            Dispatcher.UIThread.Post(() =>
+            {
+                box.Focus();
+                box.SelectAll();
+            });
+        }
+    }
+
+    // Enter commits, Escape discards — the two keys an inline edit has to honour, and the reason the box is not
+    // simply committed on every keystroke.
+    private void OnWorkspaceRenameKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: WorkspaceTabViewModel tab })
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            _CommitWorkspaceRename(tab);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            tab.CancelRename();
+            e.Handled = true;
+        }
+    }
+
+    // Clicking away commits rather than discards: having typed a name, losing it to a stray click is the more
+    // annoying of the two outcomes, and Escape is there for the operator who meant to abandon it.
+    private void OnWorkspaceRenameLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: WorkspaceTabViewModel tab } && tab.IsRenaming)
+        {
+            _CommitWorkspaceRename(tab);
+        }
+    }
+
+    private void _CommitWorkspaceRename(WorkspaceTabViewModel tab)
+    {
+        if (tab.CommitRename() is { } name && DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.RenameWorkspaceCommand.Execute((tab.Id, name));
+        }
+    }
+
+    private void OnExportDashboardPressed(object? sender, RoutedEventArgs e) => _ = _ExportDashboardAsync();
+
+    private void OnImportDashboardPressed(object? sender, RoutedEventArgs e) => _ = _ImportDashboardAsync();
+
+    private async Task _ExportDashboardAsync()
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || cockpit.Workspaces.Active is not { } dashboard
+            || cockpit.Workspaces.ExportActiveDashboard() is not { } json)
+        {
+            return;
+        }
+
+        if (await cockpit.PickDashboardExportPathAsync(dashboard.Name) is { } path)
+        {
+            await File.WriteAllTextAsync(path, json);
+        }
+    }
+
+    /// <summary>
+    /// Adds a dashboard from a file. A widget this cockpit does not have is skipped and named rather than the
+    /// whole file being refused (Raymond's call), so the operator is told what to install rather than left with
+    /// a dashboard that looks broken instead of incomplete.
+    /// </summary>
+    private async Task _ImportDashboardAsync()
+    {
+        if (DataContext is not CockpitViewModel cockpit || await cockpit.PickDashboardToImportAsync() is not { } path)
+        {
+            return;
+        }
+
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await cockpit.ConfirmAsync("Import dashboard", $"That file could not be read.\n\n{exception.Message}", confirmLabel: "OK");
+            return;
+        }
+
+        if (await cockpit.Workspaces.ImportDashboardAsync(json) is not { } import)
+        {
+            await cockpit.ConfirmAsync(
+                "Import dashboard",
+                "That is not a dashboard this version can read — either it is a different kind of file, or it was exported by a newer build.",
+                confirmLabel: "OK");
+            return;
+        }
+
+        if (!import.IsComplete)
+        {
+            await cockpit.ConfirmAsync(
+                "Imported, with widgets missing",
+                $"“{import.Workspace.Name}” was added, but these widgets are not installed here and were left out:\n\n"
+                + string.Join("\n", import.MissingWidgetIds.Select(id => $"  • {id}"))
+                + "\n\nInstall the plugins that provide them from the store, then import the file again to get them.",
+                confirmLabel: "OK");
+        }
+    }
+
+    // Widget dragging (F0). A pane is moved by rearranging where the grid puts it — never by rebuilding it —
+    // so a widget keeps whatever state it holds across a drag, the same rule the session grid learned on
+    // 2026-07-13 when a rebuilt pane lost its pty.
+    private WidgetPaneViewModel? _draggingWidget;
+    private WidgetPaneViewModel? _resizingWidget;
+
+    private void OnWidgetResizePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control { DataContext: WidgetPaneViewModel pane })
+        {
+            _resizingWidget = pane;
+            // The grip is inside the pane; without this the press would also reach the header's drag and the
+            // widget would move while being resized.
+            e.Handled = true;
+        }
+    }
+
+    private void OnWidgetHeaderPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // The chrome buttons live in this header; a press on one of them is not the start of a drag.
+        if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
+        {
+            return;
+        }
+
+        if (sender is Control { DataContext: WidgetPaneViewModel pane } header)
+        {
+            _draggingWidget = pane;
+
+            // Captured so the gesture keeps reporting once the pointer leaves the grid — without it the moves
+            // simply stop at the dashboard's edge and the release lands nowhere this view ever hears about,
+            // which is why a widget could never be dragged to another workspace's tab. The handlers still run:
+            // they sit on DashboardGrid, an ancestor of this header, and a captured pointer's events bubble
+            // from the capture target as usual.
+            e.Pointer.Capture(header);
+        }
+    }
+
+    // The workspace tab a drag is currently over, if any. Held rather than acted on, for the same reason the
+    // grid's ghost is: the move is one write on release, not one per pixel.
+    private WorkspaceTabViewModel? _dropTargetTab;
+
+    // Where the gesture currently says the pane will land. Held rather than applied, so the config is written
+    // once on release instead of on every pixel of the drag — and so the ghost has something to draw.
+    private GridCell? _ghostCell;
+
+    private void OnDashboardPointerMoved(object? sender, PointerEventArgs e)
+    {
+        var active = _draggingWidget ?? _resizingWidget;
+        if (active is null
+            || !e.GetCurrentPoint(DashboardGrid).Properties.IsLeftButtonPressed
+            || DashboardGrid?.ItemsPanelRoot is not { } grid
+            || DataContext is not CockpitViewModel cockpit)
+        {
+            // A move with the button up means the gesture ended somewhere this handler never saw — let go
+            // rather than leaving a pane glued to the pointer.
+            _EndWidgetGesture();
+            return;
+        }
+
+        // Over another workspace's tab, the answer is "not on this grid at all" — so the cell ghost goes away
+        // and the tab lights up instead. Only for a move: a resize is about this dashboard's own geometry and
+        // means nothing on a tab.
+        _dropTargetTab = _draggingWidget is null ? null : _WorkspaceTabAt(e);
+        _HighlightDropTargetTab();
+        if (_dropTargetTab is not null)
+        {
+            _ghostCell = null;
+            if (WidgetDropGhost is not null)
+            {
+                WidgetDropGhost.IsVisible = false;
+            }
+
+            return;
+        }
+
+        var position = e.GetPosition(grid);
+        var (columns, rows) = (cockpit.Workspaces.DashboardColumns, cockpit.Workspaces.DashboardRows);
+        if (DashboardGridMath.CellAt(position.X, position.Y, grid.Bounds.Width, grid.Bounds.Height, columns, rows) is not { } target)
+        {
+            return;
+        }
+
+        // The math answers both gestures the same way: what rectangle would this land on, or null when the
+        // answer is "nothing legal" — a resize onto a neighbour, off the grid, or inverted past its own origin;
+        // a move off the grid or over two widgets at once. The move asks Drop rather than working the cell out
+        // here, so the ghost cannot promise a landing the release then refuses.
+        var panes = cockpit.Workspaces.WidgetPanes.Select(pane => (pane.Id, pane.Pane.Cell)).ToList();
+        var layout = new DashboardLayout { Columns = columns, Rows = rows };
+        _ghostCell = _resizingWidget is not null
+            ? DashboardGridMath.Resize(panes, _resizingWidget.Id, target, layout)
+            : DashboardGridMath.Drop(panes, active.Id, target, layout) is { } arranged
+                ? arranged.First(entry => entry.Id == active.Id).Cell
+                : null;
+
+        _ShowGhost(grid, columns, rows);
+    }
+
+    private void OnDashboardPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (DataContext is CockpitViewModel cockpit)
+        {
+            // Applied once, here — the ghost (or the lit tab) showed the answer all along, so the drag itself
+            // never touched disk.
+            if (_dropTargetTab is { } tab && _draggingWidget is { } moving)
+            {
+                _ = cockpit.Workspaces.MovePaneToWorkspaceAsync(moving.Id, tab.Id);
+            }
+            else if (_ghostCell is { } cell)
+            {
+                if (_resizingWidget is { } resizing)
+                {
+                    _ = cockpit.Workspaces.ResizePaneAsync(resizing.Id, cell.ColumnEnd - 1, cell.RowEnd - 1);
+                }
+                else if (_draggingWidget is { } dragging)
+                {
+                    _ = cockpit.Workspaces.DropPaneAsync(dragging.Id, cell.Column, cell.Row);
+                }
+            }
+        }
+
+        e.Pointer.Capture(null);
+        _EndWidgetGesture();
+    }
+
+    private void _EndWidgetGesture()
+    {
+        (_draggingWidget, _resizingWidget, _ghostCell, _dropTargetTab) = (null, null, null, null);
+        _HighlightDropTargetTab();
+        if (WidgetDropGhost is not null)
+        {
+            WidgetDropGhost.IsVisible = false;
+        }
+    }
+
+    /// <summary>
+    /// Which workspace tab the pointer is over, or null. Only a dashboard other than the one showing counts: a
+    /// sessions workspace cannot hold a widget (<c>WorkspaceTypeRules.Accepts</c> refuses it), and its own tab
+    /// would be a drop that does nothing.
+    /// <para>
+    /// Hit-tested from the strip rather than by handlers on the tabs, for the reason the strip's own drag
+    /// already found out: a move rebuilds the tabs, so anything attached to one does not survive it.
+    /// </para>
+    /// </summary>
+    private WorkspaceTabViewModel? _WorkspaceTabAt(PointerEventArgs e)
+    {
+        if (WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
+        {
+            return null;
+        }
+
+        var position = e.GetPosition(strip);
+        foreach (var container in strip.Children)
+        {
+            if (container.Bounds.Contains(position)
+                && container.DataContext is WorkspaceTabViewModel tab
+                && tab.Id != cockpit.Workspaces.Active?.Id
+                && cockpit.Workspaces.Settings.Workspaces.Any(workspace => workspace.Id == tab.Id && workspace.Type == WorkspaceType.Dashboard))
+            {
+                return tab;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Lights the tab a drop would land on. Set on the container rather than the view model: it lasts exactly
+    /// as long as the gesture, so it has no business being persisted or reasoned about anywhere else.
+    /// </summary>
+    private void _HighlightDropTargetTab()
+    {
+        if (WorkspaceTabStrip?.ItemsPanelRoot is not { } strip)
+        {
+            return;
+        }
+
+        foreach (var container in strip.Children)
+        {
+            container.Classes.Set("dropTarget", _dropTargetTab is not null && ReferenceEquals(container.DataContext, _dropTargetTab));
+        }
+    }
+
+    /// <summary>Lays the ghost over the cells the gesture would take. Hidden when the answer is "nowhere legal", which is itself the feedback: the pane will not go there.</summary>
+    private void _ShowGhost(Control grid, int columns, int rows)
+    {
+        if (WidgetDropGhost is null)
+        {
+            return;
+        }
+
+        if (_ghostCell is not { } cell || columns <= 0 || rows <= 0)
+        {
+            WidgetDropGhost.IsVisible = false;
+            return;
+        }
+
+        var (cellWidth, cellHeight) = (grid.Bounds.Width / columns, grid.Bounds.Height / rows);
+        WidgetDropGhost.Margin = new Thickness(12 + (cell.Column * cellWidth), 12 + (cell.Row * cellHeight), 0, 0);
+        WidgetDropGhost.Width = Math.Max(0, (cell.ColumnSpan * cellWidth) - 8);
+        WidgetDropGhost.Height = Math.Max(0, (cell.RowSpan * cellHeight) - 8);
+        WidgetDropGhost.IsVisible = true;
+    }
+
+    // Widget pane chrome. Each button's DataContext is the pane it sits on, so the handler needs no parameter
+    // plumbing — the same shape as the session-row handlers above.
+    private void OnWidgetRefreshPressed(object? sender, RoutedEventArgs e) =>
+        _WithWidgetPane(sender, pane => pane.Refresh());
+
+    private void OnWidgetRemovePressed(object? sender, RoutedEventArgs e) =>
+        _WithWidgetPane(sender, pane =>
+        {
+            if (DataContext is CockpitViewModel cockpit)
+            {
+                _ = cockpit.Workspaces.RemovePaneAsync(pane.Id);
+            }
+        });
+
+    /// <summary>
+    /// The ⚙ on a widget pane. The plugin supplies the form's content; the host puts it in the dialog with the
+    /// Save/Close footer — the same split as a plugin's own settings view, so a widget never builds a window.
+    /// Saving asks that instance to refresh, which is how its view picks up the config the form just wrote.
+    /// </summary>
+    private void OnWidgetConfigPressed(object? sender, RoutedEventArgs e) =>
+        _WithWidgetPane(sender, pane =>
+        {
+            if (DataContext is CockpitViewModel cockpit)
+            {
+                _ = cockpit.ShowWidgetSettingsAsync(pane);
+            }
+        });
+
+    private void _WithWidgetPane(object? sender, Action<WidgetPaneViewModel> act)
+    {
+        if (sender is Control { DataContext: WidgetPaneViewModel pane })
+        {
+            act(pane);
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the dashboard grid's rows/columns from the active dashboard. A Grid's definitions cannot be
+    /// bound to an int, so they are applied here — the same reason the sidebar's width lives in code-behind.
+    /// The row count comes from the view model rather than the setting, which is what makes "2x2" a starting
+    /// shape the grid grows past instead of a cap that swallows the fifth widget.
+    /// </summary>
+    private void _RefreshDashboardGrid()
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || DashboardGrid?.ItemsPanelRoot is not Grid grid)
+        {
+            return;
+        }
+
+        grid.ColumnDefinitions.Clear();
+        for (var column = 0; column < cockpit.Workspaces.DashboardColumns; column++)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+        }
+
+        grid.RowDefinitions.Clear();
+        for (var row = 0; row < cockpit.Workspaces.DashboardRows; row++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition(1, GridUnitType.Star));
         }
     }
 

@@ -85,8 +85,18 @@ other provider, since only the Claude CLI has an interactive TUI):
 
 ## Voice
 
-- **STT (dictation):** Whisper.net transcription with automatic backend selection — tries CUDA, then CUDA12, then
-  Vulkan (Windows only), then CPU, honoring an explicit override.
+- **STT (dictation):** Whisper.net transcription with automatic backend selection — CUDA, then CUDA12, then
+  Vulkan, then CPU, honoring an explicit override. The order is per-platform and checked against the natives the
+  runtime packages actually carry: **Vulkan is offered on Linux as well as Windows** (it ships `linux-x64`), and
+  macOS gets the CPU tail alone, because its GPU path is Metal — which is not a separate runtime at all but rides
+  inside the CPU one, already accelerated on Apple Silicon.
+- **Nothing GPU-shaped is downloaded until a machine turns out to need it.** The GPU runtimes are fetched on
+  first use rather than bundled for every platform, which took a self-contained `win-x64` publish from **1.8 GB to
+  294 MB** (measured, both ways, on one machine). The model (`large-v3-turbo`, ~1.6 GB) is fetched on first
+  dictation and cached, and unloads again after five minutes with nothing to transcribe — it is 1.5 GB resident,
+  which is a lot to hold on a machine also running local models. Build with
+  `-p:BundleGpuWhisperRuntimes=false` for a slim CPU-only publish. Details and the measurements:
+  [binary size & on-demand runtimes](docs/binary-size-and-on-demand-runtimes.md).
 - **Open-mic mode:** continuous listening with Silero VAD-based endpointing (configurable silence timeout) — no
   push-to-talk needed.
 - **Push-to-talk:** a configurable key (default `F9`); optionally a **global hotkey** that works even when the
@@ -99,8 +109,8 @@ other provider, since only the Claude CLI has an interactive TUI):
 ## Plugins & plugin store
 
 - Plugins are .NET assemblies loaded from `plugins/` under the config directory, each implementing one interface and
-  contributing settings, sidebar buttons/sections, dialogs, **session providers**, shortcuts and/or MCP servers
-  through a host facade.
+  contributing settings, sidebar buttons/sections, dialogs, **session providers**, **dashboard widgets**, shortcuts
+  and/or MCP servers through a host facade.
 - **Install from zip**, then **Review & enable**. First load requires explicit **consent** (name/version/author/path/
   hash shown, "runs unsandboxed" warning); the entry assembly's **SHA-256** is pinned, so later tampering re-prompts.
 - **Plugin store dialog:** categories, searchable cards, a detail panel with version history and rollback — reusing
@@ -111,12 +121,36 @@ other provider, since only the Claude CLI has an interactive TUI):
 - Enabling/disabling/installing a plugin needs a **restart** (a loaded assembly can't be unloaded); a "Restart
   cockpit now" button appears once one is pending. Settings changes do not.
 
+## Workspaces & dashboards
+
+A **workspace** is a named, persisted pane layout, switched from a strip of tabs above the grid. There are two
+kinds, and the kind decides what a workspace can hold — so there are no dead controls, and widgets never end up
+mixed into a grid of sessions:
+
+- **💬 Sessions** — the work surface: your AI sessions, arranged the way you left them.
+- **📊 Dashboard** — a grid of **widgets**, for what you want to glance at rather than talk to.
+
+Tabs are reorderable by dragging and renamable in place; Ctrl+Shift+Left / Ctrl+Shift+Right walk between them.
+Closing a workspace with running sessions asks first, and says what it is about to stop. A workspace can override
+the global layout choice or follow it, which is its own setting rather than something Options decides for every
+desk at once.
+
+Widgets are dragged, dropped and resized freely on the dashboard's grid — drop one on another and they swap;
+leave a hole and the next widget you add reuses it. Drag one onto another dashboard's tab and it moves there,
+settings and all. Each placed instance keeps its own configuration, so two System Monitors side by side can watch
+different things. A dashboard **exports to a file** and imports back, with credentials scrubbed on the way out.
+
+Every widget comes from a plugin — the core owns the grid and the pane chrome and knows nothing about what a
+widget shows. Two ship as worked references: **Clock** (with the app) and **System Monitor** (from the store).
+See the [design note](docs/workspaces-widgets-terminals.md) and the
+[SDK's widget section](docs/plugins/PLUGIN-SDK.md#widget-plugins--a-pane-on-a-dashboard-workspace).
+
 ## UI
 
 ![Options → Shortcuts: every action, including switching sessions, is rebindable](docs/images/cockpit-shortcuts.png)
 
-- **Layout:** adaptive grid, single-session, or stacked-vertically; a **draggable sidebar** shows every session's
-  live status.
+- **Layout:** adaptive grid, single-session, or stacked-vertically — globally, or overridden per workspace; a
+  **draggable sidebar** shows every session's live status, and a **«** collapses it to a slim rail.
 - **Transcript:** markdown rendering (headings, syntax-coloured code blocks, tables, lists), tool calls collapse to
   headers with their results underneath, JSON results get a copy button, pasted images drop straight into the
   conversation.
@@ -256,8 +290,12 @@ dotnet test
 
 ## Documentation
 
+- **[Workspaces, dashboards & widgets](docs/workspaces-widgets-terminals.md)** — the design note behind the
+  workspace strip, the two workspace kinds, the dashboard grid and where widgets come from.
+- **[Binary size & on-demand runtimes](docs/binary-size-and-on-demand-runtimes.md)** — why the publish is 294 MB
+  instead of 1.8 GB, what is fetched when, and the measurements behind both.
 - **[Plugin SDK guide](docs/plugins/PLUGIN-SDK.md)** — build a plugin: settings, sidebar, dialogs, session providers,
-  shortcuts, MCP registration, packaging, install, and publishing your own plugin store.
+  dashboard widgets, shortcuts, MCP registration, packaging, install, and publishing your own plugin store.
 - **[Plugin API reference](docs/plugins/API-REFERENCE.md)** — every method a plugin can call (`ICockpitHost`,
   `ICockpitActions`, `IPluginStorage`, `IPluginSettingsView`, the `Sessions` and `Mcp` namespaces), with signatures,
   parameters and short examples.
