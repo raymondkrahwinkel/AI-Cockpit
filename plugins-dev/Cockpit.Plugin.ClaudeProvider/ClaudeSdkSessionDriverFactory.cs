@@ -13,7 +13,9 @@ internal sealed class ClaudeSdkSessionDriverFactory : IPluginSessionDriverFactor
     public IPluginSessionDriver Create(string configJson)
     {
         var config = ClaudeProviderConfig.Parse(configJson);
-        var executablePath = config.ExecutablePath is { Length: > 0 } pinned ? pinned : "claude";
+        // Resolve the command to a spawnable path — a pinned path passes through, a bare "claude" is looked up on PATH
+        // (and, on Windows, matched against the .cmd npm shim, which Process does not do itself).
+        var executablePath = ClaudeExecutableLocator.Resolve(config.ExecutablePath is { Length: > 0 } pinned ? pinned : "claude");
         return new ClaudeSdkSessionDriver(() => new ProcessClaudeSdkSubprocess(), config, executablePath);
     }
 }

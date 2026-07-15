@@ -96,9 +96,12 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
+    public List<(string Key, string Value)> LiveOptionSwitches { get; } = [];
+
     public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
     {
         LastLiveOption = (key, value);
+        LiveOptionSwitches.Add((key, value));
         return Task.CompletedTask;
     }
 
