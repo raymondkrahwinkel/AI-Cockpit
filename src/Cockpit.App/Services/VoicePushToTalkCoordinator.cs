@@ -35,6 +35,8 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     /// <summary>Whether the hold in progress actually opened a microphone — see <see cref="HandleHoldStarted"/>.</summary>
     private bool _isRecording;
 
+    private bool _subscribed;
+
     public VoicePushToTalkCoordinator(
         IGlobalHotkeyService hotkeyService,
         CockpitViewModel cockpit,
@@ -49,7 +51,26 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         _overlayCoordinator = overlayCoordinator;
         _pushToTalk = pushToTalk;
         _logger = logger;
+
+        // The key and the on/off flag are read when the hotkey is armed, which happened once at startup. Saving
+        // them has to re-arm, or the setting is a field that remembers what you typed and changes nothing.
+        _cockpit.VoiceSettingsSaved += (_, _) => _ = ReapplyAsync();
+
+        // The compositor may rebind this from its own shortcut settings at any time, without the cockpit being
+        // asked. Following it is the difference between reporting the trigger and reporting a guess.
+        _hotkeyService.TriggerDescriptionChanged += (_, _) => Dispatcher.UIThread.Post(_ReportTrigger);
     }
+
+    /// <summary>
+    /// Puts the trigger where the operator can see it — or says why there is none. Three different truths behind
+    /// one line: Windows armed the key it was given, a Wayland compositor bound whatever it chose (or is waiting
+    /// for the operator to choose), and macOS has no global hotkey at all.
+    /// </summary>
+    private void _ReportTrigger() =>
+        _cockpit.VoiceGlobalHotkeyTrigger = _hotkeyService.TriggerDescription
+            ?? (OperatingSystem.IsMacOS()
+                ? "Not available on macOS — the in-window key still works while the cockpit has focus."
+                : "Your desktop has not bound it yet. Look for “Push to talk (hold)” in its own shortcut settings.");
 
     /// <summary>The pill's view model. Reports what the hold is doing; what the pill actually shows is <see cref="VoiceOverlayCoordinator"/>'s call, since open-mic and read-aloud want it too.</summary>
     public VoiceOverlayViewModel Overlay => _overlayCoordinator.Overlay;
@@ -69,25 +90,53 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
             if (!settings.IsEnabled || !settings.GlobalPushToTalk)
             {
+                _cockpit.VoiceGlobalHotkeyTrigger = string.Empty;
                 return;
             }
 
-            _hotkeyService.HoldStarted += _OnHoldStarted;
-            _hotkeyService.HoldEnded += _OnHoldEnded;
-            await _hotkeyService.StartAsync(cancellationToken);
+            // Subscribed once, however many times this is called: changing the key in Options comes back through
+            // here to re-arm, and a second subscription would double every hold.
+            if (!_subscribed)
+            {
+                _hotkeyService.HoldStarted += _OnHoldStarted;
+                _hotkeyService.HoldEnded += _OnHoldEnded;
+                _subscribed = true;
+            }
 
-            _logger.LogInformation("Global push-to-talk armed on '{Key}'.", settings.PushToTalkKeyName);
+            await _hotkeyService.StartAsync(cancellationToken);
+            _ReportTrigger();
+
+            _logger.LogInformation(
+                "Global push-to-talk armed: asked for '{Key}', triggered by '{Trigger}'.",
+                settings.PushToTalkKeyName,
+                _hotkeyService.TriggerDescription ?? "<nothing — this platform or desktop has not bound it>");
         }
         catch (Exception exception)
         {
             // Leave nothing subscribed to a hook that never armed.
             _hotkeyService.HoldStarted -= _OnHoldStarted;
             _hotkeyService.HoldEnded -= _OnHoldEnded;
+            _subscribed = false;
 
             _logger.LogError(
                 exception,
                 "Global push-to-talk could not start; the hotkey will not fire until the cockpit is restarted.");
         }
+    }
+
+    /// <summary>
+    /// Re-arms on the key the operator just saved (#34). Changing it used to save the new key and leave the hook
+    /// listening for the old one until a restart, with nothing anywhere saying so — the settings field looked
+    /// like it decided the hotkey and did not.
+    /// </summary>
+    /// <remarks>
+    /// It also stops what a switched-off setting should stop: turning global push-to-talk off used to leave an
+    /// armed hook running for the rest of the session.
+    /// </remarks>
+    public async Task ReapplyAsync(CancellationToken cancellationToken = default)
+    {
+        await _hotkeyService.StopAsync(cancellationToken);
+        await StartAsync(cancellationToken);
     }
 
     private void _OnHoldStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleHoldStarted);
