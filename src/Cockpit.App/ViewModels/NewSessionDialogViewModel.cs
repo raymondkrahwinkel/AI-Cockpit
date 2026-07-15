@@ -9,6 +9,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -38,6 +39,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly ConversationPickerRegistration? _conversationPicker;
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
+    private readonly IPluginProviderRegistry? _sessionProviderRegistry;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
@@ -230,6 +232,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Shown instead of Claude's mode/model/effort combos when TTY is chosen for a plugin profile that declared its own start defaults.</summary>
     public bool ShowPluginTtyOptions => IsTty && !IsClaudeProfile && HasPluginTtyOptions;
 
+    /// <summary>The declared per-session start defaults for the selected profile's SDK session provider (Codex's sandbox/model) — empty for Claude/local profiles or a provider with none declared. Reuses the same generic option row as the TTY route.</summary>
+    public ObservableCollection<PluginTtyOptionSelectionViewModel> SdkLaunchOptions { get; } = [];
+
+    public bool HasSdkLaunchOptions => SdkLaunchOptions.Count > 0;
+
+    /// <summary>Shown when SDK is chosen for a plugin profile that declared its own start defaults — the SDK mirror of <see cref="ShowPluginTtyOptions"/>.</summary>
+    public bool ShowSdkLaunchOptions => IsSdk && !IsClaudeProfile && HasSdkLaunchOptions;
+
     /// <summary>Provider label shown next to the picker; empty for Claude, which needs no badge.</summary>
     public string SelectedProviderLabel => IsLocalProfile ? SessionProviderCatalog.Resolve(SelectedProfile!.Provider).Label : string.Empty;
 
@@ -270,7 +280,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IWorkingPathHistoryStore? workingPathStore = null,
         IConversationPickerRegistry? conversationPickers = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
-        IPluginTtyProviderRegistry? ttyProviderRegistry = null)
+        IPluginTtyProviderRegistry? ttyProviderRegistry = null,
+        IPluginProviderRegistry? sessionProviderRegistry = null)
     {
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
@@ -279,6 +290,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
+        _sessionProviderRegistry = sessionProviderRegistry;
     }
 
     /// <summary>
@@ -389,6 +401,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedProviderLabel));
 
         _RefreshPluginTtyOptions(value);
+        _RefreshSdkLaunchOptions(value);
         OnPropertyChanged(nameof(HasTtyProvider));
 
         // A profile with no TTY provider to run only runs as an SDK session (a local HTTP provider has none;
@@ -439,6 +452,29 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowPluginTtyOptions));
     }
 
+    /// <summary>
+    /// Rebuilds <see cref="SdkLaunchOptions"/> from the selected profile's SDK session provider (if any) — the
+    /// start defaults it declared via <c>SessionProviderRegistration.Options</c>, rendered generically here the
+    /// same way as the TTY route, since the host must not know what any of them mean.
+    /// </summary>
+    private void _RefreshSdkLaunchOptions(SessionProfile? profile)
+    {
+        SdkLaunchOptions.Clear();
+
+        if (_sessionProviderRegistry is not null
+            && profile?.ProviderConfig is PluginProviderConfig plugin
+            && _sessionProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
+        {
+            foreach (var option in registration.Options)
+            {
+                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue));
+            }
+        }
+
+        OnPropertyChanged(nameof(HasSdkLaunchOptions));
+        OnPropertyChanged(nameof(ShowSdkLaunchOptions));
+    }
+
     partial void OnIsSelectedProfileLoggedInChanged(bool value)
     {
         OnPropertyChanged(nameof(LoginStatusLabel));
@@ -456,6 +492,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowSdkStartHint));
         OnPropertyChanged(nameof(ShowTtyStartHint));
         OnPropertyChanged(nameof(ShowPluginTtyOptions));
+        OnPropertyChanged(nameof(ShowSdkLaunchOptions));
         // Kind drives the start gate (TTY needs no login) and the login hint (SDK-only), so both re-evaluate.
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));
@@ -497,9 +534,17 @@ public partial class NewSessionDialogViewModel : ViewModelBase
                 .ToDictionary(option => option.Key, option => option.Value!)
             : null;
 
+        // The SDK provider's own declared options only apply when SDK is chosen for it — the same key/value
+        // shape as the TTY options above, in the provider's own vocabulary (sandbox, model).
+        IReadOnlyDictionary<string, string>? sdkLaunchOptions = ShowSdkLaunchOptions
+            ? SdkLaunchOptions
+                .Where(option => !string.IsNullOrWhiteSpace(option.Value))
+                .ToDictionary(option => option.Key, option => option.Value!)
+            : null;
+
         CloseRequested?.Invoke(new NewSessionResult(
             SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name,
-            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions));
+            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions));
     }
 
     [RelayCommand]

@@ -44,4 +44,5 @@ public sealed record NewSessionResult(
     IReadOnlySet<string>? EnabledMcpServerNames = null,
     string? WorkingDirectory = null,
     SessionResume? Resume = null,
-    IReadOnlyDictionary<string, string>? PluginTtyOptions = null);
+    IReadOnlyDictionary<string, string>? PluginTtyOptions = null,
+    IReadOnlyDictionary<string, string>? SdkLaunchOptions = null);

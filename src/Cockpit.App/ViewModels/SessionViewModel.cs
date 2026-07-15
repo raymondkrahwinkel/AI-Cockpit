@@ -30,6 +30,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>The per-session MCP-server selection (#44) from the New-session dialog, set just before <see cref="StartWithProfileAsync"/> reads it in <see cref="StartConfiguredAsync"/>.</summary>
     private IReadOnlySet<string>? _enabledMcpServerNames;
+
+    /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
+    private IReadOnlyDictionary<string, string>? _launchOptions;
     private TranscriptEntryViewModel? _currentAssistantEntry;
     private TranscriptEntryViewModel? _currentThinkingEntry;
 
@@ -253,7 +256,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null)
+    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null)
     {
         if (_runtime is not null)
         {
@@ -270,6 +273,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         SelectedModel = model;
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
+        _launchOptions = launchOptions;
 
         await StartWithProfileAsync(profile, workingDirectory, resume);
 
@@ -319,7 +323,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume);
+            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume, _launchOptions);
 
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;

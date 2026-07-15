@@ -201,6 +201,29 @@
                 </ItemsControl>
             </Grid>
 
+            <!-- Per-session SDK launch options (increment 2 step A): the SDK mirror of the plugin TTY options
+                 above — the provider's own declared start defaults (Codex's sandbox/model), shown when SDK is
+                 chosen for a plugin profile that declared them. Same generic option row (reused view model). -->
+            <Grid ColumnDefinitions="72,*" IsVisible="{Binding ShowSdkLaunchOptions}">
+                <TextBlock Grid.Column="0" Text="Options" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding SdkLaunchOptions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
+                            <Grid ColumnDefinitions="90,*" Margin="0,0,0,4">
+                                <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding Value}"
+                                          IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                          PlaceholderText="(provider default)"/>
+                                <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
+                                         PlaceholderText="(provider default)"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+
             <!-- Per-session MCP-server selection (#44): a checkbox per enabled registry server, defaulting to
                  all checked (matching the pre-#44 behaviour). Hidden entirely when the registry has none. -->
             <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasMcpServers}">

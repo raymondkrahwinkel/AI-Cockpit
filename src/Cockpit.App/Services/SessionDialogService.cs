@@ -67,7 +67,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerStore, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry);
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };
