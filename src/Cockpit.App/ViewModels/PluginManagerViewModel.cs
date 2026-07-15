@@ -238,29 +238,40 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     /// <summary>Moves the plugin up the left menu (#72) — and up this list, which is ordered the same way.</summary>
     [RelayCommand]
-    private Task MovePluginUpAsync(PluginRowViewModel row) => _MovePluginAsync(row, -1);
+    private Task MovePluginUpAsync(PluginRowViewModel row) => MovePluginToAsync(row, Plugins.IndexOf(row) - 1);
 
     /// <summary>Moves the plugin down the left menu (#72).</summary>
     [RelayCommand]
-    private Task MovePluginDownAsync(PluginRowViewModel row) => _MovePluginAsync(row, +1);
+    private Task MovePluginDownAsync(PluginRowViewModel row) => MovePluginToAsync(row, Plugins.IndexOf(row) + 1);
 
-    // Reordering writes every plugin's position, not just the two that swapped: the stored order is only
-    // meaningful as a whole, and a plugin that was never moved has no position of its own yet.
-    private async Task _MovePluginAsync(PluginRowViewModel row, int offset)
+    /// <summary>
+    /// Moves a plugin to an absolute position in the menu order. The neighbour is the caller's to choose because
+    /// it is not always the next one along: the store dialog lists these under category headings, and "up" there
+    /// means past the previous plugin <em>under the same heading</em>, which the flat list may have several rows
+    /// away. This list stays the menu order either way — that is the one thing being written.
+    /// </summary>
+    /// <remarks>
+    /// Reordering writes every plugin's position, not just the ones that moved: the stored order is only
+    /// meaningful as a whole, and a plugin that was never moved has no position of its own yet.
+    /// </remarks>
+    public async Task MovePluginToAsync(PluginRowViewModel row, int target)
     {
+        var index = Plugins.IndexOf(row);
+        if (index < 0 || target < 0 || target >= Plugins.Count || target == index)
+        {
+            return;
+        }
+
+        var offset = target - index;
+        Plugins.Move(index, target);
+
+        // The move itself is this list, which is the menu order; persisting is what follows from it. Without a
+        // store (design time, the previewer) there is nowhere to write and nothing else to do — but the row still
+        // moves, because an arrow that quietly does nothing is worse than one that is not there.
         if (_registrationStore is null)
         {
             return;
         }
-
-        var index = Plugins.IndexOf(row);
-        var target = index + offset;
-        if (index < 0 || target < 0 || target >= Plugins.Count)
-        {
-            return;
-        }
-
-        Plugins.Move(index, target);
 
         for (var position = 0; position < Plugins.Count; position++)
         {

@@ -36,6 +36,77 @@ public class PluginStoreDialogViewModelTests
         installedVersion);
 
     /// <summary>
+    /// The Installed list is grouped by the category the store gives each plugin (Raymond, 2026-07-15): one flat
+    /// list stopped being readable once widgets, providers, issue trackers and a workflow engine all lived in it.
+    /// </summary>
+    [Fact]
+    public void InstalledGroups_AreTheStoresCategories_WithOtherLast()
+    {
+        var manager = _ManagerWith(
+            _Row("clock", "Clock", category: "Widgets", installedVersion: "1.0.0"),
+            _Row("youtrack", "YouTrack", category: "Issue trackers", installedVersion: "1.0.0"),
+            _Row("git", "Git status", category: "Productivity", installedVersion: "1.0.0"));
+        // Installed, in no store's catalogue — Raymond's own machine had exactly this: an old reference-widgets
+        // left behind by the clock/system-monitor split, doing nothing and listed nowhere.
+        manager.Plugins.Add(LocalPlugin("widgets", "Reference widgets"));
+        var vm = new PluginStoreDialogViewModel(manager);
+
+        vm.InstalledGroups.Select(group => group.Header)
+            .Should().Equal("Issue trackers", "Productivity", "Widgets", "Other");
+        vm.ShowInstalledGroupHeaders.Should().BeTrue();
+    }
+
+    /// <summary>A plugin.json carries no category — it is a store-index field — so with no catalogue there is nothing to group by, and the flat list is the honest answer.</summary>
+    [Fact]
+    public void WithNoCatalogue_EverythingIsOneGroup_AndTheHeadingsStayOut()
+    {
+        var manager = new PluginManagerViewModel();
+        manager.Plugins.Add(LocalPlugin("git", "Git status"));
+        manager.Plugins.Add(LocalPlugin("clock", "Clock"));
+        var vm = new PluginStoreDialogViewModel(manager);
+
+        vm.InstalledGroups.Should().ContainSingle().Which.Plugins.Should().HaveCount(2);
+        vm.ShowInstalledGroupHeaders.Should().BeFalse("one heading says nothing the list does not");
+    }
+
+    /// <summary>
+    /// The arrows move a plugin through the left menu, which is one flat sequence — and this list is no longer
+    /// shown as one. On the manager's plain ±1 they lie: ↑ on the first widget moves it past a provider, so the
+    /// menu shifts while nothing visibly moves. Within the heading is the reading that survives.
+    /// </summary>
+    [Fact]
+    public async Task MovingAPluginUp_MovesItPastItsOwnHeadingsPrevious_NotWhateverSitsAboveItInTheMenu()
+    {
+        var manager = _ManagerWith(
+            _Row("git", "Git status", category: "Productivity", installedVersion: "1.0.0"),
+            _Row("clock", "Clock", category: "Widgets", installedVersion: "1.0.0"),
+            _Row("transcripts", "Transcript search", category: "Productivity", installedVersion: "1.0.0"));
+        var vm = new PluginStoreDialogViewModel(manager);
+        var transcripts = manager.Plugins.Single(plugin => plugin.FolderId == "transcripts");
+
+        await vm.MoveInstalledPluginUpCommand.ExecuteAsync(transcripts);
+
+        vm.InstalledGroups.Single(group => group.Header == "Productivity")
+            .Plugins.Select(plugin => plugin.FolderId)
+            .Should().Equal(["transcripts", "git"], "it moves past the previous Productivity plugin, not past the clock sitting between them in the menu");
+    }
+
+    [Fact]
+    public async Task APluginAlreadyFirstUnderItsHeading_DoesNotMove()
+    {
+        var manager = _ManagerWith(
+            _Row("clock", "Clock", category: "Widgets", installedVersion: "1.0.0"),
+            _Row("git", "Git status", category: "Productivity", installedVersion: "1.0.0"));
+        var vm = new PluginStoreDialogViewModel(manager);
+        var git = manager.Plugins.Single(plugin => plugin.FolderId == "git");
+
+        await vm.MoveInstalledPluginUpCommand.ExecuteAsync(git);
+
+        manager.Plugins.Select(plugin => plugin.FolderId)
+            .Should().Equal(["clock", "git"], "it is the only Productivity plugin — there is nothing above it under its own heading");
+    }
+
+    /// <summary>
     /// A manager holding a catalogue — and, for every row the catalogue calls installed, the local plugin that
     /// makes it so. Those are one fact in the real app: a row reports an installed version because the folder is
     /// on disk. Filling only the catalogue built a state that cannot happen — the Installed pane empty while its
