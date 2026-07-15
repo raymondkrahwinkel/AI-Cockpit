@@ -31,6 +31,11 @@ sealed class Program
         // scrubs for the claude pty (#58), so the pty inherits a clean environment too.
         ScrubHostTerminalIdentity();
 
+        // Mark this process — and therefore every session it spawns — as running inside AI-Cockpit, so a nested
+        // agent (a Claude CLI, a Codex app-server, a TTY) can detect it and adapt, the way tools key off
+        // TERM_PROGRAM or TMUX. Set before anything can spawn a session.
+        MarkCockpitEnvironment();
+
         // Before anything reads or writes the cockpit's state: restrict the files an older version left
         // world-readable, and delete the --mcp-config files (bearer headers and all) that a crash or that same
         // older version left behind. Both must happen on every start, not when some lazily-built service
@@ -259,6 +264,12 @@ sealed class Program
             AssignEnvironment("TERM", Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue);
         }
     }
+
+    // Presence signal for nested agents (#45 D4 follow-up): a bare AI_COCKPIT=1, no version or per-session detail —
+    // a consumer keys off the variable existing. Via AssignEnvironment so it lands in the native environment too,
+    // which is what a spawned process inherits whichever path launches it; every session spawn inherits this
+    // process's environment, so this one assignment reaches all of them (Claude CLI, Codex app-server, TTY).
+    private static void MarkCockpitEnvironment() => AssignEnvironment("AI_COCKPIT", "1");
 
     // Environment.SetEnvironmentVariable updates .NET's managed copy but does not reliably remove the variable
     // from the native (libc) environment that Skia and other native libraries read via getenv — so on Unix we
