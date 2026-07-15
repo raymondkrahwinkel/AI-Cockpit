@@ -165,8 +165,13 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
             }
 
             // A memory ceiling, when the profile asks for one — the same lever the TTY path pulls, so a profile means
-            // the same thing whichever kind of session it opens.
-            if (SessionMemoryLimit.NodeOptions(startInfo.EnvironmentVariables["NODE_OPTIONS"], profile.MemoryLimitMb) is { } options)
+            // the same thing whichever kind of session it opens. Read the inherited value through ContainsKey: on
+            // .NET Core+ the StringDictionary indexer throws KeyNotFoundException for an absent key rather than
+            // returning null, so an unconditional read crashed the spawn whenever the shell had no NODE_OPTIONS.
+            var inheritedNodeOptions = startInfo.EnvironmentVariables.ContainsKey("NODE_OPTIONS")
+                ? startInfo.EnvironmentVariables["NODE_OPTIONS"]
+                : null;
+            if (SessionMemoryLimit.NodeOptions(inheritedNodeOptions, profile.MemoryLimitMb) is { } options)
             {
                 startInfo.EnvironmentVariables["NODE_OPTIONS"] = options;
             }
