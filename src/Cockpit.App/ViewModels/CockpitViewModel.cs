@@ -178,6 +178,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public WorkspacesViewModel Workspaces { get; }
 
     /// <summary>
+    /// Names what closing this workspace takes with it, asks, and closes it if the answer is yes — the one path
+    /// behind the tab's ✕, its context menu and the command palette, so the prompt cannot drift from what
+    /// closing actually does.
+    /// <para>
+    /// It asks because none of it comes back: a dashboard's whole arrangement, or every session tied to it. The
+    /// message says what is about to go rather than "are you sure" — "this cannot be undone" tells an operator
+    /// nothing they had not already assumed.
+    /// </para>
+    /// </summary>
+    public async Task CloseWorkspaceWithConfirmationAsync(string workspaceId)
+    {
+        if (Workspaces.Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is not { } workspace
+            || !Workspaces.CanClose(workspaceId))
+        {
+            return;
+        }
+
+        var loses = workspace.Type == WorkspaceType.Dashboard
+            ? _Count(workspace.Panes.Count, "widget")
+            : _Count(Sessions.Count(session => session.WorkspaceId == workspace.Id), "session");
+
+        var message = loses is null
+            ? $"Close “{workspace.Name}”?"
+            : workspace.Type == WorkspaceType.Dashboard
+                ? $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}. Closing the workspace discards its layout, and this cannot be undone."
+                // Sessions are stopped, not just forgotten — so the prompt says so rather than letting the
+                // operator find out afterwards.
+                : $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}, which will be stopped. This cannot be undone.";
+
+        if (await ConfirmAsync("Close workspace", message, confirmLabel: "Close"))
+        {
+            await CloseWorkspaceAsync(workspaceId);
+        }
+    }
+
+    /// <summary>"3 widgets" / "1 session", or null when there is nothing to lose — an empty workspace needs no warning about what it holds.</summary>
+    private static string? _Count(int count, string noun) =>
+        count == 0 ? null : count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+
+    /// <summary>
     /// Closes a workspace and everything running on it (Raymond, 2026-07-15). Its sessions go first, through the
     /// ordinary close path so each is disposed the way it would be on its own — otherwise they keep running with
     /// a WorkspaceId pointing at a workspace that no longer exists: no tab shows them, nothing can reach them,
@@ -1308,6 +1348,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // These carry what they act on, like Duplicate above, so they cannot join the parameterless switch.
+        // Each does nothing when it does not apply — the palette lists every command, and running one that does
+        // not apply right now should be a no-op rather than a surprise.
+        switch (action)
+        {
+            case ShortcutAction.NewSessionsWorkspace:
+                Workspaces.AddWorkspaceCommand.Execute(WorkspaceType.Sessions);
+                return;
+
+            case ShortcutAction.NewDashboardWorkspace:
+                Workspaces.AddWorkspaceCommand.Execute(WorkspaceType.Dashboard);
+                return;
+
+            case ShortcutAction.CloseWorkspace:
+                if (Workspaces.Active is { } active)
+                {
+                    // The same ask-then-close the tab's ✕ takes: the palette does not get to skip the prompt for
+                    // something that stops running sessions.
+                    _ = CloseWorkspaceWithConfirmationAsync(active.Id);
+                }
+
+                return;
+        }
+
         System.Windows.Input.ICommand? command = action switch
         {
             ShortcutAction.NewSession => NewSessionCommand,
@@ -2388,13 +2452,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _dialogService.ShowCommandPaletteDialogAsync(_BuildPaletteCommands());
+        await _dialogService.ShowCommandPaletteDialogAsync(BuildPaletteCommands());
     }
 
     // Every command the palette can run: the built-in app actions (except the palette itself) and every
     // plugin-contributed command, each with its shortcut shown. Plugins appear here just by registering a
     // shortcut — one with no gesture is a palette-only command.
-    private IReadOnlyList<PaletteCommand> _BuildPaletteCommands()
+    internal IReadOnlyList<PaletteCommand> BuildPaletteCommands()
     {
         var commands = new List<PaletteCommand>();
         foreach (var descriptor in ShortcutCatalog.All)
@@ -2416,6 +2480,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 shortcut.Title,
                 _PrettifyGesture(_shortcutSettings.GestureForPlugin(shortcut.Id, shortcut.DefaultGesture)),
                 shortcut.OnInvoke));
+        }
+
+        // One entry per widget rather than a single "Add widget" that reopens the gallery: the palette is a
+        // search box, so naming the widget in it is the whole point — you type "clock" and it is placed, which
+        // is one step where the gallery is two. Only while a dashboard is showing; a Sessions workspace has
+        // nowhere to put one, and a command that cannot run is one to leave out rather than grey out.
+        if (Workspaces.IsDashboardActive)
+        {
+            foreach (var widget in Workspaces.AvailableWidgets)
+            {
+                commands.Add(new PaletteCommand(
+                    $"Add widget: {widget.Title}",
+                    string.Empty,
+                    () => Workspaces.PlaceWidgetCommand.Execute(widget)));
+            }
         }
 
         return commands;

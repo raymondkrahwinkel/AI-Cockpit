@@ -30,6 +30,13 @@ public static class ShortcutCatalog
         new(ShortcutAction.NextSession, "Next session", "Ctrl+Down"),
         new(ShortcutAction.PreviousWorkspace, "Previous workspace", "Ctrl+Shift+Left"),
         new(ShortcutAction.NextWorkspace, "Next workspace", "Ctrl+Shift+Right"),
+        // Unbound on purpose. These are things you do to a workspace once and then live with, so they earn a
+        // place in the palette rather than a gesture — and every default gesture handed out here is one taken
+        // from the shell underneath. An operator who wants one binds it in Options; the palette is where they
+        // find out it exists at all.
+        new(ShortcutAction.NewSessionsWorkspace, "New sessions workspace", ""),
+        new(ShortcutAction.NewDashboardWorkspace, "New dashboard workspace", ""),
+        new(ShortcutAction.CloseWorkspace, "Close workspace", ""),
     ];
 
     /// <summary>

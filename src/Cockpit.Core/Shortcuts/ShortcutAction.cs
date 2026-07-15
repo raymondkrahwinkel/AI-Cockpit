@@ -19,4 +19,7 @@ public enum ShortcutAction
     NextSession,
     PreviousWorkspace,
     NextWorkspace,
+    NewSessionsWorkspace,
+    NewDashboardWorkspace,
+    CloseWorkspace,
 }
