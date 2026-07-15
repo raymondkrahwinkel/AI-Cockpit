@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using FluentAssertions;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Voice;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Voice.GlobalHotkey;
 
@@ -55,9 +56,10 @@ public class GlobalHotkeyServiceDependencyInjectionTests
 
     /// <summary>
     /// What this machine should get: Windows takes the keyboard hook, Linux is decided by the session rather than
-    /// the OS, and anything else (macOS) has neither and says so. Read from the same two environment variables the
-    /// registration reads, so the two can only agree by both being right about the same session — a headless CI
-    /// runner sets neither, is therefore not Wayland, and gets the hook.
+    /// the OS, and anything else (macOS) has neither and says so. What the session means is asked of
+    /// <see cref="LinuxSession"/> — the same kernel the registration asks, and the reason this file no longer
+    /// carries a second copy of that rule to drift from the first. <see cref="LinuxSessionTests"/> is where both
+    /// of its answers are actually proved; a headless CI runner can only ever be the X11 one.
     /// </summary>
     private static Type _ExpectedForThisSession()
     {
@@ -71,10 +73,10 @@ public class GlobalHotkeyServiceDependencyInjectionTests
             return typeof(NoOpGlobalHotkeyService);
         }
 
-        var isWayland =
-            string.Equals(Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"), "wayland", StringComparison.OrdinalIgnoreCase)
-            || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
-
-        return isWayland ? typeof(PortalGlobalHotkeyService) : typeof(SharpHookGlobalHotkeyService);
+        return LinuxSession.IsWayland(
+            Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"),
+            Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"))
+            ? typeof(PortalGlobalHotkeyService)
+            : typeof(SharpHookGlobalHotkeyService);
     }
 }
