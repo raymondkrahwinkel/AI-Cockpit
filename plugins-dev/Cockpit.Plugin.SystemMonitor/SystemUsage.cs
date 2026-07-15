@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Cockpit.Plugin.SystemMonitor;
 
 /// <summary>
@@ -7,21 +5,35 @@ namespace Cockpit.Plugin.SystemMonitor;
 /// Deliberately shallow: a widget is a glance, not a profiler, so this reads what is cheap and honest rather
 /// than reaching for per-platform counters.
 /// </summary>
-internal static class SystemUsage
+/// <remarks>
+/// An instance rather than a static, because <see cref="CpuPercent"/> is a difference against the previous
+/// reading and that sample point belongs to the pane doing the asking. Shared statically, two System Monitors —
+/// and placing one twice, configured differently, is the whole point of a widget with a ⚙ — consumed each
+/// other's: both timers fire two seconds apart, so whichever ran second measured against a sample point
+/// microseconds old and reported a number that was not the CPU share at all. Nothing is shared now, so there is
+/// nothing to corrupt.
+/// </remarks>
+internal sealed class SystemUsage
 {
-    private static TimeSpan _lastCpuTime = TimeSpan.Zero;
-    private static DateTimeOffset _lastSampledAt = DateTimeOffset.MinValue;
+    private TimeSpan _lastCpuTime = TimeSpan.Zero;
+    private DateTimeOffset _lastSampledAt = DateTimeOffset.MinValue;
 
     /// <summary>
-    /// The cockpit's own CPU share since the previous call, across all cores. Process-scoped rather than
-    /// machine-wide: a cross-platform machine-wide figure needs per-OS counters, and what this pane is for —
-    /// "is the thing I am running busy" — is answered by the process. The first call has no interval to
-    /// measure against and reports zero.
+    /// The cockpit's own CPU share since this instance's previous call, across all cores. Process-scoped rather
+    /// than machine-wide: a cross-platform machine-wide figure needs per-OS counters, and what this pane is for —
+    /// "is the thing I am running busy" — is answered by the process. The first call has no interval to measure
+    /// against and reports zero.
     /// </summary>
-    public static double CpuPercent()
+    /// <remarks>
+    /// <see cref="Environment.CpuUsage"/> rather than <c>Process.GetCurrentProcess().TotalProcessorTime</c>: the
+    /// same measurement (user + privileged time for this process), but it holds no native handle. The old form
+    /// built a new undisposed <c>Process</c> around one on every reading — thirty a minute per pane, all waiting
+    /// on the finalizer.
+    /// </remarks>
+    public double CpuPercent()
     {
         var now = DateTimeOffset.UtcNow;
-        var cpu = Process.GetCurrentProcess().TotalProcessorTime;
+        var cpu = Environment.CpuUsage.TotalTime;
 
         if (_lastSampledAt == DateTimeOffset.MinValue)
         {
@@ -37,7 +49,7 @@ internal static class SystemUsage
     }
 
     /// <summary>How much of the machine's memory is in use, from the GC's view of the host.</summary>
-    public static double MemoryPercent()
+    public double MemoryPercent()
     {
         var info = GC.GetGCMemoryInfo();
         return info.TotalAvailableMemoryBytes <= 0
@@ -46,7 +58,7 @@ internal static class SystemUsage
     }
 
     /// <summary>How full the drive the cockpit runs from is.</summary>
-    public static double DiskPercent()
+    public double DiskPercent()
     {
         try
         {

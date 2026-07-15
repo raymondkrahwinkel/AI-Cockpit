@@ -693,11 +693,16 @@ public partial class CockpitView : UserControl
         }
 
         // The math answers both gestures the same way: what rectangle would this land on, or null when the
-        // answer is "nothing legal" — a resize onto a neighbour, off the grid, or inverted past its own origin.
+        // answer is "nothing legal" — a resize onto a neighbour, off the grid, or inverted past its own origin;
+        // a move off the grid or over two widgets at once. The move asks Drop rather than working the cell out
+        // here, so the ghost cannot promise a landing the release then refuses.
         var panes = cockpit.Workspaces.WidgetPanes.Select(pane => (pane.Id, pane.Pane.Cell)).ToList();
+        var layout = new DashboardLayout { Columns = columns, Rows = rows };
         _ghostCell = _resizingWidget is not null
-            ? DashboardGridMath.Resize(panes, _resizingWidget.Id, target, new DashboardLayout { Columns = columns, Rows = rows })
-            : active.Pane.Cell with { Column = target.Column, Row = target.Row };
+            ? DashboardGridMath.Resize(panes, _resizingWidget.Id, target, layout)
+            : DashboardGridMath.Drop(panes, active.Id, target, layout) is { } arranged
+                ? arranged.First(entry => entry.Id == active.Id).Cell
+                : null;
 
         _ShowGhost(grid, columns, rows);
     }
@@ -714,9 +719,14 @@ public partial class CockpitView : UserControl
             }
             else if (_ghostCell is { } cell)
             {
-                _ = _resizingWidget is { } resizing
-                    ? cockpit.Workspaces.ResizePaneAsync(resizing.Id, cell.ColumnEnd - 1, cell.RowEnd - 1)
-                    : cockpit.Workspaces.DropPaneAsync(_draggingWidget!.Id, cell.Column, cell.Row);
+                if (_resizingWidget is { } resizing)
+                {
+                    _ = cockpit.Workspaces.ResizePaneAsync(resizing.Id, cell.ColumnEnd - 1, cell.RowEnd - 1);
+                }
+                else if (_draggingWidget is { } dragging)
+                {
+                    _ = cockpit.Workspaces.DropPaneAsync(dragging.Id, cell.Column, cell.Row);
+                }
             }
         }
 

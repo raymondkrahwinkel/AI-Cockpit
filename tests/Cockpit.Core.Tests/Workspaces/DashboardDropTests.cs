@@ -16,7 +16,7 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0), ("b", 1, 0));
 
-        var arranged = DashboardGridMath.Drop(panes, "a", (1, 1));
+        var arranged = DashboardGridMath.Drop(panes, "a", (1, 1), _Grid);
 
         _CellOf(arranged, "a").Should().Be(new GridCell(1, 1));
         _CellOf(arranged, "b").Should().Be(new GridCell(1, 0), "the pane that was not dragged does not move");
@@ -27,7 +27,7 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0), ("b", 1, 0));
 
-        var arranged = DashboardGridMath.Drop(panes, "a", (1, 0));
+        var arranged = DashboardGridMath.Drop(panes, "a", (1, 0), _Grid);
 
         _CellOf(arranged, "a").Should().Be(new GridCell(1, 0));
         _CellOf(arranged, "b").Should().Be(new GridCell(0, 0));
@@ -38,15 +38,15 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0), ("b", 1, 0));
 
-        DashboardGridMath.Drop(panes, "a", (0, 0)).Should().BeSameAs(panes);
+        DashboardGridMath.Drop(panes, "a", (0, 0), _Grid).Should().BeSameAs(panes);
     }
 
     [Fact]
-    public void Drop_AnUnknownPane_ChangesNothing()
+    public void Drop_AnUnknownPane_IsRefused()
     {
         var panes = _Panes(("a", 0, 0));
 
-        DashboardGridMath.Drop(panes, "gone", (1, 1)).Should().BeSameAs(panes);
+        DashboardGridMath.Drop(panes, "gone", (1, 1), _Grid).Should().BeNull();
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class DashboardDropTests
     {
         List<(string, GridCell)> panes = [("a", new GridCell(0, 0, 2, 1))];
 
-        DashboardGridMath.Drop(panes, "a", (0, 1)).Should().ContainSingle()
+        DashboardGridMath.Drop(panes, "a", (0, 1), _Grid).Should().ContainSingle()
             .Which.Cell.Should().Be(new GridCell(0, 1, 2, 1));
     }
 
@@ -63,10 +63,95 @@ public class DashboardDropTests
     {
         var panes = _Panes(("a", 0, 0), ("b", 1, 0), ("c", 0, 1));
 
-        var arranged = DashboardGridMath.Drop(panes, "c", (1, 0));
+        var arranged = DashboardGridMath.Drop(panes, "c", (1, 0), _Grid);
 
-        arranged.Select(pane => (pane.Cell.Column, pane.Cell.Row)).Should().OnlyHaveUniqueItems();
+        _NoneOverlap(arranged).Should().BeTrue();
     }
+
+    /// <summary>
+    /// The rectangles are what may not collide, not the origins. Asserting on origins passed while every pane in
+    /// the test was one cell — which is the whole trick: it read as "nothing is stacked" and meant "nothing has
+    /// the same top-left". A pane spanning two columns sat on its neighbour with a different origin and the
+    /// assertion had nothing to say about it.
+    /// </summary>
+    [Fact]
+    public void Drop_AWidePane_OverTwoNarrowOnes_IsRefused_RatherThanLeavingOneUnderneath()
+    {
+        List<(string, GridCell)> panes = [("a", new GridCell(0, 0, 2, 1)), ("b", new GridCell(2, 0)), ("c", new GridCell(3, 0))];
+
+        // Landing at column 2 covers both b and c. A swap has one answer, and giving it to b left c stacked
+        // under a — persisted, and drawn one on top of the other ever after.
+        DashboardGridMath.Drop(panes, "a", (2, 0), _Grid).Should().BeNull();
+    }
+
+    [Fact]
+    public void Drop_PastTheLastColumn_IsRefused_SoAWidePaneCannotLeaveTheGrid()
+    {
+        List<(string, GridCell)> panes = [("a", new GridCell(0, 0, 2, 1))];
+
+        // CellAt clamps the pointer to the last column, so a two-wide pane dropped against the right edge asks
+        // for columns 3 and 4 of a four-column grid. Resize refuses exactly this; Drop used to write it down.
+        DashboardGridMath.Drop(panes, "a", (_Grid.Columns - 1, 0), _Grid).Should().BeNull();
+        DashboardGridMath.Drop(panes, "a", (_Grid.Columns - 2, 0), _Grid).Should().NotBeNull("flush with the edge still fits");
+    }
+
+    [Fact]
+    public void Drop_PastTheLastRow_IsAllowed_BecauseRowsGrow()
+    {
+        var panes = _Panes(("a", 0, 0));
+
+        DashboardGridMath.Drop(panes, "a", (0, _Grid.Rows + 2), _Grid).Should().NotBeNull("rows are a starting height, not a cap");
+    }
+
+    [Fact]
+    public void Drop_ASwapTheOccupantCannotFit_IsRefused()
+    {
+        // b is two wide; sending it to a's origin at column 3 would reach past the grid. The swap has to be
+        // refused as a whole — moving a and leaving b where it was is not a swap, it is a stack.
+        List<(string, GridCell)> panes = [("a", new GridCell(3, 0)), ("b", new GridCell(0, 0, 2, 1))];
+
+        DashboardGridMath.Drop(panes, "a", (0, 0), _Grid).Should().BeNull();
+    }
+
+    [Fact]
+    public void Drop_ASwapThatWouldLandTheOccupantOnAThirdPane_IsRefused()
+    {
+        // Swapping a and b would put b (two wide) at a's origin, across c. The pane being traded with is not the
+        // only one that has to fit.
+        List<(string, GridCell)> panes = [("a", new GridCell(0, 0)), ("b", new GridCell(2, 0, 2, 1)), ("c", new GridCell(1, 0))];
+
+        DashboardGridMath.Drop(panes, "a", (2, 0), _Grid).Should().BeNull();
+    }
+
+    [Fact]
+    public void Drop_EveryArrangementItReturns_IsFreeOfOverlaps()
+    {
+        List<(string, GridCell)> panes = [("a", new GridCell(0, 0, 2, 1)), ("b", new GridCell(2, 0)), ("c", new GridCell(0, 1, 1, 2))];
+        string[] ids = ["a", "b", "c"];
+
+        // Whatever it accepts, it accepts wholly: every cell of the grid it hands back holds at most one pane.
+        for (var column = 0; column < _Grid.Columns; column++)
+        {
+            for (var row = 0; row < _Grid.Rows; row++)
+            {
+                foreach (var id in ids)
+                {
+                    if (DashboardGridMath.Drop(panes, id, (column, row), _Grid) is { } arranged)
+                    {
+                        _NoneOverlap(arranged).Should().BeTrue($"dropping {id} on ({column},{row}) was accepted");
+                        arranged.Should().OnlyContain(pane => pane.Cell.ColumnEnd <= _Grid.Columns, "and stays on the grid");
+                    }
+                }
+            }
+        }
+    }
+
+    private static bool _NoneOverlap(IReadOnlyList<(string Id, GridCell Cell)>? panes) =>
+        _Accepted(panes).All(pane => _Accepted(panes).Where(other => other.Id != pane.Id).All(other => !other.Cell.Overlaps(pane.Cell)));
+
+    /// <summary>The arrangement a drop came back with, or a failure that says the drop was refused — which reads better than a null-reference three frames down.</summary>
+    private static IReadOnlyList<(string Id, GridCell Cell)> _Accepted(IReadOnlyList<(string Id, GridCell Cell)>? arranged) =>
+        arranged ?? throw new InvalidOperationException("the drop was refused, so there is no arrangement to look at");
 
     [Theory]
     [InlineData(10, 10, 0, 0)]
@@ -163,6 +248,6 @@ public class DashboardDropTests
     private static IReadOnlyList<(string Id, GridCell Cell)> _Panes(params (string Id, int Column, int Row)[] panes) =>
         [.. panes.Select(pane => (pane.Id, new GridCell(pane.Column, pane.Row)))];
 
-    private static GridCell _CellOf(IReadOnlyList<(string Id, GridCell Cell)> panes, string id) =>
-        panes.First(pane => pane.Id == id).Cell;
+    private static GridCell _CellOf(IReadOnlyList<(string Id, GridCell Cell)>? panes, string id) =>
+        _Accepted(panes).First(pane => pane.Id == id).Cell;
 }
