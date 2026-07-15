@@ -39,7 +39,22 @@ public sealed record PluginTtyLaunchContext(
     IReadOnlyDictionary<string, string> Options,
     string WorkingDirectory,
     PluginTtyResume? Resume,
-    IReadOnlyDictionary<string, string> BaseEnvironment);
+    IReadOnlyDictionary<string, string> BaseEnvironment)
+{
+    /// <summary>
+    /// The MCP servers the host resolved from its shared registry for this session (#26), so a provider that hosts
+    /// tools of its own can fan them into the TUI (Claude writes them to a <c>--mcp-config</c>). Empty when none
+    /// apply. Init-only so an already-compiled plugin keeps its old constructor and simply ignores them.
+    /// </summary>
+    public IReadOnlyList<PluginMcpServer> McpServers { get; init; } = [];
+
+    /// <summary>
+    /// The system prompt to append when the operator enabled the orchestrator (#67), so this TUI session may hand
+    /// work to another profile — or <see langword="null"/> when delegation is off. The host owns the prompt text and
+    /// whether it applies; the provider only appends it. Init-only, so an already-compiled plugin ignores it.
+    /// </summary>
+    public string? DelegationSystemPrompt { get; init; }
+}
 
 /// <summary>Pick up an earlier conversation: the most recent one, or a specific one by the id the CLI gave it.</summary>
 /// <param name="SessionId">The conversation to resume; <see langword="null"/> means the most recent one.</param>
@@ -64,7 +79,16 @@ public sealed record PluginTtyLaunchSpec(
     IReadOnlyList<string> Arguments,
     IReadOnlyDictionary<string, string?> EnvironmentOverlay,
     string WorkingDirectory,
-    IReadOnlyList<string> SessionScopedFiles);
+    IReadOnlyList<string> SessionScopedFiles)
+{
+    /// <summary>
+    /// The status/limits snapshot file the provider's CLI writes to — Claude's statusline relay is the only
+    /// machine-readable route to its context/usage limits — which the host polls to fill the session header's
+    /// limit bars. <see langword="null"/> when the provider surfaces no limits this way (Codex's TUI has no such
+    /// file). Init-only, so an already-compiled plugin that never sets it keeps reporting none.
+    /// </summary>
+    public string? StatusFile { get; init; }
+}
 
 /// <summary>
 /// A start default the provider wants the New-session dialog to ask about — Claude has a permission mode and an
