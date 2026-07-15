@@ -91,6 +91,19 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         }
     }
 
+    /// <summary>Two-way for the ⚙'s "Show grid lines" toggle — draws the cells the widgets snap to, off by default.</summary>
+    public bool DashboardShowGridLines
+    {
+        get => Active?.Layout.ShowGridLines ?? false;
+        set
+        {
+            if (Active is { Type: WorkspaceType.Dashboard } dashboard && value != dashboard.Layout.ShowGridLines)
+            {
+                _ = SetDashboardLayoutAsync(dashboard.Id, dashboard.Layout with { ShowGridLines = value });
+            }
+        }
+    }
+
     /// <summary>Two-way for the ⚙'s Rows spinner — the dashboard's starting height, which it grows past as widgets are added.</summary>
     public decimal DashboardRowsSetting
     {
@@ -281,6 +294,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(DashboardColumns));
         OnPropertyChanged(nameof(DashboardColumnsSetting));
         OnPropertyChanged(nameof(DashboardRowsSetting));
+        OnPropertyChanged(nameof(DashboardShowGridLines));
     }
 
     /// <summary>

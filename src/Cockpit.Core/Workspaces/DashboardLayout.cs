@@ -29,6 +29,13 @@ public sealed record DashboardLayout
     /// <summary>How many rows the dashboard starts with. Grows as needed; clamped to <see cref="MinRows"/>..<see cref="MaxRows"/>.</summary>
     public int Rows { get; init; } = DefaultRows;
 
+    /// <summary>
+    /// Draws the cells the widgets snap to. Off by default — a dashboard is something you look at, not a
+    /// worksheet — but a grid you cannot see is one you are placing on blind, so it is a toggle rather than a
+    /// debug build's secret. Per dashboard, since it answers a question about this dashboard's shape.
+    /// </summary>
+    public bool ShowGridLines { get; init; }
+
     /// <remarks>
     /// The defaults are a canvas, not a shape: a widget is placed and sized freely on it, so the grid is the
     /// resolution you snap to rather than a slot count. 12×8 leaves room to arrange without every cell being a

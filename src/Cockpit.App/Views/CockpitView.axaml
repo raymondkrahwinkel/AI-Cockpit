@@ -424,6 +424,8 @@
                                         </DockPanel>
                                         <TextBlock Text="Rows are a starting height — the dashboard grows past it as you add widgets."
                                                    FontSize="11" Opacity="0.7" TextWrapping="Wrap" MaxWidth="190"/>
+                                        <CheckBox Content="Show grid lines" IsChecked="{Binding Workspaces.DashboardShowGridLines}"
+                                                  ToolTip.Tip="Draw the cells widgets snap to — handy while arranging"/>
                                     </StackPanel>
                                 </Flyout>
                             </Button.Flyout>
@@ -438,6 +440,14 @@
                      DockPanel children: only a DockPanel's last child fills, so the grid would be docked to the
                      left the moment anything followed it. -->
                 <Panel>
+
+                <!-- The cells, under everything and never in the way of a pointer. Same margin as the grid it
+                     traces, so the lines land on the boundaries the widgets actually snap to. -->
+                <controls:DashboardGridLines Margin="12" IsHitTestVisible="False"
+                                             IsVisible="{Binding Workspaces.DashboardShowGridLines}"
+                                             Columns="{Binding Workspaces.DashboardColumns}"
+                                             Rows="{Binding Workspaces.DashboardRows}"
+                                             LineBrush="{StaticResource CockpitHairlineBrush}"/>
 
                 <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
                      configured height as widgets are added (rows are a starting height, not a cap). -->
