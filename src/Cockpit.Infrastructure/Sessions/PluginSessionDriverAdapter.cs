@@ -102,7 +102,16 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         var merged = launchOptions is null
             ? new Dictionary<string, string>()
             : new Dictionary<string, string>(launchOptions);
-        merged[WellKnownPluginSessionOptions.PermissionMode] = permissionMode;
+
+        // The operator's explicit choice in the provider's own permission-mode launch option wins; the host's typed
+        // fold only supplies one when the options carry none (a route with no permission-mode option of its own). Without
+        // this, a profile's stale typed default silently overrode a launch-time change in the generic dropdown — a
+        // session started with "Ask permissions" ran a write tool ungated because bypass folded over it.
+        if (!merged.ContainsKey(WellKnownPluginSessionOptions.PermissionMode))
+        {
+            merged[WellKnownPluginSessionOptions.PermissionMode] = permissionMode;
+        }
+
         return merged;
     }
 

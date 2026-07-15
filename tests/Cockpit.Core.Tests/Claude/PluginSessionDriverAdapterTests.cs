@@ -218,6 +218,23 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public async Task StartAsync_WhenTheLaunchOptionsAlreadyCarryAPermissionMode_TheOperatorsExplicitChoiceWins_OverTheTypedFold()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        // The operator picked "default" (Ask permissions) in the provider's own permission-mode option; a profile's
+        // stale typed default (bypass) must not fold over it, or a write tool runs ungated. Proven red before the guard:
+        // the typed value overwrote the explicit launch-time choice, so a session started as bypass.
+        await adapter.StartAsync(
+            permissionMode: "bypassPermissions",
+            launchOptions: new Dictionary<string, string> { [WellKnownPluginSessionOptions.PermissionMode] = "default", ["model"] = "opus" });
+
+        inner.LastLaunchOptions.Should().ContainKey(WellKnownPluginSessionOptions.PermissionMode)
+            .WhoseValue.Should().Be("default");
+    }
+
+    [Fact]
     public async Task StartAsync_WithNoPermissionMode_LeavesTheLaunchOptionsUntouched()
     {
         var inner = new FakePluginSessionDriver();
