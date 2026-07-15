@@ -14,8 +14,11 @@ namespace Cockpit.App.Plugins;
 /// </summary>
 public interface IWidgetRegistry
 {
-    /// <summary>Records a widget type along with its plugin's storage and observe surface, which a placed instance needs later.</summary>
-    void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions);
+    /// <summary>Records a widget type along with what its owning plugin brought: storage, the observe surface, and the keys it declared as credentials.</summary>
+    void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys);
+
+    /// <summary>Every credential key any widget-providing plugin declared — what an export scrubs beyond the name rule.</summary>
+    IReadOnlyList<string> DeclaredSecretKeys { get; }
 
     /// <summary>
     /// Raised when a plugin contributes a widget. Plugins initialize after the cockpit's view models are built,
@@ -47,9 +50,18 @@ internal sealed class WidgetRegistry : IWidgetRegistry, ISingletonService
 
     public IReadOnlyList<WidgetRegistration> Widgets => [.. _widgets.Select(widget => widget.Registration)];
 
-    public void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions)
+    /// <remarks>
+    /// The union across every widget-providing plugin, not per widget. Over-scrubbing costs a plugin a setting
+    /// whose name another plugin declared secret; under-scrubbing ships a live credential in a file you meant
+    /// to share. Of the two, the first is the one you can afford — and a plain setting named "pat" or
+    /// "credential" is not a thing anyone writes by accident.
+    /// </remarks>
+    public IReadOnlyList<string> DeclaredSecretKeys =>
+        [.. _widgets.SelectMany(widget => widget.DeclaredSecretKeys).Distinct(StringComparer.OrdinalIgnoreCase)];
+
+    public void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions, IReadOnlyList<string> declaredSecretKeys)
     {
-        _widgets.Add(new RegisteredWidget(widget, pluginStorage, sessions));
+        _widgets.Add(new RegisteredWidget(widget, pluginStorage, sessions, declaredSecretKeys));
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

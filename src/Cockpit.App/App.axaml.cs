@@ -170,7 +170,11 @@ public partial class App : Application
             actions,
             _CreatePluginStorage(discovered, registrationStore, secretFieldStore),
             dialogHost,
-            sessionObserver));
+            sessionObserver,
+            // The keys this plugin says hold a credential. They already gate encryption and the backup scrubber;
+            // handing them to the host lets a dashboard export drop them too, which is the third place a
+            // declared secret has to be honoured.
+            discovered.Manifest.SecretKeys));
 
         // The templates installed from a store (#69) join the ones the plugins ship, in the same registry: to the
         // operator "a flow somebody already drew" is one kind of thing, whether it came with a plugin or from a store.

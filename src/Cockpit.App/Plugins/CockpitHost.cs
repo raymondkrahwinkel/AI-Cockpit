@@ -31,7 +31,8 @@ internal sealed class CockpitHost(
     ICockpitActions actions,
     IPluginStorage storage,
     IPluginDialogHost dialogHost,
-    ICockpitSessionObserver sessions) : ICockpitHost
+    ICockpitSessionObserver sessions,
+    IReadOnlyList<string>? declaredSecretKeys = null) : ICockpitHost
 {
     public IServiceProvider Services => services;
 
@@ -69,10 +70,11 @@ internal sealed class CockpitHost(
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
 
-    // This plugin's own storage and observe surface travel with the registration: a placed instance builds its
-    // context long after load, and by then the widget id is the only thing linking it back here.
+    // This plugin's own storage, observe surface and declared secret keys travel with the registration: a placed
+    // instance builds its context long after load, and by then the widget id is the only thing linking it back
+    // here. The declared keys are what lets an export drop a credential the name rule cannot guess ("pat").
     public void AddWidget(WidgetRegistration registration) =>
-        services.GetRequiredService<IWidgetRegistry>().Register(registration, storage, sessions);
+        services.GetRequiredService<IWidgetRegistry>().Register(registration, storage, sessions, declaredSecretKeys ?? []);
 
     public IReadOnlyList<WidgetRegistration> Widgets =>
         services.GetRequiredService<IWidgetRegistry>().Widgets;
