@@ -89,7 +89,7 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
             if (_factory is null)
             {
                 var modelType = WhisperModelCatalog.Resolve(settings.ModelName);
-                var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken).ConfigureAwait(false);
+                var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken, logger).ConfigureAwait(false);
 
                 var order = WhisperBackendPlanner.BuildOrder(settings.BackendPreference, OperatingSystem.IsWindows());
                 RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();

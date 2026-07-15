@@ -47,7 +47,7 @@ internal sealed class WhisperVoiceActivityDetector(ILogger<WhisperVoiceActivityD
                 return _processor;
             }
 
-            var modelPath = await WhisperModelCache.EnsureVadDownloadedAsync(SileroVadType.V6_2_0, cancellationToken).ConfigureAwait(false);
+            var modelPath = await WhisperModelCache.EnsureVadDownloadedAsync(SileroVadType.V6_2_0, cancellationToken, logger).ConfigureAwait(false);
             _factory = WhisperVadFactory.FromPath(modelPath);
             _processor = _factory.CreateBuilder()
                 .WithThreshold(0.5f)

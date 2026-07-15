@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Cockpit.Infrastructure.Configuration;
 using Whisper.net.Ggml;
 
@@ -14,7 +15,7 @@ internal static class WhisperModelCache
     private static string ModelsDirectory => Path.Combine(
         Path.GetDirectoryName(CockpitConfigPath.Default) ?? Path.GetTempPath(), "models");
 
-    public static async Task<string> EnsureDownloadedAsync(GgmlType type, CancellationToken cancellationToken)
+    public static async Task<string> EnsureDownloadedAsync(GgmlType type, CancellationToken cancellationToken, ILogger? logger = null)
     {
         Directory.CreateDirectory(ModelsDirectory);
         var path = Path.Combine(ModelsDirectory, $"ggml-{type.ToString().ToLowerInvariant()}.bin");
@@ -23,6 +24,10 @@ internal static class WhisperModelCache
             return path;
         }
 
+        // First use on this machine: the model is fetched now (large-v3-turbo is ~1.6 GB). This can take
+        // minutes and the whole dictation pipeline blocks on it — logged loudly so a silent first-use wait
+        // is never mistaken for a broken hotkey.
+        logger?.LogInformation("Whisper model '{Model}' is not cached yet; downloading it now (first use — this can take several minutes, and dictation stays on 'Transcribing' until it finishes)", type);
         await using var modelStream = await WhisperGgmlDownloader.Default
             .GetGgmlModelAsync(type, QuantizationType.NoQuantization, cancellationToken)
             .ConfigureAwait(false);
@@ -36,11 +41,12 @@ internal static class WhisperModelCache
         }
 
         File.Move(tempPath, path, overwrite: true);
+        logger?.LogInformation("Whisper model '{Model}' downloaded and cached at {Path}", type, path);
         return path;
     }
 
     /// <summary>Same lazy-download-and-cache behaviour as <see cref="EnsureDownloadedAsync"/>, for the ggml Silero VAD model.</summary>
-    public static async Task<string> EnsureVadDownloadedAsync(SileroVadType type, CancellationToken cancellationToken)
+    public static async Task<string> EnsureVadDownloadedAsync(SileroVadType type, CancellationToken cancellationToken, ILogger? logger = null)
     {
         Directory.CreateDirectory(ModelsDirectory);
         var path = Path.Combine(ModelsDirectory, $"ggml-silero-{type.ToString().ToLowerInvariant()}.bin");
@@ -49,6 +55,7 @@ internal static class WhisperModelCache
             return path;
         }
 
+        logger?.LogInformation("Silero VAD model '{Model}' is not cached yet; downloading it now (first use)", type);
         await using var modelStream = await WhisperGgmlDownloader.Default
             .GetGgmlSileroVadModelAsync(type, cancellationToken)
             .ConfigureAwait(false);
@@ -60,6 +67,7 @@ internal static class WhisperModelCache
         }
 
         File.Move(tempPath, path, overwrite: true);
+        logger?.LogInformation("Silero VAD model '{Model}' downloaded and cached", type);
         return path;
     }
 }

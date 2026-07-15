@@ -1,6 +1,7 @@
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Voice;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -59,6 +60,25 @@ public class VoicePushToTalkServiceTests
     }
 
     [Fact]
+    public async Task EndHoldAsync_WhenTranscriptionFails_LogsError_AndRethrows()
+    {
+        // A failed first-use model download (Whisper/Silero are ~1.6 GB, fetched lazily) surfaces here as a
+        // throw. Regression guard for the silent-failure bug: F9 looked like a dead hotkey because the fault
+        // was caught in the view model and shown only as a status string, never logged.
+        var boom = new InvalidOperationException("model download failed");
+        var speechToText = Substitute.For<ISpeechToTextService>();
+        speechToText.TranscribeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<string>(boom));
+        var logger = new CapturingLogger<VoicePushToTalkService>();
+        var service = _CreateService(speechToText: speechToText, logger: logger, frames: [[1, 0, 2, 0]]);
+
+        service.BeginHold();
+        var act = () => service.EndHoldAsync(applyCleanup: false);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(boom);
+        logger.Entries.Should().Contain(entry => entry.Level == LogLevel.Error && entry.Exception == boom);
+    }
+
+    [Fact]
     public async Task AudioLevelSampled_FiresOncePerCapturedFrame_WhileHolding()
     {
         var service = _CreateService(frames: [[0, 0], [0xFF, 0x7F], [0, 0]]);
@@ -106,6 +126,7 @@ public class VoicePushToTalkServiceTests
         IVoiceActivityDetector? vad = null,
         ISpeechToTextService? speechToText = null,
         ITranscriptCleanupService? cleanup = null,
+        ILogger<VoicePushToTalkService>? logger = null,
         params byte[][] frames)
     {
         vad ??= _AlwaysDetectsSpeech();
@@ -117,7 +138,7 @@ public class VoicePushToTalkServiceTests
             vad,
             speechToText,
             cleanup,
-            NullLogger<VoicePushToTalkService>.Instance);
+            logger ?? NullLogger<VoicePushToTalkService>.Instance);
     }
 
     private static IVoiceActivityDetector _AlwaysDetectsSpeech()
@@ -125,5 +146,24 @@ public class VoicePushToTalkServiceTests
         var vad = Substitute.For<IVoiceActivityDetector>();
         vad.HasSpeechAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(true);
         return vad;
+    }
+
+    /// <summary>Captures log entries so a test can assert a failure was actually logged, not swallowed silently.</summary>
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, exception));
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+            public void Dispose() { }
+        }
     }
 }
