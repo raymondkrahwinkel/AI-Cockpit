@@ -89,6 +89,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Conversation picker | `host.AddConversationPicker(registration)` | Lends your history-browsing to the **New-session dialog**: it grows a **Search…** button next to "resume by session id", which runs your picker. See [Conversation pickers](#conversation-pickers--let-the-operator-choose-a-conversation-to-resume). |
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
+| Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
@@ -127,6 +128,7 @@ public interface ICockpitHost
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
                    string? actionLabel = null, Action? onAction = null);      // an in-app notification
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
+    void AddWidget(WidgetRegistration registration);            // a widget type for Dashboard workspaces
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
     ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
@@ -232,6 +234,82 @@ and `IPluginProviderConfigView` (the add/edit-profile panel that produces that c
 against your provider persists `ProviderId` + the config JSON; the host's driver adapter (internal) wraps your
 `IPluginSessionDriver` to satisfy its own full session-driver contract and no-ops whatever your capabilities
 don't support.
+
+## Widget plugins — a pane on a Dashboard workspace
+
+A **Dashboard** workspace hosts widget panes the way a Sessions workspace hosts sessions and terminals. Every
+widget comes from a plugin: the core owns the grid and the pane chrome, and stays as unaware of what a widget
+shows as it is of a provider's transcript format. Register a type with `host.AddWidget(...)` and it appears in
+that workspace's **Add widget** gallery; picking it places an instance.
+
+There is no separate widget package and no second installer — a widget plugin is an ordinary plugin whose
+contribution happens to be `AddWidget`, so it ships, installs and is trusted like any other. The worked
+reference is [`plugins-dev/Cockpit.Plugin.Widgets`](../../plugins-dev/Cockpit.Plugin.Widgets): a clock with no
+settings and a system monitor with settings, which together prove the ⚙ is really gated.
+
+```csharp
+public void Initialize(ICockpitHost host)
+{
+    host.AddWidget(new WidgetRegistration("widgets.clock", "Clock", context => new ClockWidget(context))
+    {
+        Icon = "🕐",
+        Description = "The time and date.",
+        DefaultColumnSpan = 6,
+        DefaultRowSpan = 4,
+    });
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `Id` | Stable, unique id for the widget **type**, namespaced by your plugin (`"system-monitor.usage"`). It is persisted with every placed instance, so **changing it orphans existing instances** — treat it as an API surface. |
+| `Title` | Shown in the gallery and as the pane's default header. |
+| `CreateView` | Builds one instance's control on the UI thread, handed that instance's own `IWidgetContext`. Called once per instance; if you need periodic updates, own a timer or listen to `RefreshRequested`. |
+| `Icon` / `Description` | The gallery card. Defaults: `🧩` and empty. |
+| `DefaultColumnSpan` / `DefaultRowSpan` | How big a freshly placed instance is; the operator resizes afterwards. Default 1×1 — on the default 24-column grid that is very small, so pick real numbers. |
+| `CreateConfigView` | The instance's settings form, or **null when there is nothing to configure**. |
+| `HasConfig` | Derived from `CreateConfigView`, not declared — read-only. |
+
+### Per-instance, not per-plugin
+
+Each placed widget gets its own `IWidgetContext`, which is what lets two "System Monitor" widgets sit on one
+dashboard without fighting:
+
+```csharp
+public interface IWidgetContext
+{
+    string InstanceId { get; }                 // this instance — not the widget type
+    IPluginStorage Storage { get; }            // scoped to InstanceId, under your plugin's storage
+    ICockpitSessionObserver Sessions { get; }  // same read/observe surface as host.Sessions
+    event EventHandler RefreshRequested;       // the pane's ↻, or a dashboard-wide refresh
+}
+```
+
+`Storage` is the same `IPluginStorage` you know, scoped to this instance — so a widget's config survives a
+restart and never collides with a sibling. `Sessions` is there so a widget can follow what the cockpit is
+doing (a git widget tracking the active session's working directory) without the core knowing what it is.
+
+### Settings, and the gear that is never dead
+
+`CreateConfigView` is not just "a form" — it is what puts the ⚙ on the pane header. Leave it null and there is
+no gear, so a widget can never offer one that opens an empty dialog:
+
+```csharp
+host.AddWidget(new WidgetRegistration("widgets.system-monitor", "System Monitor", context => new SystemMonitorWidget(context))
+{
+    CreateConfigView = context => new SystemMonitorSettingsView(context),
+});
+```
+
+You supply the form's content only; the host wraps it in the dialog with the Save/Close footer, exactly as it
+does for `AddSettings` — so implement `IPluginSettingsView` if you want a Save button. Saving raises
+`RefreshRequested` on that instance, which is how the view picks up new config without watching its own storage.
+
+### Publishing a widget plugin to a store
+
+Set the store entry's **`"category": "Widgets"`** and it lands in the store's own Widgets section. That is the
+whole of it — the store builds its sidebar from `PluginStoreEntry.Category`, so there is no widget-specific
+publishing path, no extra field, and no code involved. See [The index — `index.json`](#the-index--indexjson).
 
 ## Session header items — status that belongs to one session
 
@@ -639,7 +717,7 @@ offer theirs.
 | `name` | yes | Display name shown on the catalogue card. |
 | `description` | yes | One-line summary shown on the card and in the detail panel. |
 | `author` | no | Shown on the card/detail panel. |
-| `category` | no | Groups the plugin under a sidebar category in the store dialog (e.g. `"Issue trackers"`, `"AI providers"`). Plugins with no category still show under "All". |
+| `category` | no | Groups the plugin under a sidebar category in the store dialog (e.g. `"Issue trackers"`, `"AI providers"`). Plugins with no category still show under "All". A plugin whose contribution is [dashboard widgets](#widget-plugins--a-pane-on-a-dashboard-workspace) publishes with **`"category": "Widgets"`** — the convention that files it under the store's Widgets section. It is only a category string; there is no widget-specific publishing path. |
 | `icon` | no | A single emoji shown on the card and as the plugin's icon elsewhere in the UI. |
 | `homepage` | no | Link shown in the detail panel — typically your docs or README section for the plugin. |
 | `repository` | no | Link to the plugin's source repository, shown in the detail panel. |
