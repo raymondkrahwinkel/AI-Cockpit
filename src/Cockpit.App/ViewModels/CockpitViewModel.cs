@@ -27,6 +27,7 @@ using Cockpit.Core.Abstractions.Shortcuts;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
+using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
@@ -171,6 +172,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.</summary>
     public DelegatedTasksViewModel DelegatedTasks { get; }
+
+    /// <summary>The workspace tab strip and the active workspace's panes.</summary>
+    public WorkspacesViewModel Workspaces { get; }
 
     /// <summary>Owns the live toast collection (#61); <see cref="Toasts"/> below is what <c>CockpitView.axaml</c>'s overlay actually binds to.</summary>
     public ToastHostViewModel ToastHost { get; } = new();
@@ -810,6 +814,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
+        Workspaces = new WorkspacesViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
 
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
@@ -850,8 +855,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IUpdateService? updateService = null,
         IUpdateSettingsStore? updateSettingsStore = null,
         IWorkflowTemplateLibrary? workflowTemplateLibrary = null,
-        ISecretProtectionService? secretProtection = null)
+        ISecretProtectionService? secretProtection = null,
+        IWorkspaceSettingsStore? workspaceSettingsStore = null)
     {
+        // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
+        // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
+        Workspaces = new WorkspacesViewModel(workspaceSettingsStore);
+
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
         Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets());
@@ -1081,6 +1091,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.CommandPalette => ShowCommandPaletteCommand,
             ShortcutAction.PreviousSession => SelectPreviousSessionCommand,
             ShortcutAction.NextSession => SelectNextSessionCommand,
+            ShortcutAction.PreviousWorkspace => Workspaces.SelectPreviousWorkspaceCommand,
+            ShortcutAction.NextWorkspace => Workspaces.SelectNextWorkspaceCommand,
             _ => null,
         };
 
