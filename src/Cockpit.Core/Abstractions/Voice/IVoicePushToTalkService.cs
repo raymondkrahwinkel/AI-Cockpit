@@ -1,3 +1,5 @@
+using Cockpit.Core.Voice;
+
 namespace Cockpit.Core.Abstractions.Voice;
 
 /// <summary>
@@ -13,6 +15,17 @@ public interface IVoicePushToTalkService
     /// thread — subscribers marshal onto the UI thread themselves.
     /// </summary>
     event EventHandler<double>? AudioLevelSampled;
+
+    /// <summary>
+    /// Forwarded from <see cref="ISpeechToTextService.Preparing"/>: what a hold is waiting on before it can
+    /// transcribe, which on first use is a download of gigabytes. It sits beside
+    /// <see cref="AudioLevelSampled"/> because the views and view models that show hold status already hold
+    /// this interface and nothing else new. Fires off the UI thread — subscribers marshal themselves.
+    /// </summary>
+    event EventHandler<VoicePreparationProgress>? Preparing;
+
+    /// <summary>Forwarded from <see cref="ISpeechToTextService.Prepared"/>: preparation is over and the hold is really being transcribed now.</summary>
+    event EventHandler? Prepared;
 
     /// <summary>
     /// Starts buffering microphone audio for a new hold. Returns false (no-op) if a hold is already in

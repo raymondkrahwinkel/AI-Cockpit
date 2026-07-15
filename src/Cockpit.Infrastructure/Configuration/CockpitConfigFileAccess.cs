@@ -29,6 +29,14 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// <summary>The last version that read cleanly, written by every save — and what a damaged config is recovered from.</summary>
     private const string BackupSuffix = ".bak";
 
+    /// <summary>Holds the write gate; empty, and only its existence-while-open means anything.</summary>
+    private const string LockSuffix = ".lock";
+
+    /// <summary>Generous on purpose: a write is milliseconds, so reaching this means something is wrong, not busy.</summary>
+    private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(10);
+
+    private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);
+
     private readonly ISecretKeyHolder _keyHolder = keyHolder ?? SecretKeyHolder.Shared;
 
     public string ConfigFilePath => configFilePath;
@@ -101,9 +109,20 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// <summary>
     /// Loads the current file (or a fresh, empty one), applies <paramref name="mutate"/> to a single
     /// section, and writes the whole document back — preserving every other section.
+    /// <para>
+    /// Serialised against every other writer, in this process and in any other cockpit on this machine. It has
+    /// to be: "preserving every other section" is only true if nothing changed a section between the read and
+    /// the write. Without the gate, two writers each read the file, each changed their own section, and each
+    /// wrote the whole document — so the one that finished last silently restored the other's section to what
+    /// it had been. That is how a plugin's freshly pinned hash disappeared and the plugin came back asking for
+    /// consent, and it is why writing atomically was never enough: each write was whole, and one of them was
+    /// whole and stale.
+    /// </para>
     /// </summary>
     public async Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
     {
+        using var gate = await _AcquireWriteGateAsync(cancellationToken).ConfigureAwait(false);
+
         var configFile = await ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
         mutate(configFile);
 
@@ -120,14 +139,56 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         // Truncating the config and then streaming the new one into it means that for the length of that write the
         // operator's settings exist nowhere: a crash, a kill or the power going leaves a half file — and the next
         // start, finding it unreadable, would have begun with an empty config and saved that emptiness over
-        // everything. Two writers at once (a second instance, a script) can leave the tail of the longer document
-        // behind the shorter one, which is exactly what happened to Raymond's config on 2026-07-14.
+        // everything. Two writers at once (a second instance, a script) could leave the tail of the longer document
+        // behind the shorter one, which is what happened to Raymond's config on 2026-07-14.
         //
-        // A rename is atomic: the file is either entirely the old one or entirely the new one. The previous version
-        // is kept as .bak, which is what ReadAsync falls back to. Owner-only either way — this file holds provider
-        // API keys, MCP bearer headers and the plugins' tokens.
+        // A rename is atomic: the file is either entirely the old one or entirely the new one. That makes each write
+        // whole — it never made two writes safe, which is a different problem and the gate above's to solve.
+        //
+        // The previous version is kept as .bak, which is what ReadAsync falls back to. Owner-only either way — this
+        // file holds provider API keys, MCP bearer headers and the plugins' tokens.
         CockpitConfigPath.ReplaceAtomicallyPrivate(configFilePath, document.ToJsonString(SerializerOptions));
 
         await Task.CompletedTask.ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Takes the write gate, waiting for whoever holds it. A lock file rather than a named mutex: the operating
+    /// system drops it when the holder exits — including when it is killed mid-write — and it behaves the same
+    /// on the three platforms the cockpit runs on. Reads are deliberately not gated: a rename is atomic, so a
+    /// reader sees the whole old file or the whole new one and never waits on a writer.
+    /// </summary>
+    private async Task<FileStream> _AcquireWriteGateAsync(CancellationToken cancellationToken)
+    {
+        var lockFilePath = configFilePath + LockSuffix;
+        var directory = Path.GetDirectoryName(lockFilePath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var deadline = DateTimeOffset.UtcNow + GateTimeout;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (DateTimeOffset.UtcNow < deadline)
+            {
+                // Someone else is mid-write. Theirs finishes in milliseconds — this is a settings file, not a
+                // database — so waiting is cheaper than any scheme that lets both through and merges after.
+                await Task.Delay(GatePollInterval, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException exception)
+            {
+                // Long past the point where contention explains it. Failing loudly beats writing anyway: a save
+                // that goes through ungated is how a section disappears, and disappearing is what this exists
+                // to stop.
+                throw new IOException(
+                    $"Could not take the write lock on '{lockFilePath}' within {GateTimeout.TotalSeconds:F0}s; the cockpit's settings were not saved.",
+                    exception);
+            }
+        }
     }
 }
