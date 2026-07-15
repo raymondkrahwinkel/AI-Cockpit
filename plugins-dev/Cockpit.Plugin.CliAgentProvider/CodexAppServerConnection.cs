@@ -44,10 +44,15 @@ internal sealed class CodexAppServerConnection : IAsyncDisposable
     /// <summary>Server-initiated requests (approvals) that must be answered with <see cref="RespondAsync"/>.</summary>
     public IAsyncEnumerable<CodexServerRequest> ServerRequests => _serverRequests.Reader.ReadAllAsync();
 
-    /// <summary>Spawns <c>codex app-server</c> and starts pumping its stdout. Call once before any send.</summary>
-    public void Start(string executablePath, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables)
+    /// <summary>
+    /// Spawns <c>codex app-server</c> and starts pumping its stdout. Call once before any send.
+    /// <paramref name="configArgs"/> are <c>-c key=value</c> overrides (the session's MCP servers, #26) placed
+    /// before the subcommand, where Codex expects global config flags.
+    /// </summary>
+    public void Start(string executablePath, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables, IReadOnlyList<string>? configArgs = null)
     {
-        _subprocess.Start(executablePath, ["app-server"], workingDirectory, environmentVariables);
+        string[] arguments = configArgs is { Count: > 0 } ? [.. configArgs, "app-server"] : ["app-server"];
+        _subprocess.Start(executablePath, arguments, workingDirectory, environmentVariables);
         _readLoop = Task.Run(() => _ReadLoopAsync(_readCancellation.Token));
     }
 

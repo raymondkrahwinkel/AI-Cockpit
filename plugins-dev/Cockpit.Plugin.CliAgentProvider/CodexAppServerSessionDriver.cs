@@ -13,8 +13,8 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// <see cref="PluginSessionCapabilities.SupportsPermissions"/> where the exec driver could not.
 /// </summary>
 /// <remarks>
-/// Lifecycle: <see cref="StartAsync(string?, string?, string?, CancellationToken)"/> spawns one long-lived
-/// process, does the <c>initialize</c>/<c>initialized</c> handshake, then <c>thread/start</c> (with the cwd the
+/// Lifecycle: <see cref="StartAsync(string?, string?, string?, IReadOnlyDictionary{string, string}?, IReadOnlyList{PluginMcpServer}?, CancellationToken)"/>
+/// spawns one long-lived process, does the <c>initialize</c>/<c>initialized</c> handshake, then <c>thread/start</c> (with the cwd the
 /// cockpit already knows, #45 D5) or <c>thread/resume</c>. The thread id comes from the start reply or the
 /// <c>thread/started</c> notification, whichever carries it. Each <see cref="SendUserMessageAsync"/> is a
 /// <c>turn/start</c>; the streaming <c>item/*</c> and <c>turn/*</c> notifications are mapped to plugin events
@@ -64,9 +64,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     public IAsyncEnumerable<PluginSessionEvent> Events => _events.Reader.ReadAllAsync();
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
-        StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, cancellationToken);
+        StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, mcpServers: null, cancellationToken);
 
-    public async Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, CancellationToken cancellationToken)
+    public async Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(model))
         {
@@ -78,7 +78,16 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, _config.SandboxMode);
         var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
 
-        _connection.Start(_executablePath, _ResolveProcessWorkingDirectory(workingDirectory), _config.BuildEnvironmentVariables());
+        // The session's MCP servers (#26) become -c config overrides on the app-server spawn; any bearer token
+        // rides the process environment, never the command line (see CodexMcpConfig).
+        var mcpLaunch = CodexMcpConfig.Build(mcpServers);
+        var environmentVariables = _config.BuildEnvironmentVariables();
+        foreach (var (key, value) in mcpLaunch.EnvironmentVariables)
+        {
+            environmentVariables[key] = value;
+        }
+
+        _connection.Start(_executablePath, _ResolveProcessWorkingDirectory(workingDirectory), environmentVariables, mcpLaunch.ConfigArgs);
         _notificationPump = Task.Run(() => _PumpNotificationsAsync(_lifetime.Token), CancellationToken.None);
         _serverRequestPump = Task.Run(() => _PumpServerRequestsAsync(_lifetime.Token), CancellationToken.None);
 

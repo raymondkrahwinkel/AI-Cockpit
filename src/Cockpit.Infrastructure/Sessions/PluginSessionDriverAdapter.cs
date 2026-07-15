@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
@@ -14,7 +16,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerStore? mcpServerStore = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -38,16 +40,69 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
     public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
     {
-        // workingDirectory, resume and launchOptions are passed through (#45 D5): a plugin driver that spawns a
-        // CLI (Codex app-server) runs in a cwd, resumes a thread by id, and honours the operator's answers to the
-        // options it declared (sandbox, model). Dropping them here is what made the Codex plugin ask for a working
-        // directory the cockpit already had, and left its sandbox/model unreachable per session. A driver with no
-        // cwd/history/options of its own (an HTTP provider) simply ignores them. Only BySessionId resume crosses
-        // the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
+        // workingDirectory, resume, launchOptions and the session's MCP servers are passed through (#45 D5, #44):
+        // a plugin driver that spawns a CLI (Codex app-server) runs in a cwd, resumes a thread by id, honours the
+        // operator's answers to the options it declared (sandbox, model), and exposes the registry servers the
+        // operator selected. Dropping them here is what made the Codex plugin ask for a working directory the
+        // cockpit already had, left its sandbox/model unreachable per session, and reported "Connected (0 tools)".
+        // A driver with no cwd/history/options/tool source of its own (an HTTP provider) simply ignores them. Only
+        // BySessionId resume crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
         Profile = profile;
         var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
-        await inner.StartAsync(model, workingDirectory, resumeSessionId, launchOptions, cancellationToken).ConfigureAwait(false);
+        var mcpServers = await _ResolveMcpServersAsync(enabledMcpServerNames, cancellationToken).ConfigureAwait(false);
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, launchOptions, mcpServers, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Turns the operator's per-session MCP selection into the concrete endpoints the plugin driver exposes:
+    /// the shared per-session narrowing (<see cref="McpServerRegistryFilter.ApplySessionSelection"/>, the same
+    /// one <c>ClaudeCliProcess</c> and the local-model tool-loop apply) intersected with the agent-eligible
+    /// servers (<see cref="McpConfigFile.IsAgentEligible"/>). The registry lives host-side (plugin isolation
+    /// keeps it out of the driver), so the adapter resolves names to definitions here. No store (a unit test
+    /// that does not wire one) means no fan-out. Best-effort — a transient <c>cockpit.json</c> read failure
+    /// launches the session without the shared servers rather than failing the whole start, matching how the
+    /// Claude fan-out treats the same read.
+    /// </summary>
+    private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, CancellationToken cancellationToken)
+    {
+        if (mcpServerStore is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            var registry = await mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            return McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
+                .Where(McpConfigFile.IsAgentEligible)
+                .Select(_ToPluginMcpServer)
+                .OfType<PluginMcpServer>()
+                .ToList();
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    // Mirrors McpConfigFile's Claude mapping: HTTP → url with a static bearer token for an API-key server (the
+    // driver keeps it off the command line), stdio → command/args. A server missing its transport target is dropped.
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
+    {
+        McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
+        {
+            Name = server.Name,
+            Url = server.Url,
+            BearerToken = server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey) ? server.ApiKey : null,
+        },
+        McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
+        {
+            Name = server.Name,
+            Command = server.Command,
+            Args = server.Args,
+        },
+        _ => null,
+    };
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
         inner.SendUserMessageAsync(text, cancellationToken);

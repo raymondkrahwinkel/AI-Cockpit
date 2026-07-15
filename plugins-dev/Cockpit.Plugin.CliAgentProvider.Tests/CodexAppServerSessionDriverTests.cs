@@ -21,7 +21,7 @@ public class CodexAppServerSessionDriverTests
         var fake = new FakeCliSubprocess();
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
 
-        var startTask = driver.StartAsync("gpt-5-codex", "/work/here", resumeSessionId: null, options: null, CancellationToken.None);
+        var startTask = driver.StartAsync("gpt-5-codex", "/work/here", resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
@@ -43,7 +43,7 @@ public class CodexAppServerSessionDriverTests
 
         // _DefaultConfig has sandbox "read-only"; the dialog's per-session choice must win.
         var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write", ["model"] = "o3" };
-        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, CancellationToken.None);
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         var threadStart = await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
         await startTask;
@@ -53,12 +53,40 @@ public class CodexAppServerSessionDriverTests
     }
 
     [Fact]
+    public async Task Start_PassesTheSessionsMcpServers_AsConfigArgs_WithTheTokenInTheEnvironmentNotTheCommandLine()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        const string token = "yt-pat-value";
+        PluginMcpServer[] mcpServers =
+        [
+            new() { Name = "cockpit-orchestrator", Url = "http://127.0.0.1:8765/mcp" },
+            new() { Name = "youtrack", Url = "http://127.0.0.1:9000/mcp", BearerToken = token },
+        ];
+
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options: null, mcpServers, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        // The MCP servers ride -c overrides placed before the subcommand, which stays last.
+        fake.Arguments.Should().ContainInOrder("-c", """mcp_servers.cockpit-orchestrator={ url = "http://127.0.0.1:8765/mcp" }""");
+        fake.Arguments!.Last().Should().Be("app-server");
+
+        // The bearer token is never on the command line (that would leak it in /proc/<pid>/cmdline) — only its
+        // env-var name is, and the token itself reaches the child through the process environment.
+        fake.Arguments.Should().NotContain(argument => argument.Contains(token));
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_1", token));
+    }
+
+    [Fact]
     public async Task Start_WithResume_SendsThreadResume_ForThatThreadId()
     {
         var fake = new FakeCliSubprocess();
         await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
 
-        var startTask = driver.StartAsync(null, "/work", resumeSessionId: "thread-99", options: null, CancellationToken.None);
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: "thread-99", options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         var resume = await _RespondAsync(fake, "thread/resume", """{"threadId":"thread-99"}""");
         await startTask;
@@ -147,7 +175,7 @@ public class CodexAppServerSessionDriverTests
 
     private static async Task _StartAsync(CodexAppServerSessionDriver driver, FakeCliSubprocess fake, string threadId = "thread-1")
     {
-        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, CancellationToken.None);
+        var startTask = driver.StartAsync(null, Path.GetTempPath(), resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
         await _RespondAsync(fake, "initialize", "{}");
         await _RespondAsync(fake, "thread/start", $$"""{"threadId":"{{threadId}}"}""");
         await startTask;
