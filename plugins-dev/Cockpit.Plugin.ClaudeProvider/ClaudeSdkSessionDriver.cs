@@ -33,14 +33,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     /// <summary>Option key for the per-session model override (also a live control, #45 D4) — the well-known key the host adapter wires its live model switch to.</summary>
     public const string ModelOptionKey = WellKnownPluginSessionOptions.Model;
 
-    // The CLI's four real --permission-mode launch values (matching the host's SessionOptionCatalog.AllPermissionModes;
-    // there is no "auto" mode — the CLI rejects it).
-    private static readonly IReadOnlyList<string> _PermissionModes = ["default", "acceptEdits", "plan", "bypassPermissions"];
-
-    // The modes a live set_permission_mode control request can actually switch to. bypassPermissions is launch-only —
-    // the CLI cannot enter it mid-session — so it is not offered as a live switch (mirrors the host's LivePermissionModes).
-    private static readonly IReadOnlyList<string> _LivePermissionModes = ["default", "acceptEdits", "plan"];
-    private static readonly IReadOnlyList<string> _ModelSuggestions = ["opus", "sonnet", "haiku"];
+    /// <summary>Option key for the per-session reasoning effort (a live control, #45 D4) — maps to the CLI's thinking-token budget, the one budget the control protocol can set mid-session (set_max_thinking_tokens).</summary>
+    public const string EffortOptionKey = "effort";
 
     private readonly Func<IClaudeSdkSubprocess> _subprocessFactory;
     private readonly ClaudeProviderConfig _config;
@@ -59,6 +53,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private Task? _stderrDrain;
     private string? _sessionId;
     private string? _model;
+    private string _effort = "medium";
     private IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
 
     public ClaudeSdkSessionDriver(Func<IClaudeSdkSubprocess> subprocessFactory, ClaudeProviderConfig config, string executablePath)
@@ -95,6 +90,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         var permissionMode = _ResolveOption(options, PermissionModeOptionKey, defaultValue: "default") ?? "default";
         var effectiveModel = _ResolveOption(options, ModelOptionKey, model);
         _model = effectiveModel;
+        _effort = _ResolveOption(options, EffortOptionKey, _effort) ?? _effort;
 
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var resolvedWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
@@ -120,6 +116,13 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // Put an SDK client on the control channel so the CLI routes approvals here as can_use_tool requests. Sent
         // fire-and-forget (the reply is drained by the pump, not correlated), matching the host's control_request style.
         await subprocess.WriteLineAsync(ClaudeControlProtocol.BuildInitializeRequest(Guid.NewGuid().ToString()), cancellationToken).ConfigureAwait(false);
+
+        // Apply the launch effort as the session's initial thinking-token budget; a live effort switch re-sends the
+        // same control request. Left to the CLI's own default when the level is unknown.
+        if (ClaudeOptionChoices.EffortThinkingTokens.TryGetValue(_effort, out var thinkingTokens))
+        {
+            await _SendControlRequestAsync(new { subtype = "set_max_thinking_tokens", maxThinkingTokens = thinkingTokens }, cancellationToken).ConfigureAwait(false);
+        }
 
         _liveOptions = _BuildLiveOptions(effectiveModel, permissionMode);
     }
@@ -189,6 +192,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         {
             ModelOptionKey => _SetModelAndRemember(value, cancellationToken),
             PermissionModeOptionKey => _SendControlRequestAsync(new { subtype = "set_permission_mode", mode = value }, cancellationToken),
+            EffortOptionKey => _SetEffort(value, cancellationToken),
             _ => Task.CompletedTask,
         };
     }
@@ -197,6 +201,19 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     {
         _model = string.IsNullOrWhiteSpace(value) ? null : value;
         return _SendControlRequestAsync(new { subtype = "set_model", model = _model }, cancellationToken);
+    }
+
+    private Task _SetEffort(string value, CancellationToken cancellationToken)
+    {
+        // An unknown effort level is contract drift (the host only offers the declared ones) — ignore it rather than
+        // send the CLI a budget it did not ask for.
+        if (!ClaudeOptionChoices.EffortThinkingTokens.TryGetValue(value, out var thinkingTokens))
+        {
+            return Task.CompletedTask;
+        }
+
+        _effort = value;
+        return _SendControlRequestAsync(new { subtype = "set_max_thinking_tokens", maxThinkingTokens = thinkingTokens }, cancellationToken);
     }
 
     private async Task _SendControlRequestAsync(object request, CancellationToken cancellationToken)
@@ -337,7 +354,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     {
         // The current model rides the choices so the panel opens on what the session is actually using, even when it is
         // a pinned model or snapshot the suggestion list omits.
-        var modelChoices = new List<string>(_ModelSuggestions);
+        var modelChoices = new List<string>(ClaudeOptionChoices.ModelSuggestions);
         if (model is { Length: > 0 } current && !modelChoices.Contains(current))
         {
             modelChoices.Insert(0, current);
@@ -345,7 +362,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
         var liveOptions = new List<PluginSessionLaunchOption>
         {
-            new(ModelOptionKey, "Model", modelChoices, model),
+            new(ModelOptionKey, "Model", modelChoices, model) { ChoiceLabels = ClaudeOptionChoices.ModelLabels },
+            new(EffortOptionKey, "Effort", ClaudeOptionChoices.EffortLevels, _effort) { ChoiceLabels = ClaudeOptionChoices.EffortLabels },
         };
 
         // A session launched in bypassPermissions shows no permission-mode switch: the CLI cannot leave bypass live, and
@@ -353,7 +371,8 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // modes open on the launched one.
         if (!string.Equals(permissionMode, "bypassPermissions", StringComparison.Ordinal))
         {
-            liveOptions.Add(new PluginSessionLaunchOption(PermissionModeOptionKey, "Permission mode", _LivePermissionModes, permissionMode));
+            liveOptions.Add(new PluginSessionLaunchOption(PermissionModeOptionKey, "Permission mode", ClaudeOptionChoices.LivePermissionModes, permissionMode)
+                { ChoiceLabels = ClaudeOptionChoices.PermissionModeLabels });
         }
 
         return liveOptions;

@@ -41,14 +41,16 @@ internal sealed class ProviderConfigEntry
     };
 
     /// <summary>
-    /// Maps the on-disk block back to a domain config. Claude's settings do not live in this block, so they are
-    /// passed in from the entry that owns them.
+    /// Maps the on-disk block back to a domain config. A Claude entry (an explicit <see cref="SessionProvider.ClaudeCli"/>
+    /// or an older entry with no provider block at all) is migrated to the bundled Claude provider plugin on load, so its
+    /// settings — which still live at the top of the owning entry — become that plugin's config (Fase 4). Idempotent: a
+    /// profile already stored as a plugin comes back through the <see cref="SessionProvider.Plugin"/> arm unchanged.
     /// </summary>
     public ProviderConfig ToDomain(string claudeConfigDir, string? claudeExecutablePath) => Provider switch
     {
         SessionProvider.Ollama => new OllamaConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, SystemPrompt),
         SessionProvider.LmStudio => new LmStudioConfig(BaseUrl ?? string.Empty, Model ?? string.Empty, ApiKey, SystemPrompt),
         SessionProvider.Plugin => new PluginProviderConfig(PluginProviderId ?? string.Empty, PluginConfigJson ?? string.Empty),
-        _ => new ClaudeConfig(claudeConfigDir, claudeExecutablePath),
+        _ => ClaudePluginProfile.Create(claudeConfigDir, claudeExecutablePath),
     };
 }

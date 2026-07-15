@@ -27,10 +27,13 @@ public class ClaudeCliProfileDetectorTests
 
         var profiles = ClaudeCliProfileDetector.Detect(candidates, _ => true);
 
+        // Detected Claude profiles are minted straight as the bundled Claude provider plugin (Fase 4): each carries a
+        // PluginProviderConfig("claude", {configDir}) rather than an in-tree ClaudeConfig, so the directory rides the
+        // plugin's opaque config JSON.
         profiles.Should().HaveCount(3);
-        profiles.Should().Contain(p => p.Label == "default" && p.Claude!.ConfigDir == DefaultDir);
-        profiles.Should().Contain(p => p.Label == "personal" && p.Claude!.ConfigDir == PersonalDir);
-        profiles.Should().Contain(p => p.Label == "work" && p.Claude!.ConfigDir == WorkDir);
+        profiles.Should().Contain(p => p.Label == "default" && p.ProviderConfig.Equals(ClaudePluginProfile.Create(DefaultDir, null)));
+        profiles.Should().Contain(p => p.Label == "personal" && p.ProviderConfig.Equals(ClaudePluginProfile.Create(PersonalDir, null)));
+        profiles.Should().Contain(p => p.Label == "work" && p.ProviderConfig.Equals(ClaudePluginProfile.Create(WorkDir, null)));
     }
 
     [Fact]
@@ -40,7 +43,7 @@ public class ClaudeCliProfileDetectorTests
 
         var profiles = ClaudeCliProfileDetector.Detect(candidates, dir => dir.EndsWith(".claude"));
 
-        profiles.Should().ContainSingle().Which.Claude!.ConfigDir.Should().Be(DefaultDir);
+        profiles.Should().ContainSingle().Which.ProviderConfig.Should().Be(ClaudePluginProfile.Create(DefaultDir, null));
     }
 
     [Fact]

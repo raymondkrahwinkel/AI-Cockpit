@@ -26,13 +26,12 @@ public class SessionProfileEntryTests
 
         var profile = entry.ToDomain();
 
-        // Asserting only Provider == ClaudeCli would still be green if ToDomain fell back to a Claude
-        // profile with an *empty* ConfigDir instead of the one the entry actually carried — the ConfigDir
-        // assertion is what goes red if the `?? new ClaudeConfig(ConfigDir, ExecutablePath)` fallback in
-        // SessionProfileEntry.ToDomain is ever dropped or replaced with a default.
-        profile.Provider.Should().Be(SessionProvider.ClaudeCli);
-        profile.Claude.Should().NotBeNull();
-        profile.Claude!.ConfigDir.Should().Be("/home/raymond/.claude-work");
+        // Fase 4: a provider-less (pre-#26) Claude entry is migrated to the bundled Claude provider plugin on load,
+        // its top-level ConfigDir carried into the plugin's opaque config — so an operator's existing cockpit.json
+        // keeps resolving the same login, now via the plugin. The equality against ClaudePluginProfile.Create is what
+        // goes red if the migration is dropped or loses the ConfigDir.
+        profile.Provider.Should().Be(SessionProvider.Plugin);
+        profile.ProviderConfig.Should().Be(ClaudePluginProfile.Create("/home/raymond/.claude-work", null));
     }
 
     [Fact]
@@ -48,11 +47,14 @@ public class SessionProfileEntryTests
 
         var resaved = SessionProfileEntry.FromDomain(legacy.ToDomain());
 
-        resaved.ConfigDir.Should().Be("/home/raymond/.claude-work");
-        resaved.ExecutablePath.Should().Be("/usr/local/bin/claude");
-        // A profile saved by this version says which provider it runs under explicitly (#26) — even Claude's,
-        // which an older cockpit left implicit by writing no Provider block at all.
+        // Fase 4: the legacy Claude entry was migrated to the plugin on load, so on re-save its settings move off the
+        // top-level ConfigDir/ExecutablePath fields into the plugin's own config block — the one shape change, at the
+        // point the shape actually changes. The directory and executable are preserved inside that block.
+        resaved.ConfigDir.Should().BeEmpty();
+        resaved.ExecutablePath.Should().BeNull();
         resaved.Provider.Should().NotBeNull();
-        resaved.Provider!.Provider.Should().Be(SessionProvider.ClaudeCli);
+        resaved.Provider!.Provider.Should().Be(SessionProvider.Plugin);
+        resaved.Provider!.PluginProviderId.Should().Be(ClaudePluginProfile.ProviderId);
+        resaved.Provider!.PluginConfigJson.Should().Contain("/home/raymond/.claude-work").And.Contain("/usr/local/bin/claude");
     }
 }

@@ -56,7 +56,7 @@ internal sealed class SessionProfileEntry
     public SessionProfile ToDomain() =>
         new(
             Label,
-            Provider?.ToDomain(ConfigDir, ExecutablePath) ?? new ClaudeConfig(ConfigDir, ExecutablePath),
+            Provider?.ToDomain(ConfigDir, ExecutablePath) ?? ClaudePluginProfile.Create(ConfigDir, ExecutablePath),
             Purpose,
             Defaults?.ToDomain(),
             Delegation?.ToDomain(),

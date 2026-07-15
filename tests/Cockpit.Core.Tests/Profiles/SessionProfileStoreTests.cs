@@ -42,8 +42,8 @@ public class SessionProfileStoreTests : IDisposable
         var store = new SessionProfileStore(_configFilePath);
         var profiles = new List<SessionProfile>
         {
-            new("personal", new ClaudeConfig(@"C:\Users\raymo\.claude-personal"), Purpose: "Personal Zyra profile"),
-            new("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work", @"C:\tools\claude-work.exe")),
+            new("personal", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-personal", null), Purpose: "Personal Zyra profile"),
+            new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", @"C:\tools\claude-work.exe")),
         };
 
         await store.SaveAsync(profiles);
@@ -58,9 +58,9 @@ public class SessionProfileStoreTests : IDisposable
         var store = new SessionProfileStore(_configFilePath);
         var profiles = new List<SessionProfile>
         {
-            new("personal", new ClaudeConfig(@"C:\Users\raymo\.claude-personal"),
+            new("personal", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-personal", null),
                 Defaults: new ProfileDefaults("bypassPermissions", "opus", "high")),
-            new("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work")),
+            new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", null)),
         };
 
         await store.SaveAsync(profiles);
@@ -99,7 +99,7 @@ public class SessionProfileStoreTests : IDisposable
         var store = new SessionProfileStore(_configFilePath);
         var profiles = new List<SessionProfile>
         {
-            new("claude", new ClaudeConfig(@"C:\Users\raymo\.claude")),
+            new("claude", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude", null)),
             new("local-ollama", new OllamaConfig("http://localhost:11434", "llama3.1", "You are helpful.")),
             new("local-lmstudio", new LmStudioConfig("http://localhost:1234", "qwen2.5-7b-instruct", "secret-key", "Be concise.")),
         };
@@ -108,7 +108,7 @@ public class SessionProfileStoreTests : IDisposable
         var loaded = await store.LoadAsync();
 
         loaded.Should().BeEquivalentTo(profiles);
-        loaded[0].Provider.Should().Be(SessionProvider.ClaudeCli);
+        loaded[0].Provider.Should().Be(SessionProvider.Plugin);
         loaded[1].Provider.Should().Be(SessionProvider.Ollama);
         loaded[2].Provider.Should().Be(SessionProvider.LmStudio);
     }
@@ -173,9 +173,11 @@ public class SessionProfileStoreTests : IDisposable
 
         profiles.Should().HaveCount(2);
         profiles[0].Label.Should().Be("work");
-        profiles[0].Claude!.ConfigDir.Should().Be("/home/raymond/.claude-work");
+        // A provider-less legacy Claude entry is migrated to the bundled Claude provider plugin on load (Fase 4),
+        // its top-level ConfigDir carried into the plugin config.
+        profiles[0].ProviderConfig.Should().Be(ClaudePluginProfile.Create("/home/raymond/.claude-work", null));
         profiles[0].Purpose.Should().Be("Work account");
-        profiles[0].Provider.Should().Be(SessionProvider.ClaudeCli);
+        profiles[0].Provider.Should().Be(SessionProvider.Plugin);
         profiles[0].Defaults.Should().NotBeNull();
         profiles[1].Provider.Should().Be(SessionProvider.Ollama);
         profiles[1].ProviderConfig.Should().BeOfType<OllamaConfig>()
