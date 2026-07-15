@@ -69,8 +69,10 @@ internal sealed class CockpitHost(
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
 
+    // This plugin's own storage and observe surface travel with the registration: a placed instance builds its
+    // context long after load, and by then the widget id is the only thing linking it back here.
     public void AddWidget(WidgetRegistration registration) =>
-        services.GetRequiredService<IWidgetRegistry>().Register(registration);
+        services.GetRequiredService<IWidgetRegistry>().Register(registration, storage, sessions);
 
     public IReadOnlyList<WidgetRegistration> Widgets =>
         services.GetRequiredService<IWidgetRegistry>().Widgets;

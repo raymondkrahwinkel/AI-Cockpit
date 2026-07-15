@@ -176,6 +176,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The workspace tab strip and the active workspace's panes.</summary>
     public WorkspacesViewModel Workspaces { get; }
 
+    /// <summary>
+    /// Whether the session grid applies: sessions exist AND a Sessions workspace is active. A dashboard owns
+    /// the content area while it is selected, so the grid must stand down even though the sessions themselves
+    /// keep running — they are hidden, not closed.
+    /// </summary>
+    public bool ShowSessionGrid => HasSessions && Workspaces.IsSessionsActive;
+
+    /// <summary>The "no sessions yet" prompt: only on a Sessions workspace, since a dashboard cannot hold a session and has its own empty state.</summary>
+    public bool ShowSessionEmptyState => !HasSessions && Workspaces.IsSessionsActive;
+
     /// <summary>Owns the live toast collection (#61); <see cref="Toasts"/> below is what <c>CockpitView.axaml</c>'s overlay actually binds to.</summary>
     public ToastHostViewModel ToastHost { get; } = new();
 
@@ -249,6 +259,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             640,
             560,
             onSaved: () => ((IPluginContributionSink)this).NotifySettingsSaved(pluginId));
+    }
+
+    /// <summary>
+    /// The ⚙ on a widget pane. The widget supplies the form's content and the host puts it in the same
+    /// Save/Close dialog a plugin's own settings use — a widget never builds a window. Saving asks that
+    /// instance to refresh, which is how its view picks up the config the form just wrote, without the widget
+    /// having to watch its own storage.
+    /// </summary>
+    public async Task ShowWidgetSettingsAsync(WidgetPaneViewModel pane)
+    {
+        if (_pluginDialogHost is null || pane.CreateConfigView() is not { } form)
+        {
+            return;
+        }
+
+        await _pluginDialogHost.ShowSettingsDialogAsync(
+            $"{pane.Title} settings",
+            () => form,
+            520,
+            460,
+            onSaved: pane.Refresh);
     }
 
     // Unlike the three contributions above, registration here touches only this private dictionary — never
@@ -856,11 +887,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IUpdateSettingsStore? updateSettingsStore = null,
         IWorkflowTemplateLibrary? workflowTemplateLibrary = null,
         ISecretProtectionService? secretProtection = null,
-        IWorkspaceSettingsStore? workspaceSettingsStore = null)
+        IWorkspaceSettingsStore? workspaceSettingsStore = null,
+        IWidgetRegistry? widgetRegistry = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
-        Workspaces = new WorkspacesViewModel(workspaceSettingsStore);
+        Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry);
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
@@ -906,7 +938,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OnPropertyChanged(nameof(GridColumns));
             OnPropertyChanged(nameof(ShowZoomButton));
             OnPropertyChanged(nameof(StackSessionsInStack));
+            OnPropertyChanged(nameof(ShowSessionGrid));
+            OnPropertyChanged(nameof(ShowSessionEmptyState));
             RefreshPaneVisibility();
+        };
+
+        // Which workspace is active decides whether the session content applies at all, so the two properties
+        // that gate it have to follow the strip as well as the session list.
+        Workspaces.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorkspacesViewModel.IsSessionsActive) or nameof(WorkspacesViewModel.Settings))
+            {
+                OnPropertyChanged(nameof(ShowSessionGrid));
+                OnPropertyChanged(nameof(ShowSessionEmptyState));
+            }
         };
         _ = LoadNotificationSettingsAsync();
         _ = LoadTranscriptDisplaySettingsAsync();

@@ -5,6 +5,7 @@
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:layout="using:Cockpit.Core.Layout"
              xmlns:ws="using:Cockpit.Core.Workspaces"
+             xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -341,8 +342,93 @@
                 </DockPanel>
             </Border>
 
-            <!-- Empty state: no session opens on startup; one only exists once the operator creates it. -->
-            <StackPanel Grid.Row="1" IsVisible="{Binding !HasSessions}" MaxWidth="320"
+            <!-- Dashboard: the widget grid, shown instead of the session content when a Dashboard workspace is
+                 active. Its own empty state says "add a widget", never "no sessions yet" — the workspace type
+                 drives the affordance, so a dashboard never asks for something it cannot hold. -->
+            <Grid Grid.Row="1" IsVisible="{Binding Workspaces.IsDashboardActive}">
+                <StackPanel IsVisible="{Binding Workspaces.ShowDashboardEmptyState}" MaxWidth="320"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Border Width="56" Height="56" CornerRadius="14"
+                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                            HorizontalAlignment="Center" Margin="0,0,0,16">
+                        <TextBlock Text="📊" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="No widgets yet" FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                    <TextBlock Text="Add a widget to this dashboard. Widgets come from plugins — install more from the store."
+                               TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}" Margin="0,0,0,16"/>
+                    <!-- Disabled, not hidden, while no plugin contributes a widget: the button is the answer to
+                         "how do I fill this dashboard", so it has to stay visible and say why it cannot. -->
+                    <Button Content="+ Add widget" Classes="Accent" HorizontalAlignment="Center"
+                            IsEnabled="{Binding Workspaces.HasAvailableWidgets}"
+                            ToolTip.Tip="Widgets come from plugins — install one that contributes widgets first">
+                        <Button.Flyout>
+                            <MenuFlyout ItemsSource="{Binding Workspaces.AvailableWidgets}">
+                                <MenuFlyout.ItemContainerTheme>
+                                    <ControlTheme TargetType="MenuItem" x:DataType="widgets:WidgetRegistration">
+                                        <Setter Property="Header" Value="{Binding Title}"/>
+                                        <Setter Property="Icon" Value="{Binding Icon}"/>
+                                        <Setter Property="ToolTip.Tip" Value="{Binding Description}"/>
+                                        <Setter Property="Command" Value="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.PlaceWidgetCommand}"/>
+                                        <Setter Property="CommandParameter" Value="{Binding}"/>
+                                    </ControlTheme>
+                                </MenuFlyout.ItemContainerTheme>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+
+                <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
+                     configured height as widgets are added (a "2x2" is a starting shape, not a cap). -->
+                <ItemsControl x:Name="DashboardGrid" Margin="12"
+                              ItemsSource="{Binding Workspaces.WidgetPanes}"
+                              IsVisible="{Binding !Workspaces.ShowDashboardEmptyState}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <Grid x:Name="DashboardCells"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemContainerTheme>
+                        <ControlTheme TargetType="ContentPresenter" x:DataType="vm:WidgetPaneViewModel">
+                            <Setter Property="Grid.Column" Value="{Binding Column}"/>
+                            <Setter Property="Grid.Row" Value="{Binding Row}"/>
+                            <Setter Property="Grid.ColumnSpan" Value="{Binding ColumnSpan}"/>
+                            <Setter Property="Grid.RowSpan" Value="{Binding RowSpan}"/>
+                        </ControlTheme>
+                    </ItemsControl.ItemContainerTheme>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:WidgetPaneViewModel">
+                            <Border Margin="4" CornerRadius="8" Background="{StaticResource CockpitPanelBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                <DockPanel>
+                                    <!-- Pane chrome. The ⚙ is bound to HasConfig: a widget that declared no
+                                         settings form shows no gear at all, rather than one that opens nothing. -->
+                                    <DockPanel DockPanel.Dock="Top" Margin="8,6,6,6">
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
+                                            <Button Classes="Subtle" Content="↻" Padding="5,0" Click="OnWidgetRefreshPressed"
+                                                    ToolTip.Tip="Refresh"/>
+                                            <Button Classes="Subtle" Content="⚙" Padding="5,0" Click="OnWidgetConfigPressed"
+                                                    IsVisible="{Binding HasConfig}" ToolTip.Tip="Widget settings"/>
+                                            <Button Classes="Subtle" Content="✕" Padding="5,0" Click="OnWidgetRemovePressed"
+                                                    ToolTip.Tip="Remove widget"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                    <!-- The plugin's own control, built once per instance and hosted as-is. -->
+                                    <ContentControl Margin="8,0,8,8" Content="{Binding View}"/>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+
+            <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on
+                 a Sessions workspace being active, so a dashboard never shows it. -->
+            <StackPanel Grid.Row="1" MaxWidth="320" IsVisible="{Binding ShowSessionEmptyState}"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Border Width="56" Height="56" CornerRadius="14"
                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
@@ -360,8 +446,8 @@
                         Classes="Accent" HorizontalAlignment="Center"/>
             </StackPanel>
 
-            <!-- Session grid + zoom, shown once at least one session exists. -->
-            <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding HasSessions}">
+            <!-- Session grid + zoom, shown once at least one session exists and a Sessions workspace is active. -->
+            <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">
                 <!-- The transient Zoom toggle is hidden in the persistent single-session layout (#24),
                      where it would be a no-op (the single pane is always shown) — no dead control. -->
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8"
