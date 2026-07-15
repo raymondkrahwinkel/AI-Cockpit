@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions.Widgets;
@@ -11,13 +12,13 @@ namespace Cockpit.App.ViewModels;
 /// pass would throw away whatever state the widget holds, the same mistake the session grid made on
 /// 2026-07-13 when a dragged pane was rebuilt and lost its pty.
 /// </summary>
-public sealed class WidgetPaneViewModel
+public sealed partial class WidgetPaneViewModel : ObservableObject
 {
     private readonly WidgetContext _context;
 
     public WidgetPaneViewModel(WorkspacePane pane, WidgetRegistration registration, WidgetContext context)
     {
-        Pane = pane;
+        _pane = pane;
         _context = context;
         Title = registration.Title;
         Icon = registration.Icon;
@@ -28,7 +29,14 @@ public sealed class WidgetPaneViewModel
 
     private readonly Func<IWidgetContext, Control>? _configView;
 
-    public WorkspacePane Pane { get; }
+    /// <summary>
+    /// Where this instance sits, and what it is. Settable so a move or resize updates the pane in place —
+    /// rebuilding it to change four numbers would throw away the plugin's control and everything it holds,
+    /// which is the mistake the session grid made on 2026-07-13.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Column), nameof(Row), nameof(ColumnSpan), nameof(RowSpan))]
+    private WorkspacePane _pane;
 
     public string Id => Pane.Id;
 

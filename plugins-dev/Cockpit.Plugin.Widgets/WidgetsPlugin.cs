@@ -25,10 +25,15 @@ public sealed class WidgetsPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        // The spans are what a freshly placed instance takes on the dashboard's default 12x8 grid — that grid is
+        // a canvas to arrange on, not a slot count, so 1x1 would land a postage stamp the operator has to resize
+        // before they can read it.
         host.AddWidget(new WidgetRegistration("widgets.clock", "Clock", context => new ClockWidget(context))
         {
             Icon = "🕐",
             Description = "The time and date.",
+            DefaultColumnSpan = 3,
+            DefaultRowSpan = 2,
         });
 
         // The one with settings, deliberately: it proves the config path end to end — CreateConfigView is what
@@ -37,6 +42,8 @@ public sealed class WidgetsPlugin : ICockpitPlugin
         {
             Icon = "📈",
             Description = "CPU, memory and disk usage.",
+            DefaultColumnSpan = 3,
+            DefaultRowSpan = 3,
             CreateConfigView = context => new SystemMonitorSettingsView(context),
         });
     }

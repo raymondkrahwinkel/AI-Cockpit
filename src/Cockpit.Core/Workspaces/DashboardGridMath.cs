@@ -106,4 +106,38 @@ public static class DashboardGridMath
             : occupant.Id is not null && pane.Id == occupant.Id ? (pane.Id, occupant.Cell with { Column = dragged.Cell.Column, Row = dragged.Cell.Row })
             : pane)];
     }
+
+    /// <summary>
+    /// The size a pane takes when its corner is dragged to <paramref name="corner"/> — the cell the pointer is
+    /// over becomes the pane's new bottom-right. Null when the result would not be a legal size: off the grid,
+    /// inverted (dragged above or left of the pane's own origin), or overlapping a neighbour.
+    /// </summary>
+    /// <remarks>
+    /// Refusing rather than clamping is what makes the drag feel solid: the pane simply stops growing at the
+    /// obstacle and keeps its last good size, instead of jumping over a neighbour or snapping to a size the
+    /// pointer is nowhere near.
+    /// </remarks>
+    public static GridCell? Resize(
+        IReadOnlyList<(string Id, GridCell Cell)> panes, string paneId, (int Column, int Row) corner, DashboardLayout layout)
+    {
+        var pane = panes.FirstOrDefault(entry => entry.Id == paneId);
+        if (pane.Id is null)
+        {
+            return null;
+        }
+
+        var columns = layout.Clamped().Columns;
+        var resized = pane.Cell with
+        {
+            ColumnSpan = corner.Column - pane.Cell.Column + 1,
+            RowSpan = corner.Row - pane.Cell.Row + 1,
+        };
+
+        if (resized.ColumnSpan < 1 || resized.RowSpan < 1 || resized.ColumnEnd > columns)
+        {
+            return null;
+        }
+
+        return panes.Any(other => other.Id != paneId && other.Cell.Overlaps(resized)) ? null : resized;
+    }
 }

@@ -499,6 +499,18 @@ public partial class CockpitView : UserControl
     // so a widget keeps whatever state it holds across a drag, the same rule the session grid learned on
     // 2026-07-13 when a rebuilt pane lost its pty.
     private WidgetPaneViewModel? _draggingWidget;
+    private WidgetPaneViewModel? _resizingWidget;
+
+    private void OnWidgetResizePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is Control { DataContext: WidgetPaneViewModel pane })
+        {
+            _resizingWidget = pane;
+            // The grip is inside the pane; without this the press would also reach the header's drag and the
+            // widget would move while being resized.
+            e.Handled = true;
+        }
+    }
 
     private void OnWidgetHeaderPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -516,35 +528,42 @@ public partial class CockpitView : UserControl
 
     private void OnDashboardPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggingWidget is null
+        var active = _draggingWidget ?? _resizingWidget;
+        if (active is null
             || !e.GetCurrentPoint(DashboardGrid).Properties.IsLeftButtonPressed
             || DashboardGrid?.ItemsPanelRoot is not { } grid
             || DataContext is not CockpitViewModel cockpit)
         {
-            // A move with the button up means the drag ended somewhere this handler never saw — drop it rather
-            // than leaving a pane glued to the pointer.
-            _draggingWidget = null;
+            // A move with the button up means the gesture ended somewhere this handler never saw — let go
+            // rather than leaving a pane glued to the pointer.
+            (_draggingWidget, _resizingWidget) = (null, null);
             return;
         }
 
         var position = e.GetPosition(grid);
-        var cell = DashboardGridMath.CellAt(
-            position.X, position.Y, grid.Bounds.Width, grid.Bounds.Height,
-            cockpit.Workspaces.DashboardColumns, cockpit.Workspaces.DashboardRows);
-
-        if (cell is not { } target || (target.Column == _draggingWidget.Column && target.Row == _draggingWidget.Row))
+        if (DashboardGridMath.CellAt(
+                position.X, position.Y, grid.Bounds.Width, grid.Bounds.Height,
+                cockpit.Workspaces.DashboardColumns, cockpit.Workspaces.DashboardRows) is not { } target)
         {
             return;
         }
 
-        // The panes are rebuilt by the rearrangement, so keep the id and re-find it rather than holding a
-        // reference to a view model that has been replaced under us.
-        var draggingId = _draggingWidget.Id;
-        _ = cockpit.Workspaces.DropPaneAsync(draggingId, target.Column, target.Row);
-        _draggingWidget = cockpit.Workspaces.WidgetPanes.FirstOrDefault(pane => pane.Id == draggingId);
+        if (_resizingWidget is not null)
+        {
+            // The cell under the pointer is the pane's new bottom-right; a size that does not fit is refused by
+            // the math, so the pane stops at the obstacle rather than jumping over it.
+            _ = cockpit.Workspaces.ResizePaneAsync(_resizingWidget.Id, target.Column, target.Row);
+            return;
+        }
+
+        if (target.Column != _draggingWidget!.Column || target.Row != _draggingWidget.Row)
+        {
+            _ = cockpit.Workspaces.DropPaneAsync(_draggingWidget.Id, target.Column, target.Row);
+        }
     }
 
-    private void OnDashboardPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingWidget = null;
+    private void OnDashboardPointerReleased(object? sender, PointerReleasedEventArgs e) =>
+        (_draggingWidget, _resizingWidget) = (null, null);
 
     // Widget pane chrome. Each button's DataContext is the pane it sits on, so the handler needs no parameter
     // plumbing — the same shape as the session-row handlers above.
