@@ -468,9 +468,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             && profile?.ProviderConfig is PluginProviderConfig plugin
             && _ttyProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
         {
+            var storedDefaults = profile.Defaults?.OptionDefaults;
             foreach (var option in registration.Options)
             {
-                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels));
+                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
             }
         }
 
@@ -492,9 +494,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             && profile?.ProviderConfig is PluginProviderConfig plugin
             && _sessionProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
         {
+            var storedDefaults = profile.Defaults?.OptionDefaults;
             foreach (var option in registration.Options)
             {
-                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels));
+                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
             }
         }
 
