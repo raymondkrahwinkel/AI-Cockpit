@@ -190,6 +190,15 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     private Task AddWorkspaceAsync(WorkspaceType type) =>
         _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(type), type)));
 
+    /// <summary>
+    /// Whether closing this workspace would do anything. False for the last one — the cockpit always needs a
+    /// desk to render — and for an id nothing holds. The caller asks before it starts tearing down what is on
+    /// the workspace, since stopping its sessions and then finding the workspace stays is the one outcome worse
+    /// than either.
+    /// </summary>
+    public bool CanClose(string workspaceId) =>
+        Settings.Workspaces.Count > 1 && Settings.Workspaces.Any(workspace => workspace.Id == workspaceId);
+
     [RelayCommand]
     private Task CloseWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithoutWorkspace(workspaceId));
 

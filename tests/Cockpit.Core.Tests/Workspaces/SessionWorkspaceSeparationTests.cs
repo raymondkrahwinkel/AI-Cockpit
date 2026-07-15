@@ -103,6 +103,51 @@ public class SessionWorkspaceSeparationTests
         cockpit.ShowZoomButton.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ClosingAWorkspace_StopsTheSessionsOnIt()
+    {
+        // They would otherwise keep running with a WorkspaceId pointing at a workspace that no longer exists:
+        // no tab shows them, nothing can reach them, and their child process outlives the desk (Raymond).
+        var cockpit = _Create(out var workspaces);
+        var first = workspaces.Active!;
+        var mine = _AddSession(cockpit, first.Id);
+        var second = _SwitchToASecondWorkspace(workspaces);
+        var survivor = _AddSession(cockpit, second.Id);
+
+        await cockpit.CloseWorkspaceAsync(first.Id);
+
+        cockpit.Sessions.Should().NotContain(mine);
+        cockpit.Sessions.Should().Contain(survivor, "the other desk's session is none of this workspace's business");
+        workspaces.Settings.Workspaces.Should().ContainSingle().Which.Id.Should().Be(second.Id);
+    }
+
+    [Fact]
+    public async Task ClosingTheLastWorkspace_IsRefused_AndLeavesItsSessionsRunning()
+    {
+        // The one outcome worse than refusing: the desk survives and its work does not.
+        var cockpit = _Create(out var workspaces);
+        var only = workspaces.Active!;
+        var session = _AddSession(cockpit, only.Id);
+
+        await cockpit.CloseWorkspaceAsync(only.Id);
+
+        cockpit.Sessions.Should().Contain(session);
+        workspaces.Settings.Workspaces.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ClosingADashboard_LeavesEverySessionAlone()
+    {
+        var cockpit = _Create(out var workspaces);
+        var session = _AddSession(cockpit, workspaces.Active!.Id);
+        await workspaces.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+        var dashboard = workspaces.Active!;
+
+        await cockpit.CloseWorkspaceAsync(dashboard.Id);
+
+        cockpit.Sessions.Should().Contain(session);
+    }
+
     private static CockpitViewModel _Create(out WorkspacesViewModel workspaces)
     {
         var cockpit = new CockpitViewModel();
