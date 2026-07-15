@@ -4,7 +4,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions.Widgets;
 
-namespace Cockpit.Plugin.Widgets;
+namespace Cockpit.Plugin.Clock;
 
 /// <summary>
 /// The time and date. The simplest widget there is, and deliberately so: it declares no settings form, which

@@ -52,6 +52,41 @@ public class WidgetContributionTests
         new WidgetRegistry().Widgets.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Two plugins can claim one type id — nothing stops a third party picking one that already exists, and the
+    /// cockpit's own clock did exactly that when it was split out of the reference-widgets plugin. Adding both
+    /// put the type in the gallery twice and left CreateInstance resolving to whichever plugin happened to load
+    /// first, which is not something an operator can see, let alone fix.
+    /// </summary>
+    [Fact]
+    public void ASecondPluginClaimingTheSameWidgetType_IsRefusedRatherThanListedTwice()
+    {
+        var registry = new WidgetRegistry();
+
+        NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock", _ => new Border()));
+        NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock (the other one)", _ => new Border()));
+
+        registry.Widgets.Should().ContainSingle().Which.Title.Should().Be("Clock");
+    }
+
+    /// <summary>A refused registration is not fatal: the plugin is told, and whatever else it registers still stands.</summary>
+    [Fact]
+    public void ASecondPluginClaimingTheSameWidgetType_DoesNotThrow_AndItsOtherWidgetsStillRegister()
+    {
+        var registry = new WidgetRegistry();
+        NewHost(registry).AddWidget(new WidgetRegistration("widgets.clock", "Clock", _ => new Border()));
+        var second = NewHost(registry);
+
+        var act = () =>
+        {
+            second.AddWidget(new WidgetRegistration("widgets.clock", "Clock", _ => new Border()));
+            second.AddWidget(new WidgetRegistration("widgets.system-monitor", "System Monitor", _ => new Border()));
+        };
+
+        act.Should().NotThrow();
+        registry.Widgets.Select(widget => widget.Id).Should().Equal("widgets.clock", "widgets.system-monitor");
+    }
+
     private static ICockpitHost NewHost(IWidgetRegistry registry)
     {
         var services = new ServiceCollection();

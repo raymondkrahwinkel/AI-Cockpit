@@ -1,4 +1,4 @@
-namespace Cockpit.Plugin.Widgets;
+namespace Cockpit.Plugin.SystemMonitor;
 
 /// <summary>
 /// Which of the three readings a System Monitor instance shows — the widget's whole configuration, and the

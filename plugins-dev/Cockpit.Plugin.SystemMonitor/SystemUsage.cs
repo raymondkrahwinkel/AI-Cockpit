@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Cockpit.Plugin.Widgets;
+namespace Cockpit.Plugin.SystemMonitor;
 
 /// <summary>
 /// The three readings the System Monitor shows, from what .NET exposes on every platform the cockpit runs on.

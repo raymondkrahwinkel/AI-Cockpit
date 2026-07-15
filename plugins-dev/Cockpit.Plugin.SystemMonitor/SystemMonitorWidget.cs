@@ -3,7 +3,7 @@ using Avalonia.Layout;
 using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions.Widgets;
 
-namespace Cockpit.Plugin.Widgets;
+namespace Cockpit.Plugin.SystemMonitor;
 
 /// <summary>
 /// CPU, memory and disk, whichever of the three this instance is configured to show. The widget with a

@@ -244,8 +244,10 @@ that workspace's **Add widget** gallery; picking it places an instance.
 
 There is no separate widget package and no second installer — a widget plugin is an ordinary plugin whose
 contribution happens to be `AddWidget`, so it ships, installs and is trusted like any other. The worked
-reference is [`plugins-dev/Cockpit.Plugin.Widgets`](../../plugins-dev/Cockpit.Plugin.Widgets): a clock with no
-settings and a system monitor with settings, which together prove the ⚙ is really gated.
+references are [`plugins-dev/Cockpit.Plugin.Clock`](../../plugins-dev/Cockpit.Plugin.Clock) (no settings, ships
+with the app) and [`plugins-dev/Cockpit.Plugin.SystemMonitor`](../../plugins-dev/Cockpit.Plugin.SystemMonitor)
+(settings, from the store) — together they prove the ⚙ is really gated, and separately they show why one plugin
+per widget is worth it: wanting a clock is not also wanting a CPU meter.
 
 ```csharp
 public void Initialize(ICockpitHost host)
@@ -262,7 +264,7 @@ public void Initialize(ICockpitHost host)
 
 | Member | Meaning |
 |---|---|
-| `Id` | Stable, unique id for the widget **type**, namespaced by your plugin (`"system-monitor.usage"`). It is persisted with every placed instance, so **changing it orphans existing instances** — treat it as an API surface. |
+| `Id` | Stable, unique id for the widget **type**, namespaced by your plugin (`"system-monitor.usage"`). It is persisted with every placed instance, so **changing it orphans existing instances** — treat it as an API surface, not a name. It also has to be unique across every installed plugin: the first plugin to claim an id keeps it, and a later claim is refused and logged rather than listed beside it. |
 | `Title` | Shown in the gallery and as the pane's default header. |
 | `CreateView` | Builds one instance's control on the UI thread, handed that instance's own `IWidgetContext`. Called once per instance; if you need periodic updates, own a timer or listen to `RefreshRequested`. |
 | `Icon` / `Description` | The gallery card. Defaults: `🧩` and empty. |

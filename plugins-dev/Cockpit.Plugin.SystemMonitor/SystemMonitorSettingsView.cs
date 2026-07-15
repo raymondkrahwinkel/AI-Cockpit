@@ -2,7 +2,7 @@ using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
 
-namespace Cockpit.Plugin.Widgets;
+namespace Cockpit.Plugin.SystemMonitor;
 
 /// <summary>
 /// One System Monitor instance's settings: which of the three readings it shows. Implements
