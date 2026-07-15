@@ -74,7 +74,7 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         written!.Plugins!.Keys.Should().BeEquivalentTo("kept", "added");
     }
 
-    /// <summary>A reader must never wait on a writer: the rename is atomic, so it sees the whole old file or the whole new one.</summary>
+    /// <summary>A reader does not queue behind the write gate: it is not a writer, and it has no reason to wait for one to think.</summary>
     [Fact]
     public async Task ReadAsync_WhileTheGateIsHeld_IsNotBlocked()
     {
@@ -87,6 +87,52 @@ public sealed class CockpitConfigFileAccessTests : IDisposable
         var read = await access.ReadAsync(CancellationToken.None);
 
         read!.Plugins!.Keys.Should().Contain("there");
+    }
+
+    /// <summary>
+    /// The read the old claim said could not fail. "A rename is atomic, so a reader never waits on a writer" was
+    /// true of the file's <em>content</em> and false of the read: the swap that publishes a write holds the
+    /// destination for its duration, and a reader landing in that window is refused outright.
+    /// <para>
+    /// The test above cannot catch this and never could — it holds the <c>.lock</c> file, which readers ignore by
+    /// design. This one holds <c>cockpit.json</c> itself, the way <c>File.Replace</c> does. On 2026-07-15 this
+    /// raced at startup, and the caller that did not catch it — global push-to-talk — died silently and took F9
+    /// with it for the whole session.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ReadAsync_WhileTheFileItselfIsHeldForASwap_WaitsItOut_RatherThanFailing()
+    {
+        Directory.CreateDirectory(_directory);
+        var access = new CockpitConfigFileAccess(ConfigPath);
+        await access.UpdateAsync(file => (file.Plugins ??= [])["there"] = new PluginRegistrationEntry(), CancellationToken.None);
+
+        var swap = new FileStream(ConfigPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var release = Task.Run(async () =>
+        {
+            await Task.Delay(200);
+            swap.Dispose();
+        });
+
+        var read = await access.ReadAsync(CancellationToken.None);
+
+        await release;
+        read!.Plugins!.Keys.Should().Contain("there", "a read that lands during a swap waits it out rather than throwing");
+    }
+
+    /// <summary>Waiting is not forgiving: a hold that outlasts any swap is not contention, and the read has to stop pretending otherwise.</summary>
+    [Fact]
+    public async Task ReadAsync_WhileTheFileIsHeldIndefinitely_GivesUp_RatherThanHangingForever()
+    {
+        Directory.CreateDirectory(_directory);
+        var access = new CockpitConfigFileAccess(ConfigPath);
+        await access.UpdateAsync(file => (file.Plugins ??= [])["there"] = new PluginRegistrationEntry(), CancellationToken.None);
+
+        using var held = new FileStream(ConfigPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        var act = async () => await access.ReadAsync(CancellationToken.None);
+
+        await act.Should().ThrowAsync<IOException>();
     }
 
     /// <summary>Each writer still only touches its own section — the gate serialises them, it does not merge them.</summary>

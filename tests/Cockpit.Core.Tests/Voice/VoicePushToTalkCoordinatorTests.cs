@@ -16,6 +16,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -233,6 +234,51 @@ public class VoicePushToTalkCoordinatorTests
         hotkeyService.RaiseHoldStarted();
 
         hotkeyService.WasStarted.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Its caller discards the task (<c>App.axaml.cs</c>: <c>_ = …StartAsync()</c>), so a throw here used to land
+    /// on a task nobody observes and take the hotkey with it. On 2026-07-15 that happened for real: reading the
+    /// voice settings hit <c>cockpit.json</c> while the plugin layer was writing it, and F9 was dead for the whole
+    /// session with not one line in the log. It still cannot arm — but it has to say so.
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_WhenTheSettingsCannotBeRead_LogsIt_RatherThanDyingOnATaskNobodyObserves()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns<VoiceSettings>(_ => throw new IOException("cockpit.json is being used by another process"));
+        var logger = new CapturingLogger<VoicePushToTalkCoordinator>();
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter(),
+            Substitute.For<IVoicePushToTalkService>(), logger);
+
+        var act = async () => await coordinator.StartAsync();
+
+        await act.Should().NotThrowAsync();
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenTheHotkeyServiceRefusesToStart_LeavesNothingSubscribedToAHookThatNeverArmed()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService { StartFailure = new InvalidOperationException("no hook for you") };
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true });
+        var overlay = new VoiceOverlayViewModel();
+        var logger = new CapturingLogger<VoicePushToTalkCoordinator>();
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, overlay, new FakeVoiceOverlayPresenter(),
+            Substitute.For<IVoicePushToTalkService>(), logger);
+
+        await coordinator.StartAsync();
+
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error);
+
+        // A hook that never armed cannot raise this — but if it somehow did, nothing should still be listening.
+        hotkeyService.RaiseHoldStarted();
+        overlay.State.Should().Be(VoiceOverlayState.Hidden, "the coordinator unsubscribed when the hook refused");
     }
 
     private static SessionPanelViewModel _CreateSdkSession(IVoicePushToTalkService voicePushToTalk)

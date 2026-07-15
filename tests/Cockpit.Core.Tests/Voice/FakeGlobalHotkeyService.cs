@@ -10,8 +10,16 @@ internal sealed class FakeGlobalHotkeyService : IGlobalHotkeyService
 
     public bool WasStarted { get; private set; }
 
+    /// <summary>Set to make arming the hook fail — the real ones can: a portal that refuses the shortcut, a hook the OS will not install.</summary>
+    public Exception? StartFailure { get; init; }
+
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
+        if (StartFailure is not null)
+        {
+            return Task.FromException(StartFailure);
+        }
+
         WasStarted = true;
         return Task.CompletedTask;
     }
