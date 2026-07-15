@@ -29,6 +29,11 @@ jobs:
       - name: Test
         run: dotnet test tests/Cockpit.Core.Tests/Cockpit.Core.Tests.csproj --configuration Release --no-build --verbosity minimal
 
+      # Named explicitly, like every other suite here: the solution build above compiles this project but runs
+      # nothing in it, and a test project CI never executes is worse than none — it reads as covered.
+      - name: Infrastructure tests
+        run: dotnet test tests/Cockpit.Infrastructure.Tests/Cockpit.Infrastructure.Tests.csproj --configuration Release --no-build --verbosity minimal
+
       # The view tests run in their own process: Avalonia's dispatcher is global and belongs to one thread, so a
       # headless platform in the same process as everything else kills the test host rather than failing a test.
       - name: View tests

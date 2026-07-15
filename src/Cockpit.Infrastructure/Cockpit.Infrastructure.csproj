@@ -68,6 +68,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cockpit.Core.Tests" />
+    <InternalsVisibleTo Include="Cockpit.Infrastructure.Tests" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 

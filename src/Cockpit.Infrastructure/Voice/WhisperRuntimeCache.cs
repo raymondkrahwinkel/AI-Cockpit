@@ -69,7 +69,7 @@ internal static class WhisperRuntimeCache
 
         // Before the walk, not after a successful one: a machine that has stopped being able to use any GPU at
         // all still has hundreds of megabytes of superseded natives to give back.
-        _RemoveOtherVersions(logger);
+        RemoveOtherVersions(RuntimesRoot, RuntimeVersion, logger);
 
         foreach (var backend in order)
         {
@@ -129,7 +129,7 @@ internal static class WhisperRuntimeCache
             // never leave a half-filled directory that the next run reads as a complete, cached runtime.
             _DeleteDirectory(staging);
             Directory.CreateDirectory(staging);
-            var extracted = _ExtractNatives(packageFile, package, staging);
+            var extracted = ExtractNatives(packageFile, package, staging);
             if (extracted == 0)
             {
                 logger?.LogWarning(
@@ -192,7 +192,7 @@ internal static class WhisperRuntimeCache
     /// just whisper itself: the loader opens a dependency chain (ggml-base, ggml-cpu, ggml-cuda, ggml, …) out of
     /// the same directory, and a missing link there means it quietly moves on to the next backend.
     /// </summary>
-    private static int _ExtractNatives(string packageFile, WhisperRuntimePackage package, string staging)
+    internal static int ExtractNatives(string packageFile, WhisperRuntimePackage package, string staging)
     {
         using var archive = ZipFile.OpenRead(packageFile);
         var nativeFolder = package.PackageNativeFolder + "/";
@@ -215,19 +215,20 @@ internal static class WhisperRuntimeCache
 
     /// <summary>
     /// Drops runtimes cached for a Whisper.net version we no longer load. They are hundreds of megabytes each
-    /// and nothing reads them again — the version is baked into the path the loader searches.
+    /// and nothing reads them again — the version is baked into the path the loader searches. Takes the root
+    /// rather than reaching for it, so what it is about to delete recursively is always the caller's to name.
     /// </summary>
-    private static void _RemoveOtherVersions(ILogger? logger)
+    internal static void RemoveOtherVersions(string runtimesRoot, string keepVersion, ILogger? logger)
     {
-        if (!Directory.Exists(RuntimesRoot))
+        if (!Directory.Exists(runtimesRoot))
         {
             return;
         }
 
-        foreach (var directory in Directory.EnumerateDirectories(RuntimesRoot))
+        foreach (var directory in Directory.EnumerateDirectories(runtimesRoot))
         {
             var version = Path.GetFileName(directory);
-            if (string.Equals(version, RuntimeVersion, StringComparison.Ordinal))
+            if (string.Equals(version, keepVersion, StringComparison.Ordinal))
             {
                 continue;
             }
