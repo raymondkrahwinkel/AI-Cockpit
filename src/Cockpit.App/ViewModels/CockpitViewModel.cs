@@ -178,6 +178,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public WorkspacesViewModel Workspaces { get; }
 
     /// <summary>
+    /// Asks before something irreversible, through the same confirmation dialog the rest of the cockpit uses.
+    /// Answers "no" without asking when there is no dialog service (design-time/tests): a graph with no way to
+    /// ask must not answer yes on the operator's behalf.
+    /// </summary>
+    public Task<bool> ConfirmAsync(string title, string message, string confirmLabel) =>
+        _dialogService is null
+            ? Task.FromResult(false)
+            : _dialogService.ShowConfirmationDialogAsync(title, message, confirmLabel);
+
+    /// <summary>
     /// Whether the session grid applies: sessions exist AND a Sessions workspace is active. A dashboard owns
     /// the content area while it is selected, so the grid must stand down even though the sessions themselves
     /// keep running — they are hidden, not closed.
