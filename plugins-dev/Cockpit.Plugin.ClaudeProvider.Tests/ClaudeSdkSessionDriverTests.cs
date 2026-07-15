@@ -23,9 +23,11 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         await using var driver = _CreateDriver(fake);
         await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
 
-        // StartAsync puts an SDK client on the control channel first, so the CLI routes approvals here.
-        fake.WrittenLines.Should().ContainSingle();
+        // StartAsync puts an SDK client on the control channel first (so the CLI routes approvals here), then applies
+        // the launch effort as the session's initial thinking-token budget (default medium).
+        fake.WrittenLines.Should().HaveCount(2);
         JsonDocument.Parse(fake.WrittenLines[0]).RootElement.GetProperty("request").GetProperty("subtype").GetString().Should().Be("initialize");
+        JsonDocument.Parse(fake.WrittenLines[1]).RootElement.GetProperty("request").GetProperty("subtype").GetString().Should().Be("set_max_thinking_tokens");
 
         await fake.PushStdoutAsync("""
         {"type":"control_request","request_id":"req-42","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf /"},"tool_use_id":"toolu_7"}}
@@ -155,6 +157,35 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
         request.GetProperty("subtype").GetString().Should().Be("set_model");
         request.GetProperty("model").GetString().Should().Be("sonnet");
+    }
+
+    [Fact]
+    public async Task SetLiveOption_Effort_SwitchesTheThinkingTokenBudget_ForTheLevel()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await driver.SetLiveOptionAsync(ClaudeSdkSessionDriver.EffortOptionKey, "high", CancellationToken.None);
+
+        // Effort is the CLI's thinking-token budget (set_max_thinking_tokens); "high" maps to the plugin's own
+        // per-level tuning (24k) — the same budget the host's SessionOptionCatalog carried before Claude became a plugin.
+        var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
+        request.GetProperty("subtype").GetString().Should().Be("set_max_thinking_tokens");
+        request.GetProperty("maxThinkingTokens").GetInt32().Should().Be(24_000);
+    }
+
+    [Fact]
+    public async Task LiveOptions_IncludeEffort_WithFriendlyLabels()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        var effort = driver.LiveOptions.Single(option => option.Key == ClaudeSdkSessionDriver.EffortOptionKey);
+        effort.Choices.Should().Equal("low", "medium", "high", "xhigh", "max");
+        effort.ChoiceLabels!["xhigh"].Should().Be("Extra high");
+        effort.DefaultValue.Should().Be("medium");
     }
 
     [Fact]

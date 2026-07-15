@@ -23,14 +23,6 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             + "cockpit's workspace-trust, shared MCP servers, usage limits and the operator's own statusline preserved. "
             + "Requires the claude CLI installed and logged in on the machine running Cockpit.");
 
-    private static readonly IReadOnlyList<string> _PermissionModes = ["default", "acceptEdits", "plan", "bypassPermissions"];
-
-    // The CLI's own aliases, offered as free-text suggestions (empty-vs-populated is the dialog's editable/dropdown
-    // switch) so a specific model or snapshot can still be pinned — the same list the host's dialog suggests.
-    private static readonly IReadOnlyList<string> _ModelSuggestions = ["opus", "sonnet", "haiku"];
-
-    private static readonly IReadOnlyList<string> _EffortLevels = ["low", "medium", "high", "xhigh", "max"];
-
     public void ConfigureServices(IServiceCollection services)
     {
         // No local state or background services: the TTY provider is minted per session from the container.
@@ -44,9 +36,12 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             CreateProvider: _ => new ClaudeTtyProvider(),
             Options:
             [
-                new PluginTtyLaunchOption(ClaudeTtyProvider.PermissionModeKey, "Permission mode", _PermissionModes, "default"),
-                new PluginTtyLaunchOption(ClaudeTtyProvider.ModelKey, "Model", _ModelSuggestions),
-                new PluginTtyLaunchOption(ClaudeTtyProvider.EffortKey, "Effort", _EffortLevels),
+                new PluginTtyLaunchOption(ClaudeTtyProvider.PermissionModeKey, "Permission mode", ClaudeOptionChoices.PermissionModes, "default")
+                    { ChoiceLabels = ClaudeOptionChoices.PermissionModeLabels },
+                new PluginTtyLaunchOption(ClaudeTtyProvider.ModelKey, "Model", ClaudeOptionChoices.ModelSuggestions)
+                    { ChoiceLabels = ClaudeOptionChoices.ModelLabels },
+                new PluginTtyLaunchOption(ClaudeTtyProvider.EffortKey, "Effort", ClaudeOptionChoices.EffortLevels)
+                    { ChoiceLabels = ClaudeOptionChoices.EffortLabels },
             ]));
 
         // The SDK/session-driver route (weg A): the headless stream-json driver, whose tool-approval prompts ride the
@@ -61,8 +56,12 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
         {
             Options =
             [
-                new PluginSessionLaunchOption(ClaudeSdkSessionDriver.PermissionModeOptionKey, "Permission mode", _PermissionModes, "default"),
-                new PluginSessionLaunchOption(ClaudeSdkSessionDriver.ModelOptionKey, "Model", _ModelSuggestions),
+                new PluginSessionLaunchOption(ClaudeSdkSessionDriver.PermissionModeOptionKey, "Permission mode", ClaudeOptionChoices.PermissionModes, "default")
+                    { ChoiceLabels = ClaudeOptionChoices.PermissionModeLabels },
+                new PluginSessionLaunchOption(ClaudeSdkSessionDriver.ModelOptionKey, "Model", ClaudeOptionChoices.ModelSuggestions)
+                    { ChoiceLabels = ClaudeOptionChoices.ModelLabels },
+                new PluginSessionLaunchOption(ClaudeSdkSessionDriver.EffortOptionKey, "Effort", ClaudeOptionChoices.EffortLevels, "medium")
+                    { ChoiceLabels = ClaudeOptionChoices.EffortLabels },
             ],
         });
     }

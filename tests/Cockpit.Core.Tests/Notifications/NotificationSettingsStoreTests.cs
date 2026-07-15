@@ -76,7 +76,7 @@ public class NotificationSettingsStoreTests : IDisposable
         // Both stores write the same file; saving notifications must not wipe the profiles a
         // previously-saved SessionProfileStore wrote, and vice versa.
         var profileStore = new SessionProfileStore(_configFilePath);
-        var profiles = new List<SessionProfile> { new("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work")) };
+        var profiles = new List<SessionProfile> { new("work", ClaudePluginProfile.Create(@"C:\Users\raymo\.claude-work", null)) };
         await profileStore.SaveAsync(profiles);
 
         var notificationStore = new NotificationSettingsStore(_configFilePath);
