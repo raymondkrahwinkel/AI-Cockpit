@@ -290,6 +290,44 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             ? Task.CompletedTask
             : AddWidgetAsync(registration.Id, registration.DefaultColumnSpan, registration.DefaultRowSpan);
 
+    /// <summary>
+    /// Moves a widget from the dashboard showing to another one (F5): dragged onto its tab, it leaves this
+    /// desk and lands on the first free cell over there — its own size, not squeezed into whatever it was
+    /// dropped over, because the target's arrangement is not the operator's to disturb from another workspace.
+    /// <para>
+    /// The pane keeps its id, which is what carries the widget's settings: instance storage is keyed by it, so
+    /// a moved system monitor arrives still showing the metrics it was set to. Rebuilding it as a new pane would
+    /// quietly reset it — the same rule the session grid learned the hard way on 2026-07-13.
+    /// </para>
+    /// <para>
+    /// Both ends are applied in one write. Two (remove here, add there) can half-land, and a half-landed move is
+    /// a widget that exists nowhere.
+    /// </para>
+    /// </summary>
+    /// <returns>False when the move does not apply: same desk, no dashboard either end, or no such pane.</returns>
+    public async Task<bool> MovePaneToWorkspaceAsync(string paneId, string targetWorkspaceId)
+    {
+        if (Active is not { Type: WorkspaceType.Dashboard } source
+            || source.Id == targetWorkspaceId
+            || source.Panes.FirstOrDefault(pane => pane.Id == paneId) is not { } moving
+            || Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == targetWorkspaceId) is not { Type: WorkspaceType.Dashboard } target)
+        {
+            return false;
+        }
+
+        var cell = DashboardGridMath.PlaceNext(
+            [.. target.Panes.Select(pane => pane.Cell)],
+            target.Layout,
+            moving.Cell.ColumnSpan,
+            moving.Cell.RowSpan);
+
+        await _ApplyAsync(Settings
+            .WithUpdated(source.WithoutPane(paneId))
+            .WithUpdated(target.WithPane(moving with { Cell = cell })));
+
+        return true;
+    }
+
     /// <summary>Removes a pane from the active workspace (the pane's ✕).</summary>
     public Task RemovePaneAsync(string paneId) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithoutPane(paneId)));
