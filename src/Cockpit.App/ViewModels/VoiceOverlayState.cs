@@ -10,6 +10,13 @@ public enum VoiceOverlayState
     Listening,
 
     /// <summary>
+    /// The hotkey is held but nothing is being recorded, and the pill says why — no session selected, or voice
+    /// off for the one that is. It used to show <see cref="Listening"/> here regardless: a waveform sitting
+    /// flat while the operator talked, and the reason written only to the log.
+    /// </summary>
+    Unavailable,
+
+    /// <summary>
     /// The hold ended but voice is still getting ready — on first use the model and a GPU runtime come down
     /// before a word can be transcribed. It is a state of its own because <see cref="Transcribing"/> used to
     /// cover this too, and spent those minutes claiming to do something it had not started.

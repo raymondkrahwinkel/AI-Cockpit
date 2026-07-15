@@ -48,6 +48,9 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
 
     public bool IsListening => State == VoiceOverlayState.Listening;
 
+    /// <summary>The hold is not recording, and <see cref="StatusText"/> says why.</summary>
+    public bool IsUnavailable => State == VoiceOverlayState.Unavailable;
+
     public bool IsPreparing => State == VoiceOverlayState.Preparing;
 
     public bool IsTranscribing => State == VoiceOverlayState.Transcribing;
@@ -86,12 +89,13 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
     partial void OnStateChanged(VoiceOverlayState value)
     {
         OnPropertyChanged(nameof(IsListening));
+        OnPropertyChanged(nameof(IsUnavailable));
         OnPropertyChanged(nameof(IsPreparing));
         OnPropertyChanged(nameof(IsTranscribing));
 
         // A stale "Downloading speech model — 91%" behind the next hold's spinner would be a lie the moment
-        // this one ends, so the preparing text never outlives its state.
-        if (value != VoiceOverlayState.Preparing)
+        // this one ends, so the text never outlives the two states that have something to say.
+        if (value is not (VoiceOverlayState.Preparing or VoiceOverlayState.Unavailable))
         {
             StatusText = string.Empty;
             Progress = null;
