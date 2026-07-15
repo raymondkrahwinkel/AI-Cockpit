@@ -35,6 +35,12 @@ public class PluginStoreDialogViewModelTests
         "https://store/index.json",
         installedVersion);
 
+    /// <summary>
+    /// A manager holding a catalogue — and, for every row the catalogue calls installed, the local plugin that
+    /// makes it so. Those are one fact in the real app: a row reports an installed version because the folder is
+    /// on disk. Filling only the catalogue built a state that cannot happen — the Installed pane empty while its
+    /// heading counted two — and a test written against it agreed with whatever the code did.
+    /// </summary>
     private static PluginManagerViewModel _ManagerWith(params StorePluginRowViewModel[] rows)
     {
         var manager = new PluginManagerViewModel();
@@ -42,10 +48,23 @@ public class PluginStoreDialogViewModelTests
         foreach (var row in rows)
         {
             manager.AvailablePlugins.Add(row);
+            if (row.IsInstalled)
+            {
+                manager.Plugins.Add(LocalPlugin(row.Id, row.Name));
+            }
         }
 
         return manager;
     }
+
+    /// <summary>The locally discovered half of an installed plugin — what the Installed pane lists and its heading counts.</summary>
+    private static PluginRowViewModel LocalPlugin(string id, string name) =>
+        new(new DiscoveredPlugin(
+            FolderPath: $"/plugins/{id}",
+            FolderId: id,
+            Manifest: new PluginManifest(id, name, "1.0.0", $"{name}.dll", 1, null, null, null, null),
+            Sha256: "sha",
+            Decision: PluginLoadDecision.Load));
 
     [Fact]
     public void FillingTheCatalogue_RaisesTheUpdateAllGate_SoTheButtonAppearsWhenTheStoreLoads()

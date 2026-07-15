@@ -21,6 +21,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     private readonly NotifyCollectionChangedEventHandler _onAvailablePluginsChanged;
     private readonly NotifyCollectionChangedEventHandler _onAvailableTemplatesChanged;
     private readonly NotifyCollectionChangedEventHandler _onStoresChanged;
+    private readonly NotifyCollectionChangedEventHandler _onInstalledPluginsChanged;
     private readonly PropertyChangedEventHandler _onManagerPropertyChanged;
     private bool _isDisposed;
 
@@ -73,9 +74,14 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         // sidebar saying "Workflow templates (0)" — greyed out and unclickable — while the store was offering ten.
         _onAvailableTemplatesChanged = (_, _) => _OnCatalogueChanged();
         _onStoresChanged = (_, _) => _OnCatalogueChanged();
+        // The Installed list is the local plugins, not the catalogue — so installing from a zip, or removing one,
+        // changes it without the catalogue moving at all. Without this the heading count and the groups would be
+        // whatever they were when the dialog opened.
+        _onInstalledPluginsChanged = (_, _) => _OnInstalledChanged();
         _onManagerPropertyChanged = _OnManagerPropertyChanged;
         _manager.AvailablePlugins.CollectionChanged += _onAvailablePluginsChanged;
         _manager.AvailableTemplates.CollectionChanged += _onAvailableTemplatesChanged;
+        _manager.Plugins.CollectionChanged += _onInstalledPluginsChanged;
         _manager.Stores.CollectionChanged += _onStoresChanged;
         _manager.PropertyChanged += _onManagerPropertyChanged;
 
@@ -96,6 +102,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
         _manager.AvailablePlugins.CollectionChanged -= _onAvailablePluginsChanged;
         _manager.AvailableTemplates.CollectionChanged -= _onAvailableTemplatesChanged;
+        _manager.Plugins.CollectionChanged -= _onInstalledPluginsChanged;
         _manager.Stores.CollectionChanged -= _onStoresChanged;
         _manager.PropertyChanged -= _onManagerPropertyChanged;
         _isDisposed = true;
@@ -128,6 +135,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     /// <summary>True while the sidebar's "Workflow templates" is selected — the flows the stores offer, not the plugins.</summary>
     public bool IsTemplatesView => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Templates;
+
 
     /// <summary>The templates a search narrows to: name, description and author, because whoever searches for "review" has that word in the description more often than in the name.</summary>
     public IEnumerable<StoreTemplateRowViewModel> FilteredTemplates => string.IsNullOrWhiteSpace(SearchText)
@@ -261,6 +269,10 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         OnPropertyChanged(nameof(IsLoadingCatalogue));
     }
 
+    // The local plugin list changed (a zip install, a removal) without the catalogue moving at all, and the
+    // Installed heading counts that list — so the sidebar, which holds the count, has to be rebuilt.
+    private void _OnInstalledChanged() => _RebuildSidebarItems();
+
     // Rebuilds the sidebar from the manager's current catalogue (categories + Installed/Updates counts
     // are derived, never hardcoded — a store that adds a new category shows up on its own). Re-selects
     // the same filter by value if it still exists, so browsing does not lose the selection on every
@@ -269,7 +281,11 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
         var previousFilter = SelectedSidebarItem?.Filter;
         var plugins = _manager.AvailablePlugins;
-        var installedCount = plugins.Count(row => row.IsInstalled);
+
+        // What the Installed view lists, not what the catalogue happens to know is installed. Counting the
+        // catalogue meant the label and the list disagreed about a plugin no store offers: it appeared in the
+        // list and not in the number, which is how an operator ends up counting rows to see who is lying.
+        var installedCount = _manager.Plugins.Count;
         var updatesCount = plugins.Count(row => row.UpdateAvailable);
 
         SidebarItems.Clear();
