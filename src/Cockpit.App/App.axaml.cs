@@ -93,6 +93,11 @@ public partial class App : Application
         _mainWindow.Show();
         _SetUpTrayIcon();
 
+        // Adopt the saved workspaces. Fire-and-forget: the view model already holds the default single
+        // Sessions workspace, so the window renders today's cockpit immediately and the saved set swaps in
+        // when the read completes, rather than the window waiting on file IO to appear.
+        _ = cockpitViewModel.Workspaces.InitializeAsync();
+
         // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
         // portal/keyboard-hook is only ever touched for an operator who opted in.
         _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
