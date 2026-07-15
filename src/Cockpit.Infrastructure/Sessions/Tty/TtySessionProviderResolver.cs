@@ -1,22 +1,19 @@
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
-using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
 /// <summary>
-/// Default <see cref="ITtySessionProviderResolver"/>: Claude's own TTY provider for a Claude profile (and for a
-/// profile-less session, which runs the host's own CLI), a plugin's for a plugin profile that registered one,
-/// and nothing for a provider that has no TUI to run.
+/// Default <see cref="ITtySessionProviderResolver"/>: a plugin's own TTY provider for a plugin profile that
+/// registered one (Claude and Codex both do), the bundled Claude provider plugin for a profile-less session (which
+/// runs the host's own CLI), and nothing for a provider that has no TUI to run.
 /// </summary>
 /// <remarks>
-/// Fase 4: a Claude profile prefers the Claude provider <em>plugin</em> when it is installed, falling back to the
-/// in-tree <see cref="ClaudeTtySessionProvider"/> during the transition — so moving Claude out to a plugin never
-/// leaves a Claude session unable to start.
+/// Fase 4: Claude is a provider plugin like every other — a Claude profile is migrated to a
+/// <see cref="PluginProviderConfig"/> on load, so it resolves through the plugin arm.
 /// </remarks>
 internal sealed class TtySessionProviderResolver(
     IServiceProvider services,
@@ -24,7 +21,8 @@ internal sealed class TtySessionProviderResolver(
 {
     public ITtySessionProvider? Resolve(SessionProfile? profile) => profile?.ProviderConfig switch
     {
-        null or ClaudeConfig => _ResolveClaude(profile?.Claude),
+        // A profile-less session runs the bundled Claude provider plugin's TUI with a default config.
+        null => _ResolvePlugin(ClaudePluginProfile.ProviderId, "{}"),
         PluginProviderConfig plugin => _ResolvePlugin(plugin.ProviderId, plugin.ConfigJson),
 
         // A local HTTP model is not a program you can run in a terminal. Saying so is the point: the alternative
@@ -32,30 +30,12 @@ internal sealed class TtySessionProviderResolver(
         _ => null,
     };
 
-    private ITtySessionProvider? _ResolveClaude(ClaudeConfig? claude)
-    {
-        if (ttyProviderRegistry.Resolve(ClaudeTtySessionProvider.Id) is { } registration)
-        {
-            // The plugin reads the same two fields (config dir, executable path) from the profile's config JSON that
-            // the in-tree provider read straight off ClaudeConfig.
-            return _BuildPluginAdapter(registration, _SerializeClaudeConfig(claude));
-        }
-
-        return services.GetRequiredService<ClaudeTtySessionProvider>();
-    }
-
     private ITtySessionProvider? _ResolvePlugin(string providerId, string configJson) =>
         ttyProviderRegistry.Resolve(providerId) is { } registration
-            ? _BuildPluginAdapter(registration, configJson)
+            ? new PluginTtySessionProviderAdapter(
+                registration.ProviderId,
+                registration.CreateProvider(services),
+                configJson,
+                services.GetService<IMcpServerStore>())
             : null;
-
-    private ITtySessionProvider _BuildPluginAdapter(TtyProviderRegistration registration, string configJson) =>
-        new PluginTtySessionProviderAdapter(
-            registration.ProviderId,
-            registration.CreateProvider(services),
-            configJson,
-            services.GetService<IMcpServerStore>());
-
-    private static string _SerializeClaudeConfig(ClaudeConfig? claude) =>
-        JsonSerializer.Serialize(new { configDir = claude?.ConfigDir, executablePath = claude?.ExecutablePath });
 }

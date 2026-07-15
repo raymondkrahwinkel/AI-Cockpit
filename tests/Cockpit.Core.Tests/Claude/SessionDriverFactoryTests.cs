@@ -77,12 +77,10 @@ public class SessionDriverFactoryTests
     }
 
     [Fact]
-    public void Create_WithAProfilelessSession_WhenTheClaudeProviderPluginIsRegistered_PrefersItOverTheInTreeDriver()
+    public void Create_WithAProfilelessSession_RunsTheBundledClaudeProviderPlugin()
     {
-        // Fase 4: a Claude (or profile-less) session prefers the Claude provider plugin's SDK route when installed,
-        // falling back to the in-tree ClaudeCliSession only when it is not — the session-driver mirror of the TTY
-        // resolver's Claude preference. Proven red without _ResolveClaude: the old code returned ClaudeCliSession
-        // unconditionally, which a bare ServiceCollection cannot resolve.
+        // Fase 4: Claude is a provider plugin like every other, so a profile-less default session runs the bundled
+        // Claude plugin (there is no in-tree driver to fall back to) with an empty default config.
         var innerDriver = new FakePluginSessionDriver();
         var driverFactory = Substitute.For<IPluginSessionDriverFactory>();
         driverFactory.Create(Arg.Any<string>()).Returns(innerDriver);
@@ -100,8 +98,8 @@ public class SessionDriverFactoryTests
         var driver = factory.Create(profile: null);
 
         driver.Should().BeOfType<PluginSessionDriverAdapter>();
-        // The profile-less session carries no ClaudeConfig, so both fields serialize to null.
-        driverFactory.Received(1).Create("""{"configDir":null,"executablePath":null}""");
+        // A profile-less default session runs the bundled Claude plugin with an empty default config.
+        driverFactory.Received(1).Create("{}");
     }
 
     [Fact]
