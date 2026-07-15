@@ -76,7 +76,29 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         Profile = profile;
         var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
         var mcpServers = await _ResolveMcpServersAsync(enabledMcpServerNames, cancellationToken).ConfigureAwait(false);
-        await inner.StartAsync(model, workingDirectory, resumeSessionId, launchOptions, mcpServers, cancellationToken).ConfigureAwait(false);
+
+        // The host carries the operator's permission-mode selection as a typed parameter (a Claude concept older than
+        // the plugin surface, which has no such parameter). Fold it into the options map under the well-known key so a
+        // provider that declared a permission-mode option actually receives the choice — without it, a Claude plugin
+        // session always fell back to the driver's own default (e.g. an operator's launch-time "bypassPermissions"
+        // silently became "default"). The typed value wins over any same-key launch option, as it is the host's
+        // authoritative selection.
+        var options = _MergePermissionMode(launchOptions, permissionMode);
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyDictionary<string, string>? _MergePermissionMode(IReadOnlyDictionary<string, string>? launchOptions, string? permissionMode)
+    {
+        if (string.IsNullOrWhiteSpace(permissionMode))
+        {
+            return launchOptions;
+        }
+
+        var merged = launchOptions is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(launchOptions);
+        merged[WellKnownPluginSessionOptions.PermissionMode] = permissionMode;
+        return merged;
     }
 
     /// <summary>
@@ -131,7 +153,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     };
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
-        inner.SendUserMessageAsync(text, cancellationToken);
+        inner.SendUserMessageAsync(
+            text,
+            images?.Select(image => new PluginImageAttachment(image.MediaType, image.Base64Data)).ToList(),
+            cancellationToken);
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         inner.InterruptAsync(cancellationToken);

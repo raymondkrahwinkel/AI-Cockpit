@@ -23,13 +23,23 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// </remarks>
 internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 {
-    /// <summary>Option key for the per-session permission mode (also a live control) — Claude's own start knob.</summary>
-    public const string PermissionModeOptionKey = "permission-mode";
+    /// <summary>
+    /// Option key for the per-session permission mode (also a live control) — the well-known key the host's driver
+    /// adapter folds its typed permission-mode selection into, so a launch-time choice (bypass, plan, …) actually
+    /// reaches this driver instead of falling back to the default.
+    /// </summary>
+    public const string PermissionModeOptionKey = WellKnownPluginSessionOptions.PermissionMode;
 
     /// <summary>Option key for the per-session model override (also a live control, #45 D4).</summary>
     public const string ModelOptionKey = "model";
 
+    // The CLI's four real --permission-mode launch values (matching the host's SessionOptionCatalog.AllPermissionModes;
+    // there is no "auto" mode — the CLI rejects it).
     private static readonly IReadOnlyList<string> _PermissionModes = ["default", "acceptEdits", "plan", "bypassPermissions"];
+
+    // The modes a live set_permission_mode control request can actually switch to. bypassPermissions is launch-only —
+    // the CLI cannot enter it mid-session — so it is not offered as a live switch (mirrors the host's LivePermissionModes).
+    private static readonly IReadOnlyList<string> _LivePermissionModes = ["default", "acceptEdits", "plan"];
     private static readonly IReadOnlyList<string> _ModelSuggestions = ["opus", "sonnet", "haiku"];
 
     private readonly Func<IClaudeSdkSubprocess> _subprocessFactory;
@@ -58,7 +68,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _executablePath = executablePath;
     }
 
-    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true);
+    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true, SupportsVision: true);
 
     public string? SessionId => _sessionId;
 
@@ -107,17 +117,42 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _liveOptions = _BuildLiveOptions(effectiveModel, permissionMode);
     }
 
-    public async Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
+    public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default) =>
+        _SendUserMessageAsync(text, images: null, cancellationToken);
+
+    public Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken) =>
+        _SendUserMessageAsync(text, images, cancellationToken);
+
+    private async Task _SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken)
     {
-        // Wire shape per the Agent SDK streaming docs: {"type":"user","message":{"role":"user","content":"..."}}.
-        // One user-message object per stdin line keeps the same persistent multi-turn session alive.
+        // Wire shape per the Agent SDK streaming docs: {"type":"user","message":{"role":"user","content":...}}. One
+        // user-message object per stdin line keeps the same persistent multi-turn session alive. With attachments the
+        // content becomes an array of blocks (text + one image block per attachment) — shape verified against
+        // claude.exe 2.1.197; text-only keeps the plain-string content.
+        object content = images is { Count: > 0 } ? _BuildContentBlocks(text, images) : text;
+
         var payload = new
         {
             type = "user",
-            message = new { role = "user", content = text },
+            message = new { role = "user", content },
         };
 
         await _RequireSubprocess().WriteLineAsync(JsonSerializer.Serialize(payload), cancellationToken).ConfigureAwait(false);
+    }
+
+    private static object[] _BuildContentBlocks(string text, IReadOnlyList<PluginImageAttachment> images)
+    {
+        var blocks = new List<object> { new { type = "text", text } };
+        foreach (var image in images)
+        {
+            blocks.Add(new
+            {
+                type = "image",
+                source = new { type = "base64", media_type = image.MediaType, data = image.Base64Data },
+            });
+        }
+
+        return [.. blocks];
     }
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
@@ -301,11 +336,20 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
             modelChoices.Insert(0, current);
         }
 
-        return
-        [
-            new PluginSessionLaunchOption(ModelOptionKey, "Model", modelChoices, model),
-            new PluginSessionLaunchOption(PermissionModeOptionKey, "Permission mode", _PermissionModes, permissionMode),
-        ];
+        var liveOptions = new List<PluginSessionLaunchOption>
+        {
+            new(ModelOptionKey, "Model", modelChoices, model),
+        };
+
+        // A session launched in bypassPermissions shows no permission-mode switch: the CLI cannot leave bypass live, and
+        // you do not casually step down from it mid-session (the host locks the same dropdown). The three switchable
+        // modes open on the launched one.
+        if (!string.Equals(permissionMode, "bypassPermissions", StringComparison.Ordinal))
+        {
+            liveOptions.Add(new PluginSessionLaunchOption(PermissionModeOptionKey, "Permission mode", _LivePermissionModes, permissionMode));
+        }
+
+        return liveOptions;
     }
 
     private static string? _ResolveOption(IReadOnlyDictionary<string, string>? options, string key, string? defaultValue) =>

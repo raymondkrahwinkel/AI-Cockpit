@@ -53,6 +53,17 @@ public interface IPluginSessionDriver : IAsyncDisposable
     /// <summary>Sends a user message; the session stays open for further turns afterwards.</summary>
     Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Sends a user message with pasted/attached images (#64) — the surface the host's driver adapter calls when the
+    /// operator attaches an image and the provider declared <see cref="PluginSessionCapabilities.SupportsVision"/>. The
+    /// default drops the images and calls the text-only overload above: a provider that cannot send images (or an
+    /// already-compiled plugin built before this member existed) simply ignores them, so nothing breaks. A driver that
+    /// supports vision overrides this to carry the images to its provider, and reports <c>SupportsVision: true</c> so
+    /// the host offers the attach affordance in the first place. A default method, so no already-compiled plugin breaks.
+    /// </summary>
+    Task SendUserMessageAsync(string text, IReadOnlyList<PluginImageAttachment>? images, CancellationToken cancellationToken) =>
+        SendUserMessageAsync(text, cancellationToken);
+
     /// <summary>Interrupts the current in-flight turn, if any.</summary>
     Task InterruptAsync(CancellationToken cancellationToken = default);
 
