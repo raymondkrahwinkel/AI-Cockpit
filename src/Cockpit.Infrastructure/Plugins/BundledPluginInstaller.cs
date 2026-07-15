@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Plugins;
@@ -12,10 +13,12 @@ namespace Cockpit.Infrastructure.Plugins;
 ///
 /// They are copied from the app's <c>bundled-plugins/</c> folder into the operator's plugins directory on
 /// startup, and pre-approved: the consent dialog exists to ask "do you trust this third-party code", and these
-/// came out of the very build that is asking. A newer bundled version replaces an older installed one, keeping
-/// the plugin enabled and its settings.
+/// came out of the very build that is asking. A newer bundled version replaces an older installed one — as does
+/// a rebuild of the same version, which is what a developer produces all day and what the version number cannot
+/// see. Either way the plugin keeps its enabled state and its settings, and its pin follows the new bytes.
 ///
-/// It never overrides the operator: a plugin they disabled stays disabled and is left untouched on disk.
+/// It never overrides the operator: a plugin they disabled stays disabled and is left untouched on disk, and a
+/// version they updated past ours is not rolled back.
 /// </summary>
 public sealed class BundledPluginInstaller : ISingletonService
 {
@@ -23,16 +26,19 @@ public sealed class BundledPluginInstaller : ISingletonService
     public const string BundledFolderName = "bundled-plugins";
 
     private readonly IPluginRegistrationStore _registrations;
+    private readonly ILogger<BundledPluginInstaller>? _logger;
 
-    public BundledPluginInstaller()
-        : this(new PluginRegistrationStore())
+    /// <param name="logger">Optional: this also runs before the container exists, and a skipped plugin is not worth failing to start over.</param>
+    public BundledPluginInstaller(ILogger<BundledPluginInstaller>? logger = null)
+        : this(new PluginRegistrationStore(), logger)
     {
     }
 
     /// <summary>Test seam: install against an in-memory registration store instead of <c>cockpit.json</c>.</summary>
-    internal BundledPluginInstaller(IPluginRegistrationStore registrations)
+    internal BundledPluginInstaller(IPluginRegistrationStore registrations, ILogger<BundledPluginInstaller>? logger = null)
     {
         _registrations = registrations;
+        _logger = logger;
     }
 
     /// <summary>
@@ -79,7 +85,7 @@ public sealed class BundledPluginInstaller : ISingletonService
                 continue;
             }
 
-            if (!_NeedsInstall(source, target, manifest, cancellationToken))
+            if (!await _NeedsInstallAsync(source, target, manifest, cancellationToken).ConfigureAwait(false))
             {
                 continue;
             }
@@ -96,18 +102,60 @@ public sealed class BundledPluginInstaller : ISingletonService
         return installed;
     }
 
-    // Install when it is not there at all, or when what we ship is newer than what is installed. An installed
-    // version that is newer (the operator updated it from the store) is left alone — shipping a build must not
-    // roll them back.
-    private bool _NeedsInstall(string source, string target, PluginManifest bundled, CancellationToken cancellationToken)
+    // Install when it is not there at all, when what we ship is newer than what is installed, or when it is the
+    // same version built from different bytes. An installed version that is newer (the operator updated it from
+    // the store) is left alone — shipping a build must not roll them back.
+    private async Task<bool> _NeedsInstallAsync(string source, string target, PluginManifest bundled, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(target))
         {
             return true;
         }
 
-        var installed = _ReadManifestAsync(target, cancellationToken).GetAwaiter().GetResult();
-        return installed is null || PluginVersion.IsNewer(bundled.Version, installed.Version);
+        if (await _ReadManifestAsync(target, cancellationToken).ConfigureAwait(false) is not { } installed)
+        {
+            return true;
+        }
+
+        if (PluginVersion.IsNewer(bundled.Version, installed.Version))
+        {
+            return true;
+        }
+
+        if (PluginVersion.IsNewer(installed.Version, bundled.Version))
+        {
+            // The one skip worth a word. The rest are either nothing happening or the operator's own decision;
+            // this one looks like the build did nothing, and the reason is a version they may have forgotten
+            // updating past.
+            _logger?.LogInformation(
+                "Bundled plugin '{Plugin}' {BundledVersion} is older than the {InstalledVersion} already installed, so it was left alone.",
+                bundled.Id,
+                bundled.Version,
+                installed.Version);
+
+            return false;
+        }
+
+        // Same version, which does not mean the same plugin: a rebuild never bumps one, because there is nothing
+        // to bump it to. The version was standing in for "is this different" and answering for the wrong thing —
+        // so ask what the question actually meant.
+        return !await _IsSameAssemblyAsync(
+            Path.Combine(source, bundled.EntryAssembly),
+            Path.Combine(target, installed.EntryAssembly),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<bool> _IsSameAssemblyAsync(string bundledAssembly, string installedAssembly, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(bundledAssembly) || !File.Exists(installedAssembly))
+        {
+            return false;
+        }
+
+        var bundledHash = PluginHash.Compute(await File.ReadAllBytesAsync(bundledAssembly, cancellationToken).ConfigureAwait(false));
+        var installedHash = PluginHash.Compute(await File.ReadAllBytesAsync(installedAssembly, cancellationToken).ConfigureAwait(false));
+
+        return string.Equals(bundledHash, installedHash, StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<PluginManifest?> _ReadManifestAsync(string folder, CancellationToken cancellationToken)

@@ -84,6 +84,40 @@ public class BundledPluginInstallerTests : IDisposable
         _registrations.Saved["git-status"].Should().Be(new PluginRegistration(Enabled: false, PinnedSha256: "pinned"));
     }
 
+    /// <summary>
+    /// A developer rebuilding a bundled plugin does not bump its version — there is nothing to bump it to. The
+    /// version was standing in for "is this different", and at equal versions it answered no every time: the
+    /// rebuilt assembly sat in bundled-plugins/ and the cockpit went on loading the old one, saying nothing.
+    /// Raymond hit this from the other side too, by copying a dll into plugins/ by hand, which broke the pin.
+    /// </summary>
+    [Fact]
+    public async Task ARebuiltBundledPlugin_Lands_EvenThoughItsVersionDidNotChange()
+    {
+        _WriteInstalled("clock", "1.0.0");
+        _registrations.Saved["clock"] = new PluginRegistration(Enabled: true, PinnedSha256: "the-old-bytes");
+        _WriteBundled("clock", "1.0.0", assemblyContent: "clock-rebuilt");
+
+        var installed = await NewSut().InstallAsync(_bundled, _plugins);
+
+        installed.Should().Equal("clock");
+        _InstalledAssembly("clock").Should().Be("clock-rebuilt");
+        _registrations.Saved["clock"].PinnedSha256.Should().NotBe("the-old-bytes", "the new bytes are what the operator consented to by running this build");
+    }
+
+    /// <summary>The other side of the same coin: identical bytes are not a reason to copy anything, or this would rewrite the plugins folder on every single start.</summary>
+    [Fact]
+    public async Task AnIdenticalBundledPlugin_IsLeftWhereItIs()
+    {
+        _WriteInstalled("clock", "1.0.0");
+        _registrations.Saved["clock"] = new PluginRegistration(Enabled: true, PinnedSha256: "pinned");
+        _WriteBundled("clock", "1.0.0");
+
+        var installed = await NewSut().InstallAsync(_bundled, _plugins);
+
+        installed.Should().BeEmpty();
+        _registrations.Saved["clock"].PinnedSha256.Should().Be("pinned");
+    }
+
     [Fact]
     public async Task RunningTwice_InstallsNothingTheSecondTime()
     {
@@ -112,11 +146,16 @@ public class BundledPluginInstallerTests : IDisposable
         return manifest is null ? throw new InvalidOperationException($"'{id}' has no readable manifest.") : manifest.Version;
     }
 
-    private void _WriteBundled(string id, string version) => _WritePlugin(Path.Combine(_bundled, id), id, version);
+    private string _InstalledAssembly(string id) =>
+        File.ReadAllText(Path.Combine(_plugins, id, $"Cockpit.Plugin.{id}.dll"));
+
+    /// <param name="assemblyContent">Stands in for the compiled bytes — pass one to make a rebuild of the same version.</param>
+    private void _WriteBundled(string id, string version, string? assemblyContent = null) =>
+        _WritePlugin(Path.Combine(_bundled, id), id, version, assemblyContent);
 
     private void _WriteInstalled(string id, string version) => _WritePlugin(Path.Combine(_plugins, id), id, version);
 
-    private static void _WritePlugin(string folder, string id, string version)
+    private static void _WritePlugin(string folder, string id, string version, string? assemblyContent = null)
     {
         Directory.CreateDirectory(folder);
         var assembly = $"Cockpit.Plugin.{id}.dll";
@@ -130,7 +169,7 @@ public class BundledPluginInstallerTests : IDisposable
               "abstractionsVersion": 1
             }
             """);
-        File.WriteAllBytes(Path.Combine(folder, assembly), System.Text.Encoding.UTF8.GetBytes($"{id}-{version}"));
+        File.WriteAllBytes(Path.Combine(folder, assembly), System.Text.Encoding.UTF8.GetBytes(assemblyContent ?? $"{id}-{version}"));
     }
 
     public void Dispose()

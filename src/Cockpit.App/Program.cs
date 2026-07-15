@@ -211,7 +211,7 @@ sealed class Program
 
         try
         {
-            var installed = new BundledPluginInstaller()
+            var installed = new BundledPluginInstaller(loggerFactory.CreateLogger<BundledPluginInstaller>())
                 .InstallAsync(bundledRoot, PluginBootstrap.PluginsRoot)
                 .GetAwaiter()
                 .GetResult();

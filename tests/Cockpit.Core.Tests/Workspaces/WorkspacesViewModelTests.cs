@@ -318,6 +318,55 @@ public class WorkspacesViewModelTests
         toasts.Toasts[0].Message.Should().Contain("the write lock could not be taken", "the reason is the point of saying anything at all");
     }
 
+    /// <summary>Its caller discards the task, so a throw out of the load lands on a task nobody observes.</summary>
+    [Fact]
+    public async Task InitializeAsync_WhenTheSavedWorkspacesCannotBeRead_DoesNotThrow_AndSaysSo()
+    {
+        var store = Substitute.For<IWorkspaceSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns<WorkspaceSettings>(_ => throw new IOException("cockpit.json is being used by another process"));
+        var toasts = new ToastHostViewModel((_, _) => { });
+        var viewModel = new WorkspacesViewModel(store, widgets: null, toasts);
+
+        var act = async () => await viewModel.InitializeAsync();
+
+        await act.Should().NotThrowAsync();
+        toasts.Toasts.Should().ContainSingle().Which.Severity.Should().Be(ToastSeverity.Error);
+    }
+
+    /// <summary>
+    /// The half that matters. A failed load leaves Settings on the constructor's default, and every change here
+    /// persists the whole of it — so the first thing the operator touched would write that default over the
+    /// workspaces they actually have. Not "their dashboards are invisible this session": their dashboards are
+    /// gone.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheSavedWorkspacesCouldNotBeRead_NoLaterChangeWritesTheDefaultOverThem()
+    {
+        var store = Substitute.For<IWorkspaceSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns<WorkspaceSettings>(_ => throw new IOException("cockpit.json is being used by another process"));
+        var viewModel = new WorkspacesViewModel(store, widgets: null, new ToastHostViewModel((_, _) => { }));
+        await viewModel.InitializeAsync();
+
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+        await viewModel.SelectPreviousWorkspaceCommand.ExecuteAsync(null);
+
+        await store.DidNotReceiveWithAnyArgs().SaveAsync(default!, default);
+    }
+
+    /// <summary>The gate above is on the load having failed, not on it having run — the design-time and unit-test graphs never call it, and their changes still persist.</summary>
+    [Fact]
+    public async Task AfterAWorkspaceLoadThatWorked_ChangesStillPersist()
+    {
+        var viewModel = _Create(out var store);
+        await viewModel.InitializeAsync();
+
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+
+        await store.Received().SaveAsync(Arg.Any<WorkspaceSettings>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task AFailedSave_DoesNotThrowOutOfTheCommand()
     {

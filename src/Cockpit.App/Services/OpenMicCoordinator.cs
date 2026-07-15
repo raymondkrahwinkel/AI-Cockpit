@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
@@ -28,6 +29,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private readonly ITranscriptCleanupService _cleanup;
     private readonly IVoicePlaybackQueue _playbackQueue;
     private readonly VoiceOverlayCoordinator _overlay;
+    private readonly ILogger<OpenMicCoordinator> _logger;
 
     private bool _wired;
 
@@ -45,7 +47,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         IVoiceSettingsStore voiceSettingsStore,
         ITranscriptCleanupService cleanup,
         IVoicePlaybackQueue playbackQueue,
-        VoiceOverlayCoordinator overlay)
+        VoiceOverlayCoordinator overlay,
+        ILogger<OpenMicCoordinator> logger)
     {
         _listener = listener;
         _cockpit = cockpit;
@@ -53,6 +56,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _cleanup = cleanup;
         _playbackQueue = playbackQueue;
         _overlay = overlay;
+        _logger = logger;
     }
 
     /// <summary>True once voice is enabled — open-mic needs the mic pipeline, so the toggle is disabled until then.</summary>
@@ -64,13 +68,30 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     private bool _isListening;
 
     /// <summary>Reads settings at startup and resumes listening if open-mic was left on; runtime toggling is via <see cref="ToggleOpenMicCommand"/>. No-op when voice is off.</summary>
+    /// <remarks>
+    /// Never throws, for the reason <see cref="VoicePushToTalkCoordinator.StartAsync"/> does not: its one caller
+    /// discards the task, so anything thrown here lands on a task nobody observes. It still cannot start when the
+    /// settings will not read or the microphone will not open — it says which now.
+    /// </remarks>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
-        IsAvailable = settings.IsEnabled;
-        if (settings.IsEnabled && settings.OpenMicEnabled)
+        try
         {
-            await _EnableAsync(cancellationToken);
+            var settings = await _voiceSettingsStore.LoadAsync(cancellationToken);
+            IsAvailable = settings.IsEnabled;
+            if (settings.IsEnabled && settings.OpenMicEnabled)
+            {
+                await _EnableAsync(cancellationToken);
+            }
+        }
+        catch (Exception exception)
+        {
+            // Leave nothing subscribed to a listener that never started. IsAvailable is deliberately left as the
+            // settings read found it: voice being on is what the toggle is gated on, and a microphone that failed
+            // to open is the operator's to retry — greying the toggle out would take that away over one bad start.
+            _Unwire();
+
+            _logger.LogError(exception, "Open-mic dictation could not start; the microphone is not listening.");
         }
     }
 
@@ -114,6 +135,21 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
         await _listener.StartAsync(cancellationToken);
         IsListening = true;
+    }
+
+    private void _Unwire()
+    {
+        if (!_wired)
+        {
+            return;
+        }
+
+        _listener.UtteranceTranscribed -= _OnUtteranceTranscribed;
+        _listener.SpeechStarted -= _OnSpeechStarted;
+        _listener.SpeechEnded -= _OnSpeechEnded;
+        _listener.AudioLevelSampled -= _OnAudioLevelSampled;
+        _playbackQueue.PlaybackActiveChanged -= _OnPlaybackActiveChanged;
+        _wired = false;
     }
 
     private async Task _DisableAsync()
