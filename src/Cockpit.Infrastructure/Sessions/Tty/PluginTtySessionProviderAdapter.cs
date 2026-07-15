@@ -1,5 +1,9 @@
+using Cockpit.Core.Abstractions.Mcp;
+using Cockpit.Core.Delegation;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
@@ -10,34 +14,93 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 /// without binding every plugin to the core's version of them — so this is where one becomes the other.
 /// </summary>
 /// <remarks>
-/// Nothing is lost across this seam, and that is worth saying out loud: the TTY contract is small enough that a
-/// plugin can express all of it. The session-driver adapter (<c>PluginSessionDriverAdapter</c>) cannot say that —
-/// it drops the working directory, the MCP selection, resume, and half the events — which is precisely why Claude
-/// could not be hosted as a session-driver plugin, and can be hosted as a TTY one.
+/// The host resolves the things a plugin cannot reach across the isolation boundary and hands them through the
+/// grown context (Fase 4): the shared MCP registry (#26) and whether the orchestrator is enabled (#67), so a rich
+/// TUI like Claude can fan the registry into <c>--mcp-config</c> and append the delegation prompt. The status
+/// snapshot file the provider names in its spec is carried back to the core spec, so the session header still
+/// polls the provider's limits.
 /// </remarks>
 internal sealed class PluginTtySessionProviderAdapter(
     string providerId,
     IPluginTtyProvider inner,
-    string configJson) : ITtySessionProvider
+    string configJson,
+    IMcpServerStore? mcpServerStore = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
+        var (mcpServers, canDelegate) = _ResolveRegistry();
+
         var spec = inner.BuildLaunch(new PluginTtyLaunchContext(
             configJson,
             context.Options,
             context.WorkingDirectory,
             _Resume(context.Resume),
-            context.BaseEnvironment));
+            context.BaseEnvironment)
+        {
+            McpServers = mcpServers,
+            DelegationSystemPrompt = canDelegate ? DelegationSystemPrompt.Default : null,
+        });
 
         return new TtyLaunchSpec(
             spec.ExecutablePath,
             spec.Arguments,
             spec.EnvironmentOverlay,
             spec.WorkingDirectory,
-            spec.SessionScopedFiles);
+            spec.SessionScopedFiles,
+            spec.StatusFile);
     }
+
+    /// <summary>
+    /// The agent-eligible MCP servers and whether the orchestrator is enabled — read once per launch. The TTY route
+    /// fans the whole eligible registry (no per-session narrowing, matching the in-tree Claude provider). Sync
+    /// (the spawn path is synchronous) and best-effort: no store (a unit test wiring none) or a read failure means
+    /// no servers and no delegation, rather than blocking the launch.
+    /// </summary>
+    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry()
+    {
+        if (mcpServerStore is null)
+        {
+            return ([], false);
+        }
+
+        try
+        {
+            var registry = mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            var servers = registry
+                .Where(McpConfigFile.IsAgentEligible)
+                .Select(_ToPluginMcpServer)
+                .OfType<PluginMcpServer>()
+                .ToList();
+            var canDelegate = registry.Any(server =>
+                server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
+            return (servers, canDelegate);
+        }
+        catch (Exception)
+        {
+            return ([], false);
+        }
+    }
+
+    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with a static bearer for an API-key server, stdio →
+    // command/args. A server missing its transport target is dropped.
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
+    {
+        McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
+        {
+            Name = server.Name,
+            Url = server.Url,
+            BearerToken = server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey) ? server.ApiKey : null,
+        },
+        McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
+        {
+            Name = server.Name,
+            Command = server.Command,
+            Args = server.Args,
+        },
+        _ => null,
+    };
 
     /// <summary>
     /// A plugin says "resume this conversation, or the last one" and nothing else. The core's <see cref="SessionResume"/>
