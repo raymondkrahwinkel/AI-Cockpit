@@ -29,6 +29,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     private readonly IWidgetRegistry? _widgets;
     private readonly ToastHostViewModel? _toasts;
 
+    /// <summary>Set when the saved workspaces could not be read — see <see cref="InitializeAsync"/>. Persistence stays off for the rest of the run.</summary>
+    private bool _loadFailed;
+
     /// <summary>Design-time/test constructor: a manager with no persistence and no widgets behind it.</summary>
     public WorkspacesViewModel()
         : this(null)
@@ -155,6 +158,14 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     public bool IsDashboardActive => Active?.Type == WorkspaceType.Dashboard;
 
     /// <summary>Loads the saved workspaces. Called once at startup; a no-op without a store (design time).</summary>
+    /// <remarks>
+    /// Never throws — its caller discards the task, so a throw would land on a task nobody observes. What makes
+    /// that worth more than a log line: the constructor's default is a whole, valid <see cref="WorkspaceSettings"/>,
+    /// every change here persists all of it, and so a failed load does not merely hide the operator's workspaces
+    /// for the session — the first thing they touched would write that default over the ones they actually have.
+    /// A failed load therefore turns persistence off for the rest of the run: what is on disk is theirs, unread,
+    /// and this view model has nothing worth putting in its place.
+    /// </remarks>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (_store is null)
@@ -162,7 +173,19 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             return;
         }
 
-        Settings = await _store.LoadAsync(cancellationToken);
+        try
+        {
+            Settings = await _store.LoadAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            _loadFailed = true;
+            _toasts?.Add(
+                $"Your saved workspaces could not be read: {exception.Message} This cockpit has started on a default one, and nothing will be saved over yours until it is restarted.",
+                ToastSeverity.Error,
+                actionLabel: null,
+                onAction: null);
+        }
     }
 
     /// <summary>
@@ -507,7 +530,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         }
 
         Settings = settings;
-        if (_store is null)
+        if (_store is null || _loadFailed)
         {
             return;
         }

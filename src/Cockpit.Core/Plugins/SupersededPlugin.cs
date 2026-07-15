@@ -9,7 +9,7 @@ namespace Cockpit.Core.Plugins;
 /// </summary>
 /// <param name="Id">The folder id of the plugin that has been replaced.</param>
 /// <param name="DisplayName">What to call it when telling the operator.</param>
-/// <param name="SuccessorIds">The plugins that took over. Nothing is said until at least one of them is actually installed.</param>
+/// <param name="SuccessorIds">The plugins that took over. Nothing is said until at least one of them is actually enabled.</param>
 public sealed record SupersededPlugin(string Id, string DisplayName, IReadOnlyList<string> SuccessorIds)
 {
     /// <summary>
@@ -26,10 +26,14 @@ public sealed record SupersededPlugin(string Id, string DisplayName, IReadOnlyLi
     ];
 
     /// <summary>
-    /// Whether to tell the operator about this one: it is still installed, and at least one successor is there
-    /// to have taken over from it. Neither half alone is worth a word — an old plugin with no successor is just
-    /// a plugin, and a successor without the old one is the ordinary case.
+    /// Whether to tell the operator about this one: it is still loaded, and at least one successor is loaded too
+    /// and has taken over from it. Neither half alone is worth a word — an old plugin with no successor is just a
+    /// plugin, and a successor without the old one is the ordinary case.
     /// </summary>
-    public bool ShouldOffer(IReadOnlyCollection<string> installedIds) =>
-        installedIds.Contains(Id) && SuccessorIds.Any(installedIds.Contains);
+    /// <param name="loadedIds">
+    /// The folder ids of the plugins that actually loaded, not the ones with a registration. Only a loaded plugin
+    /// claims a widget type, which is the whole reason there is anything to say.
+    /// </param>
+    public bool ShouldOffer(IReadOnlyCollection<string> loadedIds) =>
+        loadedIds.Contains(Id) && SuccessorIds.Any(loadedIds.Contains);
 }

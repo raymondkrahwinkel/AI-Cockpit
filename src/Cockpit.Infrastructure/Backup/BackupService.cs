@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Secrets;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Backup;
+using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Backup;
@@ -26,9 +27,7 @@ internal sealed class BackupService(
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    private static string CockpitDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Cockpit");
+    private static string CockpitDirectory => CockpitConfigPath.Root;
 
     public async Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default)
     {

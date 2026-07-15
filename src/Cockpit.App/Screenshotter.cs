@@ -23,6 +23,7 @@ internal static class Screenshotter
         Window window = scene switch
         {
             "about" => new AboutDialog { DataContext = ViewModels.AboutInfo.FromAssembly(typeof(Screenshotter).Assembly) },
+            "single-instance" => new SingleInstanceNoticeDialog(),
             "options" => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
             "shortcuts" => _OptionsOnTab("Shortcuts"),
             "profiles" => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },

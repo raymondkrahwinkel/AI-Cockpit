@@ -37,6 +37,11 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
     private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);
 
+    /// <summary>How long a read waits out a writer holding the file. A swap is milliseconds; reaching this means something other than contention.</summary>
+    private static readonly TimeSpan ReadContentionWindow = TimeSpan.FromSeconds(2);
+
+    private static readonly TimeSpan ReadContentionInterval = TimeSpan.FromMilliseconds(20);
+
     private readonly ISecretKeyHolder _keyHolder = keyHolder ?? SecretKeyHolder.Shared;
 
     public string ConfigFilePath => configFilePath;
@@ -85,7 +90,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
         try
         {
-            var json = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+            var json = await _ReadWhenNotBeingReplacedAsync(path, cancellationToken).ConfigureAwait(false);
             var document = JsonNode.Parse(json);
             if (document is null)
             {
@@ -103,6 +108,40 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the file, waiting out the moment a writer has it. <see cref="File.Replace(string,string,string)"/>
+    /// holds the destination for the length of the swap, and a reader that lands in that window gets a sharing
+    /// violation rather than either version of the file.
+    /// </summary>
+    /// <remarks>
+    /// This is what "a rename is atomic, so a reader never waits on a writer" missed: the <em>content</em> a
+    /// reader sees is indeed all-or-nothing, but the read itself can still fail outright. On 2026-07-15 it did —
+    /// at startup, where several stores read this file while the plugin layer wrote it — and the callers that did
+    /// not catch it lost what they were starting. Global push-to-talk was one, and it went silently.
+    /// <para>
+    /// Waiting is right where refusing is not: the file is there, it is readable, and it is busy for the length of
+    /// one swap. Past the window something else is wrong, so the exception goes on to <see cref="ReadAsync"/>'s
+    /// recovery — the backup, and then a refusal that says so.
+    /// </para>
+    /// </remarks>
+    private static async Task<string> _ReadWhenNotBeingReplacedAsync(string path, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + ReadContentionWindow;
+        while (true)
+        {
+            try
+            {
+                return await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException exception) when (exception is not FileNotFoundException
+                                                && exception is not DirectoryNotFoundException
+                                                && DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(ReadContentionInterval, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 
@@ -155,8 +194,13 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// <summary>
     /// Takes the write gate, waiting for whoever holds it. A lock file rather than a named mutex: the operating
     /// system drops it when the holder exits — including when it is killed mid-write — and it behaves the same
-    /// on the three platforms the cockpit runs on. Reads are deliberately not gated: a rename is atomic, so a
-    /// reader sees the whole old file or the whole new one and never waits on a writer.
+    /// on the three platforms the cockpit runs on.
+    /// <para>
+    /// Reads do not take this gate, but they are not free of it either: the swap that publishes a write holds the
+    /// file for its duration, so a reader that lands in that window is refused rather than served either version.
+    /// It waits the writer out instead — see <see cref="_ReadWhenNotBeingReplacedAsync"/>. This used to claim a
+    /// reader "never waits on a writer", which was true of the file's <em>content</em> and false of the read.
+    /// </para>
     /// </summary>
     private async Task<FileStream> _AcquireWriteGateAsync(CancellationToken cancellationToken)
     {

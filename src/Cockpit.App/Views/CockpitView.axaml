@@ -494,7 +494,9 @@
                                              LineBrush="{StaticResource CockpitHairlineBrush}"/>
 
                 <!-- Column/row counts come from the view model, not the XAML: the row count grows past the
-                     configured height as widgets are added (rows are a starting height, not a cap). -->
+                     configured height as widgets are added (rows are a starting height, not a cap). The panel
+                     builds its definitions from them itself — the view cannot, because it has to find the panel
+                     to do it and the panel does not exist until a layout pass creates it. -->
                 <!-- The drop lives on the grid, not the panes: an arrangement rebuilds nothing, but the pointer
                      has to be tracked across cells the dragged pane does not occupy. -->
                 <ItemsControl x:Name="DashboardGrid" Margin="12"
@@ -504,7 +506,8 @@
                               PointerReleased="OnDashboardPointerReleased">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <Grid x:Name="DashboardCells"/>
+                            <controls:DashboardCellsPanel Columns="{Binding Workspaces.DashboardColumns}"
+                                                          Rows="{Binding Workspaces.DashboardRows}"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemContainerTheme>

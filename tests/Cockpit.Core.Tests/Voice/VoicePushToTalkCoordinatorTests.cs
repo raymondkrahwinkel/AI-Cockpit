@@ -17,6 +17,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -210,7 +211,7 @@ public class VoicePushToTalkCoordinatorTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = false });
         var coordinator = new VoicePushToTalkCoordinator(
-            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter(),
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
             Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
 
         await coordinator.StartAsync();
@@ -227,13 +228,207 @@ public class VoicePushToTalkCoordinatorTests
         var overlay = new VoiceOverlayViewModel();
         var overlayPresenter = new FakeVoiceOverlayPresenter();
         var coordinator = new VoicePushToTalkCoordinator(
-            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, overlay, overlayPresenter,
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayCoordinator(overlay, overlayPresenter),
             Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
 
         await coordinator.StartAsync();
         hotkeyService.RaiseHoldStarted();
 
         hotkeyService.WasStarted.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Its caller discards the task (<c>App.axaml.cs</c>: <c>_ = …StartAsync()</c>), so a throw here used to land
+    /// on a task nobody observes and take the hotkey with it. On 2026-07-15 that happened for real: reading the
+    /// voice settings hit <c>cockpit.json</c> while the plugin layer was writing it, and F9 was dead for the whole
+    /// session with not one line in the log. It still cannot arm — but it has to say so.
+    /// </summary>
+    [Fact]
+    public async Task StartAsync_WhenTheSettingsCannotBeRead_LogsIt_RatherThanDyingOnATaskNobodyObserves()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>())
+            .Returns<VoiceSettings>(_ => throw new IOException("cockpit.json is being used by another process"));
+        var logger = new CapturingLogger<VoicePushToTalkCoordinator>();
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            Substitute.For<IVoicePushToTalkService>(), logger);
+
+        var act = async () => await coordinator.StartAsync();
+
+        await act.Should().NotThrowAsync();
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error && entry.Exception is IOException);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenTheHotkeyServiceRefusesToStart_LeavesNothingSubscribedToAHookThatNeverArmed()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService { StartFailure = new InvalidOperationException("no hook for you") };
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true });
+        var overlay = new VoiceOverlayViewModel();
+        var logger = new CapturingLogger<VoicePushToTalkCoordinator>();
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore, new VoiceOverlayCoordinator(overlay, new FakeVoiceOverlayPresenter()),
+            Substitute.For<IVoicePushToTalkService>(), logger);
+
+        await coordinator.StartAsync();
+
+        logger.Entries.Should().ContainSingle(entry => entry.Level == LogLevel.Error);
+
+        // A hook that never armed cannot raise this — but if it somehow did, nothing should still be listening.
+        hotkeyService.RaiseHoldStarted();
+        overlay.State.Should().Be(VoiceOverlayState.Hidden, "the coordinator unsubscribed when the hook refused");
+    }
+
+    /// <summary>
+    /// The key was read once, at startup, and nothing re-armed: changing it in Options saved the new key and left
+    /// the hook listening for the old one for the rest of the session, with nothing anywhere saying so. Raymond:
+    /// "we kunnen de keybind niet aanpassen" — you could type it; it simply did nothing.
+    /// </summary>
+    [Fact]
+    public async Task SavingTheVoiceSettings_ReArmsTheHotkey_RatherThanLeavingItOnTheOldKey()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true });
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore,
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
+        await coordinator.StartAsync();
+
+        await coordinator.ReapplyAsync();
+
+        hotkeyService.StopCallCount.Should().Be(1, "the old key has to be let go before the new one is armed");
+        hotkeyService.StartCallCount.Should().Be(2);
+    }
+
+    /// <summary>Re-arming must not double the hold: a second subscription on the same hook means every press fires twice.</summary>
+    [Fact]
+    public async Task ReArming_DoesNotSubscribeTwice()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true });
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, NewCockpitViewModel(), voiceSettingsStore,
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
+        await coordinator.StartAsync();
+
+        await coordinator.ReapplyAsync();
+        await coordinator.ReapplyAsync();
+
+        hotkeyService.HoldStartedSubscriberCount.Should().Be(1);
+    }
+
+    /// <summary>
+    /// Which key the hold answers to is not always the cockpit's to say: a Wayland compositor binds what it likes
+    /// and takes the configured key as a hint, and can rebind it from its own settings at any time. The pill's
+    /// settings row reports what it was told rather than the key that was typed.
+    /// </summary>
+    [Fact]
+    public async Task TheTriggerTheDesktopReports_IsWhatTheOperatorIsShown()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService { TriggerDescription = "Meta+F9" };
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true });
+        var cockpit = NewCockpitViewModel();
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, cockpit, voiceSettingsStore,
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
+
+        await coordinator.StartAsync();
+
+        cockpit.VoiceGlobalHotkeyTrigger.Should().Be("Meta+F9", "the compositor bound that, whatever the settings asked for");
+    }
+
+    /// <summary>A desktop that binds nothing leaves the operator with a hotkey that never fires and no way to know why — so it says where to bind it.</summary>
+    [Fact]
+    public async Task WhenNothingBoundIt_TheOperatorIsToldWhereToDoIt()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService { TriggerDescription = null };
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = true });
+        var cockpit = NewCockpitViewModel();
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, cockpit, voiceSettingsStore,
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
+
+        await coordinator.StartAsync();
+
+        cockpit.VoiceGlobalHotkeyTrigger.Should().NotBeEmpty();
+    }
+
+    /// <summary>Global push-to-talk off means there is nothing to report — not a stale trigger from before it was switched off.</summary>
+    [Fact]
+    public async Task WithGlobalPushToTalkOff_ThereIsNothingToReport()
+    {
+        var hotkeyService = new FakeGlobalHotkeyService { TriggerDescription = "F9" };
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, GlobalPushToTalk = false });
+        var cockpit = NewCockpitViewModel();
+        var coordinator = new VoicePushToTalkCoordinator(
+            hotkeyService, cockpit, voiceSettingsStore,
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            Substitute.For<IVoicePushToTalkService>(), NullLogger<VoicePushToTalkCoordinator>.Instance);
+
+        await coordinator.StartAsync();
+
+        cockpit.VoiceGlobalHotkeyTrigger.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// One subscription per hold, whatever arrives. Neither backend repeats a hold today — both gate their
+    /// <c>HoldStarted</c> on an <c>_isHolding</c> flag — so the second call here cannot currently reach this
+    /// through them. That is a promise two other classes make, and this coordinator's level feed should not stack
+    /// if one of them ever stops keeping it. The count is asserted directly because the real handler marshals
+    /// through a dispatcher no unit test pumps, which is what makes a doubled subscription invisible.
+    /// </summary>
+    [Fact]
+    public void HandleHoldStarted_TwiceOverWithoutAnEnd_LeavesOneSubscriptionOnTheLevelFeed()
+    {
+        var pushToTalk = new FakeVoicePushToTalkService();
+        var coordinator = _CreateCoordinatorOn(pushToTalk);
+
+        coordinator.HandleHoldStarted();
+        coordinator.HandleHoldStarted();
+
+        pushToTalk.AudioLevelSubscriberCount.Should().Be(1);
+    }
+
+    /// <summary>The ordinary hold still leaves nothing behind — the detach must not cost the release its own.</summary>
+    [Fact]
+    public async Task AHoldThatStartsAndEnds_LeavesNothingOnTheLevelFeed()
+    {
+        var pushToTalk = new FakeVoicePushToTalkService();
+        var coordinator = _CreateCoordinatorOn(pushToTalk);
+
+        coordinator.HandleHoldStarted();
+        await coordinator.HandleHoldEndedAsync();
+
+        pushToTalk.AudioLevelSubscriberCount.Should().Be(0);
+    }
+
+    /// <param name="pushToTalk">Given to both the coordinator and the selected session — one shared service reaches both in the real graph.</param>
+    private static VoicePushToTalkCoordinator _CreateCoordinatorOn(IVoicePushToTalkService pushToTalk)
+    {
+        var cockpit = NewCockpitViewModel();
+        cockpit.SelectedSession = _CreateSdkSession(pushToTalk);
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
+
+        return new VoicePushToTalkCoordinator(
+            new FakeGlobalHotkeyService(),
+            cockpit,
+            voiceSettingsStore,
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            pushToTalk,
+            NullLogger<VoicePushToTalkCoordinator>.Instance);
     }
 
     private static SessionPanelViewModel _CreateSdkSession(IVoicePushToTalkService voicePushToTalk)
@@ -280,7 +475,7 @@ public class VoicePushToTalkCoordinatorTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
         return new VoicePushToTalkCoordinator(
-            new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, overlay, overlayPresenter, Substitute.For<IVoicePushToTalkService>(),
+            new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, new VoiceOverlayCoordinator(overlay, overlayPresenter), Substitute.For<IVoicePushToTalkService>(),
             NullLogger<VoicePushToTalkCoordinator>.Instance);
     }
 

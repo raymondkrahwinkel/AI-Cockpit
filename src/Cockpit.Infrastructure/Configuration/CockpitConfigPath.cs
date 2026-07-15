@@ -1,8 +1,11 @@
+using Cockpit.Core.Configuration;
+
 namespace Cockpit.Infrastructure.Configuration;
 
 /// <summary>
 /// Resolves where the cockpit keeps its state (<c>%APPDATA%\Cockpit</c> on Windows, <c>~/.config/Cockpit</c>
-/// elsewhere) and owns the file permissions that go with it.
+/// elsewhere — a development build keeps its own, see <see cref="CockpitBuild"/>) and owns the file permissions
+/// that go with it.
 /// <para>
 /// The permissions live here rather than at each call site because the files hold credentials — API keys, MCP
 /// bearer headers, plugin tokens — and a default <c>File.Create</c> leaves them at whatever the umask says,
@@ -20,9 +23,7 @@ internal static class CockpitConfigPath
     private const UnixFileMode PrivateDirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
 
-    public static string Root => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Cockpit");
+    public static string Root => CockpitBuild.StateRoot;
 
     public static string Default => Path.Combine(Root, "cockpit.json");
 

@@ -5,7 +5,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.Core;
+using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Configuration;
 using Cockpit.Infrastructure.Plugins;
@@ -31,6 +33,18 @@ sealed class Program
         // scrubs for the claude pty (#58), so the pty inherits a clean environment too.
         ScrubHostTerminalIdentity();
 
+        // Only one cockpit at a time (AC-4). This goes first because the housekeeping directly below it deletes
+        // --mcp-config files, and the bundled-plugin install further down deletes plugin directories: run those
+        // in a second cockpit and they take them out from under the sessions of the first, which is still using
+        // them. A development build is exempt and keeps its state elsewhere — see CockpitBuild.
+        using var singleInstance = SingleInstanceGuard.TryAcquire(CockpitBuild.IsDevelopment);
+        if (singleInstance is null)
+        {
+            _ShowAlreadyRunningNotice(args);
+
+            return;
+        }
+
         // Mark this process — and therefore every session it spawns — as running inside AI-Cockpit, so a nested
         // agent (a Claude CLI, a Codex app-server, a TTY) can detect it and adapt, the way tools key off
         // TERM_PROGRAM or TMUX. Set before anything can spawn a session.
@@ -42,8 +56,7 @@ sealed class Program
         // happens to be constructed.
         CredentialFileHousekeeping.Run();
 
-        var logPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Cockpit", "logs", "cockpit.log");
+        var logPath = Path.Combine(CockpitBuild.StateRoot, "logs", "cockpit.log");
         var services = new ServiceCollection();
 
         // One logger factory shared between the pre-container plugin pass (below) and DI, so both write
@@ -162,6 +175,24 @@ sealed class Program
         }
     }
 
+    // The notice a refused second start shows (AC-4). Avalonia is started for this one window and nothing else:
+    // Start() leaves the ApplicationLifetime null, so App.OnFrameworkInitializationCompleted builds no cockpit —
+    // which is what makes it safe to do this with the app's own AppBuilder and get its theme and chrome for free.
+    private static void _ShowAlreadyRunningNotice(string[] args)
+    {
+        BuildAvaloniaApp().Start((_, _) =>
+        {
+            using var dismissed = new CancellationTokenSource();
+            var notice = new SingleInstanceNoticeDialog();
+            notice.Closed += (_, _) => dismissed.Cancel();
+            notice.Show();
+
+            // The notice is the whole of this process's UI, so its own dispatcher loop is the app's: it runs until
+            // the window is closed and then Main returns. There is no lifetime here to end it for us.
+            Avalonia.Threading.Dispatcher.UIThread.MainLoop(dismissed.Token);
+        }, args);
+    }
+
     private static void DisposeCockpit()
     {
         if (Services.GetService<CockpitViewModel>() is not { } cockpit)
@@ -216,7 +247,7 @@ sealed class Program
 
         try
         {
-            var installed = new BundledPluginInstaller()
+            var installed = new BundledPluginInstaller(loggerFactory.CreateLogger<BundledPluginInstaller>())
                 .InstallAsync(bundledRoot, PluginBootstrap.PluginsRoot)
                 .GetAwaiter()
                 .GetResult();

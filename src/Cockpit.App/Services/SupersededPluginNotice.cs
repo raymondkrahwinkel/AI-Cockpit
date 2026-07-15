@@ -1,3 +1,4 @@
+using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Toasts;
@@ -18,7 +19,8 @@ namespace Cockpit.App.Services;
 /// two plugins is doing nothing while looking installed. That is worth one sentence.
 /// </para>
 /// </summary>
-public sealed class SupersededPluginNotice(
+internal sealed class SupersededPluginNotice(
+    PluginManager plugins,
     IPluginRegistrationStore registrations,
     IPluginInstaller installer,
     IToastService toasts,
@@ -26,15 +28,23 @@ public sealed class SupersededPluginNotice(
 {
     /// <summary>
     /// Says something if there is something to say. Safe to call on every start: it goes quiet the moment the
-    /// operator acts, because the condition it asks about is the old plugin still being installed.
+    /// operator acts, because the condition it asks about is the old plugin still being loaded.
     /// </summary>
+    /// <remarks>
+    /// It asks the plugin manager what actually loaded, which is the only thing that makes the sentence true. It
+    /// used to ask the registration store for its keys — a different question with a different answer: a
+    /// registration means the plugin has been consented to, and one that is switched off, or whose pinned hash no
+    /// longer matches its assembly, is never loaded (<see cref="PluginLoadPolicy"/> returns <c>Disabled</c> or
+    /// <c>NeedsConsent</c>). None of those claim a widget type, so none of them are competing for one, and there
+    /// is nothing to say — while offering to remove one talks over a decision the operator made on purpose.
+    /// </remarks>
     public async Task CheckAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            var installed = (await registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false)).Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var loaded = plugins.Loaded.Select(plugin => plugin.FolderId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var superseded in SupersededPlugin.Known.Where(plugin => plugin.ShouldOffer(installed)))
+            foreach (var superseded in SupersededPlugin.Known.Where(plugin => plugin.ShouldOffer(loaded)))
             {
                 logger.LogInformation(
                     "Plugin '{Plugin}' has been superseded by {Successors}; offering to remove it",

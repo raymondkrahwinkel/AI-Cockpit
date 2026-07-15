@@ -924,6 +924,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _voiceAutoSubmit;
 
+    /// <summary>
+    /// What the global hotkey is really triggered by, in the words of whoever bound it — or why nothing is. Read
+    /// back rather than assumed: under Wayland the compositor owns the binding and the key above is a hint it may
+    /// ignore, and on macOS there is no implementation at all. Empty while global push-to-talk is off.
+    /// </summary>
+    [ObservableProperty]
+    private string _voiceGlobalHotkeyTrigger = string.Empty;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudWhenSpeaking"/> (AC-9). Off by default — the threshold cannot tell your voice from the cockpit's own coming out of a speaker.</summary>
+    [ObservableProperty]
+    private bool _voiceStopReadAloudWhenSpeaking;
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudLevelThreshold"/>. Decimal because that is what NumericUpDown binds.</summary>
+    [ObservableProperty]
+    private decimal _voiceStopReadAloudLevelThreshold = 0.15m;
+
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicSilenceTimeoutMs"/>: trailing silence (ms) that ends an open-mic utterance. Tunable.</summary>
     [ObservableProperty]
     private int _voiceOpenMicSilenceTimeoutMs = 800;
@@ -2105,6 +2121,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
         VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
+        VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
+        VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
         VoiceNaturalizeReadAloud = settings.NaturalizeReadAloud;
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
         SelectedDutchTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceIdDutch) ?? PiperVoiceCatalog.DutchDefault;
@@ -2180,6 +2198,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             AutoSubmitAfterVoice = VoiceAutoSubmit,
             OpenMicEnabled = current.OpenMicEnabled,
             OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
+            StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
+            StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
             NaturalizeReadAloud = VoiceNaturalizeReadAloud,
             TtsVoiceId = SelectedTtsVoice.VoiceId,
             TtsVoiceIdDutch = SelectedDutchTtsVoice.VoiceId,
@@ -2199,7 +2219,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         VoiceSettingsStatus = "✓ Saved";
+
+        // The global hotkey is armed from these, and arming happened once at startup — so changing the key saved
+        // it and left the hook on the old one, and switching global push-to-talk off left it running, both for
+        // the rest of the session and both silently. Raised rather than called: VoicePushToTalkCoordinator takes
+        // this view model, so injecting it back here is a circle the container walks forever — the same reason
+        // the toasts go through ToastHost.
+        VoiceSettingsSaved?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Raised once the voice settings are saved, so whatever was configured from them can re-apply. See the remarks on the raise site.</summary>
+    public event EventHandler? VoiceSettingsSaved;
 
     [RelayCommand]
     private async Task RecordAudioAsync()

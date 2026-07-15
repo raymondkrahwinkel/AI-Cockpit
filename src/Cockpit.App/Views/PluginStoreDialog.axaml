@@ -10,7 +10,7 @@
         x:Class="Cockpit.App.Views.PluginStoreDialog"
         x:DataType="vm:PluginStoreDialogViewModel"
         Title="Plugin store"
-        Width="920" Height="640" MinWidth="760" MinHeight="480"
+        Width="1200" Height="820" MinWidth="760" MinHeight="480"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -127,7 +127,20 @@
                         <TextBlock Text="No plugins installed yet."
                                    IsVisible="{Binding !HasPlugins}"
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
-                        <ItemsControl ItemsSource="{Binding Plugins}">
+                        <!-- Grouped by the category the store gives each plugin (Raymond, 2026-07-15): one flat
+                             list stopped being readable once widgets, providers, issue trackers and a workflow
+                             engine all lived in it. Two nested ItemsControls, which is why every command below
+                             reaches through $parent[Window] rather than $parent[ItemsControl]: the latter now
+                             finds the inner one, whose DataContext is a group and not the manager, and the cast
+                             would fail into a null command — every button on every row silently dead. -->
+                        <ItemsControl ItemsSource="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).InstalledGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:InstalledPluginGroup">
+                                    <StackPanel Spacing="6" Margin="0,4,0,10">
+                                        <TextBlock Text="{Binding Header}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).ShowInstalledGroupHeaders}"/>
+                                        <ItemsControl ItemsSource="{Binding Plugins}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:PluginRowViewModel">
                                     <Border Background="{StaticResource CockpitSecondaryBgBrush}"
@@ -153,33 +166,37 @@
                                             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                                                 <Button Content="⚙ Settings" Classes="Compact" IsVisible="{Binding HasSettings}"
                                                         ToolTip.Tip="Configure this plugin"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).OpenPluginSettingsCommand}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.OpenPluginSettingsCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="{Binding EnableLabel}" Classes="Compact" IsVisible="{Binding CanEnable}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).EnablePluginCommand}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.EnablePluginCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="Disable" Classes="Compact" IsVisible="{Binding CanDisable}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).DisablePluginCommand}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.DisablePluginCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <!-- Left-menu order and visibility (#72). This list is ordered
                                                      the way the menu is, so moving a row moves the menu entry. -->
                                                 <Button Content="↑" Classes="Compact Subtle" ToolTip.Tip="Move this plugin up in the left menu"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).MovePluginUpCommand}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).MoveInstalledPluginUpCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="↓" Classes="Compact Subtle" ToolTip.Tip="Move this plugin down in the left menu"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).MovePluginDownCommand}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).MoveInstalledPluginDownCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="{Binding MenuVisibilityLabel}" Classes="Compact Subtle"
                                                         ToolTip.Tip="{Binding MenuVisibilityTip}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).TogglePluginMenuVisibilityCommand}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginMenuVisibilityCommand}"
                                                         CommandParameter="{Binding}"/>
                                                 <Button Content="Remove" Classes="Compact Subtle"
                                                         Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).RemovePluginCommand}"
+                                                        Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.RemovePluginCommand}"
                                                         CommandParameter="{Binding}"/>
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

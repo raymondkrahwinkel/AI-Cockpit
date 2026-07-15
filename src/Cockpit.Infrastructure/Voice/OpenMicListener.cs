@@ -38,6 +38,8 @@ internal sealed class OpenMicListener(
     private volatile bool _paused;
 
     public event EventHandler<string>? UtteranceTranscribed;
+    public event EventHandler? SpeechStarted;
+    public event EventHandler? SpeechEnded;
     public event EventHandler<double>? AudioLevelSampled;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -96,6 +98,15 @@ internal sealed class OpenMicListener(
                 {
                     // Barge-in: abandon whatever was in progress so a resumed capture starts clean and the
                     // audio heard while read-aloud played is never transcribed.
+                    //
+                    // An utterance abandoned here never reaches SpeechEnded, so anyone told it started has to be
+                    // told it is over — or the overlay sits on "Listening" for a sentence that will never be
+                    // transcribed, which is the pill lying about a microphone that is not even being read.
+                    if (detector.IsInSpeech)
+                    {
+                        SpeechEnded?.Invoke(this, EventArgs.Empty);
+                    }
+
                     detector.Reset();
                     pending.Clear();
                     utterance.Clear();
@@ -120,6 +131,10 @@ internal sealed class OpenMicListener(
                             }
 
                             utterance.AddRange(windowSamples);
+
+                            // Said out loud so the overlay can appear here — the boundary was already known and
+                            // kept to itself, which is why open-mic dictated invisibly.
+                            SpeechStarted?.Invoke(this, EventArgs.Empty);
                             break;
 
                         case VadEndpointSignal.None when detector.IsInSpeech:
@@ -128,6 +143,10 @@ internal sealed class OpenMicListener(
 
                         case VadEndpointSignal.SpeechEnded:
                             utterance.AddRange(windowSamples);
+
+                            // Before transcribing, not after: transcription is the part worth showing a spinner
+                            // for, and announcing the end once it finished would be announcing it too late.
+                            SpeechEnded?.Invoke(this, EventArgs.Empty);
                             await _FinalizeUtteranceAsync([.. utterance], cancellationToken).ConfigureAwait(false);
                             utterance.Clear();
                             break;

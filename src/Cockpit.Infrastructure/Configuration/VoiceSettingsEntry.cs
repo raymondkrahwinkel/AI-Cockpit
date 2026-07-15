@@ -53,6 +53,10 @@ internal sealed class VoiceSettingsEntry
 
     public int OpenMicSilenceTimeoutMs { get; set; } = 800;
 
+    public bool StopReadAloudWhenSpeaking { get; set; }
+
+    public double StopReadAloudLevelThreshold { get; set; } = 0.15;
+
     public static VoiceSettingsEntry FromDomain(VoiceSettings settings) => new()
     {
         IsEnabled = settings.IsEnabled,
@@ -74,6 +78,8 @@ internal sealed class VoiceSettingsEntry
         NaturalizeReadAloud = settings.NaturalizeReadAloud,
         OpenMicEnabled = settings.OpenMicEnabled,
         OpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs,
+        StopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking,
+        StopReadAloudLevelThreshold = settings.StopReadAloudLevelThreshold,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -98,5 +104,7 @@ internal sealed class VoiceSettingsEntry
         NaturalizeReadAloud = NaturalizeReadAloud,
         OpenMicEnabled = OpenMicEnabled,
         OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
+        StopReadAloudWhenSpeaking = StopReadAloudWhenSpeaking,
+        StopReadAloudLevelThreshold = StopReadAloudLevelThreshold,
     };
 }

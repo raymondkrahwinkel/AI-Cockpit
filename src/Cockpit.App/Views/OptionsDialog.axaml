@@ -186,6 +186,16 @@
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding VoicePushToTalkKeyName}" Width="90"/>
                         </StackPanel>
+                        <TextBlock Text="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <!-- What the hotkey is really triggered by, which the cockpit does not always decide: a
+                             Wayland compositor owns the binding and takes the key above only as a hint, and macOS
+                             has no global hotkey at all. Reported rather than assumed — the field above looked
+                             like it settled all three and on Linux was not even read. Only shown once global
+                             push-to-talk is on, since off means there is nothing to report. -->
+                        <TextBlock Text="{Binding VoiceGlobalHotkeyTrigger, StringFormat='Global hotkey: {0}'}"
+                                   IsVisible="{Binding VoiceGlobalHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Dictation language"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -215,6 +225,23 @@
                                        VerticalAlignment="Center"/>
                             <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
                                            Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                        </StackPanel>
+                        <!-- AC-9's microphone half. Off by default and it says why on the row: a threshold filters
+                             the room, not the cockpit's own voice, so on speakers this stops read-aloud the moment
+                             it starts. Under open-mic's tuning because it needs the same open microphone. -->
+                        <CheckBox Content="Stop read-aloud when I start talking"
+                                  IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"
+                                  IsVisible="{Binding VoiceEnabled}"/>
+                        <TextBlock Text="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops read-aloud and needs neither. Use headphones: on speakers the microphone hears the read-aloud itself and stops it straight away."
+                                   IsVisible="{Binding VoiceEnabled}"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                    IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                            <TextBlock Text="…when the microphone is louder than"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
+                                           Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
                         </StackPanel>
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
                         <TextBlock Text="Transcription" FontWeight="SemiBold"/>
