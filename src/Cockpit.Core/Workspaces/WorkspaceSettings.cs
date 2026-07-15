@@ -17,13 +17,18 @@ public sealed record WorkspaceSettings
     /// A single Sessions workspace — what an operator who never touched workspaces gets, so the cockpit looks
     /// and behaves exactly as it does today until they add a second one.
     /// </summary>
-    public static WorkspaceSettings Default
+    /// <remarks>
+    /// One instance, not a fresh one per access. As a getter that called <see cref="Workspace.Create"/> it
+    /// minted a new id every time it was read — so the view model's default and the store's default were two
+    /// different workspaces, and a session stamped with one of them belonged to a workspace nothing else knew
+    /// about. A default has to be the same default every time it is asked for.
+    /// </remarks>
+    public static WorkspaceSettings Default { get; } = _CreateDefault();
+
+    private static WorkspaceSettings _CreateDefault()
     {
-        get
-        {
-            var sessions = Workspace.Create("Sessions", WorkspaceType.Sessions);
-            return new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
-        }
+        var sessions = Workspace.Create("Sessions", WorkspaceType.Sessions);
+        return new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
     }
 
     /// <summary>

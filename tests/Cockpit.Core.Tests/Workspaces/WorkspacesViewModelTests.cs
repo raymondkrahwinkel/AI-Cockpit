@@ -14,20 +14,70 @@ namespace Cockpit.Core.Tests.Workspaces;
 public class WorkspacesViewModelTests
 {
     [Fact]
-    public void ASingleWorkspace_HidesTheTabStrip_SinceALoneTabIsChromeThatEarnsNothing()
+    public void TheTabStrip_IsShownEvenForASingleWorkspace()
     {
-        new WorkspacesViewModel().ShowTabStrip.Should().BeFalse();
+        // It used to hide itself at one workspace, which Raymond found from both sides: deleting one of two made
+        // the strip vanish, so a correct single deletion looked like it took both; and the workspace that was
+        // there all along reappeared out of nowhere when a second one arrived. A tab says which desk you are on,
+        // and it has to keep saying so when there is one.
+        new WorkspacesViewModel().ShowTabStrip.Should().BeTrue();
     }
 
     [Fact]
-    public async Task AddingASecondWorkspace_ShowsTheTabStrip()
+    public async Task DeletingOneOfTwo_LeavesTheOtherVisible_RatherThanHidingTheWholeStrip()
+    {
+        var viewModel = _Create(out _);
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+        var dashboard = viewModel.Active!;
+
+        await viewModel.CloseWorkspaceCommand.ExecuteAsync(dashboard.Id);
+
+        viewModel.Tabs.Should().ContainSingle();
+        viewModel.ShowTabStrip.Should().BeTrue("the survivor must stay on screen — otherwise one deletion reads as two");
+    }
+
+    [Fact]
+    public async Task AddingASecondWorkspace_ShowsBothTabs()
     {
         var viewModel = _Create(out _);
 
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.ShowTabStrip.Should().BeTrue();
         viewModel.Tabs.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void EnsureSessionWorkspace_WithOneShowing_UsesIt()
+    {
+        var viewModel = _Create(out _);
+
+        viewModel.EnsureSessionWorkspace().Should().Be(viewModel.Active!.Id);
+    }
+
+    [Fact]
+    public async Task EnsureSessionWorkspace_WhileADashboardIsShowing_SwitchesToTheSessionsOne()
+    {
+        var viewModel = _Create(out _);
+        var sessions = viewModel.Active!;
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+
+        viewModel.EnsureSessionWorkspace().Should().Be(sessions.Id);
+        viewModel.Active!.Id.Should().Be(sessions.Id, "the session has to appear where it was put");
+    }
+
+    [Fact]
+    public async Task EnsureSessionWorkspace_WithNoSessionsWorkspaceAtAll_CreatesOne()
+    {
+        // A session started onto a dashboard would run invisibly, which is worse than not starting it.
+        var viewModel = _Create(out _);
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+        await viewModel.CloseWorkspaceCommand.ExecuteAsync(viewModel.Settings.Workspaces[0].Id);
+        viewModel.Settings.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Dashboard);
+
+        var created = viewModel.EnsureSessionWorkspace();
+
+        viewModel.Settings.Workspaces.Single(workspace => workspace.Id == created).Type.Should().Be(WorkspaceType.Sessions);
+        viewModel.Active!.Id.Should().Be(created);
     }
 
     [Fact]
