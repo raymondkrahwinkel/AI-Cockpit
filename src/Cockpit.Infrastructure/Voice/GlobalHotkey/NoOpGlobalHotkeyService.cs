@@ -18,6 +18,11 @@ internal sealed class NoOpGlobalHotkeyService(ILogger<NoOpGlobalHotkeyService> l
 
     public event EventHandler? HoldEnded { add { } remove { } }
 
+    public event EventHandler? TriggerDescriptionChanged { add { } remove { } }
+
+    /// <summary>Always null — nothing is armed. The settings screen says so, instead of showing a key that does nothing here.</summary>
+    public string? TriggerDescription => null;
+
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Global push-to-talk is not supported on this platform; the hotkey will not fire.");

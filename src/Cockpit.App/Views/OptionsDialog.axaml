@@ -186,6 +186,16 @@
                                        VerticalAlignment="Center"/>
                             <TextBox Text="{Binding VoicePushToTalkKeyName}" Width="90"/>
                         </StackPanel>
+                        <TextBlock Text="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."
+                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <!-- What the hotkey is really triggered by, which the cockpit does not always decide: a
+                             Wayland compositor owns the binding and takes the key above only as a hint, and macOS
+                             has no global hotkey at all. Reported rather than assumed — the field above looked
+                             like it settled all three and on Linux was not even read. Only shown once global
+                             push-to-talk is on, since off means there is nothing to report. -->
+                        <TextBlock Text="{Binding VoiceGlobalHotkeyTrigger, StringFormat='Global hotkey: {0}'}"
+                                   IsVisible="{Binding VoiceGlobalHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Dictation language"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
