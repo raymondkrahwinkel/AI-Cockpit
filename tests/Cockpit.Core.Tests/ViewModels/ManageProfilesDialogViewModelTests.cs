@@ -33,9 +33,9 @@ public class ManageProfilesDialogViewModelTests
         var row = vm.Profiles[0];
         row.Label.Should().Be("work");
         row.ConfigDir.Should().Be("/home/r/.claude-work");
-        row.SelectedPermissionMode.Value.Should().Be("plan");
-        row.ClaudeModel.Should().Be("opus");
-        row.SelectedEffort.Value.Should().Be("high");
+        // The per-profile permission/model/effort defaults are read generically from OptionDefaults now (covered by
+        // EditableProfileViewModelPluginProviderTests), not the retired typed selections — this covers the row mapping
+        // and login status.
         row.IsLoggedIn.Should().BeTrue();
         vm.SelectedProfile.Should().Be(row);
     }
@@ -145,7 +145,7 @@ public class ManageProfilesDialogViewModelTests
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>())
             .Returns([new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"),
-                Defaults: new ProfileDefaults("default", "sonnet", "medium"))]);
+                Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true))]);
         var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
         await vm.LoadAsync();
         vm.SelectedProfile!.Label = "local-renamed";
@@ -158,7 +158,7 @@ public class ManageProfilesDialogViewModelTests
             Arg.Is<IReadOnlyList<SessionProfile>>(list =>
                 list.Count == 1 &&
                 list[0].Label == "local-renamed" &&
-                list[0].Defaults!.Model == "sonnet"),
+                list[0].Defaults!.AutoApproveTools),
             Arg.Any<CancellationToken>());
         closed.Should().BeTrue();
     }

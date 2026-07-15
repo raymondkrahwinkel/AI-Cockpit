@@ -284,9 +284,12 @@ public partial class EditableProfileViewModel : ViewModelBase
         _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;
         _purpose = profile.Purpose ?? string.Empty;
         _memoryLimitMb = profile.MemoryLimitMb ?? 0;
-        _selectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode);
-        _claudeModel = string.IsNullOrWhiteSpace(profile.Defaults?.Model) ? SessionOptionCatalog.DefaultModel.Value : profile.Defaults.Model;
-        _selectedEffort = SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort);
+        // The typed permission/model/effort selections back the retired Claude-CLI editor block (hidden now that Claude
+        // is a plugin); a plugin profile's real defaults come from OptionDefaults via PluginOptionDefaults. Seed the
+        // typed fields with the app defaults rather than the profile's legacy typed values, which are migration-only.
+        _selectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
+        _claudeModel = SessionOptionCatalog.DefaultModel.Value;
+        _selectedEffort = SessionOptionCatalog.DefaultEffort;
         _autoApproveTools = profile.Defaults?.AutoApproveTools ?? false;
 
         var delegation = profile.DelegationPolicy;
