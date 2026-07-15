@@ -68,12 +68,53 @@ public class DashboardExporterTests
     }
 
     [Fact]
+    public void FromExport_AMissingWidget_SkipsThatPaneAndNamesThePluginToInstall()
+    {
+        // Raymond's call: one absent widget out of ten costs you that widget, not the dashboard. The report is
+        // what turns "something is missing" into "install this plugin".
+        var export = DashboardExporter.ToExport(
+            _Dashboard(("p1", "clock.time", 0, 0), ("p2", "weather.now", 2, 0)),
+            _ => new Dictionary<string, string>(),
+            SecretFields.ByName);
+
+        var import = DashboardExporter.FromExport(export, isInstalled: id => id == "clock.time");
+
+        import.Workspace.Panes.Should().ContainSingle().Which.WidgetId.Should().Be("clock.time");
+        import.MissingWidgetIds.Should().Equal("weather.now");
+        import.IsComplete.Should().BeFalse();
+    }
+
+    [Fact]
+    public void FromExport_TheSameMissingWidgetTwice_IsReportedOnce()
+    {
+        // Four clocks whose plugin is gone is one thing to install, not four things to read.
+        var export = DashboardExporter.ToExport(
+            _Dashboard(("p1", "weather.now", 0, 0), ("p2", "weather.now", 2, 0)),
+            _ => new Dictionary<string, string>(),
+            SecretFields.ByName);
+
+        DashboardExporter.FromExport(export, isInstalled: _ => false).MissingWidgetIds.Should().Equal("weather.now");
+    }
+
+    [Fact]
+    public void FromExport_EverythingAvailable_ImportsWhole()
+    {
+        var export = DashboardExporter.ToExport(
+            _Dashboard(("p1", "clock.time", 0, 0)), _ => new Dictionary<string, string>(), SecretFields.ByName);
+
+        var import = DashboardExporter.FromExport(export, isInstalled: _ => true);
+
+        import.IsComplete.Should().BeTrue();
+        import.MissingWidgetIds.Should().BeEmpty();
+    }
+
+    [Fact]
     public void FromExport_RebuildsTheDashboardWithFreshInstanceIds()
     {
         var export = DashboardExporter.ToExport(
             _Dashboard(("p1", "clock.time", 1, 2)), _ => new Dictionary<string, string>(), SecretFields.ByName);
 
-        var (workspace, _) = DashboardExporter.FromExport(export);
+        var (workspace, _, _) = DashboardExporter.FromExport(export, _Anything);
 
         workspace.Type.Should().Be(WorkspaceType.Dashboard);
         workspace.Name.Should().Be("Monitoring");
@@ -89,7 +130,7 @@ public class DashboardExporterTests
         var export = DashboardExporter.ToExport(
             _Dashboard(("p1", "monitor.usage", 0, 0)), _ => new Dictionary<string, string> { ["metrics"] = "\"cpu\"" }, SecretFields.ByName);
 
-        var (workspace, config) = DashboardExporter.FromExport(export);
+        var (workspace, config, _) = DashboardExporter.FromExport(export, _Anything);
 
         config.Should().ContainKey(workspace.Panes[0].Id);
         config[workspace.Panes[0].Id]["metrics"].Should().Be("\"cpu\"");
@@ -101,8 +142,8 @@ public class DashboardExporterTests
         var export = DashboardExporter.ToExport(
             _Dashboard(("p1", "clock.time", 0, 0)), _ => new Dictionary<string, string>(), SecretFields.ByName);
 
-        var (first, _) = DashboardExporter.FromExport(export);
-        var (second, _) = DashboardExporter.FromExport(export);
+        var (first, _, _) = DashboardExporter.FromExport(export, _Anything);
+        var (second, _, _) = DashboardExporter.FromExport(export, _Anything);
 
         second.Id.Should().NotBe(first.Id);
         second.Panes[0].Id.Should().NotBe(first.Panes[0].Id);
@@ -114,7 +155,7 @@ public class DashboardExporterTests
         var export = DashboardExporter.ToExport(
             _Dashboard(("p1", "clock.time", 0, 0)), _ => new Dictionary<string, string>(), SecretFields.ByName);
 
-        DashboardExporter.FromExport(export, name: "Monitoring 2").Workspace.Name.Should().Be("Monitoring 2");
+        DashboardExporter.FromExport(export, _Anything, name: "Monitoring 2").Workspace.Name.Should().Be("Monitoring 2");
     }
 
     [Fact]
@@ -122,7 +163,7 @@ public class DashboardExporterTests
     {
         var export = new DashboardExport(1, "D", new DashboardLayout { Columns = 0, Rows = 0 }, []);
 
-        DashboardExporter.FromExport(export).Workspace.Layout.Columns.Should().Be(DashboardLayout.MinColumns);
+        DashboardExporter.FromExport(export, _Anything).Workspace.Layout.Columns.Should().Be(DashboardLayout.MinColumns);
     }
 
     [Theory]
@@ -134,6 +175,9 @@ public class DashboardExporterTests
         // that does not arrive.
         DashboardExporter.CanRead(new DashboardExport(version, "D", DashboardLayout.Default, [])).Should().Be(expected);
     }
+
+    /// <summary>Every widget is installed — for the tests that are about something other than what is missing.</summary>
+    private static readonly Func<string, bool> _Anything = _ => true;
 
     private static Workspace _Dashboard(params (string Id, string WidgetId, int Column, int Row)[] panes)
     {
