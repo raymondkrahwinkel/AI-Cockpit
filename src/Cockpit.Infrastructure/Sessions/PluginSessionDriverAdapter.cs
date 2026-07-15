@@ -64,7 +64,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // renders. Unlike the Claude-CLI live switches below (no-ops here — the narrow surface has no typed members for
     // them), a plugin provider genuinely reports these and answers SetLiveOptionAsync, so they carry through.
     public IReadOnlyList<SessionLiveOption> LiveOptions =>
-        [.. inner.LiveOptions.Select(option => new SessionLiveOption(option.Key, option.Label, option.Choices, option.DefaultValue))];
+        [.. inner.LiveOptions.Select(option => new SessionLiveOption(option.Key, option.Label, option.Choices, option.DefaultValue) { ChoiceLabels = option.ChoiceLabels })];
 
     public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) =>
         inner.SetLiveOptionAsync(key, value, cancellationToken);

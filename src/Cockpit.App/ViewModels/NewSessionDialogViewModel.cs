@@ -470,7 +470,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         {
             foreach (var option in registration.Options)
             {
-                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue));
+                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels));
             }
         }
 
@@ -494,7 +494,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         {
             foreach (var option in registration.Options)
             {
-                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue));
+                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels));
             }
         }
 
@@ -589,7 +589,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         {
             var picked = pickedByKey.GetValueOrDefault(spec.Key);
             var value = string.IsNullOrWhiteSpace(picked) ? spec.DefaultValue : picked;
-            target.Add(new PluginTtyOptionSelectionViewModel(spec.Key, spec.Label, spec.Choices, value));
+            target.Add(new PluginTtyOptionSelectionViewModel(spec.Key, spec.Label, spec.Choices, value, spec.ChoiceLabels));
         }
 
         // The target is one of the two option collections; raise both pairs rather than thread which through.
@@ -599,12 +599,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowPluginTtyOptions));
     }
 
-    private static LaunchOptionSpec _ToSpec(PluginSessionLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue);
+    private static LaunchOptionSpec _ToSpec(PluginSessionLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels);
 
-    private static LaunchOptionSpec _ToSpec(PluginTtyLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue);
+    private static LaunchOptionSpec _ToSpec(PluginTtyLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels);
 
     /// <summary>The provider-neutral shape both a TTY and an SDK launch option project to, so one refresh path serves both.</summary>
-    private readonly record struct LaunchOptionSpec(string Key, string Label, IReadOnlyList<string> Choices, string? DefaultValue);
+    private readonly record struct LaunchOptionSpec(string Key, string Label, IReadOnlyList<string> Choices, string? DefaultValue, IReadOnlyDictionary<string, string>? ChoiceLabels);
 
     partial void OnIsSelectedProfileLoggedInChanged(bool value)
     {
@@ -715,17 +715,21 @@ public sealed partial class PluginTtyOptionSelectionViewModel : ObservableObject
 
     public IReadOnlyList<string> Choices { get; }
 
+    /// <summary>The choices as label/value pairs for the combo, so a provider that supplied friendly labels (Claude's "Ask permissions" for <c>default</c>) shows them while <see cref="Value"/> still round-trips the raw value.</summary>
+    public IReadOnlyList<SelectableChoice> ChoiceItems { get; }
+
     /// <summary>No declared choices means free text — the New-session dialog renders a text box instead of a combo.</summary>
     public bool IsFreeText => Choices.Count == 0;
 
     [ObservableProperty]
     private string? _value;
 
-    public PluginTtyOptionSelectionViewModel(string key, string label, IReadOnlyList<string> choices, string? defaultValue)
+    public PluginTtyOptionSelectionViewModel(string key, string label, IReadOnlyList<string> choices, string? defaultValue, IReadOnlyDictionary<string, string>? choiceLabels = null)
     {
         Key = key;
         Label = label;
         Choices = choices;
+        ChoiceItems = [.. choices.Select(value => new SelectableChoice(value, choiceLabels?.GetValueOrDefault(value) ?? value))];
         _value = defaultValue;
     }
 }

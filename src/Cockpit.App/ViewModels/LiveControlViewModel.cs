@@ -22,6 +22,9 @@ public partial class LiveControlViewModel : ViewModelBase
     /// <summary>The values on offer.</summary>
     public IReadOnlyList<string> Choices { get; }
 
+    /// <summary>The choices as label/value pairs for the combo, so a provider that supplied friendly labels shows them while <see cref="SelectedValue"/> still round-trips the raw value.</summary>
+    public IReadOnlyList<SelectableChoice> ChoiceItems { get; }
+
     [ObservableProperty]
     private string? _selectedValue;
 
@@ -30,6 +33,7 @@ public partial class LiveControlViewModel : ViewModelBase
         Key = option.Key;
         Label = option.Label;
         Choices = option.Choices;
+        ChoiceItems = [.. option.Choices.Select(value => new SelectableChoice(value, option.ChoiceLabels?.GetValueOrDefault(value) ?? value))];
         _apply = apply;
 
         // Seed through the field, not the property: setting the current value must not fire a live switch back to

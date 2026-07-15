@@ -15,4 +15,16 @@ public sealed record PluginSessionLaunchOption(
     string Key,
     string Label,
     IReadOnlyList<string> Choices,
-    string? DefaultValue = null);
+    string? DefaultValue = null)
+{
+    /// <summary>
+    /// A friendly label per <see cref="Choices"/> value the operator reads instead of the raw value — how Claude
+    /// shows "Ask permissions" for the CLI's <c>default</c> mode, or "Low"/"Medium"/"High" for an effort key. Keyed
+    /// by value; a value with no entry falls back to showing itself, and the value the driver receives is always the
+    /// raw <see cref="Choices"/> entry, never the label. <see langword="null"/> (the default) means the provider
+    /// wants none, so every value renders as itself — the current behaviour. Init-only rather than a primary-ctor
+    /// parameter so adding it does not change the record's constructor signature; an already-compiled plugin keeps
+    /// constructing this the old way and simply reports no labels.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ChoiceLabels { get; init; }
+}

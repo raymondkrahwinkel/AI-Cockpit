@@ -191,7 +191,9 @@
                             <Grid ColumnDefinitions="90,*" Margin="0,0,0,4">
                                 <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding Value}"
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
+                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                          DisplayMemberBinding="{Binding Label}"
                                           IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
                                           PlaceholderText="(CLI default)"/>
                                 <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
@@ -214,7 +216,9 @@
                             <Grid ColumnDefinitions="90,*" Margin="0,0,0,4">
                                 <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding Value}"
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
+                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                          DisplayMemberBinding="{Binding Label}"
                                           IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
                                           PlaceholderText="(provider default)"/>
                                 <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
