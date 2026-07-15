@@ -1,4 +1,5 @@
 using Avalonia.Threading;
+using Microsoft.Extensions.Logging;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
@@ -28,6 +29,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly IVoiceSettingsStore _voiceSettingsStore;
     private readonly IVoiceOverlayPresenter _overlayPresenter;
     private readonly IVoicePushToTalkService _pushToTalk;
+    private readonly ILogger<VoicePushToTalkCoordinator> _logger;
 
     public VoicePushToTalkCoordinator(
         IGlobalHotkeyService hotkeyService,
@@ -35,13 +37,15 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         IVoiceSettingsStore voiceSettingsStore,
         VoiceOverlayViewModel overlay,
         IVoiceOverlayPresenter overlayPresenter,
-        IVoicePushToTalkService pushToTalk)
+        IVoicePushToTalkService pushToTalk,
+        ILogger<VoicePushToTalkCoordinator> logger)
     {
         _hotkeyService = hotkeyService;
         _cockpit = cockpit;
         _voiceSettingsStore = voiceSettingsStore;
         _overlayPresenter = overlayPresenter;
         _pushToTalk = pushToTalk;
+        _logger = logger;
         Overlay = overlay;
     }
 
@@ -73,7 +77,19 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         Overlay.State = VoiceOverlayState.Listening;
         _overlayPresenter.Show();
         _pushToTalk.AudioLevelSampled += _OnAudioLevelSampled;
-        _cockpit.SelectedSession?.BeginVoiceHold();
+        var session = _cockpit.SelectedSession;
+        var capturing = session?.BeginVoiceHold() ?? false;
+
+        // The overlay flips to "Listening" before any of this resolves, so seeing it says nothing about
+        // whether the microphone actually opened. Record what the hold resolved to — the session it routed
+        // to, whether that session had voice on, and whether capture truly began — so a dictation that
+        // yields no text can be told apart at a glance: wrong session (routing) versus a declined hold.
+        _logger.LogInformation(
+            "Push-to-talk hold started: session='{Session}' voiceEnabled={VoiceEnabled} capturing={Capturing} sessions={SessionCount}",
+            session?.Title ?? "<none selected>",
+            session?.VoiceEnabled,
+            capturing,
+            _cockpit.Sessions.Count);
     }
 
     /// <summary>Test seam: the UI-thread logic for a hold ending — see the threading remarks on this class.</summary>

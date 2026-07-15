@@ -56,19 +56,31 @@ internal sealed class VoicePushToTalkService(
         _captureCancellation = null;
 
         var samples = _ToFloatSamples(pcmBytes);
-        if (samples.Length == 0 || !await vad.HasSpeechAsync(samples, cancellationToken).ConfigureAwait(false))
+        try
         {
-            logger.LogInformation("Push-to-talk hold produced no detected speech; discarding");
-            return string.Empty;
-        }
+            if (samples.Length == 0 || !await vad.HasSpeechAsync(samples, cancellationToken).ConfigureAwait(false))
+            {
+                logger.LogInformation("Push-to-talk hold produced no detected speech; discarding");
+                return string.Empty;
+            }
 
-        var raw = await speechToText.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(raw))
+            var raw = await speechToText.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            return applyCleanup ? await cleanup.CleanupAsync(raw, cancellationToken).ConfigureAwait(false) : raw;
+        }
+        catch (Exception ex)
         {
-            return string.Empty;
+            // VAD/STT can throw on a failed first-use model download (Whisper + Silero are fetched lazily,
+            // ~1.6 GB) or a native transcription fault. The caller (SessionPanelViewModel.EndVoiceHoldAsync)
+            // catches this to show a "Voice error" status, but without a log line the failure was invisible —
+            // exactly why F9 looked like a dead hotkey. Log it here, then let the caller surface it.
+            logger.LogError(ex, "Voice dictation failed after capture (VAD/STT/cleanup)");
+            throw;
         }
-
-        return applyCleanup ? await cleanup.CleanupAsync(raw, cancellationToken).ConfigureAwait(false) : raw;
     }
 
     private async Task<List<byte>> _CaptureAsync(CancellationToken cancellationToken)
