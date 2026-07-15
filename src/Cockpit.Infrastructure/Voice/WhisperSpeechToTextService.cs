@@ -94,6 +94,12 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
                 var order = WhisperBackendPlanner.BuildOrder(settings.BackendPreference, OperatingSystem.IsWindows());
                 RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
 
+                // The GPU runtimes are fetched on first use instead of bundled, and RuntimeOptions only has any
+                // effect before the first factory exists — so the runtime has to be on disk and its location
+                // handed over here, ahead of FromPath, or the loader searches without it and settles for the CPU.
+                await WhisperRuntimeCache.EnsureAvailableAsync(order, cancellationToken, logger).ConfigureAwait(false);
+                RuntimeOptions.LibraryPath = WhisperRuntimeCache.SearchPath;
+
                 _factory = WhisperFactory.FromPath(modelPath);
                 ActiveBackend = RuntimeOptions.LoadedLibrary is { } loaded ? WhisperRuntimeBackendMapping.FromNative(loaded) : null;
                 logger.LogInformation(

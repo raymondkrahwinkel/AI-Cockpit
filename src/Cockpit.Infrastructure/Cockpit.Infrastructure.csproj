@@ -42,43 +42,20 @@
     <PackageReference Include="SharpHook" Version="7.1.1" />
     <PackageReference Include="SoundFlow" Version="1.4.1" />
     <PackageReference Include="Tmds.DBus" Version="0.92.0" />
-    <!-- Voice input (STT+VAD): Whisper.net core plus a hardware-agnostic bundle of native runtimes.
-         WhisperBackendPlanner (Cockpit.Core) decides the try-order per VoiceBackendPreference + OS;
-         Whisper.net's own NativeLibraryLoader walks that order at model-load time and picks the first
-         one that actually loads on the host — CUDA on NVIDIA (Windows+Linux), Vulkan on Windows only
-         (no published Linux Vulkan runtime as of 2026-07-07, see WhisperBackendPlanner remarks), plain
-         CPU (AVX, with a NoAvx tail) everywhere else, including AMD-on-Linux.
-         Runtime.Cuda and Runtime.Cuda12 are separate packages (not one bundling both, despite
-         RuntimeLibraryOrder listing both as fallback candidates) — confirmed empirically 2026-07-07 on
-         this RTX-4070/Fedora machine: it has CUDA 12.8 installed, "Cuda" alone (CUDA 13 native libs)
-         detected the runtime-version mismatch and silently fell back to Cpu; adding Cuda12 explicitly
-         is required for CUDA acceleration on a CUDA-12.x host. Both are needed for real hardware-agnostic
-         NVIDIA coverage. -->
+    <!-- Voice input (STT+VAD): Whisper.net core plus the CPU runtimes only. WhisperBackendPlanner
+         (Cockpit.Core) decides the try-order per VoiceBackendPreference + OS; Whisper.net's own
+         NativeLibraryLoader walks that order at model-load time and picks the first one that loads here.
+         The CPU runtimes stay bundled because they are small, work on every platform, and are the floor
+         transcription can always fall back to.
+         The GPU runtimes (CUDA/Vulkan, ~1.2 GB) are deliberately NOT referenced: which GPU a machine has
+         is not knowable at build time, so bundling them ships every runtime to every install to serve the
+         one that happens to fit. WhisperRuntimeCache fetches the right one from NuGet on first dictation
+         and caches it under %APPDATA%\Cockpit — the same lazy shape WhisperModelCache uses for the model,
+         and it keeps the backend "auto" option meaningful (it can only pick from what is present).
+         See docs/binary-size-and-on-demand-runtimes.md. -->
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.NoAvx" Version="1.9.1" />
-  </ItemGroup>
-
-  <!-- The GPU runtimes are 1.4 GB of native libraries, and a self-contained publish ships every one of them to
-       every platform — including a Mac, which cannot use a single byte of CUDA or Vulkan. So they are left out
-       of a macOS publish and kept everywhere else, which is where they earn their weight (CUDA gives 33x
-       realtime on Raymond's RTX 4070; the CPU fallback does not).
-       An ordinary build has no RuntimeIdentifier, so the condition holds and a developer keeps GPU Whisper.
-
-       BundleGpuWhisperRuntimes (default true) is the opt-out for a slim, CPU-only publish: build with
-       -p:BundleGpuWhisperRuntimes=false and the ~1.4 GB of CUDA/Vulkan natives are dropped, leaving the
-       CPU runtime (Whisper.net.Runtime + NoAvx) that ships on every platform anyway. Voice still works,
-       transcription just runs on the CPU. This is the build-time half of the on-demand-runtime plan; the
-       runtime half (detect the GPU, fetch only the matching runtime on first use, cache and keep it
-       current — the same lazy pattern WhisperModelCache already uses for the model) is designed in
-       docs/binary-size-and-on-demand-runtimes.md. Default true keeps today's behaviour byte-for-byte. -->
-  <PropertyGroup>
-    <BundleGpuWhisperRuntimes Condition="'$(BundleGpuWhisperRuntimes)' == ''">true</BundleGpuWhisperRuntimes>
-  </PropertyGroup>
-  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('osx')) And '$(BundleGpuWhisperRuntimes)' == 'true'">
-    <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.1" />
-    <PackageReference Include="Whisper.net.Runtime.Cuda12" Version="1.9.1" />
-    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
   </ItemGroup>
 
   <ItemGroup>
