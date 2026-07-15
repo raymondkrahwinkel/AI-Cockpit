@@ -41,17 +41,35 @@ public static class DashboardExporter
     /// an imported dashboard is a new dashboard, and reusing the exporter's instance ids would have two
     /// dashboards writing over one widget's settings.
     /// </summary>
-    /// <returns>The workspace, and the config to store per pane id.</returns>
-    public static (Workspace Workspace, IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Config) FromExport(
-        DashboardExport export, string? name = null)
+    /// <param name="isInstalled">
+    /// Whether a widget type is available here. A pane whose widget is missing is skipped and reported rather
+    /// than refusing the whole file (Raymond's call): one absent widget out of ten should cost you that widget,
+    /// not the dashboard — and the report is what turns "something is missing" into "install this plugin".
+    /// </param>
+    /// <returns>The workspace, the config to store per pane id, and the widget types that were not available.</returns>
+    public static DashboardImport FromExport(DashboardExport export, Func<string, bool> isInstalled, string? name = null)
     {
         var workspace = Workspace.Create(
             string.IsNullOrWhiteSpace(name) ? _NameOr(export.Name) : name.Trim(),
             WorkspaceType.Dashboard) with { Layout = export.Layout.Clamped() };
 
         var config = new Dictionary<string, IReadOnlyDictionary<string, string>>();
+        var missing = new List<string>();
+
         foreach (var pane in export.Panes)
         {
+            if (!isInstalled(pane.WidgetId))
+            {
+                // Reported once per type: a dashboard with four clocks whose plugin is gone is one thing to
+                // install, not four things to read.
+                if (!missing.Contains(pane.WidgetId))
+                {
+                    missing.Add(pane.WidgetId);
+                }
+
+                continue;
+            }
+
             var instance = new WorkspacePane(Guid.NewGuid().ToString("n"), PaneKind.Widget)
             {
                 WidgetId = pane.WidgetId,
@@ -62,7 +80,7 @@ public static class DashboardExporter
             config[instance.Id] = pane.Config;
         }
 
-        return (workspace, config);
+        return new DashboardImport(workspace, config, missing);
     }
 
     /// <summary>
