@@ -26,15 +26,13 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         // session from the profile's config JSON, so there is nothing to register here.
     }
 
-    private static readonly IReadOnlyList<string> _SandboxChoices = ["read-only", "workspace-write", "danger-full-access"];
-
     public void Initialize(ICockpitHost host)
     {
         // The per-session start defaults the New-session dialog asks about — the same two whichever kind of
         // session a profile opens, so it means the same thing either way. Sandbox is a fixed set; Model is
         // declared as free text (the fallback) but the dialog upgrades it to the live model/list at open
         // (ResolveOptionsAsync below), for both the SDK and the TTY route.
-        var sdkSandbox = new PluginSessionLaunchOption(CodexAppServerSessionDriver.SandboxOptionKey, "Sandbox", _SandboxChoices, DefaultValue: "read-only");
+        var sdkSandbox = new PluginSessionLaunchOption(CodexAppServerSessionDriver.SandboxOptionKey, "Sandbox", CodexSandbox.Choices, DefaultValue: "read-only");
         var sdkModelFallback = new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", Choices: []);
 
         host.AddSessionProvider(new SessionProviderRegistration(
@@ -62,7 +60,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         // do (a headless driver, a TUI, or both, per PluginTtyContracts) is what it registered. Codex's own words
         // for its start defaults (see CodexTtyProvider's remarks for why these are not Claude's permission-mode/
         // effort): the sandbox policy and the model override — same live model/list upgrade as the SDK route.
-        var ttySandbox = new PluginTtyLaunchOption(CodexTtyProvider.SandboxOptionKey, "Sandbox", _SandboxChoices);
+        var ttySandbox = new PluginTtyLaunchOption(CodexTtyProvider.SandboxOptionKey, "Sandbox", CodexSandbox.Choices);
         var ttyModelFallback = new PluginTtyLaunchOption(CodexTtyProvider.ModelOptionKey, "Model", Choices: []);
 
         host.AddTtyProvider(new TtyProviderRegistration(

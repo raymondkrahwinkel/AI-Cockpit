@@ -441,6 +441,79 @@ public class CodexAppServerSessionDriverTests
     }
 
     [Fact]
+    public async Task LiveOptions_IncludeTheSandboxControl_OpenedOnTheLaunchSandbox()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write" };
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        // D4 inc2b: sandbox is a live control offering the same kebab choices as the dialog, opened on the sandbox the
+        // session actually launched with (there is always one), unlike effort/approval which open unset.
+        var sandbox = driver.LiveOptions.Should().ContainSingle(option => option.Key == "sandbox").Subject;
+        sandbox.Choices.Should().Equal("read-only", "workspace-write", "danger-full-access");
+        sandbox.DefaultValue.Should().Be("workspace-write");
+    }
+
+    [Fact]
+    public async Task TurnStart_CarriesTheSandboxPolicyObject_WithItsCamelCaseType_AfterASwitch()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // D4 inc2b: the sandbox override rides turn/start as the tagged-union SandboxPolicy object, keyed by its
+        // camelCase type — the kebab choice "danger-full-access" becomes { "type": "dangerFullAccess" }.
+        await driver.SetLiveOptionAsync("sandbox", "danger-full-access");
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString().Should().Be("dangerFullAccess");
+    }
+
+    [Fact]
+    public async Task TurnStart_CarriesTheLaunchSandbox_AsAPolicyObject_EvenWithoutASwitch()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+
+        var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write" };
+        var startTask = driver.StartAsync(null, "/work", resumeSessionId: null, options, mcpServers: null, CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        await driver.SendUserMessageAsync("go");
+
+        // The launch sandbox is re-asserted on every turn as its policy object (like the model), so a turn the
+        // operator never touched still runs under the sandbox the session launched with.
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        turn.GetProperty("params").GetProperty("sandboxPolicy").GetProperty("type").GetString().Should().Be("workspaceWrite");
+    }
+
+    [Fact]
+    public async Task TurnStart_OmitsTheSandboxPolicy_WhenTheLiveSandboxIsAnUnknownValue()
+    {
+        var fake = new FakeCliSubprocess();
+        await using var driver = new CodexAppServerSessionDriver(() => fake, _DefaultConfig(), "codex");
+        await _StartAsync(driver, fake);
+
+        // An unknown sandbox value maps to no policy type, so the override is dropped from the wire rather than
+        // sending a bogus type Codex would reject — the session keeps the sandbox it launched with.
+        await driver.SetLiveOptionAsync("sandbox", "not-a-real-mode");
+        await driver.SendUserMessageAsync("go");
+
+        var turn = await _WaitForRequestAsync(fake, "turn/start");
+        turn.GetProperty("params").TryGetProperty("sandboxPolicy", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task TurnStart_WithoutASwitch_CarriesTheStartModel_AndNoEffort()
     {
         var fake = new FakeCliSubprocess();
