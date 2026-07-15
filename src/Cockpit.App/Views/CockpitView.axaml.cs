@@ -11,6 +11,7 @@ using Avalonia.VisualTree;
 using Cockpit.App.Controls;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Workspaces;
 using Exclr8.Terminal;
 
 namespace Cockpit.App.Views;
@@ -405,7 +406,11 @@ public partial class CockpitView : UserControl
 
     private void OnWorkspaceTabPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_draggingTab is null || sender is not Border { Parent: Control strip } tab)
+        // The strip is the ItemsControl's own panel, reached by name. Walking up from the tab does not get here:
+        // each tab sits inside its generated ContentPresenter, so Border.Parent is that presenter — which has
+        // exactly one child, the tab itself, so the drop target was always the tab being dragged and nothing
+        // ever moved.
+        if (_draggingTab is null || WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
         {
             return;
         }
@@ -416,18 +421,28 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        // Which tab is under the pointer decides the drop index — measuring against the tabs themselves rather
-        // than arithmetic on widths, since they are as wide as their names.
-        var target = strip.GetVisualChildren()
-            .OfType<Control>()
-            .Select((child, index) => (child, index))
-            .FirstOrDefault(entry => position.X >= entry.child.Bounds.Left && position.X <= entry.child.Bounds.Right);
-
-        if (target.child is not null && target.child != tab && DataContext is CockpitViewModel cockpit)
+        // Which container the pointer is over decides the drop index — measured against the tabs themselves
+        // rather than arithmetic on widths, since they are as wide as their names.
+        var containers = strip.GetVisualChildren().OfType<Control>().ToList();
+        var targetIndex = containers.FindIndex(child => position.X >= child.Bounds.Left && position.X <= child.Bounds.Right);
+        if (targetIndex < 0)
         {
-            _ = cockpit.Workspaces.MoveWorkspaceAsync(_draggingTab.Id, target.index);
-            _draggingTab = null;
+            return;
         }
+
+        var currentIndex = cockpit.Workspaces.Tabs.Select((tab, index) => (tab, index))
+            .FirstOrDefault(entry => entry.tab.Id == _draggingTab.Id).index;
+        if (targetIndex == currentIndex)
+        {
+            return;
+        }
+
+        // The tab strip is rebuilt on every move, so the dragged tab object is replaced under us — keep the id
+        // and re-find it, rather than holding a reference to a tab that no longer exists.
+        var draggingId = _draggingTab.Id;
+        _ = cockpit.Workspaces.MoveWorkspaceAsync(draggingId, targetIndex);
+        _draggingTab = cockpit.Workspaces.Tabs.FirstOrDefault(tab => tab.Id == draggingId);
+        _tabDragOrigin = position;
     }
 
     private void OnWorkspaceTabPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingTab = null;
@@ -479,6 +494,57 @@ public partial class CockpitView : UserControl
             cockpit.Workspaces.RenameWorkspaceCommand.Execute((tab.Id, name));
         }
     }
+
+    // Widget dragging (F0). A pane is moved by rearranging where the grid puts it — never by rebuilding it —
+    // so a widget keeps whatever state it holds across a drag, the same rule the session grid learned on
+    // 2026-07-13 when a rebuilt pane lost its pty.
+    private WidgetPaneViewModel? _draggingWidget;
+
+    private void OnWidgetHeaderPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // The chrome buttons live in this header; a press on one of them is not the start of a drag.
+        if (e.Source is Control source && source.FindAncestorOfType<Button>(includeSelf: true) is not null)
+        {
+            return;
+        }
+
+        if (sender is Control { DataContext: WidgetPaneViewModel pane })
+        {
+            _draggingWidget = pane;
+        }
+    }
+
+    private void OnDashboardPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_draggingWidget is null
+            || !e.GetCurrentPoint(DashboardGrid).Properties.IsLeftButtonPressed
+            || DashboardGrid?.ItemsPanelRoot is not { } grid
+            || DataContext is not CockpitViewModel cockpit)
+        {
+            // A move with the button up means the drag ended somewhere this handler never saw — drop it rather
+            // than leaving a pane glued to the pointer.
+            _draggingWidget = null;
+            return;
+        }
+
+        var position = e.GetPosition(grid);
+        var cell = DashboardGridMath.CellAt(
+            position.X, position.Y, grid.Bounds.Width, grid.Bounds.Height,
+            cockpit.Workspaces.DashboardColumns, cockpit.Workspaces.DashboardRows);
+
+        if (cell is not { } target || (target.Column == _draggingWidget.Column && target.Row == _draggingWidget.Row))
+        {
+            return;
+        }
+
+        // The panes are rebuilt by the rearrangement, so keep the id and re-find it rather than holding a
+        // reference to a view model that has been replaced under us.
+        var draggingId = _draggingWidget.Id;
+        _ = cockpit.Workspaces.DropPaneAsync(draggingId, target.Column, target.Row);
+        _draggingWidget = cockpit.Workspaces.WidgetPanes.FirstOrDefault(pane => pane.Id == draggingId);
+    }
+
+    private void OnDashboardPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingWidget = null;
 
     // Widget pane chrome. Each button's DataContext is the pane it sits on, so the handler needs no parameter
     // plumbing — the same shape as the session-row handlers above.

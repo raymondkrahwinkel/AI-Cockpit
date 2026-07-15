@@ -57,4 +57,53 @@ public static class DashboardGridMath
         var configured = layout.Clamped().Rows;
         return occupied.Count == 0 ? configured : Math.Max(configured, occupied.Max(cell => cell.RowEnd));
     }
+
+    /// <summary>
+    /// The cell the pointer is over, from a position inside the grid. The inverse of the view's layout: the
+    /// grid draws equal columns and rows, so which cell a drop lands in is arithmetic rather than hit-testing —
+    /// and doing it here keeps the drag's rules testable instead of buried in a pointer handler.
+    /// </summary>
+    /// <param name="x">Pointer X within the grid.</param>
+    /// <param name="y">Pointer Y within the grid.</param>
+    /// <param name="width">The grid's width.</param>
+    /// <param name="height">The grid's height.</param>
+    /// <param name="columns">How many columns it draws.</param>
+    /// <param name="rows">How many rows it draws.</param>
+    public static (int Column, int Row)? CellAt(double x, double y, double width, double height, int columns, int rows)
+    {
+        if (columns <= 0 || rows <= 0 || width <= 0 || height <= 0 || x < 0 || y < 0 || x >= width || y >= height)
+        {
+            return null;
+        }
+
+        return (Math.Clamp((int)(x / (width / columns)), 0, columns - 1),
+                Math.Clamp((int)(y / (height / rows)), 0, rows - 1));
+    }
+
+    /// <summary>
+    /// Where every pane ends up when <paramref name="paneId"/> is dropped on <paramref name="target"/>. Free
+    /// placement with holes, the same as the session grid: an empty cell simply takes the pane, and an occupied
+    /// one swaps the two. Dropping a pane on itself changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// Returns the whole new arrangement rather than mutating, so the caller persists one settled state — and a
+    /// swap can never half-apply, leaving two panes stacked on one cell.
+    /// </remarks>
+    public static IReadOnlyList<(string Id, GridCell Cell)> Drop(
+        IReadOnlyList<(string Id, GridCell Cell)> panes, string paneId, (int Column, int Row) target)
+    {
+        var dragged = panes.FirstOrDefault(pane => pane.Id == paneId);
+        if (dragged.Id is null || (dragged.Cell.Column == target.Column && dragged.Cell.Row == target.Row))
+        {
+            return panes;
+        }
+
+        var landing = dragged.Cell with { Column = target.Column, Row = target.Row };
+        var occupant = panes.FirstOrDefault(pane => pane.Id != paneId && pane.Cell.Overlaps(landing));
+
+        return [.. panes.Select(pane =>
+            pane.Id == paneId ? (pane.Id, landing)
+            : occupant.Id is not null && pane.Id == occupant.Id ? (pane.Id, occupant.Cell with { Column = dragged.Cell.Column, Row = dragged.Cell.Row })
+            : pane)];
+    }
 }

@@ -75,6 +75,35 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// <summary>The dashboard's column count — what the grid's ColumnDefinitions are built from.</summary>
     public int DashboardColumns => Active is { Type: WorkspaceType.Dashboard } dashboard ? dashboard.Layout.Columns : 0;
 
+    /// <summary>
+    /// Two-way for the ⚙'s Columns spinner. Separate from <see cref="DashboardColumns"/>, which the grid reads:
+    /// that one reports what is being drawn, this one accepts what the operator asks for and persists it.
+    /// </summary>
+    public decimal DashboardColumnsSetting
+    {
+        get => Active?.Layout.Columns ?? DashboardLayout.DefaultColumns;
+        set
+        {
+            if (Active is { Type: WorkspaceType.Dashboard } dashboard && (int)value != dashboard.Layout.Columns)
+            {
+                _ = SetDashboardLayoutAsync(dashboard.Id, dashboard.Layout with { Columns = (int)value });
+            }
+        }
+    }
+
+    /// <summary>Two-way for the ⚙'s Rows spinner — the dashboard's starting height, which it grows past as widgets are added.</summary>
+    public decimal DashboardRowsSetting
+    {
+        get => Active?.Layout.Rows ?? DashboardLayout.DefaultRows;
+        set
+        {
+            if (Active is { Type: WorkspaceType.Dashboard } dashboard && (int)value != dashboard.Layout.Rows)
+            {
+                _ = SetDashboardLayoutAsync(dashboard.Id, dashboard.Layout with { Rows = (int)value });
+            }
+        }
+    }
+
     /// <summary>True when a dashboard is active and holds nothing yet — the "Add widget" empty state, not the session one.</summary>
     public bool ShowDashboardEmptyState => IsDashboardActive && WidgetPanes.Count == 0;
 
@@ -188,6 +217,27 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     public Task MovePaneAsync(string paneId, GridCell cell) =>
         Active is not { } workspace ? Task.CompletedTask : _ApplyAsync(Settings.WithUpdated(workspace.WithPaneMoved(paneId, cell)));
 
+    /// <summary>
+    /// Drops a dragged widget on a cell: the cell takes it, or its occupant swaps places with it
+    /// (<see cref="DashboardGridMath.Drop"/>). Applies the whole arrangement at once, so a swap cannot
+    /// half-land and leave two widgets stacked on one cell.
+    /// </summary>
+    public Task DropPaneAsync(string paneId, int column, int row)
+    {
+        if (Active is not { Type: WorkspaceType.Dashboard } dashboard)
+        {
+            return Task.CompletedTask;
+        }
+
+        var arranged = DashboardGridMath.Drop([.. dashboard.Panes.Select(pane => (pane.Id, pane.Cell))], paneId, (column, row));
+        var updated = dashboard with
+        {
+            Panes = [.. dashboard.Panes.Select(pane => pane with { Cell = arranged.First(entry => entry.Id == pane.Id).Cell })],
+        };
+
+        return _ApplyAsync(Settings.WithUpdated(updated));
+    }
+
     private async Task _ApplyAsync(WorkspaceSettings settings)
     {
         if (ReferenceEquals(settings, Settings))
@@ -213,6 +263,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(ShowDashboardEmptyState));
         OnPropertyChanged(nameof(DashboardRows));
         OnPropertyChanged(nameof(DashboardColumns));
+        OnPropertyChanged(nameof(DashboardColumnsSetting));
+        OnPropertyChanged(nameof(DashboardRowsSetting));
     }
 
     /// <summary>
