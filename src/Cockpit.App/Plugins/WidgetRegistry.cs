@@ -17,6 +17,14 @@ public interface IWidgetRegistry
     /// <summary>Records a widget type along with its plugin's storage and observe surface, which a placed instance needs later.</summary>
     void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions);
 
+    /// <summary>
+    /// Raised when a plugin contributes a widget. Plugins initialize after the cockpit's view models are built,
+    /// so anything reading <see cref="Widgets"/> would otherwise read an empty list once, at startup, and never
+    /// hear about the widgets that arrived a moment later — which is exactly how the "Add widget" button stayed
+    /// disabled with two widgets installed.
+    /// </summary>
+    event EventHandler? Changed;
+
     /// <summary>Every widget type registered so far, in registration order — what the gallery lists.</summary>
     IReadOnlyList<WidgetRegistration> Widgets { get; }
 
@@ -32,10 +40,15 @@ internal sealed class WidgetRegistry : IWidgetRegistry, ISingletonService
 {
     private readonly List<RegisteredWidget> _widgets = [];
 
+    public event EventHandler? Changed;
+
     public IReadOnlyList<WidgetRegistration> Widgets => [.. _widgets.Select(widget => widget.Registration)];
 
-    public void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions) =>
+    public void Register(WidgetRegistration widget, IPluginStorage pluginStorage, ICockpitSessionObserver sessions)
+    {
         _widgets.Add(new RegisteredWidget(widget, pluginStorage, sessions));
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     public (WidgetRegistration Registration, WidgetContext Context)? CreateInstance(string widgetId, string instanceId)
     {

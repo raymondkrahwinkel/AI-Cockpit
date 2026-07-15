@@ -384,11 +384,53 @@ public partial class CockpitView : UserControl
             return;
         }
 
-        if (sender is Border { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
+        if (sender is Border { DataContext: WorkspaceTabViewModel tab } border && DataContext is CockpitViewModel cockpit)
         {
             cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
+
+            // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did
+            // what a click does, rather than the tab needing two gestures to both switch and move.
+            _draggingTab = tab;
+            _tabDragOrigin = border.Parent is Control strip ? e.GetPosition(strip) : default;
         }
     }
+
+    // Tab reordering (Raymond, 2026-07-15). Drag state is two fields rather than a full drag-drop session: the
+    // strip is one row of small targets, so "which tab, and has the pointer moved far enough to mean it" is the
+    // whole problem. The threshold keeps a sloppy click — the gesture that selects a workspace — from being
+    // read as a one-pixel reorder.
+    private WorkspaceTabViewModel? _draggingTab;
+    private Point _tabDragOrigin;
+    private const double TabDragThreshold = 6;
+
+    private void OnWorkspaceTabPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_draggingTab is null || sender is not Border { Parent: Control strip } tab)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(strip);
+        if (Math.Abs(position.X - _tabDragOrigin.X) < TabDragThreshold)
+        {
+            return;
+        }
+
+        // Which tab is under the pointer decides the drop index — measuring against the tabs themselves rather
+        // than arithmetic on widths, since they are as wide as their names.
+        var target = strip.GetVisualChildren()
+            .OfType<Control>()
+            .Select((child, index) => (child, index))
+            .FirstOrDefault(entry => position.X >= entry.child.Bounds.Left && position.X <= entry.child.Bounds.Right);
+
+        if (target.child is not null && target.child != tab && DataContext is CockpitViewModel cockpit)
+        {
+            _ = cockpit.Workspaces.MoveWorkspaceAsync(_draggingTab.Id, target.index);
+            _draggingTab = null;
+        }
+    }
+
+    private void OnWorkspaceTabPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingTab = null;
 
     /// <summary>Double-click a tab to rename it in place — the same inline edit a session row uses.</summary>
     private void OnWorkspaceTabDoubleTapped(object? sender, TappedEventArgs e)

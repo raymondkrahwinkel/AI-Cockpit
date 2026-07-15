@@ -77,6 +77,11 @@
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.GitStatus\Cockpit.Plugin.GitStatus.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The reference widgets: a Dashboard workspace with nothing to put on it is a worse first impression
+         than one that already has a clock, and they prove the widget SDK end to end from outside the host. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Widgets\Cockpit.Plugin.Widgets.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
   </ItemGroup>
 
   <!-- A single-file build is one file, so the bundled plugins ride inside it: the same dll/deps/plugin.json are
@@ -118,15 +123,21 @@
       <GitStatusFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.dll;
                                $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.GitStatus.deps.json;
                                $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.GitStatus\plugin.json" />
+      <WidgetsFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Widgets\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Widgets.dll;
+                             $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Widgets\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Widgets.deps.json;
+                             $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Widgets\plugin.json" />
     </ItemGroup>
     <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(OutDir)bundled-plugins\transcript-search" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(OutDir)bundled-plugins\git-status" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(WidgetsFiles)" DestinationFolder="$(OutDir)bundled-plugins\widgets" SkipUnchangedFiles="true" />
 
     <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a
          cockpit missing the features that used to be core. -->
     <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(PublishDir)bundled-plugins\transcript-search"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(PublishDir)bundled-plugins\git-status"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(WidgetsFiles)" DestinationFolder="$(PublishDir)bundled-plugins\widgets"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
   </Target>
 </Project>

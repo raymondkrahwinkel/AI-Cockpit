@@ -84,6 +84,32 @@ public sealed record WorkspaceSettings
         _IndexOf(workspaceId) < 0 ? this : this with { ActiveWorkspaceId = workspaceId };
 
     /// <summary>
+    /// These settings with <paramref name="workspaceId"/> moved to <paramref name="targetIndex"/> in the tab
+    /// strip, the rest closing the gap behind it. The selection is untouched — reordering rearranges the desks,
+    /// it does not walk you to a different one. Out-of-range targets are clamped rather than refused, so a drag
+    /// past either end lands on the end.
+    /// </summary>
+    public WorkspaceSettings WithMoved(string workspaceId, int targetIndex)
+    {
+        var from = _IndexOf(workspaceId);
+        if (from < 0 || Workspaces.Count <= 1)
+        {
+            return this;
+        }
+
+        var to = Math.Clamp(targetIndex, 0, Workspaces.Count - 1);
+        if (to == from)
+        {
+            return this;
+        }
+
+        var reordered = Workspaces.ToList();
+        reordered.RemoveAt(from);
+        reordered.Insert(to, Workspaces[from]);
+        return this with { Workspaces = reordered };
+    }
+
+    /// <summary>
     /// These settings with the active workspace stepped <paramref name="direction"/> places along the tab
     /// strip, wrapping at both ends — the Ctrl+Shift+Left/Right switch (Raymond, 2026-07-15). Mirrors the
     /// session switch's wrap-around so the two behave the same way on their own axis.

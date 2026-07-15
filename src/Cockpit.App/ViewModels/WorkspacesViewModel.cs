@@ -37,6 +37,21 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _widgets = widgets;
         _settings = WorkspaceSettings.Default;
         _RefreshTabs();
+
+        // Plugins initialize after this view model is built, so the widget list is empty right now and fills a
+        // moment later. Without this the "Add widget" button reads that empty list once and stays disabled for
+        // the rest of the run, however many widgets are installed — and a saved dashboard's panes, whose types
+        // had not been registered yet, would render as nothing.
+        if (_widgets is not null)
+        {
+            _widgets.Changed += (_, _) =>
+            {
+                OnPropertyChanged(nameof(AvailableWidgets));
+                OnPropertyChanged(nameof(HasAvailableWidgets));
+                _RefreshWidgetPanes();
+                OnPropertyChanged(nameof(ShowDashboardEmptyState));
+            };
+        }
     }
 
     [ObservableProperty]
@@ -101,6 +116,14 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
 
     [RelayCommand]
     private Task SelectWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithActive(workspaceId));
+
+    /// <summary>
+    /// Drops a dragged tab at <paramref name="targetIndex"/> in the strip (Raymond, 2026-07-15). Persists, so
+    /// the order you arranged is the order you come back to; the selection stays where it was, since
+    /// rearranging the desks is not the same as walking to another one.
+    /// </summary>
+    public Task MoveWorkspaceAsync(string workspaceId, int targetIndex) =>
+        _ApplyAsync(Settings.WithMoved(workspaceId, targetIndex));
 
     /// <summary>Ctrl+Shift+Left — the previous workspace, wrapping past the first (Raymond, 2026-07-15).</summary>
     [RelayCommand]
