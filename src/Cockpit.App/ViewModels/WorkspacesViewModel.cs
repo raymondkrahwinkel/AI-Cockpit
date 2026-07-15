@@ -132,8 +132,14 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// <summary>The active workspace — what the grid renders. Never null once loaded (<see cref="WorkspaceSettings.Normalized"/> guarantees one).</summary>
     public Workspace? Active => Settings.Active;
 
-    /// <summary>Whether the strip is worth showing at all: a single workspace is the cockpit as it has always looked, and a lone tab is chrome that earns nothing.</summary>
-    public bool ShowTabStrip => Settings.Workspaces.Count > 1;
+    /// <summary>
+    /// The strip is always shown. It used to hide itself at a single workspace — "a lone tab is chrome that
+    /// earns nothing" — which was wrong twice over, and Raymond found both: deleting one of two made the strip
+    /// vanish, so a correct single deletion looked like it took both; and a workspace that existed but was
+    /// hidden reappeared out of nowhere the moment a second one was added. A tab is where you see which desk
+    /// you are on, and it has to keep saying so when there is one.
+    /// </summary>
+    public bool ShowTabStrip => true;
 
     /// <summary>True when the active workspace hosts widgets — gates the ⚙ dashboard settings and the "Add widget" affordance.</summary>
     public bool IsDashboardActive => Active?.Type == WorkspaceType.Dashboard;
@@ -147,6 +153,37 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         }
 
         Settings = await _store.LoadAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The Sessions workspace a new session belongs on, creating one when there is none (Raymond, 2026-07-15:
+    /// "een sessie moet vanaf nu altijd in een session workspace zitten"). Starting a session while only a
+    /// dashboard exists would otherwise put it on a desk that cannot show it — the session would run, invisibly,
+    /// which is worse than refusing.
+    /// </summary>
+    /// <remarks>
+    /// Returns the id synchronously — the caller is stamping a session it is building right now, and cannot
+    /// wait on a disk write to know where it belongs. Persisting is fire-and-forget, the same way every other
+    /// change here settles.
+    /// </remarks>
+    public string EnsureSessionWorkspace()
+    {
+        if (Active is { Type: WorkspaceType.Sessions } active)
+        {
+            return active.Id;
+        }
+
+        if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions) is { } existing)
+        {
+            // One exists but a dashboard is showing: switch to it, so the session appears where it was put
+            // rather than somewhere the operator has to go and find.
+            _ = _ApplyAsync(Settings.WithActive(existing.Id));
+            return existing.Id;
+        }
+
+        var created = Workspace.Create(_UniqueName(WorkspaceType.Sessions), WorkspaceType.Sessions);
+        _ = _ApplyAsync(Settings.WithWorkspace(created));
+        return created.Id;
     }
 
     [RelayCommand]

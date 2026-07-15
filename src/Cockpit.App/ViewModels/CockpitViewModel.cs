@@ -2325,11 +2325,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void AddSession(SessionPanelViewModel session, string? name, string profileLabel)
     {
         _sessionCounter++;
-        // Born on the workspace that was showing. A session started while a dashboard is up would otherwise
-        // land nowhere visible, so it falls back to the first Sessions workspace.
-        session.WorkspaceId = Workspaces.Active is { Type: WorkspaceType.Sessions } active
-            ? active.Id
-            : Workspaces.Settings.Workspaces.FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions)?.Id ?? string.Empty;
+        // A session always lives on a Sessions workspace (Raymond): the one showing, else the first there is,
+        // else a new one. Started while only a dashboard exists, it would otherwise run on a desk that cannot
+        // show it — invisible rather than absent, which is the worse of the two.
+        session.WorkspaceId = Workspaces.EnsureSessionWorkspace();
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
         // shows which profile — and therefore which provider — each session runs under.
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
