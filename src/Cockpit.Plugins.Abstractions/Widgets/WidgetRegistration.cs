@@ -35,4 +35,27 @@ public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetCon
 
     /// <summary>How many grid rows a freshly placed instance spans. Defaults to 1.</summary>
     public int DefaultRowSpan { get; init; } = 1;
+
+    /// <summary>
+    /// Builds this instance's settings form, or null when the widget has nothing to configure — a clock needs
+    /// no settings, a system monitor picks its metrics. Null is not just "no form": it is what hides the ⚙ on
+    /// the pane header (see <see cref="HasConfig"/>), so a widget can never show a gear that opens an empty
+    /// dialog. Handed the same per-instance <see cref="IWidgetContext"/> as <see cref="CreateView"/>, so the
+    /// form reads and writes the very config its view renders, through
+    /// <see cref="IWidgetContext.Storage"/>.
+    /// <para>
+    /// The plugin supplies the form's content only — the host wraps it in the dialog with the Save/Close
+    /// footer, exactly as it does for <c>AddSettings</c>. Saving raises
+    /// <see cref="IWidgetContext.RefreshRequested"/> on that instance, so the view picks the new config up
+    /// without the widget having to watch its own storage.
+    /// </para>
+    /// </summary>
+    public Func<IWidgetContext, Control>? CreateConfigView { get; init; }
+
+    /// <summary>
+    /// Whether this widget has a settings form — the single fact the pane header's ⚙ is bound to. Derived from
+    /// <see cref="CreateConfigView"/> rather than declared alongside it, so there is no flag that can claim
+    /// settings the widget cannot build (the mistake a <c>SupportsConfig</c> bool invites).
+    /// </summary>
+    public bool HasConfig => CreateConfigView is not null;
 }
