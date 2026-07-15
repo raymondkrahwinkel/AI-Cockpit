@@ -20,6 +20,10 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
 
     public PluginSessionStatus? Status { get; set; }
 
+    public IReadOnlyList<PluginSessionLaunchOption> LiveOptions { get; init; } = [];
+
+    public (string Key, string Value)? LastLiveOption { get; private set; }
+
     public string? LastAllowAlwaysToolUseId { get; private set; }
 
     public List<string> SentMessages { get; } = [];
@@ -89,6 +93,12 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         LastAutoApprove = enabled;
+        return Task.CompletedTask;
+    }
+
+    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
+    {
+        LastLiveOption = (key, value);
         return Task.CompletedTask;
     }
 

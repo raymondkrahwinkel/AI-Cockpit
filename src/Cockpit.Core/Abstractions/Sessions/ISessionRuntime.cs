@@ -38,6 +38,14 @@ public interface ISessionRuntime : IAsyncDisposable
     /// </summary>
     SessionStatusFeed? CurrentStatus => null;
 
+    /// <summary>
+    /// The generic mid-session controls the running driver reports (#45 D4) — a plugin provider's model and effort,
+    /// passed straight through so a consumer renders them without host-side vocabulary. Empty for a driver the host
+    /// drives through its own typed members (Claude) or one with nothing to switch. Meaningful only after start,
+    /// like <see cref="Capabilities"/>.
+    /// </summary>
+    IReadOnlyList<SessionLiveOption> LiveOptions => [];
+
     /// <summary>True once <see cref="StartAsync"/> has brought a driver up and the event pump is running.</summary>
     bool IsRunning { get; }
 
@@ -81,6 +89,8 @@ public interface ISessionRuntime : IAsyncDisposable
     Task SetModelAsync(string? model, CancellationToken cancellationToken = default);
 
     Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default);
+
+    Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default);
 
     Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default);
 

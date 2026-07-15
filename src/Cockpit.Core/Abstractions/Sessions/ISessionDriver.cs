@@ -125,6 +125,16 @@ public interface ISessionDriver : IAsyncDisposable
     SessionStatusFeed? CurrentStatus => null;
 
     /// <summary>
+    /// The controls this session can switch mid-conversation that the host renders generically (#45 D4) — a plugin
+    /// provider's model and reasoning effort, each a per-turn override. Empty for a driver whose live controls the
+    /// host already knows by name (the Claude CLI drives model/permission/effort through its own typed members
+    /// above) or that has none (a local model). A driver reports these once its session is up, since the values can
+    /// depend on what the provider listed at start. A default property, so a driver without a generic live surface
+    /// need not implement it.
+    /// </summary>
+    IReadOnlyList<SessionLiveOption> LiveOptions => [];
+
+    /// <summary>
     /// The live, ordered stream of typed transcript events for this session.
     /// A single async enumeration is supported; the stream completes when the
     /// underlying process exits.
@@ -138,4 +148,11 @@ public interface ISessionDriver : IAsyncDisposable
     /// its own permission modes instead, so only the local (OpenAI-compatible) driver honours this.
     /// </summary>
     Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Switches one of the generic <see cref="LiveOptions"/> for the rest of this session (#45 D4) — the operator
+    /// picked a new value in the live-control panel, keyed by the option's <see cref="SessionLiveOption.Key"/>. The
+    /// driver applies it to its next turn. Default no-op: a driver with no generic live options has none to switch.
+    /// </summary>
+    Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -108,6 +108,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private EffortOption _selectedEffort = SessionOptionCatalog.DefaultEffort;
 
+    /// <summary>
+    /// The running plugin provider's generic live controls (#45 D4) — Codex's model and effort — populated after
+    /// start from the driver's declared options. Empty for Claude and local sessions, which drive their controls
+    /// through the typed dropdowns above; a provider with nothing to switch leaves the panel hidden.
+    /// </summary>
+    public ObservableCollection<LiveControlViewModel> LiveControls { get; } = [];
+
+    /// <summary>True once the running provider declared at least one generic live control, so the panel shows only when it has something in it.</summary>
+    public bool HasLiveControls => LiveControls.Count > 0;
+
     [ObservableProperty]
     private string _inputText = string.Empty;
 
@@ -201,6 +211,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         RateLimits.Add(new SessionRateWindow("wk", 82, null));
         LimitsTooltip = "Context window: 37% used";
 
+        // Sample generic live controls (#45 D4) so the previewer/Screenshotter renders the header's live-control panel.
+        LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("model", "Model", ["gpt-5-codex", "gpt-5"], "gpt-5-codex"), (_, _) => Task.CompletedTask));
+        LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], "medium"), (_, _) => Task.CompletedTask));
+
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "fix the layout bug in SessionView"));
 
         var thinking = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking,
@@ -271,6 +285,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         };
         Transcript.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTranscript));
         QueuedMessages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueuedMessages));
+        LiveControls.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLiveControls));
     }
 
     /// <summary>Keeps the Send button's enabled state in sync as the input text changes (T8 CanSend).</summary>
@@ -363,6 +378,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 Capabilities = capabilities;
             }
+
+            // The provider's generic live controls (#45 D4) settle at the same moment as capabilities — the driver
+            // lists them once its session is up (Codex resolves its model list on start) — so read them here too.
+            _PopulateLiveControls();
 
             OnPropertyChanged(nameof(CanPasteImages));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
@@ -507,6 +526,39 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         catch (Exception ex)
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Effort switch failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Rebuilds the generic live-control panel from the running driver's declared options (#45 D4).</summary>
+    private void _PopulateLiveControls()
+    {
+        LiveControls.Clear();
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        foreach (var option in _runtime.LiveOptions)
+        {
+            LiveControls.Add(new LiveControlViewModel(option, _SetLiveOptionSafeAsync));
+        }
+    }
+
+    /// <summary>Live-switches one of the provider's generic controls on the running session's driver (#45 D4).</summary>
+    private async Task _SetLiveOptionSafeAsync(string key, string value)
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _runtime.SetLiveOptionAsync(key, value);
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Live switch failed: {ex.Message}"));
         }
     }
 

@@ -197,6 +197,54 @@ public class SessionViewModelTests
         await vm.DisposeAsync();
     }
 
+    [Fact]
+    public async Task StartConfigured_PopulatesTheLiveControls_FromTheDriversLiveOptions()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("model", "Model", ["gpt-5-codex", "gpt-5"], "gpt-5-codex"),
+            new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], null),
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // D4: the provider's live controls become the header's generic panel, each opened on its current value.
+        vm.HasLiveControls.Should().BeTrue();
+        vm.LiveControls.Should().HaveCount(2);
+        vm.LiveControls[0].Key.Should().Be("model");
+        vm.LiveControls[0].Choices.Should().Equal("gpt-5-codex", "gpt-5");
+        vm.LiveControls[0].SelectedValue.Should().Be("gpt-5-codex");
+        vm.LiveControls[1].Key.Should().Be("effort");
+        vm.LiveControls[1].SelectedValue.Should().BeNull();
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PickingALiveControlValue_SwitchesItOnTheDriver()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], null),
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // D4: picking a value in the panel forwards it to the running driver, which applies it to the next turn.
+        vm.LiveControls[0].SelectedValue = "high";
+
+        await session.Received(1).SetLiveOptionAsync("effort", "high", Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
     /// <summary>
     /// <see cref="SessionViewModel.CanPasteImages"/> (#64) follows <see cref="SessionCapabilities.SupportsVision"/>
     /// once the session has actually started — a Claude-CLI session reports it true since
