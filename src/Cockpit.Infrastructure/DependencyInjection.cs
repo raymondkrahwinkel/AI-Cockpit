@@ -9,6 +9,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Notifications;
+using Cockpit.Core.Voice;
 using Cockpit.Infrastructure.Voice.GlobalHotkey;
 
 namespace Cockpit.Infrastructure;
@@ -27,12 +28,15 @@ public static class DependencyInjection
         return services;
     }
 
-    // Global push-to-talk (#34) is OS-specific for the same reason the pty host is: registered by
-    // platform here rather than via the Scrutor marker scan, which would otherwise bind whichever
-    // implementation the assembly scan happened to see last to the single IGlobalHotkeyService
-    // registration. Linux gets the XDG GlobalShortcuts portal (the only sandboxed-safe route on
-    // Wayland); Windows gets a SharpHook low-level keyboard hook; anything else falls back to a no-op
-    // so the app still starts.
+    // Global push-to-talk (#34) is registered by platform here rather than via the Scrutor marker scan, for the
+    // same reason the pty host is: the scan would bind whichever implementation it saw last to the single
+    // IGlobalHotkeyService registration.
+    //
+    // Windows gets a SharpHook low-level keyboard hook. Linux depends on the session and not only the OS: under
+    // Wayland nothing may install a keyboard hook, so the XDG GlobalShortcuts portal is the only route — but
+    // under X11 the same hook Windows uses works, and routing every Linux to the portal threw that away. It
+    // costs an X11 desktop the hotkey outright wherever its portal has no GlobalShortcuts implementation, which
+    // is most of them. Anything else (macOS) has neither, and says so rather than pretending.
     private static void AddGlobalHotkey(IServiceCollection services)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -41,13 +45,27 @@ public static class DependencyInjection
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            services.AddSingleton<IGlobalHotkeyService, PortalGlobalHotkeyService>();
+            if (_IsWaylandSession())
+            {
+                services.AddSingleton<IGlobalHotkeyService, PortalGlobalHotkeyService>();
+            }
+            else
+            {
+                services.AddSingleton<IGlobalHotkeyService, SharpHookGlobalHotkeyService>();
+            }
         }
         else
         {
             services.AddSingleton<IGlobalHotkeyService, NoOpGlobalHotkeyService>();
         }
     }
+
+    // Reading the two variables is all this does; what they mean is LinuxSession.IsWayland's, so that half is
+    // testable off a Wayland session. Nothing here can be, which is the split.
+    private static bool _IsWaylandSession() =>
+        LinuxSession.IsWayland(
+            Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"),
+            Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
 
     // TTY mode's pty host (#9) is OS-specific for the same reason presence/toast are: it is
     // registered by platform here rather than via the Scrutor marker scan, which would otherwise

@@ -14,11 +14,38 @@ namespace Cockpit.App.Views;
 /// </summary>
 public partial class PluginStoreDialog : Window
 {
+    /// <summary>How much of the screen's working area the dialog may take when its designed size does not fit.</summary>
+    private const double MaxScreenFraction = 0.9;
+
     public PluginStoreDialog()
     {
         InitializeComponent();
         CockpitWindowChrome.Apply(this);
+        Opened += OnOpened;
         Closed += OnClosed;
+    }
+
+    /// <summary>
+    /// Shrinks the dialog to fit when its designed size does not. It is sized for a desktop (a catalogue grid
+    /// beside a detail panel needs the room), and a fixed size larger than the screen is not a bigger dialog —
+    /// it is one whose buttons are past the bottom edge, centred on its owner with nothing to drag it back by.
+    /// </summary>
+    private void OnOpened(object? sender, EventArgs e)
+    {
+        if (Screens.ScreenFromWindow(this) is not { } screen)
+        {
+            return;
+        }
+
+        // WorkingArea is in physical pixels and Width/Height are in DIPs, so the scaling has to come out first
+        // or this clamps to the wrong number on any display that is not at 100%.
+        var available = screen.WorkingArea;
+        var maxWidth = available.Width / screen.Scaling * MaxScreenFraction;
+        var maxHeight = available.Height / screen.Scaling * MaxScreenFraction;
+
+        // Never below the minimums: a dialog too small to use is the failure this is avoiding, not a fix for it.
+        Width = Math.Clamp(Width, MinWidth, Math.Max(MinWidth, maxWidth));
+        Height = Math.Clamp(Height, MinHeight, Math.Max(MinHeight, maxHeight));
     }
 
     private void OnClosed(object? sender, EventArgs e)

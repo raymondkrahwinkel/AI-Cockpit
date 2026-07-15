@@ -1,12 +1,16 @@
 namespace Cockpit.App.ViewModels;
 
-/// <summary>Visibility/content state of the floating voice-input pill (#34) — see <see cref="VoiceOverlayViewModel"/>.</summary>
+/// <summary>Visibility/content state of the floating voice pill (#34) — see <see cref="VoiceOverlayViewModel"/>.</summary>
+/// <remarks>
+/// Which of these is on screen is <see cref="Services.VoiceOverlayCoordinator"/>'s decision, not any one source's:
+/// a hold, open-mic dictation and read-aloud all have something to say and only one pill to say it in.
+/// </remarks>
 public enum VoiceOverlayState
 {
-    /// <summary>No hold in progress — the overlay window is not shown.</summary>
+    /// <summary>Nothing to report — the overlay window is not shown.</summary>
     Hidden,
 
-    /// <summary>The push-to-talk hotkey is held down; the pill shows the recording waveform.</summary>
+    /// <summary>A microphone is open and being listened to — a held hotkey, or open-mic hearing speech start. The pill shows the recording waveform.</summary>
     Listening,
 
     /// <summary>
@@ -23,6 +27,14 @@ public enum VoiceOverlayState
     /// </summary>
     Preparing,
 
-    /// <summary>The hotkey was released and the transcript is being produced; the pill shows a spinner.</summary>
+    /// <summary>The microphone closed and the transcript is being produced; the pill shows a spinner.</summary>
     Transcribing,
+
+    /// <summary>
+    /// Read-aloud is playing (Raymond, 2026-07-15: the pill is not only for what you say — it is also how you
+    /// see why your microphone just went quiet, since open-mic pauses itself while the cockpit speaks).
+    /// Yields to any dictation. No waveform: the playback queue reports <em>that</em> it is speaking, not how
+    /// loudly, and bars driven by nothing would be decoration pretending to be a meter.
+    /// </summary>
+    Speaking,
 }

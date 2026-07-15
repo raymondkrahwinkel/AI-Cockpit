@@ -21,6 +21,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     private readonly NotifyCollectionChangedEventHandler _onAvailablePluginsChanged;
     private readonly NotifyCollectionChangedEventHandler _onAvailableTemplatesChanged;
     private readonly NotifyCollectionChangedEventHandler _onStoresChanged;
+    private readonly NotifyCollectionChangedEventHandler _onInstalledPluginsChanged;
     private readonly PropertyChangedEventHandler _onManagerPropertyChanged;
     private bool _isDisposed;
 
@@ -73,9 +74,14 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         // sidebar saying "Workflow templates (0)" — greyed out and unclickable — while the store was offering ten.
         _onAvailableTemplatesChanged = (_, _) => _OnCatalogueChanged();
         _onStoresChanged = (_, _) => _OnCatalogueChanged();
+        // The Installed list is the local plugins, not the catalogue — so installing from a zip, or removing one,
+        // changes it without the catalogue moving at all. Without this the heading count and the groups would be
+        // whatever they were when the dialog opened.
+        _onInstalledPluginsChanged = (_, _) => _OnInstalledChanged();
         _onManagerPropertyChanged = _OnManagerPropertyChanged;
         _manager.AvailablePlugins.CollectionChanged += _onAvailablePluginsChanged;
         _manager.AvailableTemplates.CollectionChanged += _onAvailableTemplatesChanged;
+        _manager.Plugins.CollectionChanged += _onInstalledPluginsChanged;
         _manager.Stores.CollectionChanged += _onStoresChanged;
         _manager.PropertyChanged += _onManagerPropertyChanged;
 
@@ -96,6 +102,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
         _manager.AvailablePlugins.CollectionChanged -= _onAvailablePluginsChanged;
         _manager.AvailableTemplates.CollectionChanged -= _onAvailableTemplatesChanged;
+        _manager.Plugins.CollectionChanged -= _onInstalledPluginsChanged;
         _manager.Stores.CollectionChanged -= _onStoresChanged;
         _manager.PropertyChanged -= _onManagerPropertyChanged;
         _isDisposed = true;
@@ -128,6 +135,75 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     /// <summary>True while the sidebar's "Workflow templates" is selected — the flows the stores offer, not the plugins.</summary>
     public bool IsTemplatesView => SelectedSidebarItem?.Filter.Kind == PluginStoreFilterKind.Templates;
+
+    /// <summary>
+    /// The installed plugins under their category headings (Raymond, 2026-07-15) — one flat list stopped being
+    /// readable once widgets, providers, issue trackers and a workflow engine all lived in it.
+    /// </summary>
+    /// <remarks>
+    /// The heading comes from the catalogue, matched by plugin id, because a <c>plugin.json</c> carries no
+    /// category — it is a store-index field. That is also why the grouping degrades rather than breaks: with no
+    /// store configured (and this view is explicitly built to work without one) nothing matches, everything lands
+    /// under one heading, and what is left is the flat list it replaced.
+    /// </remarks>
+    public IReadOnlyList<InstalledPluginGroup> InstalledGroups =>
+        [.. _manager.Plugins
+            .GroupBy(_CategoryOf, StringComparer.OrdinalIgnoreCase)
+            // Alphabetical, the order the sidebar's own categories take — except "Other", which is a fallback
+            // bucket rather than a peer and reads as filler if it lands between two real categories.
+            .OrderBy(group => group.Key == StorePluginRowViewModel.OtherCategory ? 1 : 0)
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new InstalledPluginGroup(group.Key, [.. group]))];
+
+    /// <summary>True once there is more than one heading — with a single group the headings say nothing the list does not.</summary>
+    public bool ShowInstalledGroupHeaders => InstalledGroups.Count > 1;
+
+    /// <summary>
+    /// Moves a plugin up the left menu, past the previous one <b>under its own heading</b> (Raymond, 2026-07-15).
+    /// </summary>
+    /// <remarks>
+    /// The arrows move a plugin through the left menu, which is one flat sequence — and this list is no longer
+    /// shown as one. Left on the manager's plain ±1 they would have started lying: press ↑ on the first widget
+    /// and the row above it in the menu order is some provider, so the menu shifts while nothing visibly moves.
+    /// <para>
+    /// Within the heading is the reading that survives both: with one heading — no store configured, nothing
+    /// matched — every plugin shares it and this is the old behaviour exactly. The menu order itself is never
+    /// re-sorted by category; you simply cannot move a widget above an issue tracker, which was never a thing
+    /// worth doing.
+    /// </para>
+    /// </remarks>
+    [RelayCommand]
+    private Task MoveInstalledPluginUpAsync(PluginRowViewModel row) => _MoveWithinGroupAsync(row, -1);
+
+    /// <inheritdoc cref="MoveInstalledPluginUpAsync"/>
+    [RelayCommand]
+    private Task MoveInstalledPluginDownAsync(PluginRowViewModel row) => _MoveWithinGroupAsync(row, +1);
+
+    private Task _MoveWithinGroupAsync(PluginRowViewModel row, int offset)
+    {
+        if (InstalledGroups.FirstOrDefault(group => group.Plugins.Contains(row)) is not { } group)
+        {
+            return Task.CompletedTask;
+        }
+
+        var within = group.Plugins.ToList().IndexOf(row) + offset;
+        if (within < 0 || within >= group.Plugins.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Its neighbour's seat in the menu order, which is what the manager writes. Under one heading that seat
+        // is the next one along and this is the plain ±1 it always was.
+        return _manager.MovePluginToAsync(row, _manager.Plugins.IndexOf(group.Plugins[within]));
+    }
+
+    // The catalogue is the only thing that knows what a plugin is. One no store lists — sideloaded from a zip, or
+    // superseded and left behind — has no category to find, and lands in "Other".
+    private string _CategoryOf(PluginRowViewModel plugin) =>
+        _manager.AvailablePlugins.FirstOrDefault(row =>
+            string.Equals(row.Id, plugin.Discovered.Manifest.Id, StringComparison.OrdinalIgnoreCase))?.Category
+        ?? StorePluginRowViewModel.OtherCategory;
+
 
     /// <summary>The templates a search narrows to: name, description and author, because whoever searches for "review" has that word in the description more often than in the name.</summary>
     public IEnumerable<StoreTemplateRowViewModel> FilteredTemplates => string.IsNullOrWhiteSpace(SearchText)
@@ -259,6 +335,24 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         _RecomputeFiltered();
         OnPropertyChanged(nameof(HasNoStores));
         OnPropertyChanged(nameof(IsLoadingCatalogue));
+
+        // The Installed list is local, but its headings are not: a catalogue arriving late is what turns "Other"
+        // into "Widgets", so the groups have to be re-read when it lands.
+        _NotifyInstalledGroups();
+    }
+
+    // The local plugin list changed (a zip install, a removal) without the catalogue moving at all. The Installed
+    // heading counts that list, and the count lives on a sidebar item — which is rebuilt whole.
+    private void _OnInstalledChanged()
+    {
+        _RebuildSidebarItems();
+        _NotifyInstalledGroups();
+    }
+
+    private void _NotifyInstalledGroups()
+    {
+        OnPropertyChanged(nameof(InstalledGroups));
+        OnPropertyChanged(nameof(ShowInstalledGroupHeaders));
     }
 
     // Rebuilds the sidebar from the manager's current catalogue (categories + Installed/Updates counts
@@ -269,7 +363,11 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     {
         var previousFilter = SelectedSidebarItem?.Filter;
         var plugins = _manager.AvailablePlugins;
-        var installedCount = plugins.Count(row => row.IsInstalled);
+
+        // What the Installed view lists, not what the catalogue happens to know is installed. Counting the
+        // catalogue meant the label and the list disagreed about a plugin no store offers: it appeared in the
+        // list and not in the number, which is how an operator ends up counting rows to see who is lying.
+        var installedCount = _manager.Plugins.Count;
         var updatesCount = plugins.Count(row => row.UpdateAvailable);
 
         SidebarItems.Clear();

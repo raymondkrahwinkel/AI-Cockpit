@@ -19,9 +19,20 @@ public interface IGlobalShortcutsPortal : IDBusObject
         string parentWindow,
         IDictionary<string, object> options);
 
+    /// <summary>
+    /// What the compositor actually bound, which is the only place that answer exists: <c>preferred_trigger</c>
+    /// is a hint the spec does not oblige anyone to honour, and the binding is the compositor's own to change
+    /// from its shortcut settings at any time.
+    /// </summary>
+    Task<ObjectPath> ListShortcutsAsync(ObjectPath session, IDictionary<string, object> options);
+
     Task<IDisposable> WatchActivatedAsync(
         Action<(ObjectPath Session, string ShortcutId, ulong Timestamp, IDictionary<string, object> Options)> handler);
 
     Task<IDisposable> WatchDeactivatedAsync(
         Action<(ObjectPath Session, string ShortcutId, ulong Timestamp, IDictionary<string, object> Options)> handler);
+
+    /// <summary>Raised when the operator rebinds the shortcut in their desktop's own settings — so what the cockpit displays keeps up rather than going stale the moment it is changed.</summary>
+    Task<IDisposable> WatchShortcutsChangedAsync(
+        Action<(ObjectPath Session, (string Id, IDictionary<string, object> Options)[] Shortcuts)> handler);
 }

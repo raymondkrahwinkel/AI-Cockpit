@@ -11,6 +11,21 @@ public interface IOpenMicListener
     /// <summary>Raised on the capture thread with the raw transcript once an utterance ends. Subscribers marshal onto the UI thread themselves.</summary>
     event EventHandler<string>? UtteranceTranscribed;
 
+    /// <summary>
+    /// Raised on the capture thread the moment the VAD decides you have started speaking, and again when the
+    /// utterance ends — the boundaries this listener already finds to know what to transcribe.
+    /// </summary>
+    /// <remarks>
+    /// They are here so the voice overlay can appear when there is something to show and not a second before
+    /// (Raymond, 2026-07-15). The alternative was thresholding <see cref="AudioLevelSampled"/> in the UI, which
+    /// is a second, worse VAD guessing at what this one already knows — and it would light the pill for a door
+    /// closing. <see cref="UtteranceTranscribed"/> is far too late: by then the speaking is over.
+    /// </remarks>
+    event EventHandler? SpeechStarted;
+
+    /// <inheritdoc cref="SpeechStarted"/>
+    event EventHandler? SpeechEnded;
+
     /// <summary>Raised once per captured frame with a 0..1 loudness level, so the voice overlay can show a live waveform. Fires on the capture thread.</summary>
     event EventHandler<double>? AudioLevelSampled;
 

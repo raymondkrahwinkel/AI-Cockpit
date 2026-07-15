@@ -20,6 +20,27 @@ public interface IGlobalHotkeyService
     /// <summary>The hotkey was released — the hold has ended.</summary>
     event EventHandler? HoldEnded;
 
+    /// <summary>
+    /// How this hold is actually triggered, in words to show the operator — or null when nothing is armed and
+    /// there is nothing to say.
+    /// </summary>
+    /// <remarks>
+    /// It is reported rather than assumed because on one of the three platforms the cockpit does not decide it.
+    /// A Windows hook is armed with the key from the settings and that is that. The XDG portal takes the
+    /// configured key as a <em>preferred_trigger</em> — a hint the spec does not oblige a compositor to honour —
+    /// and the binding then belongs to the desktop's own shortcut settings, where the operator may change it
+    /// without the cockpit hearing of it except through <see cref="TriggerDescriptionChanged"/>. macOS has no
+    /// implementation at all, and null says so.
+    /// <para>
+    /// The settings field was a text box that looked like it decided all three. It did not, and on Linux it was
+    /// not even read.
+    /// </para>
+    /// </remarks>
+    string? TriggerDescription { get; }
+
+    /// <summary>Raised when <see cref="TriggerDescription"/> changes — the operator rebound it in their desktop's settings, or it armed. Fires off the UI thread, like the hold events.</summary>
+    event EventHandler? TriggerDescriptionChanged;
+
     /// <summary>Registers the hotkey with the OS/desktop and starts listening. Idempotent.</summary>
     Task StartAsync(CancellationToken cancellationToken = default);
 

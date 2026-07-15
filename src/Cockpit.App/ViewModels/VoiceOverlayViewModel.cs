@@ -48,6 +48,9 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
 
     public bool IsListening => State == VoiceOverlayState.Listening;
 
+    /// <summary>Read-aloud is playing — the pill says so instead of showing a waveform it has no levels for.</summary>
+    public bool IsSpeaking => State == VoiceOverlayState.Speaking;
+
     /// <summary>The hold is not recording, and <see cref="StatusText"/> says why.</summary>
     public bool IsUnavailable => State == VoiceOverlayState.Unavailable;
 
@@ -89,6 +92,7 @@ public partial class VoiceOverlayViewModel : ViewModelBase, ISingletonService
     partial void OnStateChanged(VoiceOverlayState value)
     {
         OnPropertyChanged(nameof(IsListening));
+        OnPropertyChanged(nameof(IsSpeaking));
         OnPropertyChanged(nameof(IsUnavailable));
         OnPropertyChanged(nameof(IsPreparing));
         OnPropertyChanged(nameof(IsTranscribing));
