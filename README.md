@@ -83,6 +83,25 @@ other provider, since only the Claude CLI has an interactive TUI):
 - **YouTrack MCP** — the YouTrack plugin registers each configured instance's JetBrains remote MCP endpoint into
   the shared registry automatically, so a session gets YouTrack tools with no manual server setup.
 
+## Delegation — a session handing work to another profile
+
+A running session can hand a task to a *different* profile through the cockpit's own **`cockpit-orchestrator`**
+MCP server: an expensive model can pass the mechanical half to a local one, or a Claude session can ask a
+Codex profile for a second opinion.
+
+Every profile decides its own terms — whether it is a target at all, what it says it is good for, which work it
+accepts, how many tasks at once, and whether it may delegate onwards. The rules live in the engine rather than
+in the tool definitions, so they hold however it is reached. A profile that has not opted in is invisible: a
+calling agent cannot delegate to what it cannot see.
+
+- **Nothing runs unwatched.** Delegated tasks are listed live in the cockpit, with their output, and you can stop
+  any of them. Invisible background agents are exactly what this project does not do.
+- **A per-profile task timeout.** A delegated session has nobody watching it, so a model that loops or waits on
+  something that never comes would hold the profile's slot and keep drawing on its provider until the app closed.
+  A task that outruns its limit is stopped, reported *with the reason*, and its slot handed on.
+- **An audit log** beside `cockpit.json` records what was delegated to which profile and how it ended, refusals
+  and their reasons included — the task list only lives as long as the app does.
+
 ## Voice
 
 - **STT (dictation):** Whisper.net transcription with automatic backend selection — CUDA, then CUDA12, then
@@ -158,12 +177,22 @@ See the [design note](docs/workspaces-widgets-terminals.md) and the
   sessions (Ctrl+Up / Ctrl+Down) — is a **rebindable shortcut** in Options → Shortcuts, as are the ones plugins
   contribute. Clearing a gesture unbinds it.
 - **Notifications:** an OS toast when you're at the machine, or a **Discord webhook** when you're away (presence from
-  idle time + lock state) — fired when a session starts needing attention.
+  idle time + lock state) — fired when a session starts needing attention. A session that has been finished and
+  quiet for a while can announce that too, though it is off by default: the interesting moment is usually the
+  answer, not the silence after it.
 - **What a session is spending:** a TTY session's header shows how full its context window is and how much of the
   five-hour and weekly allowance is gone — three small bars that turn amber past 60% and red past 85%. The numbers
   come from Claude's own statusline, which is the only place the allowances are readable at all; a statusline you
   already configured keeps running underneath.
-- **Transcript search** across sessions, an **About** dialog, and minimize-to-tray on close.
+- **What the cockpit is spending:** it samples its own and each session's process tree, and says so when the total
+  gets heavy — pointing at the largest session rather than just the number, because "close something" is only
+  useful advice if you know what.
+- **Resuming:** a new session can pick up an earlier conversation by id, and a plugin can register a **picker** so
+  you search and choose one instead of typing an id.
+- **Update check:** the cockpit looks for a newer build on the channel you pick (stable or nightly) and raises a
+  toast. A check that could not run says so rather than reporting "up to date", which is a lie you would believe.
+- **Transcript search** across sessions (a bundled plugin, not core), an **About** dialog, and minimize-to-tray on
+  close.
 
 ## Security
 
@@ -179,6 +208,10 @@ Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`.
 - **Nothing half-written.** Every save is written whole and renamed into place, keeping the previous version as
   `.bak` — a crash cannot leave you with half a config, and an unreadable one is recovered rather than started
   over empty.
+- **Backup and restore.** One zip holds the whole cockpit — settings, profiles, plugins and everything they
+  stored — with the credentials **stripped by default**, so a backup is safe to keep where backups get kept
+  (include them deliberately if you want them). A restore is destructive and therefore all-or-nothing: the
+  archive is read and checked in full before anything is replaced.
 - **Where the boundary actually is.** This protects the *file*, not a running cockpit: while it is unlocked the
   credentials are in memory and are handed to the sessions and tool servers that need them, and a plugin you
   installed runs **inside** the app with your rights and can read them. Plugin isolation is a type boundary, not a
@@ -302,7 +335,10 @@ dotnet test
 - **[Example store index](docs/plugins/example-store-index.json)** — a template for your own store's `index.json`.
 - **Official plugin store:**
   [github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) — the
-  [`plugins-dev/`](plugins-dev) example plugins, published.
+  [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,
+  YouTrack, Git Status, Prompt Library, Transcript Search), widgets (Clock, System Monitor), providers
+  (Gemini/OpenAI, GitHub Models, CLI Agent/Codex) and **Workflows** — a canvas where flows are drawn and an
+  engine that runs them, which other plugins contribute their own steps and triggers to.
 - **Scaffold a new plugin:** `dotnet new install ./templates/cockpit-plugin` then
   `dotnet new cockpit-plugin -n My.Plugin -o plugins-dev/My.Plugin`.
 
@@ -314,7 +350,7 @@ implementation is written by AI agents orchestrated through Claude Code by the m
 
 That workflow does not lower the bar — it *is* the bar this tool exists to support:
 
-- every change is reviewed, must build with **zero warnings**, and ships with unit tests (xUnit; 900+ and counting);
+- every change is reviewed, must build with **zero warnings**, and ships with unit tests (xUnit; 1400+ and counting);
 - UI changes are verified visually against rendered screenshots before they land;
 - features that touch a real CLI are verified end-to-end against a live process, not assumed from documentation;
 - the maintainer signs off on every commit and takes full responsibility for the result.
