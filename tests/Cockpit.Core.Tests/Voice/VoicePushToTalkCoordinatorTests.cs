@@ -381,6 +381,55 @@ public class VoicePushToTalkCoordinatorTests
         cockpit.VoiceGlobalHotkeyTrigger.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// One subscription per hold, whatever arrives. Neither backend repeats a hold today — both gate their
+    /// <c>HoldStarted</c> on an <c>_isHolding</c> flag — so the second call here cannot currently reach this
+    /// through them. That is a promise two other classes make, and this coordinator's level feed should not stack
+    /// if one of them ever stops keeping it. The count is asserted directly because the real handler marshals
+    /// through a dispatcher no unit test pumps, which is what makes a doubled subscription invisible.
+    /// </summary>
+    [Fact]
+    public void HandleHoldStarted_TwiceOverWithoutAnEnd_LeavesOneSubscriptionOnTheLevelFeed()
+    {
+        var pushToTalk = new FakeVoicePushToTalkService();
+        var coordinator = _CreateCoordinatorOn(pushToTalk);
+
+        coordinator.HandleHoldStarted();
+        coordinator.HandleHoldStarted();
+
+        pushToTalk.AudioLevelSubscriberCount.Should().Be(1);
+    }
+
+    /// <summary>The ordinary hold still leaves nothing behind — the detach must not cost the release its own.</summary>
+    [Fact]
+    public async Task AHoldThatStartsAndEnds_LeavesNothingOnTheLevelFeed()
+    {
+        var pushToTalk = new FakeVoicePushToTalkService();
+        var coordinator = _CreateCoordinatorOn(pushToTalk);
+
+        coordinator.HandleHoldStarted();
+        await coordinator.HandleHoldEndedAsync();
+
+        pushToTalk.AudioLevelSubscriberCount.Should().Be(0);
+    }
+
+    /// <param name="pushToTalk">Given to both the coordinator and the selected session — one shared service reaches both in the real graph.</param>
+    private static VoicePushToTalkCoordinator _CreateCoordinatorOn(IVoicePushToTalkService pushToTalk)
+    {
+        var cockpit = NewCockpitViewModel();
+        cockpit.SelectedSession = _CreateSdkSession(pushToTalk);
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
+
+        return new VoicePushToTalkCoordinator(
+            new FakeGlobalHotkeyService(),
+            cockpit,
+            voiceSettingsStore,
+            new VoiceOverlayCoordinator(new VoiceOverlayViewModel(), new FakeVoiceOverlayPresenter()),
+            pushToTalk,
+            NullLogger<VoicePushToTalkCoordinator>.Instance);
+    }
+
     private static SessionPanelViewModel _CreateSdkSession(IVoicePushToTalkService voicePushToTalk)
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
