@@ -390,6 +390,54 @@ public partial class CockpitView : UserControl
         }
     }
 
+    /// <summary>Double-click a tab to rename it in place — the same inline edit a session row uses.</summary>
+    private void OnWorkspaceTabDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Border { DataContext: WorkspaceTabViewModel tab })
+        {
+            tab.BeginRename();
+        }
+    }
+
+    // Enter commits, Escape discards — the two keys an inline edit has to honour, and the reason the box is not
+    // simply committed on every keystroke.
+    private void OnWorkspaceRenameKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: WorkspaceTabViewModel tab })
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            _CommitWorkspaceRename(tab);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            tab.CancelRename();
+            e.Handled = true;
+        }
+    }
+
+    // Clicking away commits rather than discards: having typed a name, losing it to a stray click is the more
+    // annoying of the two outcomes, and Escape is there for the operator who meant to abandon it.
+    private void OnWorkspaceRenameLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: WorkspaceTabViewModel tab } && tab.IsRenaming)
+        {
+            _CommitWorkspaceRename(tab);
+        }
+    }
+
+    private void _CommitWorkspaceRename(WorkspaceTabViewModel tab)
+    {
+        if (tab.CommitRename() is { } name && DataContext is CockpitViewModel cockpit)
+        {
+            cockpit.Workspaces.RenameWorkspaceCommand.Execute((tab.Id, name));
+        }
+    }
+
     // Widget pane chrome. Each button's DataContext is the pane it sits on, so the handler needs no parameter
     // plumbing — the same shape as the session-row handlers above.
     private void OnWidgetRefreshPressed(object? sender, RoutedEventArgs e) =>
