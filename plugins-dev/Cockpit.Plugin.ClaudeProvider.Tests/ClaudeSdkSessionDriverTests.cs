@@ -111,6 +111,39 @@ public class ClaudeSdkSessionDriverTests : IDisposable
     }
 
     [Fact]
+    public async Task SendUserMessage_WithImages_WritesTextAndImageContentBlocks()
+    {
+        // Regression: moving Claude to a plugin must not lose image input the in-tree route had. With an attachment the
+        // content becomes an array (a text block + one base64 image block), not a plain string.
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        await driver.SendUserMessageAsync(
+            "what is this?",
+            new[] { new PluginImageAttachment("image/png", "aGVsbG8=") },
+            CancellationToken.None);
+
+        var content = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("message").GetProperty("content");
+        content.ValueKind.Should().Be(JsonValueKind.Array);
+        content[0].GetProperty("type").GetString().Should().Be("text");
+        content[0].GetProperty("text").GetString().Should().Be("what is this?");
+        content[1].GetProperty("type").GetString().Should().Be("image");
+        var source = content[1].GetProperty("source");
+        source.GetProperty("media_type").GetString().Should().Be("image/png");
+        source.GetProperty("data").GetString().Should().Be("aGVsbG8=");
+    }
+
+    [Fact]
+    public void Capabilities_ReportSupportsVision()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        var driver = _CreateDriver(fake);
+
+        driver.Capabilities.SupportsVision.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task SetLiveOption_Model_SendsSetModelControlRequest()
     {
         var fake = new FakeClaudeSdkSubprocess();
@@ -122,6 +155,35 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
         request.GetProperty("subtype").GetString().Should().Be("set_model");
         request.GetProperty("model").GetString().Should().Be("sonnet");
+    }
+
+    [Fact]
+    public async Task LiveOptions_PermissionMode_ExcludesBypass_WhichIsLaunchOnly()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null, CancellationToken.None);
+
+        var permissionOption = driver.LiveOptions.Single(option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
+        permissionOption.Choices.Should().BeEquivalentTo(["default", "acceptEdits", "plan"]);
+        permissionOption.Choices.Should().NotContain("bypassPermissions");
+    }
+
+    [Fact]
+    public async Task LiveOptions_OmitPermissionMode_WhenLaunchedInBypass()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+        await driver.StartAsync(
+            model: null,
+            workingDirectory: _tempDir,
+            resumeSessionId: null,
+            options: new Dictionary<string, string> { ["permission-mode"] = "bypassPermissions" },
+            mcpServers: null,
+            CancellationToken.None);
+
+        // Bypass cannot be left mid-session, so no live permission-mode switch is offered at all.
+        driver.LiveOptions.Should().NotContain(option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
     }
 
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>

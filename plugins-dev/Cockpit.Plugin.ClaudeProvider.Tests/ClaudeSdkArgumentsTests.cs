@@ -10,25 +10,42 @@ namespace Cockpit.Plugin.ClaudeProvider.Tests;
 public class ClaudeSdkArgumentsTests
 {
     [Fact]
-    public void BuildArguments_IsHeadlessStreamJson()
+    public void BuildArguments_IsStreamingMode_WithoutPrint()
     {
         var arguments = ClaudeSdkArguments.BuildArguments(permissionMode: "default", model: null, resumeSessionId: null, continueMostRecent: false);
 
-        arguments.Should().ContainInOrder("-p", "--input-format", "stream-json", "--output-format", "stream-json");
+        // NO -p/--print: the in-band can_use_tool permission channel only fires in the SDK's streaming mode, matching
+        // the official Agent SDK's own spawn. Adding -p routes permissions via --permission-prompt-tool and the CLI
+        // never sends can_use_tool — proven ungated in a live run.
+        arguments.Should().NotContain("-p");
+        arguments.Should().NotContain("--print");
+        arguments.Should().ContainInOrder("--output-format", "stream-json");
+        arguments.Should().ContainInOrder("--input-format", "stream-json");
         arguments.Should().Contain("--verbose");
         arguments.Should().Contain("--include-partial-messages");
         arguments.Should().ContainInOrder("--permission-mode", "default");
     }
 
     [Fact]
-    public void BuildArguments_NeverWiresAPermissionPromptTool()
+    public void BuildArguments_WiresStdioPermissionPromptTool_ButNoMcpServer()
     {
-        // The whole point of the control-protocol route: no HTTP MCP permission server, so none of its flags.
+        // The control-protocol route: --permission-prompt-tool stdio (what makes the CLI send can_use_tool over stdio),
+        // but NONE of the HTTP MCP permission-server flags the in-tree route uses.
         var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false);
 
-        arguments.Should().NotContain("--permission-prompt-tool");
+        arguments.Should().ContainInOrder("--permission-prompt-tool", "stdio");
         arguments.Should().NotContain("--mcp-config");
         arguments.Should().NotContain("--strict-mcp-config");
+    }
+
+    [Fact]
+    public void BuildArguments_Bypass_WiresNoPermissionPromptTool()
+    {
+        // Bypass allows everything with no prompt; wiring the stdio permission tool would re-introduce prompts.
+        var arguments = ClaudeSdkArguments.BuildArguments("bypassPermissions", null, null, false);
+
+        arguments.Should().NotContain("--permission-prompt-tool");
+        arguments.Should().ContainInOrder("--permission-mode", "bypassPermissions");
     }
 
     [Fact]

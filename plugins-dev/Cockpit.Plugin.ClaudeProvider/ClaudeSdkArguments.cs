@@ -13,9 +13,20 @@ namespace Cockpit.Plugin.ClaudeProvider;
 internal static class ClaudeSdkArguments
 {
     /// <summary>
-    /// The persistent, multi-turn headless invocation, per https://code.claude.com/docs/en/headless.md and
-    /// https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode.md: <c>-p</c> with stream-json in/out,
-    /// <c>--verbose</c> (required for stream-json output) and <c>--include-partial-messages</c> (token-level deltas).
+    /// Sentinel value for <c>--permission-prompt-tool</c> that routes tool-approval prompts over the control protocol
+    /// (as <c>can_use_tool</c> requests) rather than to an MCP server. Verified against the official Agent SDK, which
+    /// sets exactly this when a <c>canUseTool</c> callback is provided (<c>client.py</c>:
+    /// <c>replace(options, permission_prompt_tool_name="stdio")</c> — "Automatically set … to 'stdio' for control protocol").
+    /// </summary>
+    public const string StdioPermissionPromptTool = "stdio";
+
+    /// <summary>
+    /// The persistent, bidirectional <em>streaming</em> invocation — deliberately <b>without</b> <c>-p</c>/<c>--print</c>
+    /// (the SDK uses "streaming mode with stdin"), <b>with</b> <c>--permission-prompt-tool stdio</c>. The two together are
+    /// what make the CLI route tool approvals in-band as <c>can_use_tool</c> control_requests: without the stdio
+    /// permission-prompt tool the CLI has no permission mechanism in headless mode and runs tools ungated (measured — a
+    /// live run without it emitted zero <c>can_use_tool</c> requests). Bypass mode wires no permission tool, since it
+    /// allows everything with no prompt. All grounded in the Agent SDK's own spawn (<c>subprocess_cli.py</c>/<c>client.py</c>).
     /// </summary>
     public static List<string> BuildArguments(
         string? permissionMode,
@@ -28,13 +39,20 @@ internal static class ClaudeSdkArguments
 
         var arguments = new List<string>
         {
-            "-p",
-            "--input-format", "stream-json",
             "--output-format", "stream-json",
             "--verbose",
             "--include-partial-messages",
+            "--input-format", "stream-json",
             "--permission-mode", effectiveMode,
         };
+
+        // Route approvals over the control protocol (can_use_tool) — but not in bypass, which allows everything with no
+        // prompt and where wiring a permission tool would re-introduce the very prompts bypass asked to skip.
+        if (!string.Equals(effectiveMode, "bypassPermissions", StringComparison.Ordinal))
+        {
+            arguments.Add("--permission-prompt-tool");
+            arguments.Add(StdioPermissionPromptTool);
+        }
 
         // Pick up an earlier conversation instead of starting cold — a named resume wins over "most recent". Both are
         // resolved by the CLI against its own history, so the cockpit never parses a transcript to hand the work back.

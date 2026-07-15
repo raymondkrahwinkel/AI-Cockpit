@@ -175,6 +175,37 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public async Task StartAsync_FoldsTheTypedPermissionMode_IntoTheInnerDriversOptions()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        // The host carries the operator's permission-mode selection as a typed parameter; it must reach a plugin that
+        // declared a permission-mode option, or a launch-time "bypassPermissions" silently becomes the driver default.
+        // Proven red before _MergePermissionMode: the adapter dropped the typed permissionMode entirely.
+        await adapter.StartAsync(permissionMode: "bypassPermissions", launchOptions: new Dictionary<string, string> { ["model"] = "opus" });
+
+        inner.LastLaunchOptions.Should().ContainKey(WellKnownPluginSessionOptions.PermissionMode)
+            .WhoseValue.Should().Be("bypassPermissions");
+        // The existing launch options are preserved alongside it.
+        inner.LastLaunchOptions.Should().ContainKey("model").WhoseValue.Should().Be("opus");
+    }
+
+    [Fact]
+    public async Task StartAsync_WithNoPermissionMode_LeavesTheLaunchOptionsUntouched()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var launchOptions = new Dictionary<string, string> { ["sandbox"] = "read-only" };
+
+        await adapter.StartAsync(launchOptions: launchOptions);
+
+        // No typed permission mode to fold — the same dictionary passes through, no permission-mode key invented.
+        inner.LastLaunchOptions.Should().BeSameAs(launchOptions);
+        inner.LastLaunchOptions.Should().NotContainKey(WellKnownPluginSessionOptions.PermissionMode);
+    }
+
+    [Fact]
     public async Task StartAsync_ResolvesTheSelectedRegistryServers_ToTheInnerDriver_MappingTheApiKeyToABearerToken()
     {
         var inner = new FakePluginSessionDriver();
