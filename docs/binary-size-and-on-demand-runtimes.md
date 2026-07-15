@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-- A self-contained `win-x64` publish was **1.8 GB** and is now **294 MB** — measured before and after on the same machine with the flags `release.yml` uses. The difference is the **~1.2 GB of Whisper GPU native runtimes** (CUDA + CUDA12 + Vulkan) that a self-contained publish copied into the output for every platform.
+- A self-contained `win-x64` publish was **1.8 GB** and is now **294 MB** — measured before and after on the same machine with the flags `release.yml` uses. The difference is the Whisper GPU native runtimes (CUDA + CUDA12 + Vulkan): ~748 MB of natives that a single-file publish shipped **twice**, once embedded in the exe and once in `runtimes/`.
 - Those runtimes are now **fetched on first dictation** and cached under `%APPDATA%/Cockpit/whisper-runtimes/<whisperNetVersion>/` — only the one this machine can actually use. The **CPU runtimes stay bundled** as the floor transcription always falls back to.
 - The **local-LLM providers (Ollama / LM Studio) are not bundled at all** — external servers the user installs, reached over HTTP. They add no driver weight. The only heavy "drivers" were the Whisper GPU runtimes.
 - **ROCm is not a factor**: Whisper.net publishes no ROCm runtime, so AMD-on-Linux falls back to CPU. Nothing to trim or fetch.
@@ -19,17 +19,36 @@ Per-backend flags (`BundleCudaWhisperRuntime` etc.) are the same mistake sliced 
 
 ## Why it was big — measured
 
-The weight is native, not managed:
+The weight is native, not managed. Measured against the real 1.9.1 packages, for a `win-x64` publish:
+
+| GPU package | `.nupkg` (the download) | unpacked `win-x64` |
+|---|---|---|
+| `Whisper.net.Runtime.Vulkan` | 35 MB | 58 MB |
+| `Whisper.net.Runtime.Cuda.Windows` | 135 MB | 150 MB |
+| `Whisper.net.Runtime.Cuda12.Windows` | 238 MB | 540 MB |
+| **total** | | **~748 MB** |
+
+748 MB of natives, but the publish shed **1.5 GB** when they went. The factor of two is the point:
 
 ```
-Whisper.net.Runtime          ~68 MB   CPU (AVX) — bundled, the universal fallback
-Whisper.net.Runtime.NoAvx    ~10 MB   CPU without AVX — bundled
-Whisper.net.Runtime.Cuda.Windows     286 MB  ─┐
-Whisper.net.Runtime.Cuda12.Windows   779 MB  ─┼─ ~1.2 GB, was bundled on every non-macOS publish
-Whisper.net.Runtime.Vulkan           151 MB  ─┘
+before:  Cockpit.App.exe   924 MB   ← single-file, natives embedded
+         runtimes/         778 MB   ← the same natives again, as a directory
+after:   Cockpit.App.exe   177 MB
+         runtimes/          14 MB
 ```
 
-On any single machine **at most one** of those GPU runtimes is ever loaded — the rest was dead weight carried for portability. The model itself (`large-v3-turbo`, ~1.6 GB) was already on-demand via `WhisperModelCache`; the runtimes were the last thing bundled-for-all instead of fetched-for-one.
+`PublishSingleFile` + `IncludeNativeLibrariesForSelfExtract` embeds them in the exe, and the runtime packages'
+own `.targets` copy them to `runtimes/` on top of that. **Every GPU native shipped twice.** So the cost of
+bundling was double what the packages weigh, and on any single machine **at most one** of those runtimes is
+ever loaded — the rest was dead weight carried for portability, paid for twice.
+
+The model itself (`large-v3-turbo`, ~1.6 GB) was already on-demand via `WhisperModelCache`; the runtimes were
+the last thing bundled-for-all instead of fetched-for-one.
+
+⚠️ Don't confuse the three numbers: what nuget.org sends (the compressed `.nupkg`), what lands in the cache
+(unpacked, one RID), and what a publish carried (unpacked, twice). An earlier draft of this page quoted the
+NuGet **cache directory** size — unpacked win *and* linux plus the nupkg — as if it were the download, which
+made Vulkan look like 151 MB when the operator actually waits on 35.
 
 ## How it works now
 

@@ -8,12 +8,19 @@ namespace Cockpit.Infrastructure.Voice;
 
 /// <summary>
 /// <see cref="IVoiceActivityDetector"/> backed by Whisper.net's built-in Silero-VAD support
-/// (<see cref="WhisperVadFactory"/>), which runs on the same native runtime already loaded for STT —
-/// no separate ONNX Runtime dependency. Thresholds mirror WisperFlow's own <c>VadOptions</c> (research:
+/// (<see cref="WhisperVadFactory"/>), sharing the one native runtime rather than bringing a separate ONNX
+/// Runtime dependency. Thresholds mirror WisperFlow's own <c>VadOptions</c> (research:
 /// Cockpit-DotNet-Voice-Stack-2026-07-07.md §2): 250 ms min speech, 100 ms min silence, 30 ms padding.
 /// Lazily initializes on first use, same reasoning as <see cref="WhisperSpeechToTextService"/>.
+/// <para>
+/// It does not merely share that runtime — it is what <em>loads</em> it. A hold gates its audio here before it
+/// transcribes, so this factory comes first and its load is the one that decides the backend for the whole
+/// process. Hence <see cref="WhisperRuntimeProvisioner"/> before it: without that, the STT service sets its
+/// options after the choice is already made and the GPU it fetched is never used.
+/// </para>
 /// </summary>
-internal sealed class WhisperVoiceActivityDetector(ILogger<WhisperVoiceActivityDetector> logger)
+internal sealed class WhisperVoiceActivityDetector(
+    WhisperRuntimeProvisioner runtimeProvisioner, ILogger<WhisperVoiceActivityDetector> logger)
     : IVoiceActivityDetector, ISingletonService, IAsyncDisposable
 {
     private readonly SemaphoreSlim _initLock = new(1, 1);
@@ -48,6 +55,10 @@ internal sealed class WhisperVoiceActivityDetector(ILogger<WhisperVoiceActivityD
             }
 
             var modelPath = await WhisperModelCache.EnsureVadDownloadedAsync(SileroVadType.V6_2_0, cancellationToken, logger).ConfigureAwait(false);
+
+            // Before the factory, never after: this load is what fixes the backend for the process, and the
+            // options only count until it happens.
+            await runtimeProvisioner.EnsurePreparedAsync(cancellationToken).ConfigureAwait(false);
             _factory = WhisperVadFactory.FromPath(modelPath);
             _processor = _factory.CreateBuilder()
                 .WithThreshold(0.5f)

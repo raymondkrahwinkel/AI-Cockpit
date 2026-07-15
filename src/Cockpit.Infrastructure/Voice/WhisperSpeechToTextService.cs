@@ -21,7 +21,10 @@ namespace Cockpit.Infrastructure.Voice;
 /// session (a clip is seconds; the idle floor is minutes).
 /// </para>
 /// </summary>
-internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsStore, ILogger<WhisperSpeechToTextService> logger)
+internal sealed class WhisperSpeechToTextService(
+    IVoiceSettingsStore settingsStore,
+    WhisperRuntimeProvisioner runtimeProvisioner,
+    ILogger<WhisperSpeechToTextService> logger)
     : ISpeechToTextService, ISingletonService, IAsyncDisposable
 {
     /// <summary>How long the model may sit unused before it is unloaded to free memory. Reloaded on the next dictation.</summary>
@@ -41,7 +44,27 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
 
     public WhisperRuntimeBackend? ActiveBackend { get; private set; }
 
-    public event EventHandler<VoicePreparationProgress>? Preparing;
+    /// <summary>Raised for this service's own step — the model download. The runtime fetch is the provisioner's to report.</summary>
+    private event EventHandler<VoicePreparationProgress>? ModelPreparing;
+
+    /// <summary>
+    /// Both halves of a first use, behind one event. The runtime fetch can be triggered from the VAD rather
+    /// than from here — it builds its factory first — so a subscriber that only heard this service would miss
+    /// the download it is waiting on.
+    /// </summary>
+    public event EventHandler<VoicePreparationProgress>? Preparing
+    {
+        add
+        {
+            ModelPreparing += value;
+            runtimeProvisioner.Preparing += value;
+        }
+        remove
+        {
+            ModelPreparing -= value;
+            runtimeProvisioner.Preparing -= value;
+        }
+    }
 
     public event EventHandler? Prepared;
 
@@ -54,6 +77,11 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
         {
             Volatile.Write(ref _lastUsedTicks, DateTime.UtcNow.Ticks);
             var processor = await _EnsureProcessorAsync(cancellationToken).ConfigureAwait(false);
+
+            // Whatever was being prepared — here or in the VAD that ran before this call — is done, and the
+            // samples are going in now. Raised unconditionally: it means "transcribing starts", which is always
+            // true here, so nothing has to track whether there was anything to prepare in the first place.
+            Prepared?.Invoke(this, EventArgs.Empty);
 
             var text = new StringBuilder();
             await foreach (var segment in processor.ProcessAsync(samples, cancellationToken).ConfigureAwait(false))
@@ -92,37 +120,17 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
 
             if (_factory is null)
             {
-                // Everything from here to FromPath is what a first dictation waits on — gigabytes of model and
-                // runtime. Reported so the pill can say what is happening instead of spinning on "Transcribing".
-                var prepared = false;
-                var progress = new ImmediateProgress<VoicePreparationProgress>(step =>
-                {
-                    prepared = true;
-                    Preparing?.Invoke(this, step);
-                });
+                // The model is what a first dictation mostly waits on — ~1.6 GB — so it is reported rather than
+                // spent behind a spinner claiming to transcribe.
+                var progress = new ImmediateProgress<VoicePreparationProgress>(step => ModelPreparing?.Invoke(this, step));
 
                 var modelType = WhisperModelCatalog.Resolve(settings.ModelName);
                 var modelPath = await WhisperModelCache.EnsureDownloadedAsync(modelType, cancellationToken, logger, progress).ConfigureAwait(false);
 
-                // Everything below has to happen before the first factory exists: RuntimeOptions is read once,
-                // when the natives are loaded, and ggml reads its shader path from the environment at the same
-                // moment. Get either one late and the loader quietly settles for the CPU.
-                var platform = WhisperRuntimeCache.CurrentPlatform;
-                var order = platform is { } host
-                    ? WhisperBackendPlanner.BuildOrder(settings.BackendPreference, host)
-                    : [WhisperRuntimeBackend.Cpu];
-                RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
-
-                if (platform is { } fetchHost)
-                {
-                    // The GPU runtimes are fetched on first use instead of bundled — only the one this machine
-                    // can actually use, and only if it is not cached already.
-                    await WhisperRuntimeCache.EnsureAvailableAsync(order, fetchHost, cancellationToken, logger, progress).ConfigureAwait(false);
-                    RuntimeOptions.LibraryPath = WhisperRuntimeCache.SearchPath;
-                }
-
-                // macOS only: Metal comes with the bundled CPU runtime, but its shader has to be findable.
-                WhisperMetalShader.EnsureDiscoverable(logger);
+                // Before the factory: RuntimeOptions is read once, when the natives load. Usually a no-op by now
+                // — the VAD gates the audio before this runs and provisions on its way through — but this
+                // service is also reachable without one, so it cannot assume that.
+                await runtimeProvisioner.EnsurePreparedAsync(cancellationToken).ConfigureAwait(false);
 
                 // Loading is seconds, not minutes, but it is seconds after a download that just ended — going
                 // quiet right at the finish line reads as a stall.
@@ -131,14 +139,6 @@ internal sealed class WhisperSpeechToTextService(IVoiceSettingsStore settingsSto
                 ActiveBackend = RuntimeOptions.LoadedLibrary is { } loaded ? WhisperRuntimeBackendMapping.FromNative(loaded) : null;
                 logger.LogInformation(
                     "Whisper STT initialized: model={Model}, backend={Backend}", modelType, ActiveBackend?.ToString() ?? "unknown");
-
-                // Hands the pill back to its ordinary "Transcribing" spinner. Only fires when there was
-                // something to prepare, so the common case — everything cached — never sees either event and
-                // behaves exactly as it did before.
-                if (prepared)
-                {
-                    Prepared?.Invoke(this, EventArgs.Empty);
-                }
 
                 // Start the idle unloader once the model actually exists; it is a no-op until then.
                 _idleTimer ??= new Timer(_ => _ = _UnloadIfIdleAsync(), null, IdleCheckInterval, IdleCheckInterval);

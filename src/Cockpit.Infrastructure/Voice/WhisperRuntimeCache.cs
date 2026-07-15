@@ -12,8 +12,9 @@ namespace Cockpit.Infrastructure.Voice;
 /// <summary>
 /// Fetches the GPU runtime this machine can actually use on first dictation and caches it next to the model
 /// cache — the same lazy shape as <see cref="WhisperModelCache"/>, and for the same reason: which GPU a
-/// machine has is not knowable at build time, so bundling every runtime ships ~1.2 GB of CUDA and Vulkan
-/// natives to every install to serve whichever one is right for that one machine.
+/// machine has is not knowable at build time, so bundling every runtime shipped ~748 MB of CUDA and Vulkan
+/// natives to every install — 1.5 GB of publish, since a single-file build carried them twice — to serve
+/// whichever one is right for that one machine.
 /// <para>
 /// Only the first backend in the planner's order that <see cref="WhisperGpuProbe"/> calls usable is fetched —
 /// not all three. Nothing usable, or the fetch fails, and the bundled CPU runtime carries transcription. A
@@ -123,9 +124,11 @@ internal static class WhisperRuntimeCache
         try
         {
             // First use on this machine. Logged loudly for the same reason the model download is: the operator
-            // sees a slow transcription, and without this line there is nothing anywhere saying why.
+            // sees a slow transcription, and without this line there is nothing anywhere saying why. No size
+            // guess here — it runs from 35 MB (Vulkan) to 238 MB (CUDA 12), and the progress steps carry the
+            // real figure from the response's Content-Length a moment later.
             logger?.LogInformation(
-                "Whisper {Backend} runtime is not cached yet; fetching {Package} {Version} from NuGet now (first use on this machine — a few hundred MB, transcription runs on the CPU until it lands)",
+                "Whisper {Backend} runtime is not cached yet; fetching {Package} {Version} from NuGet now (first use on this machine — transcription runs on the CPU until it lands)",
                 backend, package.PackageId, RuntimeVersion);
             var stopwatch = Stopwatch.StartNew();
 
