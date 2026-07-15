@@ -476,48 +476,18 @@ public partial class CockpitView : UserControl
         }
     }
 
+    /// <summary>
+    /// Ask-then-close lives on the view model, so the ✕, the context menu and the command palette all take the
+    /// same path. Two copies of "what is about to be lost" is two chances for the prompt to drift from what
+    /// closing actually does.
+    /// </summary>
     private void OnCloseWorkspaceRequested(object? sender, RoutedEventArgs e)
     {
-        if (sender is Control { DataContext: WorkspaceTabViewModel tab })
+        if (sender is Control { DataContext: WorkspaceTabViewModel tab } && DataContext is CockpitViewModel cockpit)
         {
-            _ = _CloseWorkspaceAsync(tab);
+            _ = cockpit.CloseWorkspaceWithConfirmationAsync(tab.Id);
         }
     }
-
-    /// <summary>
-    /// Closing a workspace takes everything on it — a dashboard's whole arrangement, or every session tied to
-    /// it — and none of it comes back, so it asks first (Raymond). The message names what is about to go rather
-    /// than asking "are you sure": "this cannot be undone" tells you nothing you did not assume.
-    /// </summary>
-    private async Task _CloseWorkspaceAsync(WorkspaceTabViewModel tab)
-    {
-        if (DataContext is not CockpitViewModel cockpit
-            || cockpit.Workspaces.Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == tab.Id) is not { } workspace)
-        {
-            return;
-        }
-
-        var loses = workspace.Type == WorkspaceType.Dashboard
-            ? _Count(workspace.Panes.Count, "widget")
-            : _Count(cockpit.Sessions.Count(session => session.WorkspaceId == workspace.Id), "session");
-
-        var message = loses is null
-            ? $"Close “{workspace.Name}”?"
-            : workspace.Type == WorkspaceType.Dashboard
-                ? $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}. Closing the workspace discards its layout, and this cannot be undone."
-                // Sessions are stopped, not just forgotten — so the prompt says so rather than letting the
-                // operator find out afterwards.
-                : $"Close “{workspace.Name}” and everything on it?\n\nIt holds {loses}, which will be stopped. This cannot be undone.";
-
-        if (await cockpit.ConfirmAsync("Close workspace", message, confirmLabel: "Close"))
-        {
-            await cockpit.CloseWorkspaceAsync(tab.Id);
-        }
-    }
-
-    /// <summary>"3 widgets" / "1 session", or null when there is nothing to lose — an empty workspace needs no warning about what it holds.</summary>
-    private static string? _Count(int count, string noun) =>
-        count == 0 ? null : count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
     /// <summary>
     /// The rename box becomes visible where it was already in the tree, so nothing gives it focus on its own —
