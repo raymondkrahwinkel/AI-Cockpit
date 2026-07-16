@@ -24,13 +24,14 @@ public class AboutInfoTests
     }
 
     [Fact]
-    public void FromAssembly_ListsEveryBuiltInProvider_SoTheAppDoesNotReadAsClaudeOnly()
+    public void FromAssembly_ListsTheBuiltInLocalProviders_NotAnyProviderTheCoreNoLongerShipsWith()
     {
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
 
-        info.Providers.Should().Contain("Claude Code")
-            .And.Contain("Ollama")
-            .And.Contain("LM Studio");
+        // The core ships only the local OpenAI-compatible providers now; Claude is a plugin (Fase 4), so it is not
+        // hard-coded as a built-in here — it comes from the plugin registry like every other agent.
+        info.Providers.Should().Contain("Ollama").And.Contain("LM Studio");
+        info.Providers.Should().NotContain("Claude");
     }
 
     [Fact]
@@ -38,16 +39,16 @@ public class AboutInfoTests
     {
         var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
 
-        // Naming Gemini or Codex on an install that has neither would be advertising, not information.
-        info.Providers.Should().Be("Claude Code · Ollama · LM Studio");
+        // Naming Claude, Codex or Gemini on an install that has none of them would be advertising, not information.
+        info.Providers.Should().Be("Ollama · LM Studio");
     }
 
     [Fact]
-    public void FromAssembly_ListsTheProviderPluginsThatAreActuallyInstalled()
+    public void FromAssembly_ListsTheProviderPluginsThatAreActuallyInstalled_IncludingClaudeAndCodex()
     {
-        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), ["Gemini (OpenAI-compatible)"]);
+        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly(), ["Claude", "Codex (CLI)"]);
 
-        info.Providers.Should().Be("Claude Code · Ollama · LM Studio · Gemini (OpenAI-compatible)");
+        info.Providers.Should().Be("Ollama · LM Studio · Claude · Codex (CLI)");
     }
 
     [Fact]
