@@ -22,11 +22,11 @@ public sealed class PluginDiagnostics
         }
     }
 
-    public void Record(string folderId, string displayName, string phase, string error)
+    public void Record(string folderId, string displayName, string phase, string error, PluginIssueSeverity severity = PluginIssueSeverity.Error)
     {
         lock (_gate)
         {
-            _failures.Add(new PluginFailure(folderId, displayName, phase, error));
+            _failures.Add(new PluginFailure(folderId, displayName, phase, error, severity));
         }
     }
 

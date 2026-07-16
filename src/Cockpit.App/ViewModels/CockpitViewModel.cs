@@ -292,16 +292,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _hasPluginFailures;
 
-    /// <summary>Reads the recorded plugin failures and raises the startup banner; called after plugin phase-2 completes.</summary>
+    /// <summary>Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes. Errors (a plugin that did not load) and warnings (one that loaded but is flagged, e.g. built against a newer SDK) read differently, since the operator can do different things about them.</summary>
     public void RefreshPluginFailures()
     {
-        var failures = _pluginDiagnostics?.Failures ?? [];
-        HasPluginFailures = failures.Count > 0;
-        PluginFailureBanner = failures.Count switch
+        var issues = _pluginDiagnostics?.Failures ?? [];
+        var errors = issues.Where(issue => issue.Severity == PluginIssueSeverity.Error).ToList();
+        var warnings = issues.Where(issue => issue.Severity == PluginIssueSeverity.Warning).ToList();
+
+        HasPluginFailures = issues.Count > 0;
+        PluginFailureBanner = (errors.Count, warnings.Count) switch
         {
-            0 => string.Empty,
-            1 => $"A plugin failed to load: {failures[0].DisplayName}. See the Plugin store → Installed for details.",
-            _ => $"{failures.Count} plugins failed to load. See the Plugin store → Installed for details.",
+            (0, 0) => string.Empty,
+            (1, 0) => $"A plugin failed to load: {errors[0].DisplayName}. See the Plugin store → Installed for details.",
+            (> 1, 0) => $"{errors.Count} plugins failed to load. See the Plugin store → Installed for details.",
+            (0, 1) => $"A plugin may be incompatible with this app: {warnings[0].DisplayName}. See the Plugin store → Installed for details.",
+            (0, _) => $"{warnings.Count} plugins may be incompatible with this app. See the Plugin store → Installed for details.",
+            _ => $"{errors.Count} plugins failed to load and {warnings.Count} may be incompatible. See the Plugin store → Installed for details.",
         };
     }
 
