@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Cockpit.App.Plugins;
+using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core;
@@ -18,6 +19,11 @@ namespace Cockpit.App;
 sealed class Program
 {
     public static IServiceProvider Services { get; private set; } = null!;
+
+    // How long a restart-launched instance waits for the outgoing one to release the single-instance claim before
+    // giving up. The outgoing side is hard-exited by the exit watchdog within a few seconds (bug #32), and the
+    // wait returns the moment the claim frees — this is only the ceiling for a shutdown that drags.
+    private static readonly TimeSpan RestartHandoffWait = TimeSpan.FromSeconds(10);
 
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
@@ -37,7 +43,15 @@ sealed class Program
         // --mcp-config files, and the bundled-plugin install further down deletes plugin directories: run those
         // in a second cockpit and they take them out from under the sessions of the first, which is still using
         // them. A development build is exempt and keeps its state elsewhere — see CockpitBuild.
-        using var singleInstance = SingleInstanceGuard.TryAcquire(CockpitBuild.IsDevelopment);
+        //
+        // A restart is the one case where two cockpits overlapping is intended: AppRestartService launches the new
+        // one before the old one has finished shutting down and released the claim. It marks that launch, and the
+        // new instance waits out the brief handoff instead of losing the race and refusing to start — the exit
+        // watchdog bounds the old side to a few seconds, so RestartHandoffWait comfortably covers it.
+        var restartHandoff = args.Contains(AppRestartService.RestartArgument);
+        using var singleInstance = SingleInstanceGuard.TryAcquire(
+            CockpitBuild.IsDevelopment,
+            restartHandoff ? RestartHandoffWait : TimeSpan.Zero);
         if (singleInstance is null)
         {
             _ShowAlreadyRunningNotice(args);

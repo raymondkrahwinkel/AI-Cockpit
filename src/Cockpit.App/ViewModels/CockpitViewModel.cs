@@ -920,6 +920,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _voiceGlobalPushToTalk;
 
+    /// <summary>
+    /// Shown next to global push-to-talk on Linux once the operator has saved a change to it (#34): there the
+    /// hotkey is a desktop-portal binding the compositor only picks up at startup, so unlike on Windows — where
+    /// <c>VoicePushToTalkCoordinator</c> re-arms it live — the change takes effect only after a restart. The label
+    /// says so; this drives the "Restart now" button beside it.
+    /// </summary>
+    [ObservableProperty]
+    private bool _voiceGlobalPushToTalkNeedsRestart;
+
+    /// <summary>The global push-to-talk value this process actually armed with at startup — the baseline the save
+    /// compares against, so toggling it and back leaves nothing to restart for. Null until first loaded.</summary>
+    private bool? _voiceGlobalPushToTalkRunning;
+
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.AutoSubmitAfterVoice"/>. When true a finished transcript is submitted straight after injection instead of waiting for a manual send. Off by default.</summary>
     [ObservableProperty]
     private bool _voiceAutoSubmit;
@@ -2119,6 +2132,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceCleanupBaseUrl = settings.CleanupBaseUrl;
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
+        // First load is app startup — capture what the hotkey actually armed with, so a later save can tell a real
+        // change from a toggle-and-back. Reopening the Options dialog reloads but must not move the baseline.
+        _voiceGlobalPushToTalkRunning ??= settings.GlobalPushToTalk;
         VoiceAutoSubmit = settings.AutoSubmitAfterVoice;
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
@@ -2220,6 +2236,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         VoiceSettingsStatus = "✓ Saved";
 
+        // On Linux the global hotkey is a desktop-portal binding the compositor only takes at startup, so a change
+        // to it there needs a restart — unlike Windows, where the re-arm below applies it live.
+        VoiceGlobalPushToTalkNeedsRestart =
+            ShouldOfferGlobalPushToTalkRestart(IsLinuxPlatform, _voiceGlobalPushToTalkRunning, VoiceGlobalPushToTalk);
+
         // The global hotkey is armed from these, and arming happened once at startup — so changing the key saved
         // it and left the hook on the old one, and switching global push-to-talk off left it running, both for
         // the rest of the session and both silently. Raised rather than called: VoicePushToTalkCoordinator takes
@@ -2230,6 +2251,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Raised once the voice settings are saved, so whatever was configured from them can re-apply. See the remarks on the raise site.</summary>
     public event EventHandler? VoiceSettingsSaved;
+
+    /// <summary>Whether a "Restart now" affordance can do anything — false in the design-time constructor, where there is no real app to restart.</summary>
+    public bool CanRestartApp => _appRestart is not null;
+
+    /// <summary>Restarts the app so a saved change that only applies at startup (the Linux global hotkey) takes effect, without the operator closing and relaunching by hand. See <see cref="VoiceGlobalPushToTalkNeedsRestart"/>.</summary>
+    [RelayCommand(CanExecute = nameof(CanRestartApp))]
+    private void RestartApp() => _appRestart?.Restart();
+
+    /// <summary>
+    /// Whether saving global push-to-talk should offer a restart: only on Linux (elsewhere the change applies
+    /// live), and only when the saved value differs from what this process armed with at startup — so toggling it
+    /// and back offers nothing. Pulled out so the platform-gated decision is testable off Linux.
+    /// </summary>
+    internal static bool ShouldOfferGlobalPushToTalkRestart(bool isLinux, bool? runningValue, bool savedValue) =>
+        isLinux && runningValue is bool running && running != savedValue;
 
     [RelayCommand]
     private async Task RecordAudioAsync()
