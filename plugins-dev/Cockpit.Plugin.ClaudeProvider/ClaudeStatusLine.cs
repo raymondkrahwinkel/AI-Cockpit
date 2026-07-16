@@ -49,6 +49,37 @@ internal static class ClaudeStatusLine
         }
     }
 
+    /// <summary>
+    /// Clears the snapshot files left behind by sessions that were killed rather than closed — a cleanly-ended
+    /// session's file is deleted by the host via the launch spec's SessionScopedFiles, but a hard kill leaves one.
+    /// Called once at plugin startup, the plugin-side equivalent of the host's former statusline housekeeping. A
+    /// session's spending is nobody's business once it is over.
+    /// </summary>
+    public static void SweepStale()
+    {
+        try
+        {
+            if (Directory.Exists(StatusDirectory))
+            {
+                foreach (var file in Directory.EnumerateFiles(StatusDirectory, "*.json"))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch (Exception)
+                    {
+                        // Swept on the next start.
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Housekeeping never fails a launch.
+        }
+    }
+
     private static string? SettingsJson(string? existingStatusLineCommand)
     {
         var settings = new JsonObject

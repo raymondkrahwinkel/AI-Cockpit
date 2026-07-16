@@ -17,7 +17,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "claude-provider",
         DisplayName: "Claude (bundled)",
-        Version: "0.2.2",
+        Version: "0.2.3",
         Author: "Cockpit",
         Description: "Claude as a provider plugin. Runs the real interactive Claude TUI in a pane (TTY), with the "
             + "cockpit's workspace-trust, shared MCP servers, usage limits and the operator's own statusline preserved. "
@@ -30,6 +30,10 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        // Sweep the statusline snapshots of sessions that were killed rather than closed (the plugin-side
+        // equivalent of the host's former startup housekeeping, now that the statusline lives here).
+        ClaudeStatusLine.SweepStale();
+
         host.AddTtyProvider(new TtyProviderRegistration(
             ProviderId: ClaudeProviderIds.Claude,
             DisplayName: "Claude",

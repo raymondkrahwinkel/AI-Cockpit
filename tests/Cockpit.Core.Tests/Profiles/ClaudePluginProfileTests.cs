@@ -1,5 +1,4 @@
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Sessions;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Profiles;
@@ -31,24 +30,24 @@ public class ClaudePluginProfileTests
     }
 
     [Fact]
-    public void TranscriptDirectory_ForAMigratedNonDefaultProfile_ResolvesToItsOwnConfigDir_NotTheDefault()
+    public void MigratedNonDefaultProfile_ReconstructsItsOwnConfigDir()
     {
-        // The bug: ClaudeConfigDirectory.Resolve got a null Claude (profile.Claude was null after migration) and fell
-        // back to ~/.claude, so read-aloud tailed the wrong directory for a profile with its own config dir.
+        // The bug this guards: after migration profile.Claude read as null, so consumers fell back to ~/.claude and
+        // read-aloud/login/spawn all used the wrong directory for a profile with its own config dir. The provider
+        // plugin resolves the transcript/credentials directory from this reconstructed ConfigDir.
         var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null));
 
-        var resolved = ClaudeConfigDirectory.Resolve(profile.Claude, environmentConfigDir: null, userProfileDirectory: "/home/raymond");
-
-        resolved.Should().Be("/home/raymond/.claude-work");
+        profile.Claude!.ConfigDir.Should().Be("/home/raymond/.claude-work");
     }
 
     [Fact]
-    public void TranscriptDirectory_ForAConfiglessProfile_ResolvesToTheCliDefault()
+    public void MigratedConfiglessProfile_ReconstructsABlankConfigDir_SoItFollowsTheCliDefault()
     {
+        // A blank ConfigDir is the signal the provider plugin resolves to the CLI default (~/.claude); reconstructing
+        // it as blank rather than null keeps a default profile a real, resolvable Claude profile after migration.
         var profile = new SessionProfile("default", ClaudePluginProfile.Create(configDir: null, executablePath: null));
 
-        var resolved = ClaudeConfigDirectory.Resolve(profile.Claude, environmentConfigDir: null, userProfileDirectory: "/home/raymond");
-
-        resolved.Should().Be(Path.Combine("/home/raymond", ".claude"));
+        profile.Claude.Should().NotBeNull();
+        profile.Claude!.ConfigDir.Should().BeNullOrEmpty();
     }
 }
