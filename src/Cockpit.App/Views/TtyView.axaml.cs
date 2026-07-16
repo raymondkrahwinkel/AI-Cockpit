@@ -1,15 +1,22 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Toasts;
 using Exclr8.Terminal;
+using Exclr8.Terminal.Buffer;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -51,6 +58,12 @@ public partial class TtyView : UserControl
     private readonly ILogger<TtyView>? _logger =
         Design.IsDesignMode ? null : Program.Services.GetService<ILogger<TtyView>>();
 
+    // AC-2 user feedback: a toast when claude's clipboard write (OSC 52) actually reaches the OS clipboard and
+    // when a clicked link is handed to the browser, so the action is visibly acknowledged. Resolved from the app
+    // container the same way as _logger (this control is built by the view locator, not the DI graph).
+    private readonly IToastService? _toast =
+        Design.IsDesignMode ? null : Program.Services.GetService<IToastService>();
+
     // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
     // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
     // doesn't flood the log while a reproduction (double-click + type) still has enough samples to show
@@ -84,6 +97,14 @@ public partial class TtyView : UserControl
         // e.Handled = true and, on a double-click, mutates the buffer via SelectWord — has run. Reproduces
         // Rick's trigger exactly: double-click in the TTY + typing, no interaction outside the TTY.
         AddHandler(InputElement.PointerPressedEvent, OnTerminalPointerPressedDiagnostics, RoutingStrategies.Tunnel);
+
+        // AC-2: Ctrl+click to follow a link. The terminal control forwards every click to the pty (and skips its
+        // own link activation) whenever the running app has mouse reporting on — claude's TUI does — and offers no
+        // modifier bypass, so a plain or Ctrl click never opened a URL. Tunnel so we hit-test the link and open it
+        // before TerminalControl's own OnPointerPressed runs; Ctrl (not a plain click) so text selection by drag
+        // is untouched. Handled only when a link is actually under the pointer, so every other click still reaches
+        // claude. Not Windows-gated: the same Exclr8 control renders on every OS, so the gap and the fix are shared.
+        AddHandler(InputElement.PointerPressedEvent, OnTerminalPointerPressedForLinks, RoutingStrategies.Tunnel);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -255,7 +276,157 @@ public partial class TtyView : UserControl
         Terminal.Input += OnTerminalInputDiagnostics;
         Terminal.Output += OnTerminalBytesToPty;
         Terminal.Resized += OnTerminalResized;
+
+        // AC-2 (Windows especially): honour claude's clipboard writes and make URLs clickable. Both are opt-in
+        // terminal-emulator features. claude copies via OSC 52; on Linux it also reaches the clipboard through
+        // native tools (xclip/wl-copy) so it worked there regardless, but on Windows it relies on the terminal —
+        // and AllowClipboardAccess defaults off (it lets a remote process scrape the clipboard), so Cockpit
+        // silently dropped the write and "copied" never landed. This is the operator's own local claude session,
+        // so we opt in. Links are auto-detected by WebLinkProvider (http/https spans) and, once clicked, opened
+        // in the OS browser; LinkActivationPolicy is the safety gate that keeps anything but http/https out.
+        Terminal.AllowClipboardAccess = true;
+        Terminal.ClipboardRequested += OnClipboardRequested;
+        // Register the URL matcher so links are detected and underlined; opening them is entirely ours, through the
+        // Ctrl+click handler above (OnTerminalPointerPressedForLinks). We deliberately do NOT subscribe the control's
+        // own HyperlinkClicked: it fires on a plain click whenever mouse reporting happens to be off, which — on top
+        // of our Ctrl+click — opened every link twice. One opener, one gesture (Ctrl+click), on every mouse mode.
+        Terminal.RegisterLinkProvider(new WebLinkProvider());
     }
+
+    /// <summary>
+    /// claude asked to write to the OS clipboard (OSC 52). Honour it against the real system clipboard and
+    /// acknowledge it with a toast, so the copy the TUI reports is one the operator can see actually happened.
+    /// </summary>
+    private void OnClipboardRequested(object? sender, ClipboardRequestEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.Text) || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        {
+            return;
+        }
+
+        _ = _SetClipboardAsync(clipboard, e.Text);
+    }
+
+    private async Task _SetClipboardAsync(IClipboard clipboard, string text)
+    {
+        try
+        {
+            await clipboard.SetTextAsync(text);
+            _toast?.Show("Copied to clipboard", ToastSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            // A clipboard the OS momentarily locked must not take down the TUI; surface it quietly instead.
+            _logger?.LogDebug(ex, "TTY clipboard write (OSC 52) failed");
+            _toast?.Show("Could not access the clipboard", ToastSeverity.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+click over a link when the terminal cannot activate it itself (mouse reporting is on, so the click is
+    /// otherwise forwarded to claude). Hit-tests the cell under the pointer for an OSC 8 or provider-detected URL
+    /// and opens it, consuming the click so it never reaches the pty.
+    /// </summary>
+    private void OnTerminalPointerPressedForLinks(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            return;
+        }
+
+        var pointer = e.GetCurrentPoint(Terminal);
+        if (!pointer.Properties.IsLeftButtonPressed || _LinkAt(pointer.Position) is not { } url)
+        {
+            return;
+        }
+
+        if (_TryOpenLink(url))
+        {
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// The URL clickable at <paramref name="position"/> (pointer coordinates relative to the terminal), or null.
+    /// Mirrors TerminalControl's own hit-test (OSC 8 cell first, then registered plain-URL providers) using its
+    /// public buffer API; only the pixel-to-cell mapping (<c>GridPos</c>) is not public, so it is reached by
+    /// reflection and any miss degrades to "no link", never a throw.
+    /// </summary>
+    private string? _LinkAt(Point position)
+    {
+        try
+        {
+            if (_GridPosMethod?.Invoke(Terminal, [position]) is not ITuple cell || cell[0] is not int row || cell[1] is not int col)
+            {
+                return null;
+            }
+
+            var cells = Terminal.Buffer.GetRowForRender(row);
+            if (cells is null || col < 0 || col >= cells.Length)
+            {
+                return null;
+            }
+
+            if (cells[col].HyperlinkId != 0 && Terminal.Buffer.TryGetHyperlink(cells[col].HyperlinkId, out var oscUrl) && !string.IsNullOrEmpty(oscUrl))
+            {
+                return oscUrl;
+            }
+
+            var rowText = RowText.Build(cells, out var columnMap);
+            foreach (var provider in Terminal.LinkProviders)
+            {
+                foreach (var link in provider.Provide(rowText))
+                {
+                    var start = columnMap[link.StartCol];
+                    var end = columnMap[Math.Min(link.EndCol - 1, columnMap.Length - 1)];
+                    if (col >= start && col <= end)
+                    {
+                        return link.Url;
+                    }
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "TTY link hit-test failed");
+            return null;
+        }
+    }
+
+    /// <summary>Opens an http/https URL in the OS browser with a toast; returns whether it was handled (a browsable URL).</summary>
+    private bool _TryOpenLink(string url)
+    {
+        if (!_IsBrowsableLink(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            _toast?.Show($"Opening {uri.Host} in your browser", ToastSeverity.Information);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort: a failed browser launch must not crash the UI thread (mirrors MarkdownView._OpenUrl).
+            _logger?.LogDebug(ex, "TTY hyperlink launch failed for {Url}", uri.AbsoluteUri);
+            _toast?.Show("Could not open the link", ToastSeverity.Warning);
+        }
+
+        return true;
+    }
+
+    /// <summary>The <see cref="TerminalControl.LinkActivationPolicy"/> gate: only http/https URLs are handed to the browser.</summary>
+    private static bool _IsBrowsableLink(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    // AC-2 link hit-test: pixel→cell is TerminalControl.GridPos, which is not public. Cached once; a null here (an
+    // Exclr8 version that renamed it) simply means Ctrl+click stops opening links, never a crash.
+    private static readonly System.Reflection.MethodInfo? _GridPosMethod = typeof(TerminalControl)
+        .GetMethod("GridPos", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
     /// <summary>
     /// A profile and its start defaults have been resolved. The pty can only be spawned once the

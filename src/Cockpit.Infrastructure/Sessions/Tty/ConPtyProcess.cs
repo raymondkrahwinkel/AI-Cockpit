@@ -25,6 +25,7 @@ internal sealed class ConPtyProcess : IConPtyProcess
     private const int ProcThreadAttributePseudoConsole = 0x00020016;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
     private const uint CreateUnicodeEnvironment = 0x00000400;
+    private const int StartfUseStdHandles = 0x00000100;
 
     private IntPtr _pseudoConsole;
     private IntPtr _attributeList;
@@ -134,9 +135,24 @@ internal sealed class ConPtyProcess : IConPtyProcess
 
         var attributeList = BuildPseudoConsoleAttributeList(pseudoConsole);
 
+        // Bind the child's std handles to the pseudo console, not to whatever this process inherited. When the
+        // cockpit is launched so that its own standard handles are pipes (dotnet run / dotnet test, or any parent
+        // that captures the app's stdout), a child spawned with no explicit std handles inherits those pipe
+        // handles for stdin/stdout/stderr — so the CLI sees isatty(stdin)=false and claude drops to --print mode,
+        // erroring "Input must be provided ... when using --print" and closing the TTY the instant it opens. It
+        // reproduced only when the parent's handles were pipes (a shell/terminal launch hands down console
+        // handles, which is why it worked there). STARTF_USESTDHANDLES with null handles forces the child to take
+        // its std handles from the pseudo console the attribute list attaches instead of inheriting the pipes.
         var startupInfo = new StartupInfoEx
         {
-            StartupInfo = { cb = Marshal.SizeOf<StartupInfoEx>() },
+            StartupInfo =
+            {
+                cb = Marshal.SizeOf<StartupInfoEx>(),
+                Flags = StartfUseStdHandles,
+                StdInput = IntPtr.Zero,
+                StdOutput = IntPtr.Zero,
+                StdError = IntPtr.Zero,
+            },
             AttributeList = attributeList,
         };
 
