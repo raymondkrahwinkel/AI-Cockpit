@@ -58,4 +58,20 @@ public class ProfileEnvironmentVariableTests
 
         overlay["AI_OS_ROOT"].Should().Be("/second");
     }
+
+    // The spawn composition (TtyEnvironment, the Claude driver's environment) folds case-insensitively, so two
+    // case-variant keys are one variable there — the overlay must collapse them the same way, deterministically,
+    // instead of leaving the collision to whichever dictionary sees them last.
+    [Fact]
+    public void ToOverlay_CaseVariantKeysAreOneVariable_TheLaterEntryWins()
+    {
+        var overlay = ProfileEnvironmentVariable.ToOverlay(
+        [
+            new("MyVar", "/first"),
+            new("MYVAR", "/second"),
+        ]);
+
+        overlay.Should().HaveCount(1);
+        overlay.Should().ContainValue("/second");
+    }
 }

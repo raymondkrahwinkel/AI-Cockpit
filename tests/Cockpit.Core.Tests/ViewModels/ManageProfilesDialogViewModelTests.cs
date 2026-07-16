@@ -222,12 +222,19 @@ public class ManageProfilesDialogViewModelTests
             new ProfileEnvironmentVariable("MY_TOKEN", "s3cret", IsSecret: true));
     }
 
+    // The env-row gates are proven on a profile that is otherwise valid (an Ollama profile with base URL and
+    // model filled), so IsValid flips on the rows alone — a legacy ClaudeConfig profile resolves to the Ollama
+    // fallback with empty fields and is invalid regardless, which would make these assertions prove nothing.
+    private static EditableProfileViewModel _ValidLocalRow() => new(
+        new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1", null)), isLoggedIn: true);
+
     [Theory]
     [InlineData("2INVALID")]
     [InlineData("")]
     public void IsValid_AnEnvironmentVariableWithAnUnsettableName_GatesTheSave(string key)
     {
-        var row = new EditableProfileViewModel(new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")), isLoggedIn: true);
+        var row = _ValidLocalRow();
+        row.IsValid.Should().BeTrue("the gate below must be attributable to the row, not to an incomplete profile");
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel(key, "value"));
 
         row.IsValid.Should().BeFalse();
@@ -236,9 +243,22 @@ public class ManageProfilesDialogViewModelTests
     [Fact]
     public void IsValid_ADuplicateEnvironmentVariableKey_GatesTheSave()
     {
-        var row = new EditableProfileViewModel(new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")), isLoggedIn: true);
+        var row = _ValidLocalRow();
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/first"));
         row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/second"));
+
+        row.IsValid.Should().BeFalse();
+    }
+
+    // The spawn composition folds case-insensitively (TtyEnvironment, the Claude driver), so two case-variant
+    // rows are one variable at spawn and one value would silently win — the save gate must catch them as the
+    // duplicate they effectively are.
+    [Fact]
+    public void IsValid_ACaseVariantDuplicateEnvironmentVariableKey_GatesTheSave()
+    {
+        var row = _ValidLocalRow();
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MyVar", "/first"));
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MYVAR", "/second"));
 
         row.IsValid.Should().BeFalse();
     }

@@ -161,17 +161,15 @@ public partial class EditableProfileViewModel : ViewModelBase
     public ObservableCollection<ProfileEnvironmentVariableViewModel> EnvironmentVariables { get; } = [];
 
     /// <summary>
-    /// Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) —
-    /// a plugin provider's declared capability, or the in-tree Claude CLI's. False for the HTTP providers
+    /// Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) — the
+    /// plugin provider's declared capability, the single gate (Claude and Codex are plugins; the retired
+    /// Claude-CLI enum resolves to the Ollama fallback and never reaches here). False for the HTTP providers
     /// (Ollama/LM Studio), which spawn nothing to inject into, so the editor never shows as a dead control.
     /// </summary>
-    public bool SupportsEnvVars => SelectedProvider.Value switch
-    {
-        SessionProvider.Plugin => SelectedProvider.PluginProviderId is { } providerId
-            && _pluginProviderRegistry?.Resolve(providerId)?.Capabilities.SupportsEnvVars == true,
-        SessionProvider.ClaudeCli => SessionCapabilities.ClaudeCli.SupportsEnvVars,
-        _ => false,
-    };
+    public bool SupportsEnvVars =>
+        SelectedProvider.Value == SessionProvider.Plugin
+        && SelectedProvider.PluginProviderId is { } providerId
+        && _pluginProviderRegistry?.Resolve(providerId)?.Capabilities.SupportsEnvVars == true;
 
     /// <summary>The alias suggestions for the editable Claude model field (see <see cref="SessionOptionCatalog.ClaudeModelSuggestions"/>).</summary>
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
@@ -217,9 +215,11 @@ public partial class EditableProfileViewModel : ViewModelBase
         };
 
     // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
+    // Case-insensitive, because the spawn composition is (TtyEnvironment, the Claude driver's environment): two
+    // case-variant rows are one variable there, so they are the duplicate this gate exists to catch.
     private bool _AreEnvironmentVariablesValid() =>
         EnvironmentVariables.All(row => row.IsKeyValid)
-        && EnvironmentVariables.Select(row => row.Key).Distinct(StringComparer.Ordinal).Count() == EnvironmentVariables.Count;
+        && EnvironmentVariables.Select(row => row.Key).Distinct(StringComparer.OrdinalIgnoreCase).Count() == EnvironmentVariables.Count;
 
     [RelayCommand]
     private void AddEnvironmentVariable() => EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel());

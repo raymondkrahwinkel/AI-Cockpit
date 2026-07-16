@@ -25,9 +25,10 @@ public sealed partial record ProfileEnvironmentVariable(string Key, string Value
     /// </summary>
     public static IReadOnlyDictionary<string, string?> ToOverlay(IEnumerable<ProfileEnvironmentVariable> variables)
     {
-        // Ordinal: environment variable names are case-sensitive on POSIX; the TTY composition applies its own
-        // case rule per platform when it merges this overlay in.
-        var overlay = new Dictionary<string, string?>(StringComparer.Ordinal);
+        // Case-insensitive to match the spawn composition (TtyEnvironment, the drivers' environment maps): two
+        // case-variant keys are one variable there, so collapsing them here — later wins — keeps the collision
+        // deterministic instead of leaving it to whichever dictionary sees them last.
+        var overlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var variable in variables)
         {
             overlay[variable.Key] = variable.Value;
