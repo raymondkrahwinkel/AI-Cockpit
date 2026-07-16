@@ -49,6 +49,10 @@ internal sealed class SessionRuntime : ISessionRuntime
     /// <summary>The process this session runs in, once its driver started one (#78) — null for a provider that is an HTTP call rather than a process.</summary>
     public int? ProcessId => _driver?.ProcessId;
 
+    public SessionStatusFeed? CurrentStatus => _driver?.CurrentStatus;
+
+    public IReadOnlyList<SessionLiveOption> LiveOptions => _driver?.LiveOptions ?? [];
+
     public bool IsRunning => _pump is not null;
 
     public string? LastAssistantText { get; private set; }
@@ -72,6 +76,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         IReadOnlySet<string>? enabledMcpServerNames = null,
         string? workingDirectory = null,
         SessionResume? resume = null,
+        IReadOnlyDictionary<string, string>? launchOptions = null,
         CancellationToken cancellationToken = default)
     {
         Profile = profile;
@@ -81,7 +86,7 @@ internal sealed class SessionRuntime : ISessionRuntime
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.
         _driver = _driverFactory.Create(profile);
-        await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, _lifetime.Token);
+        await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, _lifetime.Token);
         _pump = _PumpEventsAsync(_lifetime.Token);
     }
 
@@ -99,6 +104,9 @@ internal sealed class SessionRuntime : ISessionRuntime
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) =>
         _driver?.SetMaxThinkingTokensAsync(maxThinkingTokens, cancellationToken) ?? Task.CompletedTask;
+
+    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) =>
+        _driver?.SetLiveOptionAsync(key, value, cancellationToken) ?? Task.CompletedTask;
 
     public Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default) =>
         _driver?.SetAutoApproveToolsAsync(autoApprove, cancellationToken) ?? Task.CompletedTask;

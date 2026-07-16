@@ -16,9 +16,27 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
 
     public string? SessionId { get; set; }
 
+    public int? ProcessId { get; set; }
+
+    public PluginSessionStatus? Status { get; set; }
+
+    public IReadOnlyList<PluginSessionLaunchOption> LiveOptions { get; init; } = [];
+
+    public (string Key, string Value)? LastLiveOption { get; private set; }
+
+    public string? LastAllowAlwaysToolUseId { get; private set; }
+
     public List<string> SentMessages { get; } = [];
 
     public string? LastModel { get; private set; }
+
+    public string? LastWorkingDirectory { get; private set; }
+
+    public string? LastResumeSessionId { get; private set; }
+
+    public IReadOnlyDictionary<string, string>? LastLaunchOptions { get; private set; }
+
+    public IReadOnlyList<PluginMcpServer>? LastMcpServers { get; private set; }
 
     public bool Started { get; private set; }
 
@@ -39,6 +57,15 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
+    {
+        LastWorkingDirectory = workingDirectory;
+        LastResumeSessionId = resumeSessionId;
+        LastLaunchOptions = options;
+        LastMcpServers = mcpServers;
+        return StartAsync(model, cancellationToken);
+    }
+
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)
     {
         SentMessages.Add(text);
@@ -57,9 +84,24 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
         return Task.CompletedTask;
     }
 
+    public Task AllowPermissionAlwaysAsync(string toolUseId, CancellationToken cancellationToken = default)
+    {
+        LastAllowAlwaysToolUseId = toolUseId;
+        return Task.CompletedTask;
+    }
+
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         LastAutoApprove = enabled;
+        return Task.CompletedTask;
+    }
+
+    public List<(string Key, string Value)> LiveOptionSwitches { get; } = [];
+
+    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default)
+    {
+        LastLiveOption = (key, value);
+        LiveOptionSwitches.Add((key, value));
         return Task.CompletedTask;
     }
 

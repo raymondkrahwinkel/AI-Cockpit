@@ -1,14 +1,11 @@
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Voice;
-using Cockpit.Infrastructure.Sessions;
-using Cockpit.Infrastructure.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Infrastructure.Diagnostics;
 using Cockpit.Infrastructure.Notifications;
@@ -22,13 +19,6 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<AudioEngine, MiniAudioEngine>();
-        services.AddTransient<IClaudeCliProcess, ClaudeCliProcess>();
-
-        // One shared MCP permission server for the whole app: the same instance backs the
-        // IPermissionServerState sessions read at spawn time and the IHostedService lifecycle.
-        services.AddSingleton<PermissionMcpServer>();
-        services.AddSingleton<IPermissionServerState>(sp => sp.GetRequiredService<PermissionMcpServer>());
-        services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<PermissionMcpServer>());
 
         AddDiagnostics(services);
         AddNotifications(services);
@@ -80,7 +70,7 @@ public static class DependencyInjection
     // TTY mode's pty host (#9) is OS-specific for the same reason presence/toast are: it is
     // registered by platform here rather than via the Scrutor marker scan, which would otherwise
     // bind whichever of ConPtyHostFactory/PortaPtyHostFactory the assembly scan happened to see last
-    // to the single IPtyHostFactory registration. ClaudeTtyLauncher itself stays cross-platform and
+    // to the single IPtyHostFactory registration. TtyLauncher itself stays cross-platform and
     // just depends on whichever factory lands here.
     private static void AddPtyHost(IServiceCollection services)
     {

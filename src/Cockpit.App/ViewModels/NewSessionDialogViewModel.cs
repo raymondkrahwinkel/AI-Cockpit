@@ -3,11 +3,14 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.App.Plugins;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -29,12 +32,28 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
-    private readonly IClaudeProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginChecker? _loginChecker;
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerStore? _mcpServerStore;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private readonly ConversationPickerRegistration? _conversationPicker;
+    private readonly ITtySessionProviderResolver? _ttyProviderResolver;
+    private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
+    private readonly IPluginProviderRegistry? _sessionProviderRegistry;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
+    private CancellationTokenSource? _launchOptionsRefreshCts;
+
+    /// <summary>
+    /// Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
+    /// dynamic-options refresh — the profile switch fires exactly one refresh at its end, for whatever kind won.
+    /// </summary>
+    private bool _suppressDynamicOptionsRefresh;
+
+    /// <summary>How long the background model/list refresh may run before the dialog gives up and keeps the declared options.</summary>
+    private static readonly TimeSpan _LaunchOptionsRefreshTimeout = TimeSpan.FromSeconds(8);
+
+    /// <summary>The in-flight background refresh of the active kind's launch options (Codex's model/list), so a test can await it. Completed when none is running.</summary>
+    internal Task LaunchOptionsRefresh { get; private set; } = Task.CompletedTask;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
     public event Action<NewSessionResult?>? CloseRequested;
@@ -58,7 +77,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// them as launch-only CLI flags, SDK keeps them live-switchable. A local provider has none of these,
     /// so the whole block is hidden for it (#26).
     /// </summary>
-    public bool ShowSessionOptions => IsClaudeProfile;
+    // The legacy typed permission/model/effort block is retired: Claude renders its options through the generic
+    // plugin-option rows now, like every provider. Kept false until that block and SessionOptionCatalog are removed.
+    public bool ShowSessionOptions => false;
 
     /// <summary>The SDK "stays live-switchable" hint, shown only for a Claude SDK session (a local session has no such dropdowns).</summary>
     public bool ShowSdkStartHint => IsSdk && IsClaudeProfile;
@@ -80,7 +101,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>All four modes — including the launch-only bypass — since this dialog is the one place bypass can be chosen.</summary>
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
 
-    public IReadOnlyList<ModelOption> Models => SessionOptionCatalog.Models;
+    public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
@@ -191,8 +212,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
 
+    /// <summary>The Claude model for this session, as free text with suggestions — an alias, or a pinned model/snapshot.</summary>
     [ObservableProperty]
-    private ModelOption _selectedModel = SessionOptionCatalog.DefaultModel;
+    private string _selectedClaudeModel = SessionOptionCatalog.DefaultModel.Value;
 
     [ObservableProperty]
     private EffortOption _selectedEffort = SessionOptionCatalog.DefaultEffort;
@@ -201,12 +223,43 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private bool _isSelectedProfileLoggedIn;
 
     /// <summary>Config directory of the selected profile, shown under the picker so it is clear where its login lives.</summary>
-    public string? SelectedProfileConfigDir => SelectedProfile?.ConfigDir;
+    public string? SelectedProfileConfigDir => SelectedProfile?.Claude?.ConfigDir;
 
-    /// <summary>Whether the selected profile runs on the Claude CLI (login + session-option/config fields apply) versus a local HTTP provider (#26).</summary>
-    public bool IsClaudeProfile => SelectedProfile?.Provider is null or SessionProvider.ClaudeCli;
+    /// <summary>
+    /// Whether the selected profile runs on Claude (login gating, resume, the login hint apply) — true whether it
+    /// still carries a legacy <see cref="ClaudeConfig"/> or, after Fase 4, the bundled Claude provider plugin's
+    /// config. A profile's <see cref="SessionProfile.Claude"/> is non-null in both cases.
+    /// </summary>
+    public bool IsClaudeProfile => SelectedProfile?.Claude is not null;
 
-    public bool IsLocalProfile => SelectedProfile is not null && !IsClaudeProfile;
+    /// <summary>A local OpenAI-compatible provider (Ollama/LM Studio) — no login, no TUI, no resume.</summary>
+    public bool IsLocalProfile => SelectedProfile?.Provider is SessionProvider.Ollama or SessionProvider.LmStudio;
+
+    /// <summary>
+    /// Whether the selected profile has a TUI to run at all — the gate for offering the Kind picker and for
+    /// what TTY actually launches. Claude always does (its own <c>claude</c> TTY provider); a plugin profile
+    /// does only when it registered one via <c>ICockpitHost.AddTtyProvider</c> under the same provider id its
+    /// session provider uses (#45 fase B2) — resolved the same way <c>TtyViewModel</c> resolves it at
+    /// launch, so the dialog never offers a kind the launch would then refuse. A local HTTP provider (Ollama/
+    /// LM Studio) is never a program a terminal can host, so it has none either way.
+    /// </summary>
+    public bool HasTtyProvider => IsClaudeProfile || (_ttyProviderResolver?.Resolve(SelectedProfile) is not null);
+
+    /// <summary>The declared start defaults for the selected profile's plugin TTY provider (Codex's sandbox policy, say) — empty for Claude/local profiles or a plugin with none declared.</summary>
+    public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginTtyOptions { get; } = [];
+
+    public bool HasPluginTtyOptions => PluginTtyOptions.Count > 0;
+
+    /// <summary>Shown when TTY is chosen for a plugin profile (Claude or Codex) that declared its own start defaults.</summary>
+    public bool ShowPluginTtyOptions => IsTty && HasPluginTtyOptions;
+
+    /// <summary>The declared per-session start defaults for the selected profile's SDK session provider (Codex's sandbox/model) — empty for Claude/local profiles or a provider with none declared. Reuses the same generic option row as the TTY route.</summary>
+    public ObservableCollection<PluginTtyOptionSelectionViewModel> SdkLaunchOptions { get; } = [];
+
+    public bool HasSdkLaunchOptions => SdkLaunchOptions.Count > 0;
+
+    /// <summary>Shown when SDK is chosen for a plugin profile (Claude or Codex) that declared its own start defaults — the SDK mirror of <see cref="ShowPluginTtyOptions"/>.</summary>
+    public bool ShowSdkLaunchOptions => IsSdk && HasSdkLaunchOptions;
 
     /// <summary>Provider label shown next to the picker; empty for Claude, which needs no badge.</summary>
     public string SelectedProviderLabel => IsLocalProfile ? SessionProviderCatalog.Resolve(SelectedProfile!.Provider).Label : string.Empty;
@@ -235,19 +288,30 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
     {
-        var personal = new SessionProfile("personal", "~/.claude-personal", Purpose: "private");
+        var personal = new SessionProfile("personal", new ClaudeConfig("~/.claude-personal"), Purpose: "private");
         Profiles.Add(personal);
         SelectedProfile = personal;
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(ISessionProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null, IConversationPickerRegistry? conversationPickers = null)
+    public NewSessionDialogViewModel(
+        ISessionProfileStore profileStore,
+        IProfileLoginChecker loginChecker,
+        IMcpServerStore? mcpServerStore = null,
+        IWorkingPathHistoryStore? workingPathStore = null,
+        IConversationPickerRegistry? conversationPickers = null,
+        ITtySessionProviderResolver? ttyProviderResolver = null,
+        IPluginTtyProviderRegistry? ttyProviderRegistry = null,
+        IPluginProviderRegistry? sessionProviderRegistry = null)
     {
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _mcpServerStore = mcpServerStore;
         _workingPathStore = workingPathStore;
+        _ttyProviderResolver = ttyProviderResolver;
+        _ttyProviderRegistry = ttyProviderRegistry;
+        _sessionProviderRegistry = sessionProviderRegistry;
     }
 
     /// <summary>
@@ -349,36 +413,210 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     partial void OnSelectedProfileChanged(SessionProfile? value)
     {
-        // A local provider has no Claude login concept — treat it as "logged in" so login gating never blocks it.
-        var isClaudeProfile = value?.Provider is null or SessionProvider.ClaudeCli;
-        IsSelectedProfileLoggedIn = value is not null && (!isClaudeProfile || (_loginChecker?.IsLoggedIn(value) ?? false));
+        // The generic login checker gates whichever provider declares a login; a profile whose provider has no
+        // gate (or a profile-less/local session) reports logged in, so gating never falsely blocks it.
+        IsSelectedProfileLoggedIn = value is not null && (_loginChecker?.IsLoggedIn(value) ?? true);
         OnPropertyChanged(nameof(SelectedProfileConfigDir));
         OnPropertyChanged(nameof(IsClaudeProfile));
         OnPropertyChanged(nameof(IsLocalProfile));
+        OnPropertyChanged(nameof(ShowResumeOptions));
         OnPropertyChanged(nameof(SelectedProviderLabel));
 
-        // A local provider only runs as an SDK session (TTY spawns the claude CLI, which is Claude-only),
-        // so force SDK and let the view hide the kind selector for it.
-        if (value?.Provider is SessionProvider.Ollama or SessionProvider.LmStudio)
+        _RefreshPluginTtyOptions(value);
+        _RefreshSdkLaunchOptions(value);
+        OnPropertyChanged(nameof(HasTtyProvider));
+
+        // A profile with no TTY provider to run only runs as an SDK session (a local HTTP provider has none;
+        // neither does a plugin provider that registered no IPluginTtyProvider) — force SDK and let the view
+        // hide the kind selector, rather than leaving Kind on whatever it was and silently launching the
+        // wrong CLI once Start is pressed. Suppress the refresh this kind change would otherwise fire, so the
+        // one at the end of this method is the single refresh for the settled kind (no double spawn).
+        _suppressDynamicOptionsRefresh = true;
+        try
         {
-            SelectedKind = SessionKind.Sdk;
+            if (!HasTtyProvider)
+            {
+                SelectedKind = SessionKind.Sdk;
+            }
+        }
+        finally
+        {
+            _suppressDynamicOptionsRefresh = false;
         }
 
         OnPropertyChanged(nameof(ShowSessionOptions));
         OnPropertyChanged(nameof(ShowSdkStartHint));
         OnPropertyChanged(nameof(ShowTtyStartHint));
 
-        // Choosing a profile loads its saved start defaults (or the app defaults when it has none),
-        // which the operator can still override before starting.
-        var defaults = value?.Defaults;
-        SelectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(defaults?.PermissionMode);
-        SelectedModel = SessionOptionCatalog.ResolveModel(defaults?.Model);
-        SelectedEffort = SessionOptionCatalog.ResolveEffort(defaults?.Effort);
+        // The typed permission/model/effort back the retired Claude-CLI block (hidden now Claude is a plugin); a plugin
+        // profile's real defaults pre-fill the generic option rows from OptionDefaults instead. Seed the typed fields
+        // with app defaults rather than the profile's legacy typed values, which are migration-only.
+        SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
+        SelectedClaudeModel = SessionOptionCatalog.DefaultModel.Value;
+        SelectedEffort = SessionOptionCatalog.DefaultEffort;
 
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));
         ConfirmCommand.NotifyCanExecuteChanged();
+
+        // Kind is settled above; upgrade whichever kind is active with its provider's live options.
+        _RefreshDynamicLaunchOptions(value);
     }
+
+    /// <summary>
+    /// Rebuilds <see cref="PluginTtyOptions"/> from the selected profile's own plugin TTY provider (if any) —
+    /// the start defaults it declared via <c>TtyProviderRegistration.Options</c>, rendered generically here
+    /// since the host does not (and must not) know what any of them mean, only their key/label/choices.
+    /// </summary>
+    private void _RefreshPluginTtyOptions(SessionProfile? profile)
+    {
+        PluginTtyOptions.Clear();
+
+        if (_ttyProviderRegistry is not null
+            && profile?.ProviderConfig is PluginProviderConfig plugin
+            && _ttyProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
+        {
+            var storedDefaults = profile.Defaults?.OptionDefaults;
+            foreach (var option in registration.Options)
+            {
+                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                PluginTtyOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+            }
+        }
+
+        OnPropertyChanged(nameof(HasPluginTtyOptions));
+        OnPropertyChanged(nameof(ShowPluginTtyOptions));
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="SdkLaunchOptions"/> from the selected profile's SDK session provider (if any) — the
+    /// start defaults it declared via <c>SessionProviderRegistration.Options</c>, rendered generically here the
+    /// same way as the TTY route, since the host must not know what any of them mean. Static only; the live
+    /// upgrade (Codex's model/list) runs from <see cref="_RefreshDynamicLaunchOptions"/> for the active kind.
+    /// </summary>
+    private void _RefreshSdkLaunchOptions(SessionProfile? profile)
+    {
+        SdkLaunchOptions.Clear();
+
+        if (_sessionProviderRegistry is not null
+            && profile?.ProviderConfig is PluginProviderConfig plugin
+            && _sessionProviderRegistry.Resolve(plugin.ProviderId) is { } registration)
+        {
+            var storedDefaults = profile.Defaults?.OptionDefaults;
+            foreach (var option in registration.Options)
+            {
+                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                SdkLaunchOptions.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+            }
+        }
+
+        OnPropertyChanged(nameof(HasSdkLaunchOptions));
+        OnPropertyChanged(nameof(ShowSdkLaunchOptions));
+    }
+
+    /// <summary>
+    /// Upgrades the <em>active</em> kind's launch options with the provider's live values (Codex's model/list) in
+    /// the background — only the visible kind, so a Codex profile (which registers both a TTY and an SDK provider)
+    /// never runs the query twice, and only when that kind's provider offers a resolver. The declared options are
+    /// already rendered; this replaces their rows when the resolve lands. Runs on a profile change and on a kind
+    /// switch, since the newly active kind may not have been resolved yet.
+    /// </summary>
+    private void _RefreshDynamicLaunchOptions(SessionProfile? profile)
+    {
+        // A profile or kind switch supersedes any refresh still running.
+        _launchOptionsRefreshCts?.Cancel();
+        _launchOptionsRefreshCts = null;
+
+        if (profile?.ProviderConfig is not PluginProviderConfig plugin)
+        {
+            return;
+        }
+
+        if (IsTty && _ttyProviderRegistry?.Resolve(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveTty })
+        {
+            _StartLaunchOptionsRefresh(PluginTtyOptions, plugin.ConfigJson,
+                async (json, token) => (await resolveTty(json, token).ConfigureAwait(false)).Select(_ToSpec).ToList());
+        }
+        else if (IsSdk && _sessionProviderRegistry?.Resolve(plugin.ProviderId) is { ResolveOptionsAsync: { } resolveSdk })
+        {
+            _StartLaunchOptionsRefresh(SdkLaunchOptions, plugin.ConfigJson,
+                async (json, token) => (await resolveSdk(json, token).ConfigureAwait(false)).Select(_ToSpec).ToList());
+        }
+    }
+
+    private void _StartLaunchOptionsRefresh(
+        ObservableCollection<PluginTtyOptionSelectionViewModel> target,
+        string configJson,
+        Func<string, CancellationToken, Task<IReadOnlyList<LaunchOptionSpec>>> resolveSpecs)
+    {
+        var cts = new CancellationTokenSource(_LaunchOptionsRefreshTimeout);
+        _launchOptionsRefreshCts = cts;
+        LaunchOptionsRefresh = _RunLaunchOptionsRefreshAsync(target, configJson, resolveSpecs, cts);
+    }
+
+    private async Task _RunLaunchOptionsRefreshAsync(
+        ObservableCollection<PluginTtyOptionSelectionViewModel> target,
+        string configJson,
+        Func<string, CancellationToken, Task<IReadOnlyList<LaunchOptionSpec>>> resolveSpecs,
+        CancellationTokenSource cts)
+    {
+        try
+        {
+            // Task.Run so the synchronous spawn prefix (Process.Start) never runs on the UI thread; ConfigureAwait
+            // keeps the continuation on it, since applying the result mutates a bound collection.
+            var resolved = await Task.Run(() => resolveSpecs(configJson, cts.Token), cts.Token).ConfigureAwait(true);
+
+            // Ignore a result the operator has already moved past (a newer refresh replaced this cts).
+            if (ReferenceEquals(_launchOptionsRefreshCts, cts))
+            {
+                _ApplyResolvedLaunchOptions(target, resolved);
+            }
+        }
+        catch (Exception)
+        {
+            // codex missing, logged out, timed out, or refused — keep the declared options (Model as free text).
+        }
+        finally
+        {
+            if (ReferenceEquals(_launchOptionsRefreshCts, cts))
+            {
+                _launchOptionsRefreshCts = null;
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Swaps the declared option rows in <paramref name="target"/> for the provider's refreshed ones, carrying
+    /// over any value the operator already picked (so a Sandbox choice or a typed model survives the model/list
+    /// arriving) and otherwise taking the refreshed default. <see cref="PluginTtyOptionSelectionViewModel.Choices"/>
+    /// is fixed per row, so turning a free-text field into a dropdown means replacing the row, not mutating it.
+    /// </summary>
+    private void _ApplyResolvedLaunchOptions(ObservableCollection<PluginTtyOptionSelectionViewModel> target, IReadOnlyList<LaunchOptionSpec> resolved)
+    {
+        var pickedByKey = target.ToDictionary(option => option.Key, option => option.Value);
+        target.Clear();
+        foreach (var spec in resolved)
+        {
+            var picked = pickedByKey.GetValueOrDefault(spec.Key);
+            var value = string.IsNullOrWhiteSpace(picked) ? spec.DefaultValue : picked;
+            target.Add(new PluginTtyOptionSelectionViewModel(spec.Key, spec.Label, spec.Choices, value, spec.ChoiceLabels));
+        }
+
+        // The target is one of the two option collections; raise both pairs rather than thread which through.
+        OnPropertyChanged(nameof(HasSdkLaunchOptions));
+        OnPropertyChanged(nameof(ShowSdkLaunchOptions));
+        OnPropertyChanged(nameof(HasPluginTtyOptions));
+        OnPropertyChanged(nameof(ShowPluginTtyOptions));
+    }
+
+    private static LaunchOptionSpec _ToSpec(PluginSessionLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels);
+
+    private static LaunchOptionSpec _ToSpec(PluginTtyLaunchOption option) => new(option.Key, option.Label, option.Choices, option.DefaultValue, option.ChoiceLabels);
+
+    /// <summary>The provider-neutral shape both a TTY and an SDK launch option project to, so one refresh path serves both.</summary>
+    private readonly record struct LaunchOptionSpec(string Key, string Label, IReadOnlyList<string> Choices, string? DefaultValue, IReadOnlyDictionary<string, string>? ChoiceLabels);
 
     partial void OnIsSelectedProfileLoggedInChanged(bool value)
     {
@@ -396,10 +634,19 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(HeaderText));
         OnPropertyChanged(nameof(ShowSdkStartHint));
         OnPropertyChanged(nameof(ShowTtyStartHint));
+        OnPropertyChanged(nameof(ShowPluginTtyOptions));
+        OnPropertyChanged(nameof(ShowSdkLaunchOptions));
         // Kind drives the start gate (TTY needs no login) and the login hint (SDK-only), so both re-evaluate.
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));
         ConfirmCommand.NotifyCanExecuteChanged();
+
+        // The newly active kind may not have had its live options fetched yet (they are fetched per active kind).
+        // Skipped while a profile switch is settling its kind — that switch fires its own single refresh.
+        if (!_suppressDynamicOptionsRefresh)
+        {
+            _RefreshDynamicLaunchOptions(SelectedProfile);
+        }
     }
 
     [RelayCommand]
@@ -429,7 +676,25 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             _ = _workingPathStore.RecordRecentAsync(workingDirectory);
         }
 
-        CloseRequested?.Invoke(new NewSessionResult(SelectedKind, SelectedProfile, SelectedPermissionMode, SelectedModel, SelectedEffort, name, enabledMcpServerNames, workingDirectory, _Resume()));
+        // A plugin TTY provider's own declared options only apply when TTY is actually chosen for it — never
+        // alongside Claude's mode/model/effort, which the result always carries regardless of kind/provider.
+        IReadOnlyDictionary<string, string>? pluginTtyOptions = ShowPluginTtyOptions
+            ? PluginTtyOptions
+                .Where(option => !string.IsNullOrWhiteSpace(option.Value))
+                .ToDictionary(option => option.Key, option => option.Value!)
+            : null;
+
+        // The SDK provider's own declared options only apply when SDK is chosen for it — the same key/value
+        // shape as the TTY options above, in the provider's own vocabulary (sandbox, model).
+        IReadOnlyDictionary<string, string>? sdkLaunchOptions = ShowSdkLaunchOptions
+            ? SdkLaunchOptions
+                .Where(option => !string.IsNullOrWhiteSpace(option.Value))
+                .ToDictionary(option => option.Key, option => option.Value!)
+            : null;
+
+        CloseRequested?.Invoke(new NewSessionResult(
+            SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,
+            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions));
     }
 
     [RelayCommand]
@@ -443,4 +708,40 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 public sealed record RememberedPathOption(string Path, bool IsFavorite)
 {
     public string Display => IsFavorite ? $"★ {Path}" : Path;
+}
+
+/// <summary>
+/// One start default a plugin TTY provider declared (<c>PluginTtyLaunchOption</c>) — <see cref="Key"/>/
+/// <see cref="Label"/>/<see cref="Choices"/> straight from the registration, plus the operator's pick so
+/// far. <see cref="Value"/> starts blank rather than defaulting to the first choice when the provider left
+/// <c>DefaultValue</c> null: "no choice made" and "the first choice" are different things, and only the
+/// provider's own default counts as the second one (mirrors <c>TtyViewModel._LaunchOptions</c>'s same
+/// rule for a blank knob). A blank <see cref="Value"/> for a provider with <see cref="Choices"/> renders as
+/// no selection — the CLI's own default then applies, same as leaving Claude's mode/model/effort untouched.
+/// </summary>
+public sealed partial class PluginTtyOptionSelectionViewModel : ObservableObject
+{
+    public string Key { get; }
+
+    public string Label { get; }
+
+    public IReadOnlyList<string> Choices { get; }
+
+    /// <summary>The choices as label/value pairs for the combo, so a provider that supplied friendly labels (Claude's "Ask permissions" for <c>default</c>) shows them while <see cref="Value"/> still round-trips the raw value.</summary>
+    public IReadOnlyList<SelectableChoice> ChoiceItems { get; }
+
+    /// <summary>No declared choices means free text — the New-session dialog renders a text box instead of a combo.</summary>
+    public bool IsFreeText => Choices.Count == 0;
+
+    [ObservableProperty]
+    private string? _value;
+
+    public PluginTtyOptionSelectionViewModel(string key, string label, IReadOnlyList<string> choices, string? defaultValue, IReadOnlyDictionary<string, string>? choiceLabels = null)
+    {
+        Key = key;
+        Label = label;
+        Choices = choices;
+        ChoiceItems = [.. choices.Select(value => new SelectableChoice(value, choiceLabels?.GetValueOrDefault(value) ?? value))];
+        _value = defaultValue;
+    }
 }

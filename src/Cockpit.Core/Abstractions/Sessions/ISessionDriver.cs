@@ -49,7 +49,7 @@ public interface ISessionDriver : IAsyncDisposable
     /// the shared MCP registry to just those names for this session, on top of the registry's own
     /// enabled/scope filtering; <see langword="null"/> keeps the pre-#44 behaviour of using the full registry.
     /// </summary>
-    Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, CancellationToken cancellationToken = default);
+    Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a user message as a single stream-json line on the CLI's stdin.
@@ -114,6 +114,27 @@ public interface ISessionDriver : IAsyncDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The session's latest status, when the provider reports it (#45 D7) — how full the context window is and the
+    /// usage windows it reports, each self-labelled. The host polls this and renders the header's bars from it, so
+    /// a provider that can report limits fills them without the host owning any provider-specific status code or
+    /// window vocabulary. Null for a driver whose provider reports none: the Claude CLI reports its limits through
+    /// the TTY statusline relay instead of this seam, and a local model (Ollama, LM Studio) has no such windows —
+    /// a header shows nothing rather than a made-up zero. A default property, so a driver with no status feed need
+    /// not implement it.
+    /// </summary>
+    SessionStatusFeed? CurrentStatus => null;
+
+    /// <summary>
+    /// The controls this session can switch mid-conversation that the host renders generically (#45 D4) — a plugin
+    /// provider's model and reasoning effort, each a per-turn override. Empty for a driver whose live controls the
+    /// host already knows by name (the Claude CLI drives model/permission/effort through its own typed members
+    /// above) or that has none (a local model). A driver reports these once its session is up, since the values can
+    /// depend on what the provider listed at start. A default property, so a driver without a generic live surface
+    /// need not implement it.
+    /// </summary>
+    IReadOnlyList<SessionLiveOption> LiveOptions => [];
+
+    /// <summary>
     /// The live, ordered stream of typed transcript events for this session.
     /// A single async enumeration is supported; the stream completes when the
     /// underlying process exits.
@@ -127,4 +148,11 @@ public interface ISessionDriver : IAsyncDisposable
     /// its own permission modes instead, so only the local (OpenAI-compatible) driver honours this.
     /// </summary>
     Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
+    /// Switches one of the generic <see cref="LiveOptions"/> for the rest of this session (#45 D4) — the operator
+    /// picked a new value in the live-control panel, keyed by the option's <see cref="SessionLiveOption.Key"/>. The
+    /// driver applies it to its next turn. Default no-op: a driver with no generic live options has none to switch.
+    /// </summary>
+    Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

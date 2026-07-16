@@ -82,8 +82,8 @@ public class PluginActionsTests
         var profiles = Substitute.For<ISessionProfileStore>();
         profiles.LoadAsync().Returns(Task.FromResult<IReadOnlyList<SessionProfile>>(
         [
-            new SessionProfile("Work", "/home/raymond/.claude"),
-            new SessionProfile("Private", "/home/raymond/.claude-private"),
+            new SessionProfile("Work", new ClaudeConfig("/home/raymond/.claude")),
+            new SessionProfile("Private", new ClaudeConfig("/home/raymond/.claude-private")),
         ]));
 
         var actions = new PluginActions(new CockpitViewModel(), () => null, Substitute.For<ISessionDialogService>(), profiles, Substitute.For<IDelegationService>());

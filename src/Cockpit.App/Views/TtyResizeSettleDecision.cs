@@ -2,7 +2,7 @@ namespace Cockpit.App.Views;
 
 /// <summary>
 /// The deterministic fix for #58's stacked-at-top render desync: whether a settled
-/// <c>ClaudeTtyView</c> terminal resize should actually resize the pty, or force a redraw instead.
+/// <c>TtyView</c> terminal resize should actually resize the pty, or force a redraw instead.
 /// Root cause (see <c>Cockpit-TTY-Glitch-RootCause-2026-07-11.md</c>): claude's TUI positions every
 /// frame purely relative to the cursor row — it never re-anchors with an absolute CUP. On some
 /// Wayland/KDE setups a focus/activation event triggers a transient grid change in Exclr8.Terminal

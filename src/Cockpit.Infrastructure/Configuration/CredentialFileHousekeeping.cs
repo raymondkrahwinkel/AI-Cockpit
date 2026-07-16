@@ -22,11 +22,14 @@ public static class CredentialFileHousekeeping
             CockpitConfigPath.RestrictExistingFile(CockpitConfigPath.Default);
             CockpitConfigPath.RestrictExistingFile(Path.Combine(CockpitConfigPath.Root, "mcp-permission.json"));
 
+            // The sidecars of a save that was killed halfway. Each carries a full copy of the config — profiles,
+            // provider keys, MCP bearer headers — so a leftover is the whole file lying around under another name.
+            CockpitConfigPath.SweepStaleSidecars(CockpitConfigPath.Default);
+
             TtyMcpConfigFile.SweepStale();
 
-            // The statusline snapshots of sessions that were killed rather than closed. Not credentials, but a
-            // session's spending is nobody's business once it is over.
-            StatusLineRelay.SweepStale();
+            // The statusline snapshots of killed sessions are swept by the provider plugin that now owns the
+            // statusline (Fase 4), at its own startup — the host no longer holds any provider's statusline files.
         }
         catch (Exception)
         {

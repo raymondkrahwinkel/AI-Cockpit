@@ -95,7 +95,7 @@ public class PermissionRuleStoreTests : IDisposable
     public async Task AddAsync_LeavesTheProfilesAndNotificationsSectionsIntact()
     {
         var profileStore = new SessionProfileStore(_configFilePath);
-        await profileStore.SaveAsync([new SessionProfile("work", @"C:\Users\raymo\.claude-work")]);
+        await profileStore.SaveAsync([new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"))]);
         var notificationStore = new NotificationSettingsStore(_configFilePath);
         await notificationStore.SaveAsync(new NotificationSettings { WebhookUrl = "https://example/webhook" });
 

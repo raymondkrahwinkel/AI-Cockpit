@@ -2,6 +2,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
@@ -441,7 +442,15 @@ public class VoicePushToTalkCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new ClaudeTtyViewModel(Substitute.For<IClaudeTtyLauncher>(), voicePushToTalk, voiceSettingsStore);
+        return new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore);
+    }
+
+    /// <summary>Resolves any profile (including none) to a fresh provider substitute — same as the real resolver does for a Claude profile or a profile-less session.</summary>
+    private static ITtySessionProviderResolver _Resolver()
+    {
+        var resolver = Substitute.For<ITtySessionProviderResolver>();
+        resolver.Resolve(Arg.Any<SessionProfile?>()).Returns(Substitute.For<ITtySessionProvider>());
+        return resolver;
     }
 
     /// <summary>
@@ -489,7 +498,7 @@ public class VoicePushToTalkCoordinatorTests
         terminalSettingsStore.LoadAsync().Returns(new TerminalSettings());
         return new CockpitViewModel(
             () => new SessionViewModel(),
-            () => new ClaudeTtyViewModel(),
+            () => new TtyViewModel(),
             Substitute.For<ISessionDialogService>(),
             captureService,
             playbackService,
