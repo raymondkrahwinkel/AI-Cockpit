@@ -20,8 +20,11 @@
          breaking changes, and there have been none. -->
     <!-- 1.2.0: added ProviderConfigStatus (the shared per-field ✓/✗ status line for provider config views). A new
          type is an addition, so still a minor; the major and abstractionsVersion stay 1 (nothing broke). -->
-    <Version>1.2.0</Version>
-    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <!-- 1.3.0 (#AC-13): added ICockpitHost.SetSessionStatusline/SetSessionName (default-implemented, so existing
+         plugins keep compiling) and WellKnownPluginSessionOptions.PaneId. Additions only — still a minor; the major
+         and abstractionsVersion stay 1. -->
+    <Version>1.3.0</Version>
+    <AssemblyVersion>1.3.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>
