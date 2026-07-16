@@ -14,6 +14,8 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public List<string> WrittenLines { get; } = [];
 
+    public IReadOnlyDictionary<string, string?>? EnvironmentVariables { get; private set; }
+
     public bool Disposed { get; private set; }
 
     public int? ProcessId { get; set; } = 4242;
@@ -22,6 +24,7 @@ internal sealed class FakeClaudeSdkSubprocess : IClaudeSdkSubprocess
 
     public void Start(string executablePath, IReadOnlyList<string> arguments, string workingDirectory, IReadOnlyDictionary<string, string?> environmentVariables)
     {
+        EnvironmentVariables = environmentVariables;
     }
 
     public Task WriteLineAsync(string line, CancellationToken cancellationToken = default)

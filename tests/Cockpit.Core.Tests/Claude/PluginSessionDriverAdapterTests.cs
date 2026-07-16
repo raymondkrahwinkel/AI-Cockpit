@@ -54,6 +54,58 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public void Capabilities_MapsSupportsEnvVarsFromThePluginCapabilities()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) { SupportsEnvVars = true } };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        adapter.Capabilities.SupportsEnvVars.Should().BeTrue();
+    }
+
+    // The profile's environment variables (AC-22) cross the plugin boundary host-scrubbed: a host-controlled
+    // key (an ANTHROPIC_* credential) is dropped here, so no plugin has to be trusted to apply that rule.
+    [Fact]
+    public async Task StartAsync_PassesTheProfilesEnvironmentVariablesToTheDriver()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
+        };
+
+        await adapter.StartAsync(profile);
+
+        inner.LastEnvironment.Should().Equal(new Dictionary<string, string> { ["AI_OS_ROOT"] = "/home/raymond/AI-OS" });
+    }
+
+    [Fact]
+    public async Task StartAsync_AProfileVariableOnAHostControlledKey_NeverCrossesThePluginBoundary()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("ANTHROPIC_API_KEY", "smuggled", IsSecret: true)],
+        };
+
+        await adapter.StartAsync(profile);
+
+        inner.LastEnvironment.Should().BeNull("the only configured variable is host-controlled, so nothing crosses");
+    }
+
+    [Fact]
+    public async Task StartAsync_WithoutProfileEnvironmentVariables_PassesNoEnvironment()
+    {
+        var inner = new FakePluginSessionDriver();
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+
+        await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")));
+
+        inner.LastEnvironment.Should().BeNull();
+    }
+
+    [Fact]
     public void Capabilities_ReportPermissionModeSwitch_UnsupportedForAPlugin_EvenWhenItDoesApprovals()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) };
