@@ -62,7 +62,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static readonly Core.Audio.AudioFormat AudioFormat = new();
 
     private readonly Func<SessionViewModel>? _sessionFactory;
-    private readonly Func<ClaudeTtyViewModel>? _ttySessionFactory;
+    private readonly Func<TtyViewModel>? _ttySessionFactory;
     private readonly ISessionDialogService? _dialogService;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
@@ -699,7 +699,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         foreach (var session in Sessions)
         {
-            if (session is ClaudeTtyViewModel tty)
+            if (session is TtyViewModel tty)
             {
                 tty.TerminalFontFamily = value;
             }
@@ -711,7 +711,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         foreach (var session in Sessions)
         {
-            if (session is ClaudeTtyViewModel tty)
+            if (session is TtyViewModel tty)
             {
                 tty.TerminalFontSize = value;
             }
@@ -740,7 +740,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         foreach (var session in Sessions)
         {
-            if (session is ClaudeTtyViewModel tty)
+            if (session is TtyViewModel tty)
             {
                 tty.IsVerticalLayout = StackSessionsVertically;
             }
@@ -1097,7 +1097,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
         var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
-        var tty = new ClaudeTtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
+        var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
 
         Sessions.Add(waiting);
         Sessions.Add(busy);
@@ -1118,7 +1118,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public CockpitViewModel(
         Func<SessionViewModel> sessionFactory,
-        Func<ClaudeTtyViewModel> ttySessionFactory,
+        Func<TtyViewModel> ttySessionFactory,
         ISessionDialogService dialogService,
         IAudioCaptureService captureService,
         IAudioPlaybackService playbackService,
@@ -2349,14 +2349,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // An SDK session, always: a plugin's prompt is text handed to a session, and a TTY is a terminal a human
         // drives. Starting one and typing into it on someone's behalf is not the same act at all.
+        // A plugin profile carries its start defaults in the generic OptionDefaults map; the typed Mode/Model/Effort
+        // are the retired Claude-CLI vocabulary and unused for a plugin launch, so they pass app defaults here.
         var result = new NewSessionResult(
             SessionKind.Sdk,
             profile,
-            SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode),
-            SessionOptionCatalog.ResolveModel(profile.Defaults?.Model),
-            SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort),
+            SessionOptionCatalog.DefaultPermissionMode,
+            SessionOptionCatalog.DefaultModel,
+            SessionOptionCatalog.DefaultEffort,
             name,
-            WorkingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory);
+            WorkingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
+            SdkLaunchOptions: profile.Defaults?.OptionDefaults);
 
         await _LaunchSessionFromResultAsync(result);
 
@@ -2384,14 +2387,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var session = _sessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, result.WorkingDirectory, result.Resume);
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, result.WorkingDirectory, result.Resume, result.SdkLaunchOptions);
         }
         else
         {
             var session = _ttySessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
-            session.LaunchConfigured(result.Profile, result.Mode.Value, result.Model.Value, result.Effort.Value, result.WorkingDirectory, result.Resume);
+
+            // Claude's permission-mode/model/effort are its own vocabulary, not every provider's — a plugin
+            // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
+            // both for the same launch (see NewSessionResult.PluginTtyOptions).
+            var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
+            session.LaunchConfigured(
+                result.Profile,
+                isClaudeProfile ? result.Mode.Value : null,
+                isClaudeProfile ? result.Model.Value : null,
+                isClaudeProfile ? result.Effort.Value : null,
+                result.WorkingDirectory,
+                result.Resume,
+                result.PluginTtyOptions);
         }
     }
 
@@ -2613,7 +2628,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Seed a TTY session with the current global terminal-appearance preference (#40); further
         // changes reach it live via OnTerminalFontFamilyChanged/OnTerminalFontSizeChanged. No effect on
         // SDK sessions — the setting is TTY-only.
-        if (session is ClaudeTtyViewModel tty)
+        if (session is TtyViewModel tty)
         {
             tty.TerminalFontFamily = TerminalFontFamily;
             tty.TerminalFontSize = TerminalFontSize;

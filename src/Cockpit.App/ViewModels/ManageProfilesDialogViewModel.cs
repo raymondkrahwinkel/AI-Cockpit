@@ -17,7 +17,7 @@ namespace Cockpit.App.ViewModels;
 public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
     private readonly ISessionProfileStore? _profileStore;
-    private readonly IClaudeProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginChecker? _loginChecker;
     private readonly IModelCatalog? _modelCatalog;
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
@@ -30,8 +30,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     /// <summary>All four modes: a profile's default may be bypass, which the New-session dialog then offers at launch.</summary>
     public IReadOnlyList<PermissionModeOption> PermissionModes => SessionOptionCatalog.AllPermissionModes;
 
-    public IReadOnlyList<ModelOption> Models => SessionOptionCatalog.Models;
-
+    // The Claude model field is now an editable AutoCompleteBox bound to each profile's own ClaudeModelSuggestions
+    // (EditableProfileViewModel), so the dialog no longer exposes a shared ModelOption list here.
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
     [ObservableProperty]
@@ -49,9 +49,8 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         var sample = new EditableProfileViewModel(
             new SessionProfile(
                 "local",
-                ConfigDir: string.Empty,
+                new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null),
                 Purpose: "cheap local model",
-                ProviderConfig: new OllamaConfig("http://localhost:11434", "Qwen2.5-Coder:7b", null),
                 Delegation: new DelegationPolicy(
                     AllowedAsTarget: true,
                     MaxConcurrent: 2,
@@ -64,7 +63,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 
     public ManageProfilesDialogViewModel(
         ISessionProfileStore profileStore,
-        IClaudeProfileLoginChecker loginChecker,
+        IProfileLoginChecker loginChecker,
         IModelCatalog? modelCatalog = null,
         IPluginProviderRegistry? pluginProviderRegistry = null)
     {
@@ -137,9 +136,10 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
     [RelayCommand]
     private void AddProfile()
     {
-        // A freshly added profile may pick its provider (#26); an existing one is fixed.
+        // A freshly added profile may pick its provider (#26); an existing one is fixed. Defaults to the bundled
+        // Claude provider plugin — Claude is a plugin like every other now (Fase 4), not a built-in CLI provider.
         var added = new EditableProfileViewModel(
-            new SessionProfile("new profile", string.Empty), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
+            new SessionProfile("new profile", ClaudePluginProfile.Create(string.Empty, null)), isLoggedIn: false, canChooseProvider: true, providers: _providers, pluginProviderRegistry: _pluginProviderRegistry);
         Profiles.Add(added);
         SelectedProfile = added;
     }
@@ -208,11 +208,15 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
             return;
         }
 
-        // A profile needs the fields its provider can launch with (a config directory for Claude, a base
-        // URL and model for a local provider); refuse to persist a half-filled row rather than write junk.
-        if (Profiles.Any(profile => !profile.IsValid))
+        // A profile needs the settings its own provider launches with; refuse to persist a half-filled row rather
+        // than write junk. The message names the profiles rather than the fields: which fields those are is the
+        // provider's business, and a message that enumerates them ("a config directory, or a base URL and model")
+        // is one that quietly becomes a lie with every provider added — as it already had for Codex, which needs
+        // neither.
+        if (Profiles.Where(profile => !profile.IsValid).Select(profile => profile.Label).ToList() is { Count: > 0 } incomplete)
         {
-            StatusMessage = "Every profile needs a label, plus a config directory (Claude) or a base URL and model (local).";
+            var named = incomplete.Select(label => string.IsNullOrWhiteSpace(label) ? "(unnamed)" : label);
+            StatusMessage = $"Fill in what these profiles' providers need: {string.Join(", ", named)}.";
             return;
         }
 

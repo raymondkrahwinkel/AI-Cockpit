@@ -419,20 +419,22 @@ internal sealed class BackupService(
 
         foreach (var profile in await profiles.LoadAsync(cancellationToken))
         {
-            if (!Directory.Exists(profile.ConfigDir))
+            // A profile running under another provider has no config directory to back up here — only the
+            // Claude CLI's own credentials/config live on disk under a profile-pinned directory.
+            if (profile.Claude is not { ConfigDir: { } configDir } || !Directory.Exists(configDir))
             {
                 continue;
             }
 
-            foreach (var file in Directory.EnumerateFiles(profile.ConfigDir, "*", SearchOption.AllDirectories))
+            foreach (var file in Directory.EnumerateFiles(configDir, "*", SearchOption.AllDirectories))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var relative = Path.GetRelativePath(profile.ConfigDir, file).Replace('\\', '/');
+                var relative = Path.GetRelativePath(configDir, file).Replace('\\', '/');
                 archive.CreateEntryFromFile(file, $"profiles/{profile.Label}/{relative}", CompressionLevel.Optimal);
             }
 
-            written[profile.Label] = profile.ConfigDir;
+            written[profile.Label] = configDir;
         }
 
         return written;

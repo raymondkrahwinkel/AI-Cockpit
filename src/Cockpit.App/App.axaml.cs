@@ -82,6 +82,14 @@ public partial class App : Application
     private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
+
+        // The New-session profile picker's ProfileDisplayConverter is used via x:Static (not DI-constructed), so
+        // hand it the provider registry once here — that lets a plugin profile show its own provider's name (e.g.
+        // "Claude") in the dropdown instead of the generic "(Plugin)" placeholder. The bundled plugins have already
+        // registered by now, so the lookup resolves.
+        Converters.ProfileDisplayConverter.PluginProviderRegistry =
+            Program.Services.GetRequiredService<Cockpit.Infrastructure.Sessions.IPluginProviderRegistry>();
+
         _mainWindow = new MainWindow
         {
             DataContext = cockpitViewModel,

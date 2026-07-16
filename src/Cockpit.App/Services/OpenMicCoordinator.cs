@@ -251,7 +251,7 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
                 return;
             }
 
-            var text = session is ClaudeTtyViewModel ? rawText : await _cleanup.CleanupAsync(rawText);
+            var text = session is TtyViewModel ? rawText : await _cleanup.CleanupAsync(rawText);
             session.InjectVoiceTranscript(text);
         }
         finally

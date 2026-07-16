@@ -86,7 +86,7 @@ public class CredentialFilePermissionTests : IDisposable
     {
         var path = TtyMcpConfigFile.Write("""{"mcpServers":{}}""", _directory);
 
-        using (var session = new TtyProcessOwningMcpConfig(new FakeConPtyProcess(), path))
+        using (var session = new TtyProcessOwningSessionFiles(new FakeConPtyProcess(), [path]))
         {
             File.Exists(path).Should().BeTrue("the CLI reads it while the session is alive");
         }

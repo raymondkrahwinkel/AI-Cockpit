@@ -4,6 +4,7 @@
              xmlns:views="using:Cockpit.App.Views"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:sessions="using:Cockpit.Core.Sessions"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
@@ -31,22 +32,28 @@
                     <Button Content="Stop" Command="{Binding StopCommand}" Classes="Compact"
                             VerticalAlignment="Center"
                             ToolTip.Tip="Interrupts the running turn (control_request/interrupt)"/>
-                    <ComboBox ItemsSource="{Binding PermissionModes}" SelectedItem="{Binding SelectedPermissionMode}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="104"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding Capabilities.SupportsPermissions}"
-                              IsEnabled="{Binding !IsPermissionModeLocked}" ToolTip.ShowOnDisabled="True"
-                              ToolTip.Tip="Permission mode for this session (live-switchable; bypass is locked once the session is launched in it)"/>
-                    <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding SelectedModel}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding Capabilities.SupportsLiveModelSwitch}"
-                              ToolTip.Tip="Model for this session (--model at launch, live-switchable)"/>
-                    <ComboBox ItemsSource="{Binding Efforts}" SelectedItem="{Binding SelectedEffort}"
-                              DisplayMemberBinding="{Binding Label}" Classes="Compact" MinWidth="90"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding Capabilities.SupportsThinking}"
-                              ToolTip.Tip="Thinking effort — the live thinking-token budget (set_max_thinking_tokens)"/>
+                    <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
+                         driver and rendered generically. Now that Claude is a provider plugin like Codex, both drive
+                         their live switches through this one panel — the driver names, labels and values each control,
+                         so the header offers them without any built-in provider vocabulary. -->
+                    <ItemsControl ItemsSource="{Binding LiveControls}" IsVisible="{Binding HasLiveControls}"
+                                  VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LiveControlViewModel">
+                                <ComboBox ItemsSource="{Binding ChoiceItems}"
+                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding SelectedValue, Mode=TwoWay}"
+                                          DisplayMemberBinding="{Binding Label}"
+                                          PlaceholderText="{Binding Label}" Classes="Compact" MinWidth="90"
+                                          VerticalAlignment="Center"
+                                          ToolTip.Tip="{Binding Label}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <!-- A speaker, struck through when off (#73): the header is a strip, and the word cost more
                          room than the thing it names. The tooltip carries what the icon cannot say. -->
                     <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
@@ -62,7 +69,7 @@
                 <TextBlock Grid.Column="2" Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
                            VerticalAlignment="Center" Margin="8,0,2,0"/>
 
-                <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="0,0,8,0">
+                <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,8,0">
                     <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
                             CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1" Margin="0,0,8,0"
                             IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -120,10 +127,32 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     </Border>
 
+                    <!-- What the session is spending, one bar each (#45 D7): how full the context window is, and the
+                         provider's own usage windows — the provider labels each ("5h", "wk", …), so the header
+                         renders whatever it reports without baking in window vocabulary. Fed by the provider's
+                         status feed (Codex's app-server usage); each bar hides until the provider reports it, so a
+                         provider with no feed (a local model) shows nothing rather than a bar sitting at "0%". -->
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
+                                Margin="8,0,0,0" ToolTip.Tip="{Binding LimitsTooltip}">
+                        <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
+                        <ItemsControl ItemsSource="{Binding RateLimits}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="10"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sessions:SessionRateWindow">
+                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" FontSize="10" Height="14"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
                     <!-- Plugin-contributed header items (#: session header items): status belonging to this
                          session — the git state of the repo it works in, say. Takes no space when no plugin
                          contributes one. -->
-                    <controls:PluginSessionHeaderHost Grid.Column="4" Margin="8,0,0,0"/>
+                    <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0"/>
                 </Grid>
             </Grid>
         </Border>

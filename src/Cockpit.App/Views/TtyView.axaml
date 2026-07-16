@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:term="using:Exclr8.Terminal"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
+             x:Class="Cockpit.App.Views.TtyView"
+             x:DataType="vm:TtyViewModel">
+
+    <Design.DataContext>
+        <vm:TtyViewModel/>
+    </Design.DataContext>
+
+    <DockPanel Margin="16">
+
+        <!-- Compact one-row session header: the session data (TTY tag with render diagnostics on hover,
+             status, profile, working directory, read-aloud/redraw) is left-aligned; the session title is
+             docked right. Always top-docked, including the stacked-vertical grid layout (#54). -->
+        <Border x:Name="HeaderPanel" DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
+                           VerticalAlignment="Center" Margin="8,0,2,0"/>
+                <StackPanel x:Name="StatusRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Border Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
+                        CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1"
+                        ToolTip.Tip="{Binding Diagnostics}">
+                    <TextBlock Text="TTY" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                </Border>
+                <TextBlock Text="{Binding Status}" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <!-- Working directory the TUI runs in (#: header working-path). Ellipsised so a deep path
+                     never stretches the header; the full path is on hover. -->
+                <TextBlock Text="{Binding WorkingPath}" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                           TextTrimming="CharacterEllipsis" MaxWidth="300"
+                           ToolTip.Tip="{Binding WorkingPath}"/>
+                <!-- What the session is spending: how full its context window is, and how much of the five-hour and
+                     weekly allowance is gone. A bar each, because the operator is not after the number — they want
+                     to know whether something is running out, and a filled strip says that without being read. Each
+                     one hides itself until Claude has reported it: before the first response it reports none of it,
+                     and a bar sitting at "0%" would be a claim rather than a silence. -->
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
+                            ToolTip.Tip="{Binding LimitsTooltip}">
+                    <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
+                    <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
+                    <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
+                </StackPanel>
+                <!-- Plugin-contributed header items (#: session header items) — same contribution point the SDK
+                     header renders, so a plugin writes its indicator once and it shows in both session kinds. -->
+                <controls:PluginSessionHeaderHost/>
+                <!-- Read-aloud (#35b): tails the live JSONL session transcript for assistant text. A speaker,
+                     struck through when off (#73) — the header is a strip, and a word costs more room than the
+                     thing it names. -->
+                <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
+                              VerticalAlignment="Center"
+                              Content="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
+                              ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}"/>
+                <!-- Redraw is a diagnostic, not part of the work: shown only with the debug controls on (#73). -->
+                <Button Content="Redraw" Click="OnRedrawClick" Classes="Compact" VerticalAlignment="Center"
+                        IsVisible="{Binding ShowDebugControls}"
+                        ToolTip.Tip="Force the terminal to repaint from scratch — recovers the TUI if a resize/focus change left it misaligned or stacked at the top"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- The terminal surface: Exclr8.Terminal, a pure Avalonia terminal-emulator renderer with no
+             PTY plumbing of its own. The code-behind hosts the ConPTY/Porta.Pty process, feeds pty
+             output in via Write(...), forwards the control's Input/Output byte events to the pty, and
+             relays Resized to the pty. -->
+        <Border BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}" Padding="4"
+                Background="Black">
+            <!-- TerminalControl.FontFamily/FontSize are plain CLR properties (not registered
+                 AvaloniaProperties), so Avalonia's compiled-binding XAML compiler can't target them
+                 directly (AVLN3000) — the code-behind applies the VM's font settings imperatively
+                 instead (#40), the same "code-behind owns the terminal plumbing" pattern already used
+                 for Input/Output/Resized below. Default mirrors the old hardcoded fallback list:
+                 "Cascadia Mono" is Windows-only, so without the monospace fallback the terminal dropped
+                 to the proportional UI font on Linux/macOS, which put a phantom gap between the text and
+                 the block cursor. -->
+            <term:TerminalControl x:Name="Terminal" FontFamily="Cascadia Mono, Consolas, monospace" FontSize="13"/>
+        </Border>
+    </DockPanel>
+</UserControl>

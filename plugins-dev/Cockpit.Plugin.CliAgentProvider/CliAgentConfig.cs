@@ -47,6 +47,37 @@ internal sealed record CliAgentConfig(
     public IReadOnlyList<string> EffectiveExtraArgs => ExtraArgs ?? [];
 
     /// <summary>
+    /// The operator's per-session launch-option choice from the New-session dialog wins; the profile's own
+    /// configured value is the fallback, and a blank choice counts as absent. Shared by both the TTY provider
+    /// and the app-server driver so this precedence lives in one place.
+    /// </summary>
+    public static string? ResolveOption(IReadOnlyDictionary<string, string>? options, string key, string? fallback) =>
+        options is not null && options.TryGetValue(key, out var chosen) && !string.IsNullOrWhiteSpace(chosen) ? chosen : fallback;
+
+    /// <summary>
+    /// The environment overlay for a spawned CLI process — shared by both the exec and app-server drivers so
+    /// the auth/config-dir handling lives in one place. The API key is set as an env-var (never a CLI argument,
+    /// which would be visible in the process list) only when both an <see cref="AuthEnvVar"/> and an
+    /// <see cref="ApiKey"/> are present; <see cref="ConfigDir"/> maps to Codex's <c>CODEX_HOME</c>.
+    /// </summary>
+    public Dictionary<string, string?> BuildEnvironmentVariables()
+    {
+        var environmentVariables = new Dictionary<string, string?>();
+
+        if (!string.IsNullOrWhiteSpace(AuthEnvVar) && !string.IsNullOrEmpty(ApiKey))
+        {
+            environmentVariables[AuthEnvVar] = ApiKey;
+        }
+
+        if (!string.IsNullOrWhiteSpace(ConfigDir))
+        {
+            environmentVariables["CODEX_HOME"] = ConfigDir;
+        }
+
+        return environmentVariables;
+    }
+
+    /// <summary>
     /// Overrides the record's auto-generated <c>ToString()</c>, which would otherwise print <see cref="ApiKey"/>
     /// in the clear — anywhere this config lands in a log line or exception message (mirrors <c>OpenAiCompatConfig.ToString()</c>).
     /// </summary>

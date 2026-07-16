@@ -80,7 +80,7 @@ public class DelegationWorkspaceTests
     {
         var policy = new DelegationPolicy(AllowedAsTarget: true);
 
-        return new SessionProfile(label, ConfigDir: string.Empty, Delegation: tune?.Invoke(policy) ?? policy);
+        return new SessionProfile(label, new ClaudeConfig(string.Empty), Delegation: tune?.Invoke(policy) ?? policy);
     }
 
     private static DelegationService _ServiceWith(IReadOnlyList<string> workspaces, params SessionProfile[] profiles)

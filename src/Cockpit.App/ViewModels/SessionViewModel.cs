@@ -30,6 +30,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>The per-session MCP-server selection (#44) from the New-session dialog, set just before <see cref="StartWithProfileAsync"/> reads it in <see cref="StartConfiguredAsync"/>.</summary>
     private IReadOnlySet<string>? _enabledMcpServerNames;
+
+    /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
+    private IReadOnlyDictionary<string, string>? _launchOptions;
     private TranscriptEntryViewModel? _currentAssistantEntry;
     private TranscriptEntryViewModel? _currentThinkingEntry;
 
@@ -93,17 +96,40 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     partial void OnIsPermissionModeLockedChanged(bool value) => OnPropertyChanged(nameof(PermissionModes));
 
-    /// <summary>Models offered per session; the selected one becomes <c>--model</c> at launch and can be switched live.</summary>
-    public IReadOnlyList<ModelOption> Models => SessionOptionCatalog.Models;
+    /// <summary>The Claude model aliases suggested in the editable model field; the field stays free text so a specific model or snapshot can be pinned live, matching the New-session dialog.</summary>
+    public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
+    /// <summary>
+    /// The running session's model of record: the launch <c>--model</c>, and what a live switch updates. The header
+    /// edits it through <see cref="LiveModelText"/> rather than binding here directly, so a switch applies on commit
+    /// (Enter/focus-loss) instead of on every keystroke.
+    /// </summary>
     [ObservableProperty]
     private ModelOption _selectedModel = SessionOptionCatalog.DefaultModel;
+
+    /// <summary>
+    /// The editable text in the header's Claude model field. Setting it has no side effect — the live switch fires
+    /// only when <see cref="CommitLiveModel"/> is called (the view commits on Enter, focus-loss, or picking a
+    /// suggestion), so typing a snapshot name does not fire a set_model control request per character.
+    /// </summary>
+    [ObservableProperty]
+    private string _liveModelText = SessionOptionCatalog.DefaultModel.Value;
 
     /// <summary>Thinking-effort levels offered per session; drives the thinking-budget control.</summary>
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
     [ObservableProperty]
     private EffortOption _selectedEffort = SessionOptionCatalog.DefaultEffort;
+
+    /// <summary>
+    /// The running plugin provider's generic live controls (#45 D4) — Codex's model and effort — populated after
+    /// start from the driver's declared options. Empty for Claude and local sessions, which drive their controls
+    /// through the typed dropdowns above; a provider with nothing to switch leaves the panel hidden.
+    /// </summary>
+    public ObservableCollection<LiveControlViewModel> LiveControls { get; } = [];
+
+    /// <summary>True once the running provider declared at least one generic live control, so the panel shows only when it has something in it.</summary>
+    public bool HasLiveControls => LiveControls.Count > 0;
 
     [ObservableProperty]
     private string _inputText = string.Empty;
@@ -163,6 +189,25 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _usageTooltip = string.Empty;
 
+    /// <summary>
+    /// How full the context window is (#45 D7), drawn as the header's "ctx" bar. Null until the provider reports
+    /// it — a bar reading "0%" would be a claim rather than a silence. Fed from the driver's status feed (Codex's
+    /// app-server usage); a provider with no feed leaves it null and the bar stays hidden.
+    /// </summary>
+    [ObservableProperty]
+    private double? _contextUsedPercent;
+
+    /// <summary>
+    /// The provider's usage windows, each a self-labelled header bar (#45 D7) — the provider chooses the label
+    /// ("5h", "wk", …), so the header renders whatever it reports without baking in window vocabulary. Empty when
+    /// the provider reports none.
+    /// </summary>
+    public ObservableCollection<SessionRateWindow> RateLimits { get; } = [];
+
+    /// <summary>The whole story on hover, including when each window rolls over — the thing a bar cannot say.</summary>
+    [ObservableProperty]
+    private string _limitsTooltip = string.Empty;
+
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
     // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
@@ -171,6 +216,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
         ActiveProfileLabel = "raymond@work";
+
+        // Sample status bars (#45 D7) so the previewer/Screenshotter renders the header's ctx bar and the
+        // provider-labelled window bars.
+        ContextUsedPercent = 37;
+        RateLimits.Add(new SessionRateWindow("5h", 58, null));
+        RateLimits.Add(new SessionRateWindow("wk", 82, null));
+        LimitsTooltip = "Context window: 37% used";
+
+        // Sample generic live controls (#45 D4) so the previewer/Screenshotter renders the header's live-control panel.
+        LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("model", "Model", ["gpt-5-codex", "gpt-5"], "gpt-5-codex"), (_, _) => Task.CompletedTask));
+        LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], "medium"), (_, _) => Task.CompletedTask));
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "fix the layout bug in SessionView"));
 
@@ -242,6 +298,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         };
         Transcript.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTranscript));
         QueuedMessages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueuedMessages));
+        LiveControls.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLiveControls));
     }
 
     /// <summary>Keeps the Send button's enabled state in sync as the input text changes (T8 CanSend).</summary>
@@ -253,7 +310,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null)
+    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null)
     {
         if (_runtime is not null)
         {
@@ -268,8 +325,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         SelectedPermissionMode = mode;
         IsPermissionModeLocked = isBypass;
         SelectedModel = model;
+        LiveModelText = model.Value;
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
+        _launchOptions = launchOptions;
 
         await StartWithProfileAsync(profile, workingDirectory, resume);
 
@@ -319,7 +378,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // provider — it uses the model set on its profile. Only pass the selected model for Claude, so
             // a local session keeps its own configured model instead of being clobbered with "opus".
             var launchModel = profile?.Provider is null or SessionProvider.ClaudeCli ? SelectedModel.Value : null;
-            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume);
+            await runtime.StartAsync(profile, SelectedPermissionMode.Value, launchModel, _enabledMcpServerNames, workingDirectory, resume, _launchOptions);
 
             // The process the meter weighs (#78) exists only once the driver started it.
             ProcessId = runtime.ProcessId;
@@ -333,6 +392,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             {
                 Capabilities = capabilities;
             }
+
+            // The provider's generic live controls (#45 D4) settle at the same moment as capabilities — the driver
+            // lists them once its session is up (Codex resolves its model list on start) — so read them here too.
+            _PopulateLiveControls();
 
             OnPropertyChanged(nameof(CanPasteImages));
             // A local tool session gates via the per-call approval prompt (not Claude's permission modes), so it
@@ -397,6 +460,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         _ = _SetModelSafeAsync(value.Value);
+    }
+
+    /// <summary>
+    /// Applies the edited Claude model as a live switch, called by the view when the model field commits (Enter,
+    /// focus-loss, or picking a suggestion). Routes through <see cref="SelectedModel"/> so the model of record and
+    /// the live control request (via <see cref="OnSelectedModelChanged"/>) stay one path; a blank field or an
+    /// unchanged value is ignored so a commit that changed nothing fires no request.
+    /// </summary>
+    public void CommitLiveModel()
+    {
+        var text = LiveModelText?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        var model = SessionOptionCatalog.ModelForValue(text);
+        if (model.Value != SelectedModel.Value)
+        {
+            SelectedModel = model;
+        }
     }
 
     /// <summary>Live-switches the running session's thinking budget. No-op before the session has started.</summary>
@@ -477,6 +561,39 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         catch (Exception ex)
         {
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Effort switch failed: {ex.Message}"));
+        }
+    }
+
+    /// <summary>Rebuilds the generic live-control panel from the running driver's declared options (#45 D4).</summary>
+    private void _PopulateLiveControls()
+    {
+        LiveControls.Clear();
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        foreach (var option in _runtime.LiveOptions)
+        {
+            LiveControls.Add(new LiveControlViewModel(option, _SetLiveOptionSafeAsync));
+        }
+    }
+
+    /// <summary>Live-switches one of the provider's generic controls on the running session's driver (#45 D4).</summary>
+    private async Task _SetLiveOptionSafeAsync(string key, string value)
+    {
+        if (_runtime is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _runtime.SetLiveOptionAsync(key, value);
+        }
+        catch (Exception ex)
+        {
+            Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Live switch failed: {ex.Message}"));
         }
     }
 
@@ -883,6 +1000,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _AccumulateUsage(turn);
+                _RefreshLimits();
                 _RecomputeStatus();
                 // "exit" turn finished → ask the cockpit to close this session (T10). Skip draining the
                 // queue: the session is going away, so anything still queued is moot.
@@ -951,6 +1069,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         HasUsage = _usage.HasData;
         UsageSummary = _usage.Summary;
         UsageTooltip = _usage.Tooltip;
+    }
+
+    // Pulls the driver's latest limits into the header bars. Read at each turn boundary rather than on a timer:
+    // the provider reports how full the context window is when a turn ends, so that is when the numbers change —
+    // and a session with no limits feed simply reads null and keeps the bars hidden.
+    private void _RefreshLimits()
+    {
+        if (_runtime?.CurrentStatus is { HasAny: true } status)
+        {
+            ContextUsedPercent = status.ContextUsedPercent;
+            RateLimits.Clear();
+            foreach (var window in status.RateLimits)
+            {
+                RateLimits.Add(window);
+            }
+
+            LimitsTooltip = status.Describe();
+        }
     }
 
     /// <summary>

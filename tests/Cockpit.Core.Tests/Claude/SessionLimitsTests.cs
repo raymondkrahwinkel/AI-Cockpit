@@ -45,7 +45,7 @@ public class SessionLimitsTests
 
         limits.Should().NotBeNull();
         limits!.HasAny.Should().BeFalse();
-        ClaudeTtyViewModel.DescribeLimits(limits).Should().BeEmpty();
+        TtyViewModel.DescribeLimits(limits).Should().BeEmpty();
     }
 
     [Fact]
@@ -54,13 +54,13 @@ public class SessionLimitsTests
         // The context percentage without the allowances: what a session on a plan with no rate limits looks like.
         var limits = SessionLimits.TryParse("""{ "context_window": { "used_percentage": 61.2 } }""");
 
-        ClaudeTtyViewModel.DescribeLimits(limits!).Should().Be("Context window: 61% used");
+        TtyViewModel.DescribeLimits(limits!).Should().Be("Context window: 61% used");
     }
 
     [Fact]
     public void TheHoverText_SaysWhatTheBarsCannot_WhenEachWindowRollsOver()
     {
-        var description = ClaudeTtyViewModel.DescribeLimits(SessionLimits.TryParse(FullBlob)!);
+        var description = TtyViewModel.DescribeLimits(SessionLimits.TryParse(FullBlob)!);
 
         description.Should().Contain("Context window: 43% used");
         description.Should().Contain("Session (5 hours): 18% used — resets");

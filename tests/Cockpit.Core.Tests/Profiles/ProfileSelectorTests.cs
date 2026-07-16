@@ -20,8 +20,8 @@ public class ProfileSelectorTests
     {
         var statuses = new[]
         {
-            new SessionProfileStatus(new SessionProfile("default", @"C:\Users\raymo\.claude"), IsLoggedIn: false),
-            new SessionProfileStatus(new SessionProfile("work", @"C:\Users\raymo\.claude-work"), IsLoggedIn: false),
+            new SessionProfileStatus(new SessionProfile("default", new ClaudeConfig(@"C:\Users\raymo\.claude")), IsLoggedIn: false),
+            new SessionProfileStatus(new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work")), IsLoggedIn: false),
         };
 
         var outcome = ProfileSelector.Select(statuses);
@@ -32,11 +32,11 @@ public class ProfileSelectorTests
     [Fact]
     public void Select_ExactlyOneLoggedIn_ReturnsUseSilentlyWithThatProfile()
     {
-        var loggedIn = new SessionProfile("default", @"C:\Users\raymo\.claude");
+        var loggedIn = new SessionProfile("default", new ClaudeConfig(@"C:\Users\raymo\.claude"));
         var statuses = new[]
         {
             new SessionProfileStatus(loggedIn, IsLoggedIn: true),
-            new SessionProfileStatus(new SessionProfile("work", @"C:\Users\raymo\.claude-work"), IsLoggedIn: false),
+            new SessionProfileStatus(new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work")), IsLoggedIn: false),
         };
 
         var outcome = ProfileSelector.Select(statuses);
@@ -48,13 +48,13 @@ public class ProfileSelectorTests
     [Fact]
     public void Select_MoreThanOneLoggedIn_ReturnsRequiresChoiceWithOnlyLoggedInCandidates()
     {
-        var personal = new SessionProfile("personal", @"C:\Users\raymo\.claude-personal");
-        var work = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var personal = new SessionProfile("personal", new ClaudeConfig(@"C:\Users\raymo\.claude-personal"));
+        var work = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
         var statuses = new[]
         {
             new SessionProfileStatus(personal, IsLoggedIn: true),
             new SessionProfileStatus(work, IsLoggedIn: true),
-            new SessionProfileStatus(new SessionProfile("stale", @"C:\Users\raymo\.claude-stale"), IsLoggedIn: false),
+            new SessionProfileStatus(new SessionProfile("stale", new ClaudeConfig(@"C:\Users\raymo\.claude-stale")), IsLoggedIn: false),
         };
 
         var outcome = ProfileSelector.Select(statuses);
@@ -67,8 +67,8 @@ public class ProfileSelectorTests
     [Fact]
     public void Select_MoreThanOneLoggedInWithLastUsed_MovesLastUsedToFrontOfCandidates()
     {
-        var personal = new SessionProfile("personal", @"C:\Users\raymo\.claude-personal");
-        var work = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var personal = new SessionProfile("personal", new ClaudeConfig(@"C:\Users\raymo\.claude-personal"));
+        var work = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
         var statuses = new[]
         {
             new SessionProfileStatus(personal, IsLoggedIn: true),
@@ -84,8 +84,8 @@ public class ProfileSelectorTests
     [Fact]
     public void Select_LastUsedLabelUnknown_LeavesCandidateOrderUnchanged()
     {
-        var personal = new SessionProfile("personal", @"C:\Users\raymo\.claude-personal");
-        var work = new SessionProfile("work", @"C:\Users\raymo\.claude-work");
+        var personal = new SessionProfile("personal", new ClaudeConfig(@"C:\Users\raymo\.claude-personal"));
+        var work = new SessionProfile("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
         var statuses = new[]
         {
             new SessionProfileStatus(personal, IsLoggedIn: true),

@@ -10,7 +10,7 @@ namespace Cockpit.App.ViewModels;
 /// The surface every cockpit session panel shares regardless of mode (SDK chat or TTY terminal):
 /// the sidebar/overview title, selection, coarse status, and profile label, plus disposal. Lets
 /// <see cref="CockpitViewModel"/> manage a mixed collection of <see cref="SessionViewModel"/>
-/// (SDK) and <see cref="ClaudeTtyViewModel"/> (TTY) panels through one type.
+/// (SDK) and <see cref="TtyViewModel"/> (TTY) panels through one type.
 /// </summary>
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {
@@ -144,15 +144,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private bool _isConfirmingClose;
 
     /// <summary>
-    /// True when closing would interrupt a running turn, so the close asks first. Idle/waiting/done
-    /// sessions close on a single click.
+    /// True when closing would interrupt work in flight, so the close asks first — a running turn or a session
+    /// whose background sub-agents are still going. Idle/waiting/done sessions close on a single click.
     /// </summary>
-    public bool RequiresCloseConfirmation => SessionStatus == SessionStatus.Busy;
+    public bool RequiresCloseConfirmation => SessionStatus is SessionStatus.Busy or SessionStatus.WorkingBackground;
 
     /// <summary>Short human-readable label for <see cref="SessionStatus"/>, for the sidebar status row.</summary>
     public string SessionStatusLabel => SessionStatus switch
     {
         SessionStatus.Busy => "Busy",
+        SessionStatus.WorkingBackground => "Working (background)",
         SessionStatus.WaitingForInput => "Waiting for input",
         SessionStatus.NeedsAttention => "Needs attention",
         SessionStatus.Done => "Done",
@@ -475,6 +476,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     public string SessionStatusBrushKey => SessionStatus switch
     {
         SessionStatus.Busy => "CockpitStatusBusyBrush",
+        SessionStatus.WorkingBackground => "CockpitStatusBackgroundBrush",
         SessionStatus.WaitingForInput or SessionStatus.NeedsAttention => "CockpitStatusWaitingBrush",
         SessionStatus.Done => "CockpitStatusDoneBrush",
         _ => "CockpitTextFaintBrush",

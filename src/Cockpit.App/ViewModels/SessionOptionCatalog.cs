@@ -66,6 +66,24 @@ public static class SessionOptionCatalog
     public static ModelOption ResolveModel(string? value) =>
         Models.FirstOrDefault(model => model.Value == value) ?? DefaultModel;
 
+    /// <summary>
+    /// The model values offered as suggestions in the editable Claude model field — the CLI's own aliases
+    /// (<c>opus</c>/<c>sonnet</c>/<c>haiku</c>), which it resolves to the current model itself, so this list needs
+    /// no per-release upkeep. The field stays free text, so an operator can still pin a specific model or snapshot.
+    /// </summary>
+    public static IReadOnlyList<string> ClaudeModelSuggestions { get; } = [.. Models.Select(model => model.Value)];
+
+    /// <summary>
+    /// Turns what the operator typed or picked in the editable model field back into a <see cref="ModelOption"/>:
+    /// a known alias keeps its friendly label, anything else (a pinned model/snapshot) becomes its own value, and
+    /// a blank field falls back to the app default — so the <see cref="ModelOption"/> pipeline is unchanged whether
+    /// the value came from a dropdown or free text.
+    /// </summary>
+    public static ModelOption ModelForValue(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? DefaultModel
+            : Models.FirstOrDefault(model => model.Value == value.Trim()) ?? new ModelOption(value.Trim(), value.Trim());
+
     /// <summary>Resolves an effort value to an option, or the app default.</summary>
     public static EffortOption ResolveEffort(string? value) =>
         Efforts.FirstOrDefault(effort => effort.Value == value) ?? DefaultEffort;

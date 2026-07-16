@@ -26,8 +26,8 @@ public class VoicePushToTalkCoordinatorDependencyInjectionTests
 
         services.AddTransient<Func<SessionViewModel>>(
             provider => () => provider.GetRequiredService<SessionViewModel>());
-        services.AddTransient<Func<ClaudeTtyViewModel>>(
-            provider => () => provider.GetRequiredService<ClaudeTtyViewModel>());
+        services.AddTransient<Func<TtyViewModel>>(
+            provider => () => provider.GetRequiredService<TtyViewModel>());
 
         return services.BuildServiceProvider();
     }

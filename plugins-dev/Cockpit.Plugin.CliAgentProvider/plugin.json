@@ -6,6 +6,6 @@
   "entryType": "Cockpit.Plugin.CliAgentProvider.CliAgentProviderPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "0.1.0",
-  "description": "Experimental (fase B1): adds Codex CLI as a selectable session provider, driven as a subprocess per turn (`codex exec --json`, resumed via `codex exec resume <threadId>` for follow-up turns). No in-band tool-permission channel — configure the codex sandbox/approval mode per profile. Requires the codex CLI installed and authenticated (CODEX_API_KEY or `codex login`) on the machine running Cockpit.",
+  "description": "Adds the Codex CLI as a provider, in two ways. As a TTY session it runs the real interactive Codex TUI in a pane, the same as Claude's — its own interface, its own approval prompts, which the cockpit cannot see into. As an SDK session it is driven headless, a subprocess per turn (`codex exec --json`); that route has no in-band permission channel at all, because Codex sets approval-policy to never in headless mode. Configure the sandbox per profile. Requires the codex CLI installed and authenticated (`codex login`) on the machine running Cockpit.",
   "author": "Cockpit"
 }

@@ -21,7 +21,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// </summary>
 public class SessionViewModelTests
 {
-    private static readonly SessionProfile Profile = new("default", @"C:\fake\.claude");
+    private static readonly SessionProfile Profile = new("default", new ClaudeConfig(@"C:\fake\.claude"));
 
     [Fact]
     public async Task StartConfigured_LaunchesWithTheChosenModel()
@@ -33,7 +33,28 @@ public class SessionViewModelTests
         await vm.StartConfiguredAsync(
             Profile, SessionOptionCatalog.DefaultPermissionMode, new ModelOption("Haiku", "haiku"), SessionOptionCatalog.DefaultEffort);
 
-        await session.Received(1).StartAsync(Profile, Arg.Any<string?>(), "haiku", Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<CancellationToken>());
+        await session.Received(1).StartAsync(Profile, Arg.Any<string?>(), "haiku", Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task TurnCompleted_PullsTheDriversLimits_IntoTheHeaderBars()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var reset = DateTimeOffset.FromUnixTimeSeconds(1800000000);
+        session.CurrentStatus.Returns(new SessionStatusFeed(25, [new SessionRateWindow("5h", 60, reset), new SessionRateWindow("wk", 80, null)]));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // D7: a completed turn is when the provider's usage changes, so the header pulls the driver's status then.
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        vm.ContextUsedPercent.Should().Be(25);
+        vm.RateLimits.Should().Equal(new SessionRateWindow("5h", 60, reset), new SessionRateWindow("wk", 80, null));
+        vm.LimitsTooltip.Should().Contain("Context window: 25% used");
 
         await vm.DisposeAsync();
     }
@@ -74,7 +95,7 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        session.StartAsync(Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<CancellationToken>())
+        session.StartAsync(Arg.Any<SessionProfile?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("bad executable")));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
@@ -138,8 +159,9 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"),
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"),
             Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
@@ -160,8 +182,9 @@ public class SessionViewModelTests
         session.Events.Returns(EmptyEvents());
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
@@ -170,6 +193,116 @@ public class SessionViewModelTests
         vm.ShowToolAutoApprove.Should().BeTrue();
         vm.AutoApproveTools.Should().BeFalse();
         await session.DidNotReceive().SetAutoApproveToolsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartConfigured_PopulatesTheLiveControls_FromTheDriversLiveOptions()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("model", "Model", ["gpt-5-codex", "gpt-5"], "gpt-5-codex"),
+            new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], null),
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // D4: the provider's live controls become the header's generic panel, each opened on its current value.
+        vm.HasLiveControls.Should().BeTrue();
+        vm.LiveControls.Should().HaveCount(2);
+        vm.LiveControls[0].Key.Should().Be("model");
+        vm.LiveControls[0].Choices.Should().Equal("gpt-5-codex", "gpt-5");
+        vm.LiveControls[0].SelectedValue.Should().Be("gpt-5-codex");
+        vm.LiveControls[1].Key.Should().Be("effort");
+        vm.LiveControls[1].SelectedValue.Should().BeNull();
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartConfigured_LiveControls_ShowTheProviderChoiceLabels_WhileValuesRoundTripRaw()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("permissionMode", "Permissions", ["default", "plan"], "default")
+            {
+                ChoiceLabels = new Dictionary<string, string> { ["default"] = "Ask permissions", ["plan"] = "Plan mode" },
+            },
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // Fase 4 step 1: the live-control dropdown reads the provider's friendly labels, while the value the driver
+        // gets back on a switch stays the raw CLI value.
+        var control = vm.LiveControls[0];
+        control.ChoiceItems.Select(choice => choice.Label).Should().Equal("Ask permissions", "Plan mode");
+        control.ChoiceItems.Select(choice => choice.Value).Should().Equal("default", "plan");
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task PickingALiveControlValue_SwitchesItOnTheDriver()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.LiveOptions.Returns(
+        [
+            new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], null),
+        ]);
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // D4: picking a value in the panel forwards it to the running driver, which applies it to the next turn.
+        vm.LiveControls[0].SelectedValue = "high";
+
+        await session.Received(1).SetLiveOptionAsync("effort", "high", Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task CommitLiveModel_LiveSwitchesTheClaudeModel_ToAPinnedSnapshot()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
+
+        // The running-session model field is free text like the New-session dialog, so a specific snapshot can be
+        // pinned live rather than only the three aliases — applied on commit (the view calls CommitLiveModel).
+        vm.LiveModelText = "claude-sonnet-4-5-20250929";
+        vm.CommitLiveModel();
+
+        await session.Received(1).SetModelAsync("claude-sonnet-4-5-20250929", Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task CommitLiveModel_WithTheSameModel_FiresNoSwitch()
+    {
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            Profile, SessionOptionCatalog.DefaultPermissionMode, new ModelOption("Sonnet", "sonnet"), SessionOptionCatalog.DefaultEffort);
+
+        // A commit that changed nothing (the field still holds the launch model) must not fire a redundant switch.
+        vm.CommitLiveModel();
+
+        await session.DidNotReceive().SetModelAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>());
 
         await vm.DisposeAsync();
     }
@@ -208,8 +341,9 @@ public class SessionViewModelTests
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
             SupportsVision: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(
@@ -235,8 +369,9 @@ public class SessionViewModelTests
         session.Capabilities.Returns(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
             SupportsVision: false));
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
         await vm.StartConfiguredAsync(
             localProfile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort);
@@ -258,8 +393,9 @@ public class SessionViewModelTests
     {
         var session = Substitute.For<ISessionDriver>();
         session.Events.Returns(EmptyEvents());
-        var localProfile = new SessionProfile("ollama", ConfigDir: "",
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var localProfile = new SessionProfile(
+            "ollama",
+            new OllamaConfig("http://localhost:11434", "llama3.1"));
         var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
 
         await vm.StartConfiguredAsync(

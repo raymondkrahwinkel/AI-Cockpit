@@ -144,7 +144,7 @@ public class CockpitViewModelTests
         var dialogService = Substitute.For<ISessionDialogService>();
         dialogService.ShowNewSessionDialogAsync().Returns(new NewSessionResult(
             SessionKind.Sdk,
-            new SessionProfile("default", @"C:\fake\.claude"),
+            new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude")),
             SessionOptionCatalog.DefaultPermissionMode,
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
@@ -294,7 +294,7 @@ public class CockpitViewModelTests
         await vm.NewSessionCommand.ExecuteAsync(null);
 
         vm.Sessions.Should().ContainSingle();
-        vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>();
+        vm.Sessions[0].Should().BeOfType<TtyViewModel>();
         vm.SelectedSession.Should().Be(vm.Sessions[0]);
         vm.SelectedSession!.IsSelected.Should().BeTrue();
     }
@@ -442,7 +442,7 @@ public class CockpitViewModelTests
 
         var vm = new CockpitViewModel(
             () => new SessionViewModel(),
-            () => new ClaudeTtyViewModel(),
+            () => new TtyViewModel(),
             DefaultDialogService(),
             Substitute.For<IAudioCaptureService>(),
             Substitute.For<IAudioPlaybackService>(),
@@ -567,7 +567,7 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
         tty.TerminalFontFamily.Should().Be("Fira Code");
         tty.TerminalFontSize.Should().Be(20);
     }
@@ -579,7 +579,7 @@ public class CockpitViewModelTests
         dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
         var vm = NewVm(dialogService);
         await vm.NewSessionCommand.ExecuteAsync(null);
-        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
 
         vm.TerminalFontFamily = "DejaVu Sans Mono";
         vm.TerminalFontSize = 24;
@@ -626,7 +626,7 @@ public class CockpitViewModelTests
 
         await vm.NewSessionCommand.ExecuteAsync(null);
 
-        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
         tty.IsVerticalLayout.Should().BeTrue();
     }
 
@@ -637,7 +637,7 @@ public class CockpitViewModelTests
         dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Tty));
         var vm = NewVm(dialogService);
         await vm.NewSessionCommand.ExecuteAsync(null);
-        var tty = vm.Sessions[0].Should().BeOfType<ClaudeTtyViewModel>().Subject;
+        var tty = vm.Sessions[0].Should().BeOfType<TtyViewModel>().Subject;
 
         vm.GlobalStackSessionsVertically = true;
 
@@ -871,7 +871,7 @@ public class CockpitViewModelTests
 
         return new CockpitViewModel(
             () => new SessionViewModel(),
-            () => new ClaudeTtyViewModel(),
+            () => new TtyViewModel(),
             dialogService ?? DefaultDialogService(),
             captureService,
             playbackService,
@@ -894,7 +894,7 @@ public class CockpitViewModelTests
 
     private static NewSessionResult NewSessionResultFor(SessionKind kind) => new(
         kind,
-        new SessionProfile("default", @"C:\fake\.claude"),
+        new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude")),
         SessionOptionCatalog.DefaultPermissionMode,
         SessionOptionCatalog.DefaultModel,
         SessionOptionCatalog.DefaultEffort, null);
