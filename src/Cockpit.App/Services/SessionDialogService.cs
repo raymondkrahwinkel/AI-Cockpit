@@ -26,6 +26,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IClaudeProfileLoginChecker _loginChecker;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly IMcpServerCatalog _mcpServerCatalog;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly IConversationPickerRegistry _conversationPickers;
@@ -36,6 +37,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IClaudeProfileLoginChecker loginChecker,
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
+        IMcpServerCatalog mcpServerCatalog,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
         IConversationPickerRegistry conversationPickers,
@@ -47,6 +49,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _loginChecker = loginChecker;
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
+        _mcpServerCatalog = mcpServerCatalog;
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
     }
@@ -58,7 +61,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerStore, _workingPathStore, _conversationPickers);
+        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };

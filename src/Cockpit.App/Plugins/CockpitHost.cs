@@ -165,28 +165,35 @@ internal sealed class CockpitHost(
 
         if (existingIndex < 0)
         {
-            servers.Add(new McpServerConfig
-            {
-                Name = contribution.Name,
-                Transport = McpTransport.Http,
-                Scope = _ToServerScope(contribution.Scope),
-                Url = contribution.Url,
-                Auth = _ToAuth(contribution.BearerToken),
-                ApiKey = contribution.BearerToken,
-            });
+            servers.Add(PluginMcpMapping.ToServerConfig(contribution));
         }
         else
         {
+            // Refresh only the connection fields; the entry's Scope and Enabled are the operator's and are left as
+            // they are (a server they disabled or rescoped in the dialog stays that way).
             servers[existingIndex] = servers[existingIndex] with
             {
                 Transport = McpTransport.Http,
                 Url = contribution.Url,
-                Auth = _ToAuth(contribution.BearerToken),
+                Auth = PluginMcpMapping.ToAuth(contribution.BearerToken),
                 ApiKey = contribution.BearerToken,
             };
         }
 
         await store.SaveAsync(servers).ConfigureAwait(false);
+    }
+
+    public async Task RemoveMcpServer(string name)
+    {
+        var store = services.GetRequiredService<IMcpServerStore>();
+        var servers = (await store.LoadAsync().ConfigureAwait(false)).ToList();
+
+        // Only write when something actually goes — this runs on every start of a plugin that reclaims its
+        // pushed entries, and re-saving an unchanged registry each launch is needless churn.
+        if (servers.RemoveAll(server => string.Equals(server.Name, name, StringComparison.Ordinal)) > 0)
+        {
+            await store.SaveAsync(servers).ConfigureAwait(false);
+        }
     }
 
     // Maps by name, not ordinal — same reasoning as _ToServerScope below.
@@ -198,16 +205,4 @@ internal sealed class CockpitHost(
         _ => ToastSeverity.Information,
     };
 
-    private static McpServerAuth _ToAuth(string? bearerToken) =>
-        string.IsNullOrEmpty(bearerToken) ? McpServerAuth.None : McpServerAuth.ApiKey;
-
-    // Maps by name, not ordinal — Cockpit.Plugins.Abstractions.Mcp.McpContributionScope and Cockpit.Core.Mcp.McpServerScope
-    // are declared independently (isolation, see the ICockpitHost doc comment) and are free to diverge in order.
-    private static McpServerScope _ToServerScope(McpContributionScope scope) => scope switch
-    {
-        McpContributionScope.All => McpServerScope.All,
-        McpContributionScope.LocalOnly => McpServerScope.LocalOnly,
-        McpContributionScope.ClaudeOnly => McpServerScope.ClaudeOnly,
-        _ => McpServerScope.All,
-    };
 }

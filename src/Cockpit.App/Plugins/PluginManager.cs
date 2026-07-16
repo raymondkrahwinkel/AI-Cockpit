@@ -20,9 +20,6 @@ internal sealed class PluginManager(ILogger<PluginManager> logger, PluginDiagnos
     /// <summary>The plugins that actually loaded — their manifests, for the host to read what they declared (e.g. which storage keys hold a credential).</summary>
     public IReadOnlyList<DiscoveredPlugin> Loaded => [.. _loaded.Select(entry => entry.Discovered)];
 
-    /// <summary>The loaded plugin instances themselves, for the host to ask each what it contributes at runtime — e.g. its own MCP servers (<c>IPluginMcpProvider</c>, AC-11).</summary>
-    public IReadOnlyList<ICockpitPlugin> Plugins => [.. _loaded.Select(entry => entry.Plugin)];
-
     /// <summary>
     /// Phase 1 — before <c>BuildServiceProvider</c>: instantiate each <see cref="PluginLoadDecision.Load"/>
     /// plugin via <paramref name="activate"/> and run its <see cref="ICockpitPlugin.ConfigureServices"/>

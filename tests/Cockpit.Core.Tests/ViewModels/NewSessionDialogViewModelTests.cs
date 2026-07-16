@@ -328,9 +328,9 @@ public class NewSessionDialogViewModelTests
             loginChecker.IsLoggedIn(profile).Returns(true);
         }
 
-        var mcpServerStore = Substitute.For<IMcpServerStore>();
-        mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
+        var mcpServerCatalog = Substitute.For<IMcpServerCatalog>();
+        mcpServerCatalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
 
-        return new NewSessionDialogViewModel(store, loginChecker, mcpServerStore);
+        return new NewSessionDialogViewModel(store, loginChecker, mcpServerCatalog);
     }
 }

@@ -59,6 +59,34 @@ public class YouTrackMcpRegistrationTests
     }
 
     [Fact]
+    public void BuildContributions_InstanceWithMcpTurnedOff_IsSkipped()
+    {
+        // Fully configured, but the operator unticked "add this instance's MCP server to sessions" (AC-11).
+        var instances = new List<YouTrackInstance>
+        {
+            new("Prod", "https://x.youtrack.cloud/api", "secret-token", "PROJ", AddMcpToSessions: false),
+        };
+
+        YouTrackMcpRegistration.BuildContributions(instances).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ManagedServerNames_CoversEveryInstance_EvenIncompleteOrOptedOut()
+    {
+        // The migration reclaims what an earlier version pushed, so it must name every instance — including one
+        // now incomplete or with MCP turned off, whose entry may still be sitting in the registry.
+        var instances = new List<YouTrackInstance>
+        {
+            new("Prod", "https://x.youtrack.cloud/api", "token", string.Empty),
+            new("No token", "https://x.youtrack.cloud/api", string.Empty, string.Empty),
+            new("Opted out", "https://x.youtrack.cloud/api", "token", string.Empty, AddMcpToSessions: false),
+        };
+
+        YouTrackMcpRegistration.ManagedServerNames(instances)
+            .Should().BeEquivalentTo("YouTrack: Prod", "YouTrack: No token", "YouTrack: Opted out");
+    }
+
+    [Fact]
     public void BuildContributions_MultipleInstances_YieldsDistinctlyNamedContributions()
     {
         var instances = new List<YouTrackInstance>

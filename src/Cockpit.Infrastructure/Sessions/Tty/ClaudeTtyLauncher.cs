@@ -23,7 +23,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     private readonly IClaudeExecutableLocator _executableLocator;
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
     private readonly IPtyHostFactory _ptyHostFactory;
-    private readonly IMcpServerStore _mcpServerStore;
+    private readonly IMcpServerCatalog _mcpServerCatalog;
     private readonly IStatusLineRelay? _statusLineRelay;
 
     public ClaudeTtyLauncher(
@@ -31,7 +31,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         IClaudeExecutableLocator executableLocator,
         WorkspaceTrustWriter workspaceTrustWriter,
         IPtyHostFactory ptyHostFactory,
-        IMcpServerStore mcpServerStore,
+        IMcpServerCatalog mcpServerCatalog,
         // Optional so a unit test can launch without one: installing the relay writes a script and a snapshot
         // file, and a test of the argument building has no business leaving anything in the operator's config
         // directory. Absent, the session simply reports no limits.
@@ -41,7 +41,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
         _ptyHostFactory = ptyHostFactory;
-        _mcpServerStore = mcpServerStore;
+        _mcpServerCatalog = mcpServerCatalog;
         _statusLineRelay = statusLineRelay;
     }
 
@@ -121,7 +121,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     {
         try
         {
-            var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            var registry = _mcpServerCatalog.GetServersAsync().GetAwaiter().GetResult();
             return registry.Any(server =>
                 server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
         }
@@ -135,7 +135,7 @@ internal sealed class ClaudeTtyLauncher : IClaudeTtyLauncher, ISingletonService
     {
         try
         {
-            var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            var registry = _mcpServerCatalog.GetServersAsync().GetAwaiter().GetResult();
             var json = McpConfigFile.SerializeRegistryOnly(registry);
             if (json is null)
             {

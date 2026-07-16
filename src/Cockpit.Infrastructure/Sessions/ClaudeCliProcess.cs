@@ -43,7 +43,7 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
     private readonly IClaudeExecutableLocator _executableLocator;
     private readonly WorkspaceTrustWriter _workspaceTrustWriter;
     private readonly IPermissionServerState _permissionServerState;
-    private readonly IMcpServerStore _mcpServerStore;
+    private readonly IMcpServerCatalog _mcpServerCatalog;
     private Process? _process;
 
     /// <summary>The spawned process's id once started (#78); null before Start and once it has exited.</summary>
@@ -69,13 +69,13 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         IClaudeExecutableLocator executableLocator,
         WorkspaceTrustWriter workspaceTrustWriter,
         IPermissionServerState permissionServerState,
-        IMcpServerStore mcpServerStore)
+        IMcpServerCatalog mcpServerCatalog)
     {
         _options = options.Value;
         _executableLocator = executableLocator;
         _workspaceTrustWriter = workspaceTrustWriter;
         _permissionServerState = permissionServerState;
-        _mcpServerStore = mcpServerStore;
+        _mcpServerCatalog = mcpServerCatalog;
     }
 
     public bool HasExited => _started && (_process?.HasExited ?? true);
@@ -324,8 +324,9 @@ internal sealed class ClaudeCliProcess : IClaudeCliProcess
         try
         {
             // Sync-over-async is deliberate: Start is a synchronous spawn path (it already writes the trust
-            // file inline), and the store is a small local cockpit.json read that never touches the UI thread.
-            var registry = _mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            // file inline), and the catalog is a small local cockpit.json read plus a synchronous ask of the
+            // active plugins (AC-11), never touching the UI thread.
+            var registry = _mcpServerCatalog.GetServersAsync().GetAwaiter().GetResult();
             var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, enabledMcpServerNames);
             File.WriteAllText(configPath, McpConfigFile.Serialize(mcpUrl, sessionRegistry));
 

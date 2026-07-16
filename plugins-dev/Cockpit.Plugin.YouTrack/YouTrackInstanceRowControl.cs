@@ -18,6 +18,7 @@ internal sealed class YouTrackInstanceRowControl : UserControl
     private readonly TextBox _instanceUrl;
     private readonly TextBox _token;
     private readonly TextBox _defaultProjectTag;
+    private readonly CheckBox _addMcp;
 
     public event Action? RemoveRequested;
 
@@ -27,6 +28,7 @@ internal sealed class YouTrackInstanceRowControl : UserControl
         _instanceUrl = new TextBox { Text = instance.InstanceUrl, PlaceholderText = "https://<instance>.youtrack.cloud/api" };
         _token = new TextBox { Text = instance.Token, PlaceholderText = "permanent token", PasswordChar = '•' };
         _defaultProjectTag = new TextBox { Text = instance.DefaultProjectTag, PlaceholderText = "default project short-name (optional)" };
+        _addMcp = new CheckBox { Content = "Add this instance's MCP server to sessions", IsChecked = instance.AddMcpToSessions, FontSize = 11 };
 
         var remove = new Button { Content = "✕ Remove", FontSize = 11, Padding = new Thickness(8, 2) };
         remove.Click += (_, _) => RemoveRequested?.Invoke();
@@ -56,6 +58,14 @@ internal sealed class YouTrackInstanceRowControl : UserControl
                     SettingsHelpRow.Build(_token, "Permanent token. In YouTrack: profile -> Account Security -> New token (scope: YouTrack)."),
                     _Label("Default project short-name (optional — preselected in the issues dialog)"),
                     SettingsHelpRow.Build(_defaultProjectTag, "Optional project short name (e.g. the prefix in issue IDs like PROJ-123), preselected in the issues dialog's project filter when this instance is picked. Leave empty to default to \"All\"."),
+                    _addMcp,
+                    new TextBlock
+                    {
+                        Text = "When on, this instance's YouTrack tools are offered to every session (and can be unticked per session when you start one). Managed here — it does not appear in the MCP servers dialog.",
+                        FontSize = 11,
+                        Opacity = 0.7,
+                        TextWrapping = TextWrapping.Wrap,
+                    },
                 },
             },
         };
@@ -71,7 +81,8 @@ internal sealed class YouTrackInstanceRowControl : UserControl
         string.IsNullOrWhiteSpace(_label.Text) ? "Untitled" : _label.Text.Trim(),
         string.IsNullOrWhiteSpace(_instanceUrl.Text) ? string.Empty : _instanceUrl.Text.Trim().TrimEnd('/'),
         _token.Text?.Trim() ?? string.Empty,
-        _defaultProjectTag.Text?.Trim() ?? string.Empty);
+        _defaultProjectTag.Text?.Trim() ?? string.Empty,
+        _addMcp.IsChecked ?? true);
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };
 

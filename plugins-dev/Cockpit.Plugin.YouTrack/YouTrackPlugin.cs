@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
@@ -15,22 +16,32 @@ namespace Cockpit.Plugin.YouTrack;
 /// JetBrains remote MCP server (#60) for every fully-configured instance, on <see cref="Initialize"/> and
 /// again whenever settings are saved — see <see cref="YouTrackMcpRegistration"/>.
 /// </summary>
-public sealed class YouTrackPlugin : ICockpitPlugin
+public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 {
+    // The instances live in the host's per-plugin storage; kept here from Initialize so GetMcpServers can read the
+    // current set each time the host asks (AC-11), rather than a snapshot taken once.
+    private YouTrackSettings? _settings;
+
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.12.0",
+        Version: "1.13.0",
         Author: "Cockpit",
         Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools, and contributes three workflow steps — a ticket picked for a session, a ticket whose status you moved, and a step that moves one — so a flow can run the ticket half of your working day.");
 
     public void ConfigureServices(IServiceCollection services)
     {
+        // Register this plugin as the source of its own MCP servers (AC-11): the host's McpServerCatalog injects
+        // every IPluginMcpProvider and asks each when it assembles a session, so the plugin owns its MCP config
+        // rather than pushing it into the shared registry. Same instance the host initializes, so GetMcpServers
+        // reads the settings this plugin later loads in Initialize.
+        services.AddSingleton<IPluginMcpProvider>(this);
     }
 
     public void Initialize(ICockpitHost host)
     {
         var settings = new YouTrackSettings(host.Storage);
+        _settings = settings;
 
         // One registry, shared by the dialog (which links an issue to the active session) and the header items
         // (each of which shows the issue linked to its own session) — see SessionIssueLinks.
@@ -97,21 +108,24 @@ public sealed class YouTrackPlugin : ICockpitPlugin
         // Same action on a keyboard shortcut (#: shortcuts) — the SDK's AddShortcut, shown in Options → Shortcuts.
         host.AddShortcut(new PluginShortcut("youtrack.open", "YouTrack issues", "Shift+Y", OpenIssues));
 
-        _RegisterMcpServers(host, settings);
-        host.OnSettingsSaved(() => _RegisterMcpServers(host, settings));
+        // AC-11: the plugin no longer pushes its MCP servers into the shared registry — the host asks for them
+        // through GetMcpServers when a session is assembled. Reclaim what an earlier version pushed, so those
+        // entries leave the MCP-servers manager and this plugin is their sole owner from here on.
+        foreach (var name in YouTrackMcpRegistration.ManagedServerNames(settings.Instances))
+        {
+            _ = host.RemoveMcpServer(name);
+        }
     }
+
+    /// <summary>
+    /// The MCP servers this plugin provides (AC-11): one per fully-configured, opted-in instance. Read live from
+    /// storage each time, so a URL, token, or the per-instance toggle the operator changes takes effect on the
+    /// next session without this plugin having to keep any other store in sync.
+    /// </summary>
+    public IReadOnlyList<McpServerContribution> GetMcpServers() =>
+        _settings is null ? [] : YouTrackMcpRegistration.BuildContributions(_settings.Instances);
 
     public void Dispose()
     {
-    }
-
-    // Fire-and-forget (#60): host.AddMcpServer persists to disk, but Initialize and the OnSettingsSaved
-    // callback are both synchronous contribution points, same pattern as ShowDialogAsync above.
-    private static void _RegisterMcpServers(ICockpitHost host, YouTrackSettings settings)
-    {
-        foreach (var contribution in YouTrackMcpRegistration.BuildContributions(settings.Instances))
-        {
-            _ = host.AddMcpServer(contribution);
-        }
     }
 }

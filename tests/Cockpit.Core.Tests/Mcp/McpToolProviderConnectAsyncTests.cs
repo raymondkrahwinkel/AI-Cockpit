@@ -97,8 +97,8 @@ public class McpToolProviderConnectAsyncTests
 
     private static McpToolProvider _ProviderFor(IEnumerable<McpServerConfig> registry)
     {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
-        return new McpToolProvider(store, Substitute.For<IMcpOAuthAuthorizer>(), NullLogger<McpToolProvider>.Instance);
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
+        return new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), NullLogger<McpToolProvider>.Instance);
     }
 }

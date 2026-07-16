@@ -21,15 +21,15 @@ namespace Cockpit.Core.Tests.Claude;
 public class ClaudeTtyLauncherTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-tty-launcher-tests-").FullName;
-    private readonly IMcpServerStore _emptyMcpStore = CreateEmptyMcpStore();
+    private readonly IMcpServerCatalog _emptyMcpStore = CreateEmptyMcpCatalog();
 
-    // An empty shared registry, so _WriteRegistryMcpConfig produces no --mcp-config and the argument
+    // An empty effective set, so _WriteRegistryMcpConfig produces no --mcp-config and the argument
     // assertions below stay about the start-default flags only.
-    private static IMcpServerStore CreateEmptyMcpStore()
+    private static IMcpServerCatalog CreateEmptyMcpCatalog()
     {
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync().Returns(Task.FromResult<IReadOnlyList<McpServerConfig>>([]));
-        return store;
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync().Returns(Task.FromResult<IReadOnlyList<McpServerConfig>>([]));
+        return catalog;
     }
 
     [Fact]

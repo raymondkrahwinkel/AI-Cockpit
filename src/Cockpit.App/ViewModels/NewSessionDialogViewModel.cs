@@ -31,7 +31,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IClaudeProfileLoginChecker? _loginChecker;
     private readonly ISessionProfileStore? _profileStore;
-    private readonly IMcpServerStore? _mcpServerStore;
+    private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private readonly ConversationPickerRegistration? _conversationPicker;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
@@ -241,18 +241,19 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IsSelectedProfileLoggedIn = true;
     }
 
-    public NewSessionDialogViewModel(ISessionProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerStore? mcpServerStore = null, IWorkingPathHistoryStore? workingPathStore = null, IConversationPickerRegistry? conversationPickers = null)
+    public NewSessionDialogViewModel(ISessionProfileStore profileStore, IClaudeProfileLoginChecker loginChecker, IMcpServerCatalog? mcpServerCatalog = null, IWorkingPathHistoryStore? workingPathStore = null, IConversationPickerRegistry? conversationPickers = null)
     {
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
-        _mcpServerStore = mcpServerStore;
+        _mcpServerCatalog = mcpServerCatalog;
         _workingPathStore = workingPathStore;
     }
 
     /// <summary>
-    /// Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the
-    /// shared registry's enabled MCP servers (#44) into the checklist, all pre-checked.
+    /// Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the enabled MCP
+    /// servers (#44) into the checklist, all pre-checked — from the catalog, so a plugin's own servers (AC-11) are
+    /// offered and uncheckable here alongside the registry's.
     /// </summary>
     public async Task LoadAsync()
     {
@@ -270,9 +271,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
         SelectedProfile = Profiles.FirstOrDefault();
 
-        if (_mcpServerStore is not null)
+        if (_mcpServerCatalog is not null)
         {
-            var registry = await _mcpServerStore.LoadAsync();
+            var registry = await _mcpServerCatalog.GetServersAsync();
             McpServers.Clear();
             foreach (var server in registry.Where(server => server.Enabled))
             {
