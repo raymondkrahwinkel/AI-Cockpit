@@ -119,14 +119,24 @@ public static class ShellCatalog
 
     private static string _NameFromPath(string path)
     {
-        var name = Path.GetFileName(path);
+        var lastSeparator = path.LastIndexOfAny(_Separators);
+        var name = lastSeparator >= 0 ? path[(lastSeparator + 1)..] : path;
         return string.IsNullOrEmpty(name) ? path : name;
     }
+
+    private static readonly char[] _Separators = ['/', '\\'];
 
     /// <summary>
     /// Resolves a shell command to an absolute path, or null when it is not on this machine. A rooted path is taken as
     /// given (subject to the file probe); a bare name is looked up on PATH — on Windows trying <c>.exe</c>/<c>.cmd</c>/
     /// <c>.bat</c> per directory, the same reason the Claude locator does (<c>Process</c> does no <c>PATHEXT</c> lookup).
+    /// <para>
+    /// The path logic is driven by <paramref name="isWindows"/>, not the host's <see cref="Path"/> APIs: this is the
+    /// pure core the testable <see cref="Build"/> overload leans on, so it must answer for the OS it was asked about
+    /// even when a test runs it from another (a Windows case on the Linux CI, where <c>Path.PathSeparator</c> is
+    /// <c>:</c> and <c>C:\dir</c> is not rooted). Leaning on <see cref="Path"/> here is exactly the bug that turned
+    /// this green locally and red on CI.
+    /// </para>
     /// </summary>
     private static string? _Resolve(string command, string pathVariable, bool isWindows, Func<string, bool> fileExists)
     {
@@ -135,25 +145,17 @@ public static class ShellCatalog
             return null;
         }
 
-        if (Path.IsPathRooted(command))
+        if (_IsRooted(command, isWindows))
         {
             return fileExists(command) ? command : null;
         }
 
-        foreach (var directory in pathVariable.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        var pathSeparator = isWindows ? ';' : ':';
+        foreach (var directory in pathVariable.Split(pathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
-            string candidate;
-            try
-            {
-                candidate = Path.Combine(directory, command);
-            }
-            catch (ArgumentException)
-            {
-                // A malformed PATH entry (stray quote/invalid char) — skip it, don't fail the whole probe.
-                continue;
-            }
+            var candidate = _Combine(directory, command, isWindows);
 
-            if (isWindows && !Path.HasExtension(command))
+            if (isWindows && !_HasExtension(command))
             {
                 foreach (var extension in _WindowsExecutableExtensions)
                 {
@@ -173,5 +175,49 @@ public static class ShellCatalog
         }
 
         return null;
+    }
+
+    // Rooted per the target OS, not the host: a leading slash on either; on Windows also a leading backslash (UNC or
+    // drive-relative root) or a drive-letter prefix like C:\ / C:/.
+    private static bool _IsRooted(string path, bool isWindows)
+    {
+        if (path.Length == 0)
+        {
+            return false;
+        }
+
+        if (path[0] == '/')
+        {
+            return true;
+        }
+
+        if (!isWindows)
+        {
+            return false;
+        }
+
+        return path[0] == '\\'
+            || (path.Length >= 2 && char.IsLetter(path[0]) && path[1] == ':');
+    }
+
+    private static string _Combine(string directory, string name, bool isWindows)
+    {
+        if (directory.Length == 0)
+        {
+            return name;
+        }
+
+        return directory[^1] is '/' or '\\'
+            ? directory + name
+            : directory + (isWindows ? '\\' : '/') + name;
+    }
+
+    // A '.' in the final path segment — split on both separators so it answers the same regardless of host, unlike
+    // Path.HasExtension which keys off the host's separator.
+    private static bool _HasExtension(string command)
+    {
+        var lastSeparator = command.LastIndexOfAny(_Separators);
+        var segment = lastSeparator >= 0 ? command[(lastSeparator + 1)..] : command;
+        return segment.Contains('.');
     }
 }
