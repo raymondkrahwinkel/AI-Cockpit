@@ -12,19 +12,18 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Infrastructure.Mcp;
 
 /// <summary>
-/// Hosts every registered <see cref="CockpitMcpEndpoint"/> (#AC-13, #AC-12): one lightweight loopback MCP server
-/// per endpoint, each auto-published into the shared MCP registry as its own entry so it appears in the New-session
-/// picker and is tickable per session. This is the "add a new cockpit MCP" path — a plugin or a first-party
-/// feature registers a <see cref="CockpitMcpEndpoint"/> (a tools class + a name) and gets a working, discoverable
-/// MCP server with no Kestrel or registry wiring of its own.
+/// Hosts every cockpit MCP endpoint (#AC-13, #AC-12): one lightweight loopback MCP server per endpoint, each
+/// auto-published into the shared MCP registry as its own entry so it appears in the New-session picker and is
+/// tickable per session. Endpoints come from two places — the <see cref="CockpitMcpEndpoint"/>s registered up front
+/// (mounted at startup), and ones a plugin mounts at runtime through <see cref="MountAsync"/> (it loads after the
+/// host has started). Either way it is "a tools class and a name" with no Kestrel or registry wiring of its own.
 /// </summary>
 /// <remarks>
 /// One HTTP listener per endpoint because the MCP ASP.NET SDK hosts a single tool-set per server; the listeners are
 /// loopback on OS-assigned ports, invisible to the operator, who sees only the registry entries. The orchestrator
-/// keeps its own server for now (it has delegation-specific state and is withheld from sub-agents); new MCPs go
-/// through here.
+/// keeps its own server for now (delegation-specific state, withheld from sub-agents); new MCPs go through here.
 /// </remarks>
-internal sealed class CockpitMcpEndpointHost : IHostedService, ISingletonService, IAsyncDisposable
+internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpointHost, ISingletonService, IAsyncDisposable
 {
     private readonly IReadOnlyList<CockpitMcpEndpoint> _endpoints;
     private readonly IServiceProvider _services;
@@ -32,6 +31,8 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ISingletonService
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
+    private readonly HashSet<string> _mountedNames = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _mountGate = new(1, 1);
 
     public CockpitMcpEndpointHost(
         IEnumerable<CockpitMcpEndpoint> endpoints,
@@ -52,7 +53,10 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ISingletonService
         {
             try
             {
-                await _StartEndpointAsync(endpoint, cancellationToken).ConfigureAwait(false);
+                // Built the tools instance from the application's own services, so a tool can depend on any
+                // registered service (the statusline sink, etc.).
+                var tools = ActivatorUtilities.CreateInstance(_services, endpoint.ToolsType);
+                await MountAsync(endpoint.ServerName, tools, endpoint.EnabledByDefault, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -63,56 +67,67 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ISingletonService
         }
     }
 
-    private async Task _StartEndpointAsync(CockpitMcpEndpoint endpoint, CancellationToken cancellationToken)
+    public async Task MountAsync(string serverName, object tools, bool enabledByDefault = true, CancellationToken cancellationToken = default)
     {
-        var builder = WebApplication.CreateSlimBuilder();
-        builder.Services.AddSingleton(_loggerFactory);
+        await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Idempotent per name: a plugin re-initialised, or two racing to mount, must not bind a second listener
+            // for the same MCP server.
+            if (!_mountedNames.Add(serverName))
+            {
+                return;
+            }
 
-        // Build the tools instance from the application's own services, so a tool can depend on any registered
-        // service (the statusline sink, etc.), then hand that instance to the endpoint's MCP server.
-        var tools = ActivatorUtilities.CreateInstance(_services, endpoint.ToolsType);
-        builder.Services.AddSingleton(endpoint.ToolsType, tools);
-        builder.Services
-            .AddMcpServer()
-            .WithHttpTransport()
-            .WithTools([endpoint.ToolsType]);
+            var builder = WebApplication.CreateSlimBuilder();
+            builder.Services.AddSingleton(_loggerFactory);
+            builder.Services.AddSingleton(tools.GetType(), tools);
+            builder.Services
+                .AddMcpServer()
+                .WithHttpTransport()
+                .WithTools([tools.GetType()]);
 
-        builder.WebHost.UseKestrel();
-        // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second cockpit.
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
+            builder.WebHost.UseKestrel();
+            // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second cockpit.
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
 
-        var app = builder.Build();
-        app.MapMcp("/mcp");
-        _apps.Add(app);
+            var app = builder.Build();
+            app.MapMcp("/mcp");
+            _apps.Add(app);
 
-        await app.StartAsync(cancellationToken).ConfigureAwait(false);
+            await app.StartAsync(cancellationToken).ConfigureAwait(false);
 
-        var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
-            ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
-        var boundUrl = addresses.Addresses.FirstOrDefault()
-            ?? throw new InvalidOperationException($"The {endpoint.ServerName} MCP endpoint bound no address.");
+            var addresses = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()
+                ?? throw new InvalidOperationException("Kestrel did not expose its bound addresses.");
+            var boundUrl = addresses.Addresses.FirstOrDefault()
+                ?? throw new InvalidOperationException($"The {serverName} MCP endpoint bound no address.");
 
-        var url = $"{boundUrl.TrimEnd('/')}/mcp";
-        await _PublishToRegistryAsync(endpoint, url, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", endpoint.ServerName, url);
+            var url = $"{boundUrl.TrimEnd('/')}/mcp";
+            await _PublishToRegistryAsync(serverName, enabledByDefault, url, cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
+        }
+        finally
+        {
+            _mountGate.Release();
+        }
     }
 
     /// <summary>
-    /// Publishes (or refreshes) the endpoint's registry entry, the same way the orchestrator does: an
-    /// <see cref="CockpitMcpEndpoint.EnabledByDefault"/> endpoint is (re)asserted enabled on every launch so a
-    /// stale disabled entry never silently turns it off; a non-default one keeps the operator's last choice. Only
-    /// the URL is refreshed (the port is OS-assigned). Scope is All — these are agent tools for any session kind.
+    /// Publishes (or refreshes) an endpoint's registry entry, the same way the orchestrator does: a default-on
+    /// endpoint is (re)asserted enabled on every launch so a stale disabled entry never silently turns it off; a
+    /// default-off one keeps the operator's last choice. Only the URL is refreshed (the port is OS-assigned). Scope
+    /// is All — these are agent tools for any session kind.
     /// </summary>
-    private async Task _PublishToRegistryAsync(CockpitMcpEndpoint endpoint, string url, CancellationToken cancellationToken)
+    private async Task _PublishToRegistryAsync(string serverName, bool enabledByDefault, string url, CancellationToken cancellationToken)
     {
         var servers = (await _mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false)).ToList();
-        var existing = servers.FindIndex(server => string.Equals(server.Name, endpoint.ServerName, StringComparison.Ordinal));
+        var existing = servers.FindIndex(server => string.Equals(server.Name, serverName, StringComparison.Ordinal));
 
-        var enabled = ShouldBeEnabled(endpoint, existing < 0 ? null : servers[existing]);
+        var enabled = ShouldBeEnabled(enabledByDefault, existing < 0 ? null : servers[existing]);
 
         var entry = new McpServerConfig
         {
-            Name = endpoint.ServerName,
+            Name = serverName,
             Transport = McpTransport.Http,
             Scope = McpServerScope.All,
             Url = url,
@@ -132,12 +147,12 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ISingletonService
     }
 
     /// <summary>
-    /// Whether an endpoint publishes enabled: an <see cref="CockpitMcpEndpoint.EnabledByDefault"/> one is always
-    /// (re)asserted enabled, so a stale disabled entry never silently turns it off (the orchestrator's rule); a
-    /// non-default one keeps the operator's last choice, defaulting off. Pulled out so it is testable without a host.
+    /// Whether an endpoint publishes enabled: a default-on one is always (re)asserted enabled, so a stale disabled
+    /// entry never silently turns it off (the orchestrator's rule); a default-off one keeps the operator's last
+    /// choice, defaulting off. Pulled out so it is testable without a host.
     /// </summary>
-    internal static bool ShouldBeEnabled(CockpitMcpEndpoint endpoint, McpServerConfig? existingEntry) =>
-        endpoint.EnabledByDefault || (existingEntry?.Enabled ?? false);
+    internal static bool ShouldBeEnabled(bool enabledByDefault, McpServerConfig? existingEntry) =>
+        enabledByDefault || (existingEntry?.Enabled ?? false);
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
@@ -149,6 +164,7 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ISingletonService
 
     public async ValueTask DisposeAsync()
     {
+        _mountGate.Dispose();
         foreach (var app in _apps)
         {
             await app.DisposeAsync().ConfigureAwait(false);

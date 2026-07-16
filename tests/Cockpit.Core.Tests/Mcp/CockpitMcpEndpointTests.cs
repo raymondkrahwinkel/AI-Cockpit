@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Infrastructure.Mcp;
@@ -19,19 +18,15 @@ public class CockpitMcpEndpointTests
     [Fact]
     public void ShouldBeEnabled_ADefaultOnEndpoint_IsAlwaysReasserted_EvenIfPreviouslyDisabled()
     {
-        var endpoint = new CockpitMcpEndpoint("cockpit-session", typeof(SessionStatusTools), EnabledByDefault: true);
-
-        CockpitMcpEndpointHost.ShouldBeEnabled(endpoint, existingEntry: null).Should().BeTrue();
-        CockpitMcpEndpointHost.ShouldBeEnabled(endpoint, new McpServerConfig { Name = "cockpit-session", Enabled = false }).Should().BeTrue();
+        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: true, existingEntry: null).Should().BeTrue();
+        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: true, new McpServerConfig { Name = "cockpit-session", Enabled = false }).Should().BeTrue();
     }
 
     [Fact]
     public void ShouldBeEnabled_ADefaultOffEndpoint_KeepsTheOperatorsChoice_DefaultingOff()
     {
-        var endpoint = new CockpitMcpEndpoint("cockpit-extra", typeof(SessionStatusTools), EnabledByDefault: false);
-
-        CockpitMcpEndpointHost.ShouldBeEnabled(endpoint, existingEntry: null).Should().BeFalse();
-        CockpitMcpEndpointHost.ShouldBeEnabled(endpoint, new McpServerConfig { Name = "cockpit-extra", Enabled = true }).Should().BeTrue();
+        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: false, existingEntry: null).Should().BeFalse();
+        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: false, new McpServerConfig { Name = "cockpit-extra", Enabled = true }).Should().BeTrue();
     }
 
     [Fact]

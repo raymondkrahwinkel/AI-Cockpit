@@ -202,6 +202,11 @@ internal sealed class CockpitHost(
         }
     }
 
+    public Task AddMcpEndpoint(string serverName, object tools, bool enabledByDefault = true) =>
+        services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
+            ? endpointHost.MountAsync(serverName, tools, enabledByDefault)
+            : Task.CompletedTask;
+
     public Task SetSessionStatusline(string paneId, string statusline) =>
         _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);
 
