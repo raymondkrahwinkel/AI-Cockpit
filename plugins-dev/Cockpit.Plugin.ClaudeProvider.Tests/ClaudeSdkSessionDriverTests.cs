@@ -170,9 +170,11 @@ public class ClaudeSdkSessionDriverTests : IDisposable
 
         // Effort is the CLI's thinking-token budget (set_max_thinking_tokens); "high" maps to the plugin's own
         // per-level tuning (24k) — the same budget the host's SessionOptionCatalog carried before Claude became a plugin.
+        // The field is snake_case (max_thinking_tokens) exactly as the Agent SDK's Query.set_max_thinking_tokens
+        // writes it; camelCase is silently dropped by the CLI, so the budget would never change — the effort-not-live bug.
         var request = JsonDocument.Parse(fake.WrittenLines[^1]).RootElement.GetProperty("request");
         request.GetProperty("subtype").GetString().Should().Be("set_max_thinking_tokens");
-        request.GetProperty("maxThinkingTokens").GetInt32().Should().Be(24_000);
+        request.GetProperty("max_thinking_tokens").GetInt32().Should().Be(24_000);
     }
 
     [Fact]
