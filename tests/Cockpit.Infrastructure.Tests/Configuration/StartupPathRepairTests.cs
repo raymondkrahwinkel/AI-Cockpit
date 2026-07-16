@@ -18,11 +18,16 @@ public sealed class StartupPathRepairTests
     private static string Join(params string[] entries) => string.Join(Separator, entries);
 
     // A fake login shell: an executable script that ignores the -l -c probe arguments and runs its own body.
+    // The probe tests never run on Windows (they return early, as Run itself is Unix-gated), but the platform
+    // analyzer (CA1416) cannot see through that — hence the explicit guard around the Unix-only chmod.
     private static string WriteFakeShell(string body)
     {
         var path = Path.Combine(Path.GetTempPath(), $"cockpit-fake-shell-{Guid.NewGuid():N}.sh");
         File.WriteAllText(path, $"#!/bin/sh\n{body}\n");
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
 
         return path;
     }
