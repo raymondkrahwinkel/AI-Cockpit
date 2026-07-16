@@ -60,6 +60,12 @@ $outputDir = Split-Path -Parent $OutputPath
 $outputBase = [System.IO.Path]::GetFileNameWithoutExtension($OutputPath)
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
+# Pass Inno an ABSOLUTE OutputDir. Inno resolves a relative OutputDir against the directory of the .iss script
+# (here scripts/), not the current directory — so a relative value like "artifacts" from the workflow would land
+# the Setup.exe in scripts/artifacts/ instead of the repo-root artifacts/ the upload step reads, and iscc would
+# still exit 0. Resolving it here is what keeps the installer where the caller asked for it.
+$outputDir = (Resolve-Path $outputDir).Path
+
 # Find the Inno Setup compiler, or install it. Prefer PATH, then the default install location, then Chocolatey.
 function Resolve-Iscc {
     $onPath = Get-Command iscc.exe -ErrorAction SilentlyContinue
@@ -96,4 +102,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "iscc failed with exit code $LASTEXITCODE."
 }
 
-Write-Host "Installer written to $OutputPath"
+# Verify the installer actually landed where the caller asked, rather than trusting iscc's exit code: the whole
+# reason the nightly shipped no installer for a while was iscc reporting success while writing to a different
+# folder. A missing file here fails the step loudly instead of a green build with nothing to show for it.
+$expected = Join-Path $outputDir ($outputBase + '.exe')
+if (-not (Test-Path $expected)) {
+    throw "iscc reported success but no installer was written to '$expected'."
+}
+
+Write-Host "Installer written to $expected"
