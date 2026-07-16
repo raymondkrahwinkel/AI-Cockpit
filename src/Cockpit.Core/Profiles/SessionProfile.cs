@@ -29,6 +29,14 @@ public sealed record SessionProfile(
     /// <summary>What this profile allows when another session delegates work to it (#67); no policy means it is not a target.</summary>
     public DelegationPolicy DelegationPolicy => Delegation ?? DelegationPolicy.None;
 
+    /// <summary>
+    /// Environment variables this profile injects into a session's process at spawn, TTY and SDK alike (AC-22).
+    /// <see langword="null"/> or empty means nothing beyond the inherited environment. Host-controlled keys
+    /// (<c>TtyEnvironment.IsHostControlled</c> — nested-agent markers, Anthropic credentials) never win: the
+    /// spawn paths drop them, so a profile cannot reintroduce what the host strips.
+    /// </summary>
+    public IReadOnlyList<ProfileEnvironmentVariable>? EnvironmentVariables { get; init; }
+
     /// <summary>Which backend drives this profile.</summary>
     public SessionProvider Provider => ProviderConfig.Provider;
 
