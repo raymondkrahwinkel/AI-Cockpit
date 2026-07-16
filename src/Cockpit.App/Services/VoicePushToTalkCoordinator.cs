@@ -229,9 +229,9 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
             if (session is not null)
             {
                 // SDK sessions get the Ollama cleanup pass; TTY has none, since its transcript is written
-                // as raw pty bytes — the same split SessionView/ClaudeTtyView's local F9 handlers
+                // as raw pty bytes — the same split SessionView/TtyView's local F9 handlers
                 // already make.
-                await session.EndVoiceHoldAsync(applyCleanup: session is not ClaudeTtyViewModel);
+                await session.EndVoiceHoldAsync(applyCleanup: session is not TtyViewModel);
             }
         }
         finally

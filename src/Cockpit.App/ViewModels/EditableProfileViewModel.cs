@@ -41,8 +41,9 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private PermissionModeOption _selectedPermissionMode;
 
+    /// <summary>The Claude model default, as free text with suggestions — an alias, or a pinned model/snapshot.</summary>
     [ObservableProperty]
-    private ModelOption _selectedModel;
+    private string _claudeModel = SessionOptionCatalog.DefaultModel.Value;
 
     [ObservableProperty]
     private EffortOption _selectedEffort;
@@ -142,6 +143,19 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <summary>Models the local server reported on the last refresh, offered as suggestions in the model picker.</summary>
     public ObservableCollection<string> AvailableModels { get; } = [];
 
+    /// <summary>
+    /// Per-profile default editors for the selected plugin provider's own declared launch options (Claude's
+    /// permission mode/model/effort, Codex's sandbox) — rendered generically from the plugin's declaration, so the
+    /// host imposes no provider vocabulary. Empty for a built-in provider or a plugin that declares none.
+    /// </summary>
+    public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginOptionDefaults { get; } = [];
+
+    /// <summary>Whether the selected plugin provider declares any start-option defaults to edit.</summary>
+    public bool HasPluginOptionDefaults => PluginOptionDefaults.Count > 0;
+
+    /// <summary>The alias suggestions for the editable Claude model field (see <see cref="SessionOptionCatalog.ClaudeModelSuggestions"/>).</summary>
+    public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
+
     public bool IsClaudeProvider => SelectedProvider.Value == SessionProvider.ClaudeCli;
 
     /// <summary>The local OpenAI-compatible providers (Ollama/LM Studio) — a plugin provider (#45) is neither this nor <see cref="IsClaudeProvider"/>, so it gets its own <see cref="IsPluginProvider"/>.</summary>
@@ -212,7 +226,35 @@ public partial class EditableProfileViewModel : ViewModelBase
             PluginConfigView = value.Value == SessionProvider.Plugin && value.PluginProviderId is { } providerId
                 ? _pluginProviderRegistry?.Resolve(providerId)?.CreateConfigView(null)
                 : null;
+
+            // A freshly added profile has no stored defaults yet — start each option on its own declared default.
+            _RefreshPluginOptionDefaults(storedDefaults: null);
         }
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="PluginOptionDefaults"/> from the selected plugin provider's declared launch options,
+    /// each pre-filled from <paramref name="storedDefaults"/> (the profile's saved value) or the option's own
+    /// declared default. Rendered the same generic way the New-session dialog renders a plugin's options, so a
+    /// profile can remember its preferred permission mode/model/effort (Claude) or sandbox (Codex).
+    /// </summary>
+    private void _RefreshPluginOptionDefaults(IReadOnlyDictionary<string, string>? storedDefaults)
+    {
+        PluginOptionDefaults.Clear();
+
+        if (_pluginProviderRegistry is not null
+            && SelectedProvider.Value == SessionProvider.Plugin
+            && SelectedProvider.PluginProviderId is { } providerId
+            && _pluginProviderRegistry.Resolve(providerId) is { } registration)
+        {
+            foreach (var option in registration.Options)
+            {
+                var value = storedDefaults?.GetValueOrDefault(option.Key) ?? option.DefaultValue;
+                PluginOptionDefaults.Add(new PluginTtyOptionSelectionViewModel(option.Key, option.Label, option.Choices, value, option.ChoiceLabels));
+            }
+        }
+
+        OnPropertyChanged(nameof(HasPluginOptionDefaults));
     }
 
     partial void OnPluginConfigViewChanged(IPluginProviderConfigView? value) => OnPropertyChanged(nameof(IsPluginProviderMissing));
@@ -238,13 +280,16 @@ public partial class EditableProfileViewModel : ViewModelBase
         IPluginProviderRegistry? pluginProviderRegistry = null)
     {
         _label = profile.Label;
-        _configDir = profile.ConfigDir;
-        _executablePath = profile.ExecutablePath ?? string.Empty;
+        _configDir = profile.Claude?.ConfigDir ?? string.Empty;
+        _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;
         _purpose = profile.Purpose ?? string.Empty;
         _memoryLimitMb = profile.MemoryLimitMb ?? 0;
-        _selectedPermissionMode = SessionOptionCatalog.ResolvePermissionMode(profile.Defaults?.PermissionMode);
-        _selectedModel = SessionOptionCatalog.ResolveModel(profile.Defaults?.Model);
-        _selectedEffort = SessionOptionCatalog.ResolveEffort(profile.Defaults?.Effort);
+        // The typed permission/model/effort selections back the retired Claude-CLI editor block (hidden now that Claude
+        // is a plugin); a plugin profile's real defaults come from OptionDefaults via PluginOptionDefaults. Seed the
+        // typed fields with the app defaults rather than the profile's legacy typed values, which are migration-only.
+        _selectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
+        _claudeModel = SessionOptionCatalog.DefaultModel.Value;
+        _selectedEffort = SessionOptionCatalog.DefaultEffort;
         _autoApproveTools = profile.Defaults?.AutoApproveTools ?? false;
 
         var delegation = profile.DelegationPolicy;
@@ -285,18 +330,45 @@ public partial class EditableProfileViewModel : ViewModelBase
         {
             _selectedProvider = SessionProviderCatalog.Resolve(profile.Provider);
         }
+
+        // Build the generic per-profile option-default editors from the (possibly plugin) provider, pre-filled from
+        // the profile's saved defaults — the provider-neutral successor to the typed permission/model/effort combos.
+        _RefreshPluginOptionDefaults(profile.Defaults?.OptionDefaults);
     }
 
     /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
-    public SessionProfile ToProfile() => new(
-        Label.Trim(),
-        ConfigDir.Trim(),
-        string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim(),
-        string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
-        new ProfileDefaults(SelectedPermissionMode.Value, SelectedModel.Value, SelectedEffort.Value, AutoApproveTools),
-        _ToProviderConfig(),
-        _ToDelegationPolicy(),
-        MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
+    public SessionProfile ToProfile()
+    {
+        // A plugin profile stores its start defaults only in the generic OptionDefaults map and writes the legacy
+        // typed permission/model/effort fields blank, so those become a no-op the migration ignores on later loads —
+        // OptionDefaults is the single source. A non-plugin provider (Ollama/LM Studio) keeps the legacy typed fields.
+        var defaults = IsPluginProvider
+            ? new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools) { OptionDefaults = _CollectPluginOptionDefaults() }
+            : new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools);
+
+        return new(
+            Label.Trim(),
+            _ToProviderConfig(),
+            string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
+            defaults,
+            _ToDelegationPolicy(),
+            MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
+    }
+
+    // The per-profile option defaults the operator set, keyed by option key; only the ones actually chosen (a blank
+    // value leaves the option on the plugin's own default). Null when the provider declares no options.
+    private IReadOnlyDictionary<string, string>? _CollectPluginOptionDefaults()
+    {
+        if (!HasPluginOptionDefaults)
+        {
+            return null;
+        }
+
+        var defaults = PluginOptionDefaults
+            .Where(option => !string.IsNullOrWhiteSpace(option.Value))
+            .ToDictionary(option => option.Key, option => option.Value!);
+        return defaults.Count > 0 ? defaults : null;
+    }
 
     // A profile that is not a target carries no policy at all, so cockpit.json stays quiet about the profiles
     // that have nothing to do with delegation.
@@ -329,7 +401,7 @@ public partial class EditableProfileViewModel : ViewModelBase
             Tags: null);
     }
 
-    private ProviderConfig? _ToProviderConfig()
+    private ProviderConfig _ToProviderConfig()
     {
         var systemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt.Trim();
         if (SelectedProvider.Value == SessionProvider.Plugin)
@@ -341,15 +413,20 @@ public partial class EditableProfileViewModel : ViewModelBase
 
             // No config view to serialize (the provider plugin is not resolvable) — hand back the profile's
             // original config untouched rather than null, so a save/remove of some other row never silently
-            // wipes this orphaned profile's ProviderId/ConfigJson (and any API key inside it).
-            return _orphanedPluginConfig;
+            // wipes this orphaned profile's ProviderId/ConfigJson (and any API key inside it). Reachable only
+            // for a profile the ctor already flagged as orphaned (IsValid is false otherwise, so the
+            // Manage-profiles Save gate never gets here without one) — a null here would be this view model
+            // itself in a state its own invariants rule out, so it fails loudly instead of handing back a
+            // profile with no provider at all.
+            return _orphanedPluginConfig
+                ?? throw new InvalidOperationException("Plugin provider selected with neither a config view nor an orphaned config to fall back to.");
         }
 
         return SelectedProvider.Value switch
         {
             SessionProvider.Ollama => new OllamaConfig(BaseUrl.Trim(), Model.Trim(), systemPrompt),
             SessionProvider.LmStudio => new LmStudioConfig(BaseUrl.Trim(), Model.Trim(), string.IsNullOrWhiteSpace(ApiKey) ? null : ApiKey.Trim(), systemPrompt),
-            _ => null,
+            _ => new ClaudeConfig(ConfigDir.Trim(), string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim()),
         };
     }
 }

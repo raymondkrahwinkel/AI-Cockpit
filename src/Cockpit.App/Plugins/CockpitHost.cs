@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workflows;
 using Cockpit.Plugins.Abstractions.Mcp;
@@ -136,11 +137,14 @@ internal sealed class CockpitHost(
     public void AddSessionProvider(SessionProviderRegistration registration) =>
         services.GetRequiredService<IPluginProviderRegistry>().Register(registration);
 
+    public void AddTtyProvider(TtyProviderRegistration registration) =>
+        services.GetRequiredService<IPluginTtyProviderRegistry>().Register(registration);
+
     public async Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()
     {
         var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false);
         return profiles
-            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.ConfigDir))
+            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty))
             .ToList();
     }
 

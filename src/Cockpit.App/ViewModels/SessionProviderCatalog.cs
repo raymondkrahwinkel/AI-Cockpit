@@ -8,7 +8,8 @@ public static class SessionProviderCatalog
 {
     public static IReadOnlyList<SessionProviderOption> Providers { get; } =
     [
-        new("Claude CLI", SessionProvider.ClaudeCli),
+        // Only the two OpenAI-compatible local providers remain built into the core (Fase 4): Claude is a bundled
+        // provider plugin now, offered through the plugin-provider arm, not a built-in CLI provider.
         new("Ollama", SessionProvider.Ollama),
         new("LM Studio", SessionProvider.LmStudio),
         // Generic fallback label for a Plugin-provider profile shown somewhere that has no IPluginProviderRegistry
@@ -17,6 +18,8 @@ public static class SessionProviderCatalog
         new("Plugin", SessionProvider.Plugin),
     ];
 
+    // A provider with no built-in option (the retired Claude-CLI enum value) falls back to Ollama, the first core
+    // provider — reachable only for a legacy value, since a Claude profile is migrated to the plugin on load.
     public static SessionProviderOption Resolve(SessionProvider provider) =>
         Providers.FirstOrDefault(option => option.Value == provider) ?? Providers[0];
 

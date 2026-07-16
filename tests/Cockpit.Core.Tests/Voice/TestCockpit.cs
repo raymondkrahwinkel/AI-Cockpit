@@ -45,7 +45,7 @@ internal static class TestCockpit
         dialogService = Substitute.For<ISessionDialogService>();
         return new CockpitViewModel(
             () => new SessionViewModel(),
-            () => new ClaudeTtyViewModel(),
+            () => new TtyViewModel(),
             dialogService,
             Substitute.For<IAudioCaptureService>(),
             Substitute.For<IAudioPlaybackService>(),

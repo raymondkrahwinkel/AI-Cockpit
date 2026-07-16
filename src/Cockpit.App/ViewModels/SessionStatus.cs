@@ -13,6 +13,14 @@ public enum SessionStatus
     /// <summary>A turn is in flight (message sent, no <c>TurnCompleted</c>/error yet).</summary>
     Busy,
 
+    /// <summary>
+    /// The main agent's own turn has gone quiet, but background work it spawned (a Claude sub-agent) is still
+    /// running (#9) — the session is not idle and closing it would interrupt real work, but the main agent is not
+    /// itself producing output. A distinct dot so "sub-agents still churning" reads differently from "the agent
+    /// is typing" and from "done".
+    /// </summary>
+    WorkingBackground,
+
     /// <summary>A tool-use permission decision is pending, or the CLI reported <c>needs_action</c>.</summary>
     WaitingForInput,
 

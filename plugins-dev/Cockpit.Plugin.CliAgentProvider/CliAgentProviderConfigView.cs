@@ -15,7 +15,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
     private readonly TextBox _command;
     private readonly TextBox _workingDirectory;
     private readonly ComboBox _sandboxMode;
-    private readonly TextBox _model;
+    private readonly AutoCompleteBox _model;
     private readonly TextBox _apiKey;
 
     public Control View { get; }
@@ -29,10 +29,22 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         _command = new TextBox { Text = existing?.Command ?? "codex" };
         _workingDirectory = new TextBox { Text = existing?.WorkingDirectory ?? string.Empty, PlaceholderText = "Directory codex may read (and, in workspace-write, edit)" };
 
-        var sandboxModes = new[] { "read-only", "workspace-write", "danger-full-access" };
-        _sandboxMode = new ComboBox { ItemsSource = sandboxModes, SelectedItem = existing?.SandboxMode ?? "read-only" };
+        _sandboxMode = new ComboBox { ItemsSource = CodexSandbox.Choices, SelectedItem = existing?.SandboxMode ?? "read-only" };
 
-        _model = new TextBox { Text = existing?.Model ?? string.Empty, PlaceholderText = "e.g. gpt-5-codex (blank = codex's own default)" };
+        // Free text with live suggestions, not a hard dropdown: a profile default may still pin any model (or one
+        // this machine cannot list right now, e.g. logged out) — an AutoCompleteBox is both, a plain ComboBox
+        // would be only the list. The suggestions are filled in the background from this codex's model/list
+        // (increment 2 step C, the config-view mirror of the New-session dialog's Model dropdown).
+        _model = new AutoCompleteBox
+        {
+            Text = existing?.Model ?? string.Empty,
+            PlaceholderText = "e.g. gpt-5-codex (blank = codex's own default)",
+            FilterMode = AutoCompleteFilterMode.ContainsOrdinal,
+            MinimumPrefixLength = 0,
+            IsTextCompletionEnabled = false,
+        };
+        _ = _PopulateModelSuggestionsAsync(existing?.Command ?? "codex", existing?.ConfigDir);
+
         _apiKey = new TextBox { Text = existing?.ApiKey ?? string.Empty, PasswordChar = '•' };
 
         View = new StackPanel
@@ -42,8 +54,8 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             {
                 _Label("Codex command / path"),
                 SettingsHelpRow.Build(_command, "Bare \"codex\" is resolved against PATH (including a Windows .cmd npm shim); or paste an absolute path to the executable."),
-                _Label("Working directory"),
-                _workingDirectory,
+                _Label("Working directory (optional — SDK sessions only)"),
+                SettingsHelpRow.Build(_workingDirectory, "A TTY session runs where the New-session dialog says, so it ignores this. An SDK session cannot be told where it runs — the plugin contract carries no working directory — so it uses this, and falls back to the cockpit's own directory when it is empty."),
                 _Label("Sandbox mode"),
                 SettingsHelpRow.Build(_sandboxMode, "read-only is Codex's safe default. workspace-write allows edits inside the working directory; danger-full-access runs Codex with no sandboxing at all — only on a machine/workdir you fully trust."),
                 _Label("Model (optional)"),
@@ -59,7 +71,15 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         var command = _command.Text?.Trim() ?? string.Empty;
         var workingDirectory = _workingDirectory.Text?.Trim() ?? string.Empty;
 
-        if (string.IsNullOrEmpty(command) || string.IsNullOrEmpty(workingDirectory) || !Directory.Exists(workingDirectory))
+        // The working directory is optional, and only the headless route reads it at all: a TTY session is told
+        // where it runs by the cockpit (the New-session dialog's own working directory), so demanding it here
+        // would make the operator fill in a field their session never uses.
+        //
+        // The headless route needs it because the plugin session-driver contract does not carry a working
+        // directory — the host resolves one and the adapter drops it. So the plugin has to ask for what the
+        // cockpit already knows. That is a gap in the contract, not a setting; when it is closed this field can
+        // go entirely.
+        if (string.IsNullOrEmpty(command) || (!string.IsNullOrEmpty(workingDirectory) && !Directory.Exists(workingDirectory)))
         {
             configJson = string.Empty;
             return false;
@@ -74,6 +94,30 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 
         configJson = JsonSerializer.Serialize(config, CliAgentConfig.JsonOptions);
         return true;
+    }
+
+    /// <summary>
+    /// Fills the Model field's suggestions from the models this codex offers (<c>model/list</c>), best-effort:
+    /// no codex, logged out, or a slow spawn just leaves it free text. Uses the profile's own command and
+    /// CODEX_HOME so a per-profile install/login lists its own models.
+    /// </summary>
+    private async Task _PopulateModelSuggestionsAsync(string command, string? configDir)
+    {
+        try
+        {
+            var config = new CliAgentConfig(Command: command, ConfigDir: configDir);
+            var executablePath = CliExecutableLocator.Resolve(command);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var listing = await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cts.Token).ConfigureAwait(true);
+            if (listing.Ids.Count > 0)
+            {
+                _model.ItemsSource = listing.Ids;
+            }
+        }
+        catch (Exception)
+        {
+            // No suggestions — the field stays free text, which is a perfectly good way to set a model.
+        }
     }
 
     private static TextBlock _Label(string text) => new() { Text = text, FontSize = 11, Margin = new Thickness(0, 4, 0, 0) };

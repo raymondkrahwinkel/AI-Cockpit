@@ -76,7 +76,7 @@ public class DescribeTargetTests
     [Fact]
     public async Task DescribeTarget_OnAProfileThatIsNotATarget_IsRefused()
     {
-        var service = _Service(_Store(new SessionProfile("personal", ConfigDir: string.Empty)));
+        var service = _Service(_Store(new SessionProfile("personal", new ClaudeConfig(string.Empty))));
 
         var describe = async () => await service.DescribeTargetAsync("personal", "let me in", tags: null, taskTypes: null);
 
@@ -111,7 +111,7 @@ public class DescribeTargetTests
     {
         var policy = new DelegationPolicy(AllowedAsTarget: true);
 
-        return new SessionProfile(label, ConfigDir: string.Empty, Delegation: tune?.Invoke(policy) ?? policy);
+        return new SessionProfile(label, new ClaudeConfig(string.Empty), Delegation: tune?.Invoke(policy) ?? policy);
     }
 
     private static ISessionProfileStore _Store(params SessionProfile[] profiles)

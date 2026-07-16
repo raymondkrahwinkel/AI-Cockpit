@@ -18,7 +18,7 @@ namespace Cockpit.Core.Tests.Claude;
 public class OpenAiCompatSessionDriverTests
 {
     private static readonly SessionProfile LocalProfile =
-        new("local", ConfigDir: "", ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1"));
+        new("local", new OllamaConfig("http://localhost:11434", "llama3.1"));
 
     [Fact]
     public async Task SendUserMessage_StreamsAssistantDeltas_ThenCompletesTheTurn()
@@ -77,8 +77,9 @@ public class OpenAiCompatSessionDriverTests
                 Arg.Do<IEnumerable<ChatMessage>>(messages => captured = messages.ToList()), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
             .Returns(_Stream("ok"));
         var driver = _CreateDriver(chatClient);
-        var profile = new SessionProfile("local", string.Empty,
-            ProviderConfig: new OllamaConfig("http://localhost:11434", "llama3.1", "You are a pirate."));
+        var profile = new SessionProfile(
+            "local",
+            new OllamaConfig("http://localhost:11434", "llama3.1", "You are a pirate."));
 
         await driver.StartAsync(profile);
         await driver.SendUserMessageAsync("hi");

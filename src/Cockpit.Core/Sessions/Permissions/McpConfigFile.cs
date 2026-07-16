@@ -17,6 +17,18 @@ public static class McpConfigFile
     /// <summary>The server key; the tool is addressed as <c>mcp__cockpit__permission_prompt</c>.</summary>
     public const string ServerName = "cockpit";
 
+    /// <summary>
+    /// Whether a registry server should fan out to an agentic CLI session (Claude Code, Codex) — enabled, not
+    /// scoped to local models only (those agents ship their own file/shell/web tools, so a filesystem server
+    /// there is noise), and not the reserved permission-server key (added separately, never from the registry).
+    /// The one predicate the Claude <c>--mcp-config</c> serializers and the plugin driver adapter (#26/#44) all
+    /// share, so "which servers a coding agent sees" lives in one place.
+    /// </summary>
+    public static bool IsAgentEligible(McpServerConfig server) =>
+        server.Enabled
+        && server.Scope != McpServerScope.LocalOnly
+        && !string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Serializes the config JSON for the permission server alone (no registry fan-out).</summary>
     public static string Serialize(string mcpUrl) => Serialize(mcpUrl, []);
 
@@ -44,16 +56,7 @@ public static class McpConfigFile
 
         foreach (var server in registryServers)
         {
-            // Skip disabled servers, the reserved permission-server key, and anything scoped to local models
-            // only (#26 scoping) — Claude Code has its own file/shell/web tools, so those would be noise.
-            if (!server.Enabled
-                || server.Scope == McpServerScope.LocalOnly
-                || string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (_ToConfigEntry(server) is { } entry)
+            if (IsAgentEligible(server) && _ToConfigEntry(server) is { } entry)
             {
                 servers[server.Name] = entry;
             }
@@ -75,16 +78,7 @@ public static class McpConfigFile
         var servers = new JsonObject();
         foreach (var server in registryServers)
         {
-            // Same exclusions as the fan-out above: disabled, the reserved permission-server key, and
-            // local-model-only servers (Claude Code has its own file/shell/web tools, so those are noise).
-            if (!server.Enabled
-                || server.Scope == McpServerScope.LocalOnly
-                || string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (_ToConfigEntry(server) is { } entry)
+            if (IsAgentEligible(server) && _ToConfigEntry(server) is { } entry)
             {
                 servers[server.Name] = entry;
             }
