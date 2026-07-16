@@ -56,7 +56,10 @@ internal sealed class ClaudeTtyProvider : IPluginTtyProvider
         }
 
         return new PluginTtyLaunchSpec(
-            config.ExecutablePath is { Length: > 0 } executable ? executable : "claude",
+            // Resolve against PATH like the SDK route does: a bare "claude" is not spawnable directly on Windows
+            // (Process does no PATHEXT lookup), so the locator finds the .cmd/.exe/.bat npm shim. A pinned absolute
+            // path passes through unchanged. Without this a default (blank-executable) Windows profile fails to start.
+            ClaudeExecutableLocator.Resolve(config.ExecutablePath is { Length: > 0 } executable ? executable : "claude"),
             arguments,
             environmentOverlay,
             workingDirectory,
