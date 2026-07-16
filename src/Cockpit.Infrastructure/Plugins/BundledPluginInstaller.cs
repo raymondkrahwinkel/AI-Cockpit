@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
-using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -63,126 +62,11 @@ public sealed class BundledPluginInstaller : ISingletonService
             }
         }
 
-        var saved = await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
-        var installed = new List<string>();
-
-        foreach (var source in Directory.EnumerateDirectories(bundledRoot))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (await _ReadManifestAsync(source, cancellationToken).ConfigureAwait(false) is not { } manifest)
-            {
-                continue;
-            }
-
-            var target = Path.Combine(pluginsRoot, manifest.Id);
-            var savedRegistration = saved.GetValueOrDefault(manifest.Id);
-
-            // A plugin the operator turned off stays off, and stays as it is on disk: shipping a new build is
-            // not a reason to reinstate something they deliberately removed from their cockpit.
-            if (savedRegistration is { Enabled: false })
-            {
-                continue;
-            }
-
-            if (!await _NeedsInstallAsync(source, target, manifest, cancellationToken).ConfigureAwait(false))
-            {
-                continue;
-            }
-
-            _CopyPlugin(source, target);
-
-            var entryAssembly = Path.Combine(target, manifest.EntryAssembly);
-            var sha = PluginHash.Compute(await File.ReadAllBytesAsync(entryAssembly, cancellationToken).ConfigureAwait(false));
-            await _registrations.SaveAsync(manifest.Id, new PluginRegistration(Enabled: true, PinnedSha256: sha), cancellationToken).ConfigureAwait(false);
-
-            installed.Add(manifest.Id);
-        }
-
-        return installed;
-    }
-
-    // Install when it is not there at all, when what we ship is newer than what is installed, or when it is the
-    // same version built from different bytes. An installed version that is newer (the operator updated it from
-    // the store) is left alone — shipping a build must not roll them back.
-    private async Task<bool> _NeedsInstallAsync(string source, string target, PluginManifest bundled, CancellationToken cancellationToken)
-    {
-        if (!Directory.Exists(target))
-        {
-            return true;
-        }
-
-        if (await _ReadManifestAsync(target, cancellationToken).ConfigureAwait(false) is not { } installed)
-        {
-            return true;
-        }
-
-        if (PluginVersion.IsNewer(bundled.Version, installed.Version))
-        {
-            return true;
-        }
-
-        if (PluginVersion.IsNewer(installed.Version, bundled.Version))
-        {
-            // The one skip worth a word. The rest are either nothing happening or the operator's own decision;
-            // this one looks like the build did nothing, and the reason is a version they may have forgotten
-            // updating past.
-            _logger?.LogInformation(
-                "Bundled plugin '{Plugin}' {BundledVersion} is older than the {InstalledVersion} already installed, so it was left alone.",
-                bundled.Id,
-                bundled.Version,
-                installed.Version);
-
-            return false;
-        }
-
-        // Same version, which does not mean the same plugin: a rebuild never bumps one, because there is nothing
-        // to bump it to. The version was standing in for "is this different" and answering for the wrong thing —
-        // so ask what the question actually meant.
-        return !await _IsSameAssemblyAsync(
-            Path.Combine(source, bundled.EntryAssembly),
-            Path.Combine(target, installed.EntryAssembly),
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<bool> _IsSameAssemblyAsync(string bundledAssembly, string installedAssembly, CancellationToken cancellationToken)
-    {
-        if (!File.Exists(bundledAssembly) || !File.Exists(installedAssembly))
-        {
-            return false;
-        }
-
-        var bundledHash = PluginHash.Compute(await File.ReadAllBytesAsync(bundledAssembly, cancellationToken).ConfigureAwait(false));
-        var installedHash = PluginHash.Compute(await File.ReadAllBytesAsync(installedAssembly, cancellationToken).ConfigureAwait(false));
-
-        return string.Equals(bundledHash, installedHash, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static async Task<PluginManifest?> _ReadManifestAsync(string folder, CancellationToken cancellationToken)
-    {
-        var manifestPath = Path.Combine(folder, "plugin.json");
-        if (!File.Exists(manifestPath))
-        {
-            return null;
-        }
-
-        var json = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
-        return PluginManifest.TryParse(json, out var manifest, out _) ? manifest : null;
-    }
-
-    // Replaces the plugin's files wholesale rather than merging: a leftover assembly from an older version is
-    // exactly the kind of thing that loads and then fails halfway.
-    private static void _CopyPlugin(string source, string target)
-    {
-        if (Directory.Exists(target))
-        {
-            Directory.Delete(target, recursive: true);
-        }
-
-        Directory.CreateDirectory(target);
-        foreach (var file in Directory.EnumerateFiles(source))
-        {
-            File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
-        }
+        // Each immediate subfolder of the bundled root is one plugin (its dll, deps.json and plugin.json). A
+        // bundled plugin ships, so it is installed even when not there yet (installNew), while the shared rule
+        // still respects a disabled plugin and an operator's newer version.
+        return await new PluginSourceInstaller(_registrations, _logger)
+            .InstallFromSourceFoldersAsync(Directory.EnumerateDirectories(bundledRoot), pluginsRoot, installNew: true, cancellationToken)
+            .ConfigureAwait(false);
     }
 }
