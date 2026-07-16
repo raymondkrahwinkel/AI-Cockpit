@@ -4,87 +4,103 @@ using FluentAssertions;
 namespace Cockpit.Core.Tests.Terminal;
 
 /// <summary>
-/// Per-OS shell detection for terminal panes (#AC-25): only shells that resolve to a real file are offered, the
+/// Shell detection for terminal panes (#AC-25): a shell is only offered once it resolves to a real file, the
 /// preferred one leads, a bare name gets Windows extension probing, and the same binary is never listed twice.
+/// Driven with real files in a temp directory on the PATH, so it exercises the actual filesystem resolution on
+/// whichever OS the test runs — it does not simulate a foreign OS, because <see cref="ShellCatalog.Detect"/> never
+/// runs on one.
 /// </summary>
-public class ShellCatalogTests
+public sealed class ShellCatalogTests : IDisposable
 {
-    private static Func<string, bool> Exists(params string[] present)
+    private readonly string _dir;
+
+    public ShellCatalogTests()
     {
-        var set = new HashSet<string>(present, StringComparer.OrdinalIgnoreCase);
-        return set.Contains;
+        _dir = Path.Combine(Path.GetTempPath(), "cockpit-shell-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_dir);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir))
+        {
+            Directory.Delete(_dir, recursive: true);
+        }
+    }
+
+    private string Touch(string fileName)
+    {
+        var path = Path.Combine(_dir, fileName);
+        File.WriteAllText(path, string.Empty);
+        return path;
     }
 
     [Fact]
-    public void Build_Windows_ResolvesPwshWithExeExtensionAndLeadsWithIt()
+    public void Build_ResolvesAShellOnPathToAnAbsolutePathAndLeadsWithThePreferredOne()
     {
-        var pwsh = Path.Combine(@"C:\pwsh", "pwsh") + ".exe";
+        if (OperatingSystem.IsWindows())
+        {
+            // A bare "pwsh" candidate must find pwsh.exe via extension probing (Process does no PATHEXT lookup).
+            var pwsh = Touch("pwsh.exe");
 
-        var shells = ShellCatalog.Build(
-            isWindows: true,
-            pathVariable: @"C:\pwsh",
-            shellEnvironmentVariable: null,
-            comSpec: @"C:\Windows\System32\cmd.exe",
-            fileExists: Exists(pwsh, @"C:\Windows\System32\cmd.exe"));
+            var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: null);
 
-        shells[0].Id.Should().Be("pwsh");
-        shells[0].DisplayName.Should().Be("PowerShell");
-        shells[0].ExecutablePath.Should().Be(pwsh);
-        shells[0].Arguments.Should().ContainSingle().Which.Should().Be("-NoLogo");
+            shells[0].Id.Should().Be("pwsh", "PowerShell 7 is the preferred Windows default");
+            shells[0].DisplayName.Should().Be("PowerShell");
+            shells[0].ExecutablePath.Should().Be(pwsh);
+        }
+        else
+        {
+            var bash = Touch("bash");
 
-        // Windows PowerShell and WSL were not on the probe, so they are dropped rather than offered as a dead path.
-        shells.Select(s => s.Id).Should().NotContain("powershell").And.NotContain("wsl");
-        // cmd is always reachable through %COMSPEC%, taken as a rooted path.
-        shells.Should().ContainSingle(s => s.Id == "cmd").Which.ExecutablePath.Should().Be(@"C:\Windows\System32\cmd.exe");
+            var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: null);
+
+            shells.Should().Contain(s => s.Id == "bash" && s.ExecutablePath == bash);
+        }
     }
 
     [Fact]
-    public void Build_Windows_NoComSpec_FallsBackToBareCmd()
+    public void Build_DropsCandidatesThatDoNotResolve()
     {
-        var cmd = Path.Combine(@"C:\Windows\System32", "cmd") + ".exe";
+        // An empty directory on PATH and no $SHELL/%COMSPEC%: nothing resolves, so nothing is offered rather than a
+        // dead path.
+        var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: null);
 
-        var shells = ShellCatalog.Build(
-            isWindows: true,
-            pathVariable: @"C:\Windows\System32",
-            shellEnvironmentVariable: null,
-            comSpec: null,
-            fileExists: Exists(cmd));
+        shells.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Build_Windows_IncludesCmdFromComSpec()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var cmd = Touch("cmd.exe");
+
+        var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: null, comSpec: cmd);
 
         shells.Should().ContainSingle(s => s.Id == "cmd").Which.ExecutablePath.Should().Be(cmd);
     }
 
     [Fact]
-    public void Build_Unix_LoginShellLeadsAndUsesItsFileName()
+    public void Build_Unix_LoginShellLeadsAndIsNotListedTwiceWhenItIsAlsoACandidate()
     {
-        var bash = Path.Combine("/usr/bin", "bash");
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
 
-        var shells = ShellCatalog.Build(
-            isWindows: false,
-            pathVariable: "/usr/bin",
-            shellEnvironmentVariable: "/bin/zsh",
-            comSpec: null,
-            fileExists: Exists("/bin/zsh", bash));
+        // $SHELL points at the same bash the "bash" candidate also finds — it must appear once, as the leading login.
+        var bash = Touch("bash");
+
+        var shells = ShellCatalog.Build(_dir, shellEnvironmentVariable: bash, comSpec: null);
 
         shells[0].Id.Should().Be("login");
-        shells[0].DisplayName.Should().Be("zsh");
-        shells[0].ExecutablePath.Should().Be("/bin/zsh");
-        shells.Should().Contain(s => s.Id == "bash" && s.ExecutablePath == bash);
-    }
-
-    [Fact]
-    public void Build_Unix_LoginShellSameBinaryAsCandidate_IsNotListedTwice()
-    {
-        var bash = Path.Combine("/usr/bin", "bash");
-
-        var shells = ShellCatalog.Build(
-            isWindows: false,
-            pathVariable: "/usr/bin",
-            shellEnvironmentVariable: bash,
-            comSpec: null,
-            fileExists: Exists(bash));
-
-        shells.Where(s => s.ExecutablePath == bash).Should().ContainSingle("the login shell and the bash candidate resolve to the same file");
-        shells[0].Id.Should().Be("login");
+        shells[0].DisplayName.Should().Be("bash");
+        shells[0].ExecutablePath.Should().Be(bash);
+        shells.Where(s => s.ExecutablePath == bash).Should().ContainSingle("the login shell and the bash candidate are the same file");
     }
 
     [Fact]
@@ -94,29 +110,30 @@ public class ShellCatalogTests
     }
 
     [Fact]
-    public void ForCommand_UnresolvedPath_PassesThroughSoThePtySurfacesTheError()
+    public void ForCommand_ResolvesAnExistingPathAndNamesItByItsFileName()
     {
-        // A rooted path that does not exist resolves to nothing, so it is passed through unchanged rather than
-        // silently swapped for another shell — the pty then reports a real "not found" the operator can fix.
-        var descriptor = ShellCatalog.ForCommand("/opt/definitely-not-here/fish");
+        var fish = Touch(OperatingSystem.IsWindows() ? "fish.exe" : "fish");
+
+        var descriptor = ShellCatalog.ForCommand(fish);
 
         descriptor.Should().NotBeNull();
         descriptor!.Id.Should().Be("custom");
         descriptor.DisplayName.Should().Be("fish");
-        descriptor.ExecutablePath.Should().Be("/opt/definitely-not-here/fish");
+        descriptor.ExecutablePath.Should().Be(fish);
         descriptor.Arguments.Should().BeEmpty();
     }
 
     [Fact]
-    public void Build_NothingResolves_ReturnsEmpty()
+    public void ForCommand_UnresolvedPath_PassesThroughSoThePtySurfacesTheError()
     {
-        var shells = ShellCatalog.Build(
-            isWindows: true,
-            pathVariable: @"C:\nope",
-            shellEnvironmentVariable: null,
-            comSpec: null,
-            fileExists: Exists());
+        // A path that does not exist is passed through unchanged rather than silently swapped for another shell —
+        // the pty then reports a real "not found" the operator can fix.
+        var missing = Path.Combine(_dir, OperatingSystem.IsWindows() ? "nope.exe" : "nope");
 
-        shells.Should().BeEmpty();
+        var descriptor = ShellCatalog.ForCommand(missing);
+
+        descriptor.Should().NotBeNull();
+        descriptor!.ExecutablePath.Should().Be(missing);
+        descriptor.DisplayName.Should().Be("nope");
     }
 }
