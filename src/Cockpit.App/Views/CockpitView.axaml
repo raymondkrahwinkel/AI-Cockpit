@@ -249,6 +249,12 @@
                                                     <TextBlock Text="{Binding SessionStatusLabel}"
                                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
                                                 </StackPanel>
+                                                <!-- AC-13: what this session is working on, set by the agent (via MCP) or a workflow;
+                                                     accented so it stands out, hidden when blank. -->
+                                                <TextBlock Text="{Binding Statusline}" FontSize="11"
+                                                           Foreground="{StaticResource CockpitAccentBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             </StackPanel>
 
                                             <!-- Hover-revealed close ✕, hidden while the confirm prompt is up. -->

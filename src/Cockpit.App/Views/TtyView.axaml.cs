@@ -594,7 +594,9 @@ public partial class TtyView : UserControl
                 (short)_lastColumns,
                 (short)_lastRows,
                 _pendingLaunch.WorkingDirectory,
-                _pendingLaunch.Resume);
+                _pendingLaunch.Resume,
+                // AC-13: the pane id becomes COCKPIT_PANE_ID in the CLI's environment, so the agent can set its own statusline.
+                _viewModel?.PaneId);
             _pty = pty;
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;

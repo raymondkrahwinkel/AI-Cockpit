@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -329,7 +330,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         LiveModelText = model.Value;
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
-        _launchOptions = launchOptions;
+
+        // AC-13: hand the provider this session's own pane id, which its plugin turns into COCKPIT_PANE_ID in the
+        // child's environment, so the agent can name its own session to the cockpit-session MCP's set_status tool.
+        var mergedOptions = launchOptions is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(launchOptions, StringComparer.OrdinalIgnoreCase);
+        mergedOptions[WellKnownPluginSessionOptions.PaneId] = PaneId;
+        _launchOptions = mergedOptions;
 
         await StartWithProfileAsync(profile, workingDirectory, resume);
 

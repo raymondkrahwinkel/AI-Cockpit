@@ -105,6 +105,16 @@ public static class NodeCatalog
             new Dictionary<string, string> { ["session"] = "Eveworkbench" }),
 
         new(
+            "cockpit.set-status",
+            "Set session status",
+            "Set the statusline under the active session's name — what it is working on, like a ticket number — and optionally rename it. Pair it with Start session to label a session after the ticket it just picked up; an empty status clears the line.",
+            "🏷",
+            NodeCategory.Sessions,
+            WorkflowNodeKind.Action,
+            [""],
+            ["Status", "Name"]),
+
+        new(
             "cockpit.delegate",
             "Delegate",
             "Hand the work to another profile as a background task, and wait for what it produces. It runs where you can see it, in the delegated tasks view.",
