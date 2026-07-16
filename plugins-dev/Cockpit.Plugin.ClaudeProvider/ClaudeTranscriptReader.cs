@@ -27,21 +27,24 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     public IReadOnlySet<string> SnapshotTranscripts(string configJson) =>
         _EnumerateTranscripts(_ResolveStateDirectory(configJson)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>How recently a sub-agent transcript must have been written to count the session as still doing background work — a bit above the poll interval so an actively-writing sub-agent always registers, while a finished one lapses within a couple of polls.</summary>
+    private static readonly TimeSpan SubAgentActivityWindow = TimeSpan.FromSeconds(10);
+
     public async IAsyncEnumerable<string> ReadAssistantTextAsync(
         string configJson,
         IReadOnlySet<string> knownTranscriptsAtLaunch,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await foreach (var line in ReadLinesAsync(configJson, knownTranscriptsAtLaunch, cancellationToken).ConfigureAwait(false))
+        await foreach (var reading in ReadActivityAsync(configJson, knownTranscriptsAtLaunch, cancellationToken).ConfigureAwait(false))
         {
-            if (ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var assistantText))
+            if (reading.RawLine is { } line && ClaudeTranscriptLineParser.TryExtractAssistantText(line, out var assistantText))
             {
                 yield return assistantText;
             }
         }
     }
 
-    public async IAsyncEnumerable<string> ReadLinesAsync(
+    public async IAsyncEnumerable<PluginTranscriptActivity> ReadActivityAsync(
         string configJson,
         IReadOnlySet<string> knownTranscriptsAtLaunch,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -53,6 +56,14 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
             yield break;
         }
 
+        // Sub-agents (the Task tool) are recorded in a sibling directory named after the session id, not in the
+        // main transcript — <dir>/<id>.jsonl (tailed here) alongside <dir>/<id>/subagents/*.jsonl. So while the
+        // main transcript is quiet mid-turn, recent writes there mean the session is still doing background work.
+        var subAgentDir = Path.Combine(
+            Path.GetDirectoryName(transcriptPath) ?? configDir,
+            Path.GetFileNameWithoutExtension(transcriptPath),
+            "subagents");
+
         await using var stream = new FileStream(
             transcriptPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         // Tail from the current end: whatever the session already wrote before this call is history,
@@ -63,12 +74,20 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         var readBuffer = new byte[8192];
         var charBuffer = new char[readBuffer.Length];
         var pendingLine = new StringBuilder();
+        var inTurn = false;
 
         while (!cancellationToken.IsCancellationRequested)
         {
             var bytesRead = await stream.ReadAsync(readBuffer, cancellationToken).ConfigureAwait(false);
             if (bytesRead <= 0)
             {
+                // No new main-transcript output. If a turn is in flight but the main agent has gone quiet while a
+                // sub-agent is still writing, that is background work — keep the session off "done" and show it.
+                if (inTurn && _SubAgentsActive(subAgentDir))
+                {
+                    yield return new PluginTranscriptActivity(PluginSessionActivity.BackgroundBusy, null);
+                }
+
                 await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
                 continue;
             }
@@ -87,10 +106,93 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
 
                 var line = pendingLine.ToString();
                 pendingLine.Clear();
-                yield return line;
+
+                var activity = ClassifyLine(line);
+                if (activity == PluginSessionActivity.Busy)
+                {
+                    inTurn = true;
+                }
+                else if (activity == PluginSessionActivity.TurnComplete)
+                {
+                    inTurn = false;
+                }
+
+                yield return new PluginTranscriptActivity(activity, line);
             }
 
             pendingLine.Append(charBuffer, chunkStart, charCount - chunkStart);
+        }
+    }
+
+    /// <summary>
+    /// Classifies one main-transcript JSONL line into a coarse turn-activity (ported from the host's former
+    /// <c>TtyTranscriptStatus</c> so the Claude-format knowledge lives with the provider): a user message or a
+    /// tool-result means the model owes a response (Busy); an assistant message is Busy while it streams or loops
+    /// into a tool call and <see cref="PluginSessionActivity.TurnComplete"/> on a terminal stop_reason; anything
+    /// else carries no signal.
+    /// </summary>
+    internal static PluginSessionActivity ClassifyLine(string? jsonLine)
+    {
+        if (string.IsNullOrWhiteSpace(jsonLine))
+        {
+            return PluginSessionActivity.None;
+        }
+
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(jsonLine);
+            var root = document.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object
+                || !root.TryGetProperty("type", out var typeElement)
+                || typeElement.ValueKind != System.Text.Json.JsonValueKind.String)
+            {
+                return PluginSessionActivity.None;
+            }
+
+            switch (typeElement.GetString())
+            {
+                case "user":
+                    return PluginSessionActivity.Busy;
+
+                case "assistant":
+                    var stopReason = root.TryGetProperty("message", out var message)
+                        && message.ValueKind == System.Text.Json.JsonValueKind.Object
+                        && message.TryGetProperty("stop_reason", out var reason)
+                        && reason.ValueKind == System.Text.Json.JsonValueKind.String
+                        ? reason.GetString()
+                        : null;
+                    return stopReason is "end_turn" or "stop_sequence" or "max_tokens"
+                        ? PluginSessionActivity.TurnComplete
+                        : PluginSessionActivity.Busy;
+
+                default:
+                    return PluginSessionActivity.None;
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return PluginSessionActivity.None;
+        }
+    }
+
+    /// <summary>True when a sub-agent transcript under <paramref name="subAgentDir"/> was written within <see cref="SubAgentActivityWindow"/> — the session is still doing background work.</summary>
+    private static bool _SubAgentsActive(string subAgentDir)
+    {
+        if (!Directory.Exists(subAgentDir))
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        try
+        {
+            return Directory.EnumerateFiles(subAgentDir, "*.jsonl")
+                .Any(file => now - File.GetLastWriteTimeUtc(file) < SubAgentActivityWindow);
+        }
+        catch (Exception)
+        {
+            // A sub-agent file vanishing mid-enumeration is not a status error — treat as no background activity.
+            return false;
         }
     }
 

@@ -30,11 +30,27 @@ internal sealed class SessionTranscriptReader(
             ? reader.ReadAssistantTextAsync(configJson, knownTranscriptsAtLaunch, cancellationToken)
             : _Empty();
 
-    public IAsyncEnumerable<string> ReadLinesAsync(
+    public IAsyncEnumerable<SessionTranscriptActivity> ReadActivityAsync(
         SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken) =>
         _ResolveReader(profile) is var (reader, configJson) && reader is not null
-            ? reader.ReadLinesAsync(configJson, knownTranscriptsAtLaunch, cancellationToken)
-            : _Empty();
+            ? _MapActivity(reader.ReadActivityAsync(configJson, knownTranscriptsAtLaunch, cancellationToken))
+            : _EmptyActivity();
+
+    /// <summary>Maps the provider plugin's own activity signal to the core mirror the host consumes.</summary>
+    private static async IAsyncEnumerable<SessionTranscriptActivity> _MapActivity(IAsyncEnumerable<PluginTranscriptActivity> source)
+    {
+        await foreach (var reading in source.ConfigureAwait(false))
+        {
+            var activity = reading.Activity switch
+            {
+                PluginSessionActivity.Busy => SessionActivity.Busy,
+                PluginSessionActivity.BackgroundBusy => SessionActivity.BackgroundBusy,
+                PluginSessionActivity.TurnComplete => SessionActivity.TurnComplete,
+                _ => SessionActivity.None,
+            };
+            yield return new SessionTranscriptActivity(activity, reading.RawLine);
+        }
+    }
 
     /// <summary>
     /// The provider plugin's own reader for this profile and the config JSON to read it with, or a null reader
@@ -61,6 +77,11 @@ internal sealed class SessionTranscriptReader(
 
 #pragma warning disable CS1998 // async iterator with no awaits — an immediately-completing empty stream
     private static async IAsyncEnumerable<string> _Empty([EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<SessionTranscriptActivity> _EmptyActivity([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         yield break;
     }

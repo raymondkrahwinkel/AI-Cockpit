@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 
 namespace Cockpit.Plugin.ClaudeProvider.Tests;
@@ -96,7 +97,7 @@ public class ClaudeTranscriptReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadLinesAsync_YieldsEveryAppendedRawLine_NotJustAssistantText()
+    public async Task ReadActivityAsync_YieldsEveryAppendedRawLine_NotJustAssistantText()
     {
         var transcriptPath = _CreateEmptyTranscriptFile();
         var reader = new ClaudeTranscriptReader();
@@ -104,8 +105,13 @@ public class ClaudeTranscriptReaderTests : IDisposable
         var received = new List<string>();
         var consumeTask = Task.Run(async () =>
         {
-            await foreach (var line in reader.ReadLinesAsync(ConfigJson, NoBaseline, cts.Token))
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
             {
+                if (reading.RawLine is not { } line)
+                {
+                    continue;
+                }
+
                 received.Add(line);
                 if (received.Count == 2)
                 {
@@ -122,6 +128,43 @@ public class ClaudeTranscriptReaderTests : IDisposable
         received.Should().HaveCount(2);
         received[0].Should().Contain("\"type\":\"user\"");
         received[1].Should().Contain("\"type\":\"assistant\"");
+    }
+
+    [Fact]
+    public async Task ReadActivityAsync_WhileASubAgentIsWriting_YieldsBackgroundBusy()
+    {
+        // The bug this guards: a Claude sub-agent (Task tool) records to a sibling <id>/subagents/ folder, not the
+        // main transcript, so the main tail goes quiet and the status used to time out to Done. The reader now sees
+        // that background activity and reports it.
+        var transcriptPath = _CreateEmptyTranscriptFile();
+        var subDir = Path.Combine(
+            Path.GetDirectoryName(transcriptPath)!, Path.GetFileNameWithoutExtension(transcriptPath), "subagents");
+
+        var reader = new ClaudeTranscriptReader();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var sawBackground = false;
+        var consumeTask = Task.Run(async () =>
+        {
+            await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
+            {
+                if (reading.Activity == PluginSessionActivity.BackgroundBusy)
+                {
+                    sawBackground = true;
+                    break;
+                }
+            }
+        });
+
+        await Task.Delay(500);
+        // The main agent spawns a sub-agent (a tool_use turn) → the reader is now mid-turn.
+        await File.AppendAllTextAsync(
+            transcriptPath, """{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use"}}""" + "\n");
+        // The sub-agent writes to its own folder while the main transcript stays quiet.
+        Directory.CreateDirectory(subDir);
+        await File.WriteAllTextAsync(Path.Combine(subDir, "agent-abc.jsonl"), "{}\n");
+
+        await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        sawBackground.Should().BeTrue("a sub-agent writing while the main transcript is quiet is background work");
     }
 
     /// <summary>

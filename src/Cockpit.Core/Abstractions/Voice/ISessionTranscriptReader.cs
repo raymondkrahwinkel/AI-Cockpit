@@ -29,9 +29,12 @@ public interface ISessionTranscriptReader
     IAsyncEnumerable<string> ReadAssistantTextAsync(SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The same tail as <see cref="ReadAssistantTextAsync"/> but yields every appended raw transcript line, not
-    /// only assistant text — used to drive a TTY session's coarse status from transcript activity (any new line
-    /// means a turn is in flight). Starts from the record's current end and runs until cancelled.
+    /// The same tail as <see cref="ReadAssistantTextAsync"/> but classifies each appended line into a coarse
+    /// <see cref="SessionActivity"/> for the TTY status dot, dispatching to the profile's provider (which owns the
+    /// format-specific reading). Also carries the raw line so the host's output-signal observe surface reads from
+    /// the same tail. A provider that runs background work it records apart from the main transcript reports
+    /// <see cref="SessionActivity.BackgroundBusy"/> while it runs, so a long background run never reads as done.
+    /// Starts from the record's current end and runs until cancelled.
     /// </summary>
-    IAsyncEnumerable<string> ReadLinesAsync(SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken);
+    IAsyncEnumerable<SessionTranscriptActivity> ReadActivityAsync(SessionProfile? profile, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken);
 }

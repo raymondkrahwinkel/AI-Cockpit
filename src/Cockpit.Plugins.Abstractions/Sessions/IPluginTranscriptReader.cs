@@ -31,9 +31,13 @@ public interface IPluginTranscriptReader
     IAsyncEnumerable<string> ReadAssistantTextAsync(string configJson, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken);
 
     /// <summary>
-    /// The same tail as <see cref="ReadAssistantTextAsync"/> but yields every appended raw transcript line,
-    /// not only assistant text — used to drive a TTY session's coarse status from transcript activity (any new
-    /// line means a turn is in flight). Tails from the artifact's current end and runs until cancelled.
+    /// The same tail as <see cref="ReadAssistantTextAsync"/> but classifies each appended line into a coarse
+    /// <see cref="PluginSessionActivity"/> for the host's TTY status dot — the provider owns the format-specific
+    /// reading, so the host maps neutral signals rather than parsing a transcript. Also carries the raw line
+    /// (<see cref="PluginTranscriptActivity.RawLine"/>) so the host's output-signal observe surface reads from the
+    /// same tail. A provider that runs background work (a sub-agent) it records apart from the main transcript
+    /// emits <see cref="PluginSessionActivity.BackgroundBusy"/> as a keep-alive while that work runs, so a long
+    /// background run never reads as done. Tails from the artifact's current end and runs until cancelled.
     /// </summary>
-    IAsyncEnumerable<string> ReadLinesAsync(string configJson, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken);
+    IAsyncEnumerable<PluginTranscriptActivity> ReadActivityAsync(string configJson, IReadOnlySet<string> knownTranscriptsAtLaunch, CancellationToken cancellationToken);
 }
