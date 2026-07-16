@@ -121,7 +121,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // same control request. Left to the CLI's own default when the level is unknown.
         if (ClaudeOptionChoices.EffortThinkingTokens.TryGetValue(_effort, out var thinkingTokens))
         {
-            await _SendControlRequestAsync(new { subtype = "set_max_thinking_tokens", maxThinkingTokens = thinkingTokens }, cancellationToken).ConfigureAwait(false);
+            await _SendControlRequestAsync(new { subtype = "set_max_thinking_tokens", max_thinking_tokens = thinkingTokens }, cancellationToken).ConfigureAwait(false);
         }
 
         _liveOptions = _BuildLiveOptions(effectiveModel, permissionMode);
@@ -213,7 +213,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         }
 
         _effort = value;
-        return _SendControlRequestAsync(new { subtype = "set_max_thinking_tokens", maxThinkingTokens = thinkingTokens }, cancellationToken);
+        // Field is snake_case (max_thinking_tokens) verbatim from the Agent SDK's Query.set_max_thinking_tokens — the
+        // CLI silently drops an unknown camelCase field, which would leave the budget unchanged (the effort-not-live bug).
+        return _SendControlRequestAsync(new { subtype = "set_max_thinking_tokens", max_thinking_tokens = thinkingTokens }, cancellationToken);
     }
 
     private async Task _SendControlRequestAsync(object request, CancellationToken cancellationToken)
