@@ -20,6 +20,26 @@ internal static class ClaudeConfigPaths
     public static string ResolveConfigJsonDirectory(string? configDir, string userProfileDirectory) =>
         ResolveSpawnOverride(configDir, userProfileDirectory) ?? userProfileDirectory;
 
+    /// <summary>
+    /// The directory the CLI keeps its session state under — <c>projects/*/*.jsonl</c> transcripts and
+    /// <c>.credentials.json</c> both live here. A pinned profile keeps its own dir; a blank/default profile
+    /// resolves to <c>CLAUDE_CONFIG_DIR</c> when set, else the CLI default <c>~/.claude</c>. Unlike
+    /// <see cref="ResolveConfigJsonDirectory"/>, a default profile resolves to <c>~/.claude</c> (where the
+    /// transcripts and credentials live), not the home root — the CLI writes <c>.claude.json</c> to the root
+    /// but everything else under <c>~/.claude</c>.
+    /// </summary>
+    public static string ResolveStateDirectory(string? configDir, string? environmentConfigDir, string userProfileDirectory)
+    {
+        if (!string.IsNullOrWhiteSpace(configDir))
+        {
+            return configDir;
+        }
+
+        return string.IsNullOrWhiteSpace(environmentConfigDir)
+            ? Path.Combine(userProfileDirectory, ".claude")
+            : environmentConfigDir;
+    }
+
     private static bool IsDefaultDirectory(string configDir, string userProfileDirectory)
     {
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
