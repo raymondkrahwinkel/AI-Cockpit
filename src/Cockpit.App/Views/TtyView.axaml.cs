@@ -23,11 +23,11 @@ namespace Cockpit.App.Views;
 /// byte events are written to pty stdin, and the control's <c>Resized</c> event is relayed to the pty
 /// — because that bridge is inherently view/toolkit-bound, not view-model logic.
 /// </summary>
-public partial class ClaudeTtyView : UserControl
+public partial class TtyView : UserControl
 {
     private IConPtyProcess? _pty;
     private CancellationTokenSource? _outputCancellation;
-    private ClaudeTtyViewModel? _viewModel;
+    private TtyViewModel? _viewModel;
     private TtyLaunchRequest? _pendingLaunch;
     private bool _launchPending;
     private bool _wired;
@@ -48,8 +48,8 @@ public partial class ClaudeTtyView : UserControl
     // Resolved from the app's DI container rather than injected: this UserControl is constructed by the
     // XAML view locator/designer, not by the container, matching the existing Program.Services lookups in
     // App.axaml.cs. Skipped in the XAML previewer, where Program.Services is never assigned.
-    private readonly ILogger<ClaudeTtyView>? _logger =
-        Design.IsDesignMode ? null : Program.Services.GetService<ILogger<ClaudeTtyView>>();
+    private readonly ILogger<TtyView>? _logger =
+        Design.IsDesignMode ? null : Program.Services.GetService<ILogger<TtyView>>();
 
     // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
     // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
@@ -58,7 +58,7 @@ public partial class ClaudeTtyView : UserControl
     private const int KeyDiagThrottleEvery = 10;
     private int _keyDiagCounter;
 
-    public ClaudeTtyView()
+    public TtyView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
@@ -95,7 +95,7 @@ public partial class ClaudeTtyView : UserControl
             _viewModel.PropertyChanged -= _OnViewModelPropertyChanged;
         }
 
-        _viewModel = DataContext as ClaudeTtyViewModel;
+        _viewModel = DataContext as TtyViewModel;
         if (_viewModel is not null)
         {
             _viewModel.LaunchRequested += OnLaunchRequested;
@@ -121,7 +121,7 @@ public partial class ClaudeTtyView : UserControl
     /// </summary>
     private void _OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ClaudeTtyViewModel.TerminalFontFamily) or nameof(ClaudeTtyViewModel.TerminalFontSize))
+        if (e.PropertyName is nameof(TtyViewModel.TerminalFontFamily) or nameof(TtyViewModel.TerminalFontSize))
         {
             _ApplyTerminalFont();
         }
@@ -154,7 +154,7 @@ public partial class ClaudeTtyView : UserControl
         }
     }
 
-    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold and transcribes without cleanup — see <see cref="ClaudeTtyViewModel.OnVoiceTextReady"/>.</summary>
+    /// <summary>KeyUp for the push-to-talk hotkey: ends the hold and transcribes without cleanup — see <see cref="TtyViewModel.OnVoiceTextReady"/>.</summary>
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (_viewModel is { } vm
@@ -430,7 +430,7 @@ public partial class ClaudeTtyView : UserControl
 
             // The session's own limits (context window, five-hour and weekly allowance) land in the file its
             // statusline writes; the launched process is what knows which file that is.
-            if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is ClaudeTtyViewModel viewModel)
+            if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is TtyViewModel viewModel)
             {
                 viewModel.TrackLimits(statusFile);
             }

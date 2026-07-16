@@ -107,8 +107,8 @@ sealed class Program
             provider => () => provider.GetRequiredService<SessionViewModel>());
 
         // Same factory pattern for the TTY-mode panel (#9 experiment).
-        services.AddTransient<Func<ClaudeTtyViewModel>>(
-            provider => () => provider.GetRequiredService<ClaudeTtyViewModel>());
+        services.AddTransient<Func<TtyViewModel>>(
+            provider => () => provider.GetRequiredService<TtyViewModel>());
 
         Services = services.BuildServiceProvider();
 

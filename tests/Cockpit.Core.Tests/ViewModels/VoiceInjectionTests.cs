@@ -50,7 +50,7 @@ public class VoiceInjectionTests
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9" });
 
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore);
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore);
         await _WaitForVoiceSettingsToLoadAsync(() => vm.VoiceEnabled);
 
         string? rawTranscript = null;
@@ -73,7 +73,7 @@ public class VoiceInjectionTests
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(
             new VoiceSettings { IsEnabled = true, PushToTalkKeyName = "F9", AutoSubmitAfterVoice = true });
 
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore);
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voicePushToTalk, voiceSettingsStore);
         await _WaitForVoiceSettingsToLoadAsync(() => vm.AutoSubmitAfterVoice);
 
         var writes = new List<string>();

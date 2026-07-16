@@ -341,7 +341,7 @@ public class OpenMicCoordinatorTests
     {
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { IsEnabled = true });
-        return new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voiceSettingsStore: voiceSettingsStore);
+        return new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), voiceSettingsStore: voiceSettingsStore);
     }
 
     /// <summary>Resolves any profile (including none) to a fresh provider substitute — same as the real resolver does for a Claude profile or a profile-less session.</summary>

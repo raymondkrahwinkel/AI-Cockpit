@@ -62,7 +62,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static readonly Core.Audio.AudioFormat AudioFormat = new();
 
     private readonly Func<SessionViewModel>? _sessionFactory;
-    private readonly Func<ClaudeTtyViewModel>? _ttySessionFactory;
+    private readonly Func<TtyViewModel>? _ttySessionFactory;
     private readonly ISessionDialogService? _dialogService;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
@@ -699,7 +699,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         foreach (var session in Sessions)
         {
-            if (session is ClaudeTtyViewModel tty)
+            if (session is TtyViewModel tty)
             {
                 tty.TerminalFontFamily = value;
             }
@@ -711,7 +711,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         foreach (var session in Sessions)
         {
-            if (session is ClaudeTtyViewModel tty)
+            if (session is TtyViewModel tty)
             {
                 tty.TerminalFontSize = value;
             }
@@ -740,7 +740,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         foreach (var session in Sessions)
         {
-            if (session is ClaudeTtyViewModel tty)
+            if (session is TtyViewModel tty)
             {
                 tty.IsVerticalLayout = StackSessionsVertically;
             }
@@ -1084,7 +1084,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var waiting = new SessionViewModel { Title = "Session 1", ActiveProfileLabel = "work (Claude)", SessionStatus = SessionStatus.NeedsAttention };
         var busy = new SessionViewModel { Title = "Session 2", ActiveProfileLabel = "local (Ollama)", SessionStatus = SessionStatus.Busy };
-        var tty = new ClaudeTtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
+        var tty = new TtyViewModel { Title = "Session 3", ActiveProfileLabel = "personal (Claude TTY)", SessionStatus = SessionStatus.Busy };
 
         Sessions.Add(waiting);
         Sessions.Add(busy);
@@ -1105,7 +1105,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public CockpitViewModel(
         Func<SessionViewModel> sessionFactory,
-        Func<ClaudeTtyViewModel> ttySessionFactory,
+        Func<TtyViewModel> ttySessionFactory,
         ISessionDialogService dialogService,
         IAudioCaptureService captureService,
         IAudioPlaybackService playbackService,
@@ -2592,7 +2592,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Seed a TTY session with the current global terminal-appearance preference (#40); further
         // changes reach it live via OnTerminalFontFamilyChanged/OnTerminalFontSizeChanged. No effect on
         // SDK sessions — the setting is TTY-only.
-        if (session is ClaudeTtyViewModel tty)
+        if (session is TtyViewModel tty)
         {
             tty.TerminalFontFamily = TerminalFontFamily;
             tty.TerminalFontSize = TerminalFontSize;

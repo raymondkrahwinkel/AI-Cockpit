@@ -9,12 +9,12 @@ namespace Cockpit.Core.Tests.ViewModels;
 /// <summary>
 /// The TTY panel no longer selects a profile itself (the New-session dialog does, since #31): it is
 /// handed the chosen profile and start defaults (permission mode/model/effort) via
-/// <see cref="ClaudeTtyViewModel.LaunchConfigured"/> and raises
-/// <see cref="ClaudeTtyViewModel.LaunchRequested"/> once the view is subscribed.
-/// <see cref="ClaudeTtyViewModel.TryRaiseLaunch"/> bridges the ordering between "launch configured"
+/// <see cref="TtyViewModel.LaunchConfigured"/> and raises
+/// <see cref="TtyViewModel.LaunchRequested"/> once the view is subscribed.
+/// <see cref="TtyViewModel.TryRaiseLaunch"/> bridges the ordering between "launch configured"
 /// and "view subscribed"; these tests assert it fires exactly once, whichever happens first.
 /// </summary>
-public class ClaudeTtyViewModelTests
+public class TtyViewModelTests
 {
     private static readonly SessionProfile Work = new("work", new ClaudeConfig(@"C:\Users\raymo\.claude-work"));
 
@@ -33,7 +33,7 @@ public class ClaudeTtyViewModelTests
         IReadOnlyDictionary<string, string>? launchedOptions = null;
         string? launchedWorkingDirectory = null;
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
         vm.LaunchRequested += request =>
         {
             launchedProfile = request.Profile;
@@ -60,7 +60,7 @@ public class ClaudeTtyViewModelTests
     public void LaunchConfigured_BeforeTheViewSubscribes_LaunchesOnTryRaiseLaunch()
     {
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");   // configured before any subscriber exists
         vm.LaunchRequested += _ => launchCount++;
@@ -75,7 +75,7 @@ public class ClaudeTtyViewModelTests
     public void TryRaiseLaunch_RaisesAtMostOnce()
     {
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
         vm.LaunchRequested += _ => launchCount++;
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
@@ -89,7 +89,7 @@ public class ClaudeTtyViewModelTests
     public void TryRaiseLaunch_WithoutAConfiguredProfile_DoesNothing()
     {
         var launchCount = 0;
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
         vm.LaunchRequested += _ => launchCount++;
 
         vm.TryRaiseLaunch();
@@ -100,7 +100,7 @@ public class ClaudeTtyViewModelTests
     [Fact]
     public void OnProcessExited_MarksTheSessionDone()
     {
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
 
         vm.OnProcessExited();
 
@@ -110,7 +110,7 @@ public class ClaudeTtyViewModelTests
     [Fact]
     public void OnLaunchSucceeded_ClearsTheLaunchingStatus()
     {
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver());
         vm.LaunchConfigured(profile: null, permissionMode: null, model: null, effort: null);
         vm.Status.Should().Contain("Launching");
 

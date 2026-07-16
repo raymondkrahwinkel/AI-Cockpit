@@ -167,7 +167,7 @@ public class CockpitViewModelSessionIdleTests
 
         return new CockpitViewModel(
             () => new SessionViewModel(),
-            () => new ClaudeTtyViewModel(),
+            () => new TtyViewModel(),
             dialogService,
             Substitute.For<IAudioCaptureService>(),
             Substitute.For<IAudioPlaybackService>(),
