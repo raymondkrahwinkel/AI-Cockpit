@@ -17,7 +17,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "claude-provider",
         DisplayName: "Claude (bundled)",
-        Version: "0.2.1",
+        Version: "0.2.2",
         Author: "Cockpit",
         Description: "Claude as a provider plugin. Runs the real interactive Claude TUI in a pane (TTY), with the "
             + "cockpit's workspace-trust, shared MCP servers, usage limits and the operator's own statusline preserved. "
@@ -42,7 +42,16 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
                     { ChoiceLabels = ClaudeOptionChoices.ModelLabels },
                 new PluginTtyLaunchOption(ClaudeTtyProvider.EffortKey, "Effort", ClaudeOptionChoices.EffortLevels)
                     { ChoiceLabels = ClaudeOptionChoices.EffortLabels },
-            ]));
+            ])
+        {
+            // The provider-specific behaviours the host used to hold in-tree, now owned here (weg A) and reached
+            // through the generic registration seams: read-aloud/status tail this plugin's own JSONL transcript,
+            // the login gate checks its own .credentials.json, and self-detection finds its own config dirs — so
+            // the core carries no Claude-format knowledge and Codex can fill the same seams for its own routes.
+            CreateTranscriptReader = _ => new ClaudeTranscriptReader(),
+            IsLoggedIn = ClaudeProfileDiscovery.IsLoggedIn,
+            DetectProfiles = ClaudeProfileDiscovery.Detect,
+        });
 
         // The SDK/session-driver route (weg A): the headless stream-json driver, whose tool-approval prompts ride the
         // control protocol in-band (no HTTP MCP permission server) — hence SupportsPermissions: true. Same provider id
