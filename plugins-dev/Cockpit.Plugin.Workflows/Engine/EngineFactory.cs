@@ -20,6 +20,7 @@ internal static class EngineFactory
             new ChatRunner("cockpit.discord", discord: true),
             new InjectRunner(host),
             new StartSessionRunner(host),
+            new SetStatusRunner(host),
             new DelegateRunner(host),
             new CommandRunner(),
             new HttpRunner(),
