@@ -11,7 +11,7 @@ namespace Cockpit.Infrastructure.Configuration;
 /// only their own executables; this is the root fix, run once at startup before anything resolves a tool or
 /// spawns a session.
 /// <para>
-/// Three steps: detect the truncated case (<c>~/.local/bin</c> exists on disk but is missing from PATH — a
+/// Three steps: detect the truncated case (a user bin directory exists on disk but is missing from PATH — a
 /// terminal launch never looks like that, so the normal path costs nothing), ask the login shell for its PATH
 /// under a hard timeout, and fall back to prepending the well-known user bin directories when the shell cannot
 /// answer. Whichever source wins, the user bin directories that exist end up on PATH. Windows is exempt: it
@@ -57,10 +57,10 @@ public static class StartupPathRepair
         }
 
         var currentPath = Environment.GetEnvironmentVariable(PathVariable) ?? string.Empty;
-        var localBin = Path.Combine(home, ".local", "bin");
-        if (!Directory.Exists(localBin) || ContainsEntry(currentPath, localBin))
+        var userBins = UserBinDirectories(home).Where(Directory.Exists).ToList();
+        if (!userBins.Any(directory => !ContainsEntry(currentPath, directory)))
         {
-            // A terminal launch, or a machine without ~/.local/bin: nothing to repair, no shell to spawn.
+            // A terminal launch, or a machine without user bin directories: nothing to repair, no shell to spawn.
             return;
         }
 
@@ -69,7 +69,7 @@ public static class StartupPathRepair
 
         // Belt and suspenders over either source: a shell that keeps its PATH export in interactive-only init
         // (.zshrc) answers the login probe without the user bins — make sure the ones that exist are on.
-        repaired = PrependMissingEntries(repaired, UserBinDirectories(home).Where(Directory.Exists));
+        repaired = PrependMissingEntries(repaired, userBins);
 
         if (repaired == currentPath)
         {
@@ -108,11 +108,9 @@ public static class StartupPathRepair
             .Any(entry => _Normalize(entry) == wanted);
     }
 
-    /// <summary>
-    /// The login shell's PATH first (it carries the user's own ordering), then whatever the truncated PATH had
-    /// that the shell does not know about (an AppImage mount directory, <c>~/.dotnet/tools</c>) — deduplicated,
-    /// first occurrence wins.
-    /// </summary>
+    // The login shell's PATH first (it carries the user's own ordering), then whatever the truncated PATH had
+    // that the shell does not know about (an AppImage mount directory, ~/.dotnet/tools) — deduplicated, first
+    // occurrence wins.
     internal static string MergePaths(string loginShellPath, string currentPath)
     {
         var seen = new HashSet<string>();
@@ -145,11 +143,8 @@ public static class StartupPathRepair
         return string.Join(Path.PathSeparator, missing);
     }
 
-    /// <summary>
-    /// Pulls the marked PATH out of the login shell's output; the last marker line wins (an init that echoes the
-    /// probe command would put an earlier, unexpanded copy in the stream). Returns <see langword="null"/> when no
-    /// marker line carries a value.
-    /// </summary>
+    // Pulls the marked PATH out of the login shell's output; the last marker line wins (an init that echoes the
+    // probe command would put an earlier, unexpanded copy in the stream). Null when no marker line carries a value.
     internal static string? ExtractMarkedPath(string output)
     {
         string? marked = null;
@@ -173,6 +168,13 @@ public static class StartupPathRepair
             shell = "/bin/sh";
         }
 
+        return ReadLoginShellPath(shell, LoginShellTimeout, logger);
+    }
+
+    // Internal for testing: the timeout is the one hard promise this probe makes, so the tests drive it with a
+    // fake shell and a short deadline instead of trusting the comment.
+    internal static string? ReadLoginShellPath(string shell, TimeSpan timeout, ILogger logger)
+    {
         try
         {
             // -l -c, not interactive: an interactive shell can hang on prompt/tty setup, and login init is where
@@ -195,19 +197,22 @@ public static class StartupPathRepair
             var standardOutput = process.StandardOutput.ReadToEndAsync();
             _ = process.StandardError.ReadToEndAsync();
 
-            if (!process.WaitForExit((int)LoginShellTimeout.TotalMilliseconds))
+            // One deadline covers both waits: the shell's exit AND the stdout read (a background child the init
+            // left behind can hold the pipe open past the shell's own exit). Two full waits in a row would
+            // double the promised ceiling.
+            var deadline = Stopwatch.StartNew();
+            if (!process.WaitForExit((int)timeout.TotalMilliseconds))
             {
                 process.Kill(entireProcessTree: true);
                 logger.LogDebug(
                     "The login shell {Shell} did not answer within {Timeout}; using the fallback list.",
-                    shell, LoginShellTimeout);
+                    shell, timeout);
 
                 return null;
             }
 
-            // A background child the init left behind can hold the stdout pipe open past the shell's own exit —
-            // bound the read too rather than trust EOF to arrive.
-            if (!standardOutput.Wait(LoginShellTimeout))
+            var remaining = timeout - deadline.Elapsed;
+            if (remaining < TimeSpan.Zero || !standardOutput.Wait(remaining))
             {
                 return null;
             }
