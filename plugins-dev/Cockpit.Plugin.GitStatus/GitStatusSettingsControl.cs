@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus;
@@ -25,11 +26,19 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
         _repos = [.. settings.Repos];
 
         _newRepo = new TextBox { PlaceholderText = @"Repository path, e.g. D:\Projects\myrepo", Width = 360 };
+
+        // A folder picker beside the box (#AC-15): typing a path is fine when you know it, but the repo you want
+        // to add is usually one you can point at faster than you can spell. Browse fills the box and adds it in
+        // one go — "select the folder you want to add" — while the box stays there for the paths you do know.
+        var browseButton = new Button { Content = "Browse…" };
+        browseButton.Click += async (_, _) => await _BrowseAsync();
+
         var addButton = new Button { Content = "Add" };
         addButton.Click += (_, _) => _Add();
 
         var addRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         addRow.Children.Add(_newRepo);
+        addRow.Children.Add(browseButton);
         addRow.Children.Add(addButton);
 
         var list = new ItemsControl
@@ -86,6 +95,36 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
         {
             _repos.Add(path);
             _newRepo.Text = string.Empty;
+        }
+    }
+
+    // The folder picker behind Browse. This control is a UserControl, not a Window, so the picker is reached
+    // through the top-level's StorageProvider rather than a window of our own — the same route the app's own
+    // working-directory picker takes. A picked folder fills the box and is added straight away; cancelling
+    // leaves whatever was already typed untouched.
+    private async Task _BrowseAsync()
+    {
+        if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
+        {
+            return;
+        }
+
+        // Start where the half-typed path points, when it points somewhere: browsing from the folder you were
+        // already heading to beats starting at the drive root every time.
+        var current = _newRepo.Text?.Trim();
+        var start = string.IsNullOrEmpty(current) ? null : await storage.TryGetFolderFromPathAsync(current);
+
+        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose a repository folder",
+            AllowMultiple = false,
+            SuggestedStartLocation = start,
+        });
+
+        if (folders.Count > 0 && folders[0].TryGetLocalPath() is { } path)
+        {
+            _newRepo.Text = path;
+            _Add();
         }
     }
 
