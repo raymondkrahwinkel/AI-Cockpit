@@ -58,6 +58,15 @@ public sealed class DevPluginInstaller(ILogger? logger = null)
         var sources = new List<string>();
         foreach (var pluginDir in Directory.EnumerateDirectories(pluginsDev))
         {
+            // A test project (Cockpit.Plugin.X.Tests) lives in plugins-dev too and, because it references the
+            // plugin, copies the plugin's plugin.json into its own output. Its bin therefore carries a manifest
+            // with the plugin's id but a whole test assembly closure — xunit, and a duplicate
+            // Cockpit.Plugins.Abstractions that would break the shared type's identity. It is never a plugin source.
+            if (Path.GetFileName(pluginDir).EndsWith(".Tests", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             var outputDir = Path.Combine(pluginDir, "bin", configuration, targetFramework);
             if (File.Exists(Path.Combine(outputDir, "plugin.json")))
             {
