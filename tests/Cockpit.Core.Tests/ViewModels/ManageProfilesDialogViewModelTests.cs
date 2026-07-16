@@ -23,7 +23,7 @@ public class ManageProfilesDialogViewModelTests
             Defaults: new ProfileDefaults("plan", "opus", "high"));
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns([work]);
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
         loginChecker.IsLoggedIn(work).Returns(true);
         var vm = new ManageProfilesDialogViewModel(store, loginChecker);
 
@@ -43,7 +43,7 @@ public class ManageProfilesDialogViewModelTests
     [Fact]
     public void AddProfile_AppendsANewEditableRowAndSelectsIt()
     {
-        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IProfileLoginChecker>());
 
         vm.AddProfileCommand.Execute(null);
 
@@ -55,7 +55,7 @@ public class ManageProfilesDialogViewModelTests
     [Fact]
     public void RemoveProfile_AsksForConfirmationWithoutDroppingTheRowYet()
     {
-        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IProfileLoginChecker>());
         vm.AddProfileCommand.Execute(null);
         var target = vm.SelectedProfile;
 
@@ -75,7 +75,7 @@ public class ManageProfilesDialogViewModelTests
             new SessionProfile("default", new ClaudeConfig("/home/r/.claude")),
             new SessionProfile("personal", new ClaudeConfig("/home/r/.claude-personal")),
         ]);
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
         await vm.LoadAsync();
         vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "default");
         vm.RemoveProfileCommand.Execute(null);
@@ -110,7 +110,7 @@ public class ManageProfilesDialogViewModelTests
         ]);
         // An empty registry — the "gemini-provider.gemini" plugin is not registered, exactly the removed/
         // disabled/failed-to-load state the orphan row is stuck in.
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>(), pluginProviderRegistry: new PluginProviderRegistry());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>(), pluginProviderRegistry: new PluginProviderRegistry());
         await vm.LoadAsync();
         vm.SelectedProfile = vm.Profiles.Single(p => p.Label == "personal");
         vm.RemoveProfileCommand.Execute(null);
@@ -128,7 +128,7 @@ public class ManageProfilesDialogViewModelTests
     [Fact]
     public void CancelRemove_KeepsTheRow()
     {
-        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IProfileLoginChecker>());
         vm.AddProfileCommand.Execute(null);
         var target = vm.SelectedProfile;
         vm.RemoveProfileCommand.Execute(null);
@@ -146,7 +146,7 @@ public class ManageProfilesDialogViewModelTests
         store.LoadAsync(Arg.Any<CancellationToken>())
             .Returns([new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"),
                 Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true))]);
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
         await vm.LoadAsync();
         vm.SelectedProfile!.Label = "local-renamed";
         var closed = false;
@@ -172,7 +172,7 @@ public class ManageProfilesDialogViewModelTests
             Defaults: new ProfileDefaults("default", "sonnet", "medium", AutoApproveTools: true));
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns([work]);
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
 
         await vm.LoadAsync();
 
@@ -183,7 +183,7 @@ public class ManageProfilesDialogViewModelTests
     public async Task Save_PersistsTheAutoApproveToolsDefault()
     {
         var store = Substitute.For<ISessionProfileStore>();
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
         vm.AddProfileCommand.Execute(null);
         var row = vm.SelectedProfile!;
         row.Label = "ollama";
@@ -205,7 +205,7 @@ public class ManageProfilesDialogViewModelTests
     public async Task Save_WithAnEmptyConfigDir_DoesNotPersistAndReportsIt()
     {
         var store = Substitute.For<ISessionProfileStore>();
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
         vm.AddProfileCommand.Execute(null); // seeds a "new profile" with an empty config directory
 
         await vm.SaveCommand.ExecuteAsync(null);
@@ -218,7 +218,7 @@ public class ManageProfilesDialogViewModelTests
     public void AddProfile_LetsTheNewRowChooseItsProvider_ButLoadedRowsCannot()
     {
         var store = Substitute.For<ISessionProfileStore>();
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
 
         vm.AddProfileCommand.Execute(null);
 
@@ -230,7 +230,7 @@ public class ManageProfilesDialogViewModelTests
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"))]);
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
 
         await vm.LoadAsync();
 
@@ -241,7 +241,7 @@ public class ManageProfilesDialogViewModelTests
     public async Task Save_LocalProviderProfile_PersistsItsProviderConfig()
     {
         var store = Substitute.For<ISessionProfileStore>();
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
         vm.AddProfileCommand.Execute(null);
         var row = vm.SelectedProfile!;
         row.Label = "ollama";
@@ -263,7 +263,7 @@ public class ManageProfilesDialogViewModelTests
     public async Task Save_LocalProviderWithoutAModel_DoesNotPersist()
     {
         var store = Substitute.For<ISessionProfileStore>();
-        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IClaudeProfileLoginChecker>());
+        var vm = new ManageProfilesDialogViewModel(store, Substitute.For<IProfileLoginChecker>());
         vm.AddProfileCommand.Execute(null);
         var row = vm.SelectedProfile!;
         row.Label = "ollama";
@@ -281,7 +281,7 @@ public class ManageProfilesDialogViewModelTests
         var catalog = Substitute.For<IModelCatalog>();
         catalog.ListModelsAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new[] { "llama3.1", "qwen2.5-7b-instruct" });
-        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IClaudeProfileLoginChecker>(), catalog);
+        var vm = new ManageProfilesDialogViewModel(Substitute.For<ISessionProfileStore>(), Substitute.For<IProfileLoginChecker>(), catalog);
         vm.AddProfileCommand.Execute(null);
         var row = vm.SelectedProfile!;
         row.SelectedProvider = SessionProviderCatalog.Resolve(SessionProvider.Ollama);

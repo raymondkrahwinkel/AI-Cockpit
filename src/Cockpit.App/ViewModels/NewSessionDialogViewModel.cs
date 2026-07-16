@@ -32,7 +32,7 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 public partial class NewSessionDialogViewModel : ViewModelBase
 {
-    private readonly IClaudeProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginChecker? _loginChecker;
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerStore? _mcpServerStore;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
@@ -296,7 +296,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public NewSessionDialogViewModel(
         ISessionProfileStore profileStore,
-        IClaudeProfileLoginChecker loginChecker,
+        IProfileLoginChecker loginChecker,
         IMcpServerStore? mcpServerStore = null,
         IWorkingPathHistoryStore? workingPathStore = null,
         IConversationPickerRegistry? conversationPickers = null,
@@ -413,10 +413,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     partial void OnSelectedProfileChanged(SessionProfile? value)
     {
-        // Only a Claude profile (legacy or the plugin) has a login to gate on; anything else is treated as "logged in"
-        // so login gating never blocks it.
-        var isClaudeProfile = value?.Claude is not null;
-        IsSelectedProfileLoggedIn = value is not null && (!isClaudeProfile || (_loginChecker?.IsLoggedIn(value) ?? false));
+        // The generic login checker gates whichever provider declares a login; a profile whose provider has no
+        // gate (or a profile-less/local session) reports logged in, so gating never falsely blocks it.
+        IsSelectedProfileLoggedIn = value is not null && (_loginChecker?.IsLoggedIn(value) ?? true);
         OnPropertyChanged(nameof(SelectedProfileConfigDir));
         OnPropertyChanged(nameof(IsClaudeProfile));
         OnPropertyChanged(nameof(IsLocalProfile));

@@ -29,7 +29,6 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private readonly ITtySessionProviderResolver? _providerResolver;
     private readonly ISessionTranscriptReader? _transcriptReader;
     private SessionProfile? _configuredProfile;
-    private string? _effectiveConfigDir;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
     private string? _configuredEffort;
@@ -202,16 +201,12 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
             WorkingPath = _configuredWorkingDirectory;
             WorkingDirectory = _configuredWorkingDirectory;
         }
-        // Read-aloud and status both tail this session's transcript JSONL; a profile-less session still
-        // writes one — under the CLI's default config dir — so resolve the effective directory here
-        // rather than giving up when there is no profile.
-        _effectiveConfigDir = ClaudeConfigDirectory.Resolve(
-            profile?.Claude,
-            Environment.GetEnvironmentVariable(ClaudeConfigDirectory.EnvironmentVariable),
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        // Snapshot the transcripts that exist now, before claude spawns and writes its own — the tailers
-        // then single out the new file as this session's transcript (its id is not forced).
-        _transcriptBaseline = _transcriptReader?.SnapshotTranscripts(_effectiveConfigDir);
+        // Read-aloud and status both tail this session's transcript through the generic reader façade, which
+        // dispatches to the profile's provider plugin; a profile-less session still records one under the
+        // provider's default location, so pass the profile straight through rather than giving up when null.
+        // Snapshot the transcripts that exist now, before the TUI spawns and writes its own — the tailers then
+        // single out the new record as this session's transcript (its id is not forced).
+        _transcriptBaseline = _transcriptReader?.SnapshotTranscripts(profile);
         _configuredPermissionMode = permissionMode;
         _configuredModel = model;
         _configuredEffort = effort;
@@ -311,17 +306,17 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
             return;
         }
 
-        if (_transcriptReader is null || _effectiveConfigDir is null || _transcriptBaseline is null || _transcriptTailCancellation is not null)
+        if (_transcriptReader is null || _transcriptBaseline is null || _transcriptTailCancellation is not null)
         {
             return;
         }
 
         _transcriptTailCancellation = new CancellationTokenSource();
-        _ = _TailTranscriptForReadAloudAsync(_effectiveConfigDir, _transcriptBaseline, _transcriptTailCancellation.Token);
+        _ = _TailTranscriptForReadAloudAsync(_configuredProfile, _transcriptBaseline, _transcriptTailCancellation.Token);
     }
 
     /// <summary>Consumes the transcript tailer and enqueues each assistant turn's prose for TTS — mirrors <c>SessionViewModel._EnqueueTurnProseForReadAloud</c>, just fed by the tailer instead of the SDK event stream.</summary>
-    private async Task _TailTranscriptForReadAloudAsync(string configDir, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
+    private async Task _TailTranscriptForReadAloudAsync(SessionProfile? profile, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
     {
         if (_transcriptReader is null)
         {
@@ -330,7 +325,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 
         try
         {
-            await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(configDir, transcriptBaseline, cancellationToken))
+            await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(profile, transcriptBaseline, cancellationToken))
             {
                 _ = EnqueueReadAloudAsync(assistantText, TtsVoiceId);
             }
@@ -379,13 +374,13 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         // Needs the transcript reader and the effective config dir (which locates the JSONL, resolved at
         // launch even without a profile) — both are present on the real launch path; the design-time/
         // parameterless VM has neither, so status simply stays Idle there.
-        if (_transcriptReader is null || _effectiveConfigDir is null || _transcriptBaseline is null || _statusTailCancellation is not null)
+        if (_transcriptReader is null || _transcriptBaseline is null || _statusTailCancellation is not null)
         {
             return;
         }
 
         _statusTailCancellation = new CancellationTokenSource();
-        _ = _TailTranscriptForStatusAsync(_effectiveConfigDir, _transcriptBaseline, _statusTailCancellation.Token);
+        _ = _TailTranscriptForStatusAsync(_configuredProfile, _transcriptBaseline, _statusTailCancellation.Token);
 
         _statusPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _statusPollTimer.Tick += _OnStatusPollTick;
@@ -393,7 +388,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     }
 
     /// <summary>Classifies each appended transcript line (busy / done / metadata) and feeds it to the tracker; the tailer runs on a background task, so the status update is marshaled onto the UI thread.</summary>
-    private async Task _TailTranscriptForStatusAsync(string configDir, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
+    private async Task _TailTranscriptForStatusAsync(SessionProfile? profile, IReadOnlySet<string> transcriptBaseline, CancellationToken cancellationToken)
     {
         if (_transcriptReader is null)
         {
@@ -402,7 +397,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
 
         try
         {
-            await foreach (var line in _transcriptReader.ReadLinesAsync(configDir, transcriptBaseline, cancellationToken))
+            await foreach (var line in _transcriptReader.ReadLinesAsync(profile, transcriptBaseline, cancellationToken))
             {
                 var signal = TtyTranscriptStatus.ClassifyLine(line);
                 Dispatcher.UIThread.Post(() =>

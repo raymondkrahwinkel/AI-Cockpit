@@ -626,7 +626,7 @@ public class NewSessionDialogViewModelTests
 
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<SessionProfile> { ttyProfile, sdkOnlyProfile });
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
         loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
         var vm = new NewSessionDialogViewModel(
             store, loginChecker, mcpServerStore: null, workingPathStore: null, conversationPickers: null,
@@ -659,7 +659,7 @@ public class NewSessionDialogViewModelTests
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
-        var loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
         foreach (var profile in profiles)
         {
             loginChecker.IsLoggedIn(profile).Returns(true);
@@ -670,11 +670,11 @@ public class NewSessionDialogViewModelTests
             ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry);
     }
 
-    private static NewSessionDialogViewModel NewVm(out IClaudeProfileLoginChecker loginChecker, params SessionProfile[] profiles)
+    private static NewSessionDialogViewModel NewVm(out IProfileLoginChecker loginChecker, params SessionProfile[] profiles)
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
-        loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        loginChecker = Substitute.For<IProfileLoginChecker>();
         foreach (var profile in profiles)
         {
             loginChecker.IsLoggedIn(profile).Returns(true);
@@ -684,14 +684,14 @@ public class NewSessionDialogViewModelTests
     }
 
     private static NewSessionDialogViewModel NewVmWithTty(
-        out IClaudeProfileLoginChecker loginChecker,
+        out IProfileLoginChecker loginChecker,
         SessionProfile[] profiles,
         ITtySessionProviderResolver ttyProviderResolver,
         IPluginTtyProviderRegistry ttyProviderRegistry)
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
-        loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        loginChecker = Substitute.For<IProfileLoginChecker>();
         foreach (var profile in profiles)
         {
             loginChecker.IsLoggedIn(profile).Returns(true);
@@ -703,13 +703,13 @@ public class NewSessionDialogViewModelTests
     }
 
     private static NewSessionDialogViewModel NewVmWithMcp(
-        out IClaudeProfileLoginChecker loginChecker,
+        out IProfileLoginChecker loginChecker,
         SessionProfile[] profiles,
         params McpServerConfig[] registry)
     {
         var store = Substitute.For<ISessionProfileStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(profiles.ToList());
-        loginChecker = Substitute.For<IClaudeProfileLoginChecker>();
+        loginChecker = Substitute.For<IProfileLoginChecker>();
         foreach (var profile in profiles)
         {
             loginChecker.IsLoggedIn(profile).Returns(true);
