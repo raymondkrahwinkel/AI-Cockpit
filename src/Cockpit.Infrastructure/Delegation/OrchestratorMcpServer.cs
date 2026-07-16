@@ -100,8 +100,9 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
             var servers = (await _mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false)).ToList();
             var existing = servers.FindIndex(server => string.Equals(server.Name, ServerName, StringComparison.Ordinal));
 
-            // First registration: on. Thereafter: whatever the operator last chose — the app refreshes the URL but
-            // does not touch their switch.
+            // Always on: a cockpit-owned system server the operator wants available by default. The app refreshes
+            // the URL each launch and (re)asserts it enabled, so a stale disabled entry never silently turns
+            // delegation off; opting out of a single session is the New-session picker's per-session checkbox.
             var enabled = ShouldBeEnabled(existing < 0 ? null : servers[existing]);
 
             var entry = new McpServerConfig
@@ -135,11 +136,13 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
     }
 
     /// <summary>
-    /// Whether the orchestrator server is enabled on this publish: on when it has never been registered, otherwise
-    /// whatever the operator last set. Pulled out so the "on by default, then leave the operator's switch alone"
-    /// rule is testable without standing up the Kestrel host.
+    /// Whether the orchestrator server is enabled on this publish: always on. It is a cockpit-owned system server
+    /// (delegation is a core capability), so it is on by default at every launch — never left off by a stale or
+    /// forgotten registry entry the operator did not mean to keep. Excluding it from a single session is the
+    /// per-session job of the New-session picker's checkbox, not a persistent registry switch. Kept as a method
+    /// with the existing-entry parameter so the contract stays testable without standing up the Kestrel host.
     /// </summary>
-    internal static bool ShouldBeEnabled(McpServerConfig? existingEntry) => existingEntry is null || existingEntry.Enabled;
+    internal static bool ShouldBeEnabled(McpServerConfig? existingEntry) => true;
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {

@@ -6,10 +6,10 @@ namespace Cockpit.Core.Tests.Delegation;
 
 /// <summary>
 /// The orchestrator MCP server is on by default (#67, AC-6): its tools — <c>add_profile</c> especially — have to
-/// be there before any delegation target exists, or the first one could never be scaffolded. It used to be
-/// rewritten to "enabled only if a target exists" on every start, which reset both the default and any manual
-/// toggle — the reason it read as off every time. So on first registration it is on, and after that the operator's
-/// own switch is left alone.
+/// be there before any delegation target exists, or the first one could never be scaffolded. It is a cockpit-owned
+/// system server, so it is (re)asserted enabled on every launch: a stale or forgotten disabled entry from an older
+/// build must not silently turn delegation off — the operator kept reporting it read as off by default. Excluding it
+/// from a single session is the New-session picker's per-session checkbox, not a persistent registry switch.
 /// </summary>
 public class OrchestratorServerEnabledTests
 {
@@ -28,10 +28,10 @@ public class OrchestratorServerEnabledTests
     }
 
     [Fact]
-    public void TheOperatorTurnedItOff_StaysOff_NotRewrittenOnEveryStart()
+    public void PreviouslyDisabled_IsReEnabled_SoAStaleOffNeverTurnsDelegationOffByDefault()
     {
         var existing = new McpServerConfig { Name = "cockpit-orchestrator", Enabled = false };
 
-        OrchestratorMcpServer.ShouldBeEnabled(existing).Should().BeFalse();
+        OrchestratorMcpServer.ShouldBeEnabled(existing).Should().BeTrue();
     }
 }
