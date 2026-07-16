@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.ViewModels;
 
 /// <summary>
 /// TTY read-aloud (#35b): unlike the SDK session (<see cref="ReadAloudTests"/>), the TTY panel has no
-/// parsed event stream to read prose from — its <see cref="ClaudeTtyViewModel.ReadResponsesAloud"/>
+/// parsed event stream to read prose from — its <see cref="TtyViewModel.ReadResponsesAloud"/>
 /// toggle instead starts/stops <see cref="ISessionTranscriptReader.ReadAssistantTextAsync"/> against the
 /// session's own live JSONL transcript, located as the new file that appears after launch (the id is not
 /// forced). These tests cover the toggle gate (off → the reader is never even started) and that a tailed
@@ -27,7 +27,7 @@ public class TtyReadAloudTests
     {
         var reader = _Reader();
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeTtyViewModel(
+        var vm = new TtyViewModel(
             Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
@@ -40,7 +40,7 @@ public class TtyReadAloudTests
     public void ReadResponsesAloud_OnWithoutALaunchConfigured_DoesNotStartTailing()
     {
         var reader = _Reader();
-        var vm = new ClaudeTtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader);
+        var vm = new TtyViewModel(Substitute.For<ITtyLauncher>(), _Resolver(), transcriptReader: reader);
 
         vm.ReadResponsesAloud = true;
 
@@ -54,7 +54,7 @@ public class TtyReadAloudTests
         reader.ReadAssistantTextAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => _YieldThenWaitForCancellation("Here is the tty answer.", callInfo.ArgAt<CancellationToken>(2)));
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeTtyViewModel(
+        var vm = new TtyViewModel(
             Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
 
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
@@ -75,7 +75,7 @@ public class TtyReadAloudTests
         reader.ReadAssistantTextAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => _YieldThenWaitForCancellation("Profile-less answer.", callInfo.ArgAt<CancellationToken>(2)));
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeTtyViewModel(
+        var vm = new TtyViewModel(
             Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
 
         vm.LaunchConfigured(profile: null, "default", "sonnet", "medium");
@@ -99,7 +99,7 @@ public class TtyReadAloudTests
         reader.ReadAssistantTextAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
             .Returns(_ => _EmptyTranscript());
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeTtyViewModel(
+        var vm = new TtyViewModel(
             Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.ReadResponsesAloud = true;
@@ -113,7 +113,7 @@ public class TtyReadAloudTests
     public async Task DisposeAsync_WhenNotReadingAloud_LeavesOtherSessionsPlaybackUntouched()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeTtyViewModel(
+        var vm = new TtyViewModel(
             Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: _Reader());
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
@@ -134,7 +134,7 @@ public class TtyReadAloudTests
                 return _YieldThenWaitForCancellation("Here is the tty answer.", capturedToken.Value);
             });
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
-        var vm = new ClaudeTtyViewModel(
+        var vm = new TtyViewModel(
             Substitute.For<ITtyLauncher>(), _Resolver(), voicePlaybackQueue: voicePlaybackQueue, transcriptReader: reader);
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
         vm.ReadResponsesAloud = true;

@@ -11,19 +11,21 @@ using Cockpit.Core.Profiles;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// TTY-mode (#9) session panel: hosts the real interactive <c>claude</c> TUI inside a ConPTY, rendered
-/// by <c>ClaudeTtyView</c>'s terminal control. The profile and start defaults (permission mode/model/
-/// effort) are chosen up front in the New-session dialog (#31) and handed in via
-/// <see cref="LaunchConfigured"/>; the view owns the terminal size, so the VM raises
-/// <see cref="LaunchRequested"/> and the view launches the carried <see cref="ITtyLauncher"/>
-/// with its current columns/rows once it has a size.
+/// TTY-mode (#9) session panel: hosts a provider's real interactive TUI inside a ConPTY, rendered by
+/// <c>TtyView</c>'s terminal control — provider-neutral, so it runs whichever CLI the profile's TTY provider
+/// launches (Claude, Codex, …). The profile and its start defaults are chosen up front in the New-session
+/// dialog (#31) and handed in via <see cref="LaunchConfigured"/> as the provider's own opaque option values;
+/// the view owns the terminal size, so the VM raises <see cref="LaunchRequested"/> and the view launches the
+/// carried <see cref="ITtyLauncher"/> with its current columns/rows once it has a size. Read-aloud and status
+/// tail the session's transcript through the generic <see cref="ISessionTranscriptReader"/> façade, which
+/// dispatches to the profile's provider.
 /// </summary>
 /// <remarks>
 /// Registered <c>ITransientService</c> so <c>CockpitViewModel</c>'s factory mints one per TTY session.
 /// The underlying pty host is cross-platform (ConPTY on Windows, Porta.Pty on Linux/macOS), selected
 /// by <c>IPtyHostFactory</c>.
 /// </remarks>
-public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientService
+public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly ITtyLauncher? _launcher;
     private readonly ITtySessionProviderResolver? _providerResolver;
@@ -84,7 +86,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// <summary>
     /// Global TTY terminal font family (#40), mirrored from <c>CockpitViewModel.TerminalFontFamily</c> at
     /// session creation and pushed live on every settings change (see
-    /// <c>CockpitViewModel.OnTerminalFontFamilyChanged</c>). Bound in <c>ClaudeTtyView.axaml</c> straight
+    /// <c>CockpitViewModel.OnTerminalFontFamilyChanged</c>). Bound in <c>TtyView.axaml</c> straight
     /// onto <c>TerminalControl.FontFamily</c>, which re-measures and reflows the grid on assignment — no
     /// session restart needed.
     /// </summary>
@@ -98,7 +100,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     /// <summary>
     /// Mirrors <c>CockpitViewModel.StackSessionsVertically</c> (#24), the multi-session grid's
     /// stacked-vertically layout — seeded at session creation and pushed live on every change (see
-    /// <c>CockpitViewModel.OnStackSessionsVerticallyChanged</c>). Bound in <c>ClaudeTtyView.axaml.cs</c> to
+    /// <c>CockpitViewModel.OnStackSessionsVerticallyChanged</c>). Bound in <c>TtyView.axaml.cs</c> to
     /// dock the header beside the terminal instead of above it (#54): stacked panels are wide and short,
     /// so a top-docked header burns proportionally more of the little height each panel gets.
     /// </summary>
@@ -129,7 +131,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
     private CancellationTokenSource? _limitsPollCancellation;
 
     // Parameterless constructor for the Avalonia previewer/Screenshotter design-time context.
-    public ClaudeTtyViewModel()
+    public TtyViewModel()
     {
         ActiveProfileLabel = "work";
         Status = "TTY mode (experiment).";
@@ -138,7 +140,7 @@ public partial class ClaudeTtyViewModel : SessionPanelViewModel, ITransientServi
         SevenDayUsedPercent = 91;
     }
 
-    public ClaudeTtyViewModel(
+    public TtyViewModel(
         ITtyLauncher launcher,
         ITtySessionProviderResolver providerResolver,
         IVoicePushToTalkService? voicePushToTalk = null,

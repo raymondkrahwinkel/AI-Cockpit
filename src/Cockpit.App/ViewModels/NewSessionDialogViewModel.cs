@@ -239,7 +239,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// Whether the selected profile has a TUI to run at all — the gate for offering the Kind picker and for
     /// what TTY actually launches. Claude always does (its own <c>claude</c> TTY provider); a plugin profile
     /// does only when it registered one via <c>ICockpitHost.AddTtyProvider</c> under the same provider id its
-    /// session provider uses (#45 fase B2) — resolved the same way <c>ClaudeTtyViewModel</c> resolves it at
+    /// session provider uses (#45 fase B2) — resolved the same way <c>TtyViewModel</c> resolves it at
     /// launch, so the dialog never offers a kind the launch would then refuse. A local HTTP provider (Ollama/
     /// LM Studio) is never a program a terminal can host, so it has none either way.
     /// </summary>
@@ -718,7 +718,7 @@ public sealed record RememberedPathOption(string Path, bool IsFavorite)
 /// <see cref="Label"/>/<see cref="Choices"/> straight from the registration, plus the operator's pick so
 /// far. <see cref="Value"/> starts blank rather than defaulting to the first choice when the provider left
 /// <c>DefaultValue</c> null: "no choice made" and "the first choice" are different things, and only the
-/// provider's own default counts as the second one (mirrors <c>ClaudeTtyViewModel._LaunchOptions</c>'s same
+/// provider's own default counts as the second one (mirrors <c>TtyViewModel._LaunchOptions</c>'s same
 /// rule for a blank knob). A blank <see cref="Value"/> for a provider with <see cref="Choices"/> renders as
 /// no selection — the CLI's own default then applies, same as leaving Claude's mode/model/effort untouched.
 /// </summary>

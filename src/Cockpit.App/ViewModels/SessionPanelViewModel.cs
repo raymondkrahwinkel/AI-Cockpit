@@ -10,7 +10,7 @@ namespace Cockpit.App.ViewModels;
 /// The surface every cockpit session panel shares regardless of mode (SDK chat or TTY terminal):
 /// the sidebar/overview title, selection, coarse status, and profile label, plus disposal. Lets
 /// <see cref="CockpitViewModel"/> manage a mixed collection of <see cref="SessionViewModel"/>
-/// (SDK) and <see cref="ClaudeTtyViewModel"/> (TTY) panels through one type.
+/// (SDK) and <see cref="TtyViewModel"/> (TTY) panels through one type.
 /// </summary>
 public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDisposable
 {

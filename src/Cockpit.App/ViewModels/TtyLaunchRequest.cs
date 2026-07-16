@@ -6,7 +6,7 @@ namespace Cockpit.App.ViewModels;
 
 /// <summary>
 /// Everything the TTY view needs to spawn the pty for a session, raised by
-/// <see cref="ClaudeTtyViewModel.LaunchRequested"/> once both the panel is configured and the view is
+/// <see cref="TtyViewModel.LaunchRequested"/> once both the panel is configured and the view is
 /// subscribed. A record rather than a hand of positional parameters: the launch already carries several pieces
 /// of context, and the view is the wrong place to be counting arguments.
 /// </summary>

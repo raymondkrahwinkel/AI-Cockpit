@@ -1,7 +1,7 @@
 namespace Cockpit.App.Views;
 
 /// <summary>
-/// Whether a TTY-view auto-redraw trigger (<c>ClaudeTtyView</c>'s <c>TerminalControl</c> regaining focus,
+/// Whether a TTY-view auto-redraw trigger (<c>TtyView</c>'s <c>TerminalControl</c> regaining focus,
 /// the owning window activating, or the pane becoming visible/attached again — #55) should schedule a
 /// debounced <c>ForceRedraw()</c>. Extracted out of the view's code-behind so the guard is unit-testable
 /// without an Avalonia UI thread, same reasoning as <c>PushToTalkKeyGate</c>: there is nothing to redraw
