@@ -7,6 +7,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
 
@@ -77,7 +78,7 @@ public class AddLocalModelProfileTests
     [Fact]
     public async Task AddLocalModelProfile_ForADuplicateLabel_IsRefused()
     {
-        var store = new InMemoryProfileStore(new SessionProfile("qwen", ConfigDir: string.Empty));
+        var store = new InMemoryProfileStore(new SessionProfile("qwen", new OllamaConfig("http://localhost:11434", "qwen")));
         var service = _Service(store);
 
         var add = async () => await service.AddLocalModelProfileAsync(
@@ -92,7 +93,7 @@ public class AddLocalModelProfileTests
         var service = _Service(new InMemoryProfileStore());
 
         var add = async () => await service.AddLocalModelProfileAsync(
-            "sneaky", provider: "claude", model: "opus", baseUrl: null, purpose: null, tags: null);
+            "sneaky", provider: "some-cloud-agent", model: "big-model", baseUrl: null, purpose: null, tags: null);
 
         await add.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*not a local model provider*");
     }
@@ -141,6 +142,37 @@ public class AddLocalModelProfileTests
             mcpServerStore,
             Substitute.For<IDelegationAuditLog>(),
             NoSessionWorkspaces.Instance);
+    }
+
+    [Fact]
+    public void ListProviders_ReturnsTheLocalScaffoldableProviders_AndTheRegisteredPluginProviders()
+    {
+        var registry = new PluginProviderRegistry();
+        registry.Register(new SessionProviderRegistration(
+            ProviderId: "sample-agent",
+            DisplayName: "Sample Agent",
+            CreateDriverFactory: _ => Substitute.For<IPluginSessionDriverFactory>(),
+            Capabilities: new PluginSessionCapabilities(true, true),
+            CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>()));
+
+        var service = new DelegationService(
+            new InMemoryProfileStore(),
+            new SessionManager(Substitute.For<ISessionDriverFactory>()),
+            Substitute.For<IMcpServerStore>(),
+            Substitute.For<IDelegationAuditLog>(),
+            NoSessionWorkspaces.Instance,
+            registry);
+
+        var providers = service.ListProviders();
+
+        // The two local providers are the caller's to scaffold with add_profile; the plugin provider is the
+        // operator's to create (it carries a login), so it is listed but not addable this way.
+        providers.Should().ContainSingle(p => p.Name == "ollama")
+            .Which.Should().BeEquivalentTo(new { DisplayName = "Ollama", Kind = "local", AddableWithAddProfile = true });
+        providers.Should().ContainSingle(p => p.Name == "lmstudio")
+            .Which.Should().BeEquivalentTo(new { DisplayName = "LM Studio", Kind = "local", AddableWithAddProfile = true });
+        providers.Should().ContainSingle(p => p.Name == "sample-agent")
+            .Which.Should().BeEquivalentTo(new { DisplayName = "Sample Agent", Kind = "plugin", AddableWithAddProfile = false });
     }
 
     private static async IAsyncEnumerable<SessionEvent> _EmptyStream()

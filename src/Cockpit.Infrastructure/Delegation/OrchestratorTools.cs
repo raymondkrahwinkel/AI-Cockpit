@@ -56,6 +56,13 @@ internal sealed class OrchestratorTools
         }
     }
 
+    [McpServerTool(Name = "list_providers")]
+    [Description("Lists the providers a session can run under: the local ones you can set up yourself with add_profile (Ollama, LM Studio) and every provider your installed plugins register. Each says whether it is addable with add_profile — the plugin ones are the operator's to create, since a plugin provider may carry a login. Use it before add_profile to pick a valid provider name and to see what is available instead of guessing.")]
+    public string ListProviders()
+    {
+        return JsonSerializer.Serialize(_delegation.ListProviders(), SerializerOptions);
+    }
+
     [McpServerTool(Name = "add_profile")]
     [Description("Adds a LOCAL-model profile (Ollama or LM Studio) so it is ready to use — to start a session under, or for the operator to enrol as a delegation target. Use it when you need a local model to work with and one is not set up yet, instead of editing the profiles file by hand. It is added but NOT enabled as a delegation target: what a delegated session may do (its permission ceiling, its directories, how many at once) is the operator's to set, so you cannot delegate to it until they turn it on in the cockpit's profile settings. Only local models can be added this way; Claude and other logged-in profiles are the operator's to create. The purpose and tags you give are kept as suggestions for when they enable it.")]
     public async Task<string> AddProfileAsync(
