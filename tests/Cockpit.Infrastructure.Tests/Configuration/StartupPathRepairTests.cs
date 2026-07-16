@@ -1,19 +1,31 @@
+using System.Diagnostics;
 using Cockpit.Infrastructure.Configuration;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cockpit.Infrastructure.Tests.Configuration;
 
 /// <summary>
-/// The pure pieces of the AC-19 PATH repair: entry detection, the login-shell merge, the fallback prepend and the
-/// marker parse. The process-level halves (spawning the login shell, writing the environment) stay untested here —
-/// they are thin wiring over these rules, and a test that rewrites the test process's own PATH would sabotage
-/// every other test in the run.
+/// The AC-19 PATH repair: the pure rules (entry detection, the login-shell merge, the fallback prepend, the
+/// marker parse) plus the one hard promise of the process half — the login-shell probe answers or gives up
+/// within its deadline, driven with fake shells. Only <c>Run</c> itself stays untested here: it rewrites the
+/// test process's own PATH, which would sabotage every other test in the run.
 /// </summary>
 public sealed class StartupPathRepairTests
 {
     private static readonly char Separator = Path.PathSeparator;
 
     private static string Join(params string[] entries) => string.Join(Separator, entries);
+
+    // A fake login shell: an executable script that ignores the -l -c probe arguments and runs its own body.
+    private static string WriteFakeShell(string body)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"cockpit-fake-shell-{Guid.NewGuid():N}.sh");
+        File.WriteAllText(path, $"#!/bin/sh\n{body}\n");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        return path;
+    }
 
     [Fact]
     public void ContainsEntry_WhenTheDirectoryIsOnThePath_IsTrue()
@@ -125,6 +137,83 @@ public sealed class StartupPathRepairTests
     public void ExtractMarkedPath_WithAnEmptyValue_IsNull()
     {
         StartupPathRepair.ExtractMarkedPath($"{StartupPathRepair.Marker}\n").Should().BeNull();
+    }
+
+    [Fact]
+    public void ReadLoginShellPath_FromAnAnsweringShell_ReturnsItsMarkedPath()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // The probe never runs on Windows (Run is Unix-gated), and a .sh fake shell cannot either.
+        }
+
+        var shell = WriteFakeShell("echo \"__COCKPIT_LOGIN_PATH__=/fake/login/bin:/usr/bin\"");
+        try
+        {
+            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromSeconds(5), NullLogger.Instance);
+
+            path.Should().Be("/fake/login/bin:/usr/bin");
+        }
+        finally
+        {
+            File.Delete(shell);
+        }
+    }
+
+    [Fact]
+    public void ReadLoginShellPath_WhenTheShellWedges_GivesUpWithinTheDeadline()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // A shell wedged on its init (never prints, never exits) — the probe must give up and take the fallback.
+        var shell = WriteFakeShell("sleep 30");
+        try
+        {
+            var elapsed = Stopwatch.StartNew();
+            var path = StartupPathRepair.ReadLoginShellPath(shell, TimeSpan.FromMilliseconds(500), NullLogger.Instance);
+            elapsed.Stop();
+
+            path.Should().BeNull();
+            elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            File.Delete(shell);
+        }
+    }
+
+    [Fact]
+    public void ReadLoginShellPath_WhenABackgroundChildHoldsTheStdoutPipe_IsBoundedByOneDeadlineNotTwo()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // The shell burns most of the deadline on its init, then exits leaving a background child that inherited
+        // stdout — EOF never arrives, so the stdout read must be bounded by the REMAINDER of the same deadline.
+        // Two full waits in a row (exit + read) would land at ~1.8s here; one shared deadline stays at ~1s.
+        var shell = WriteFakeShell("sleep 0.8\nsleep 30 &\nexit 0");
+        try
+        {
+            var timeout = TimeSpan.FromSeconds(1);
+            var elapsed = Stopwatch.StartNew();
+            var path = StartupPathRepair.ReadLoginShellPath(shell, timeout, NullLogger.Instance);
+            elapsed.Stop();
+
+            path.Should().BeNull();
+
+            // Halfway between the one-deadline (~1s) and stacked (~1.8s) outcomes — with the 3s production
+            // deadline the same stacking would mean 6s of blocked startup.
+            elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(1400));
+        }
+        finally
+        {
+            File.Delete(shell);
+        }
     }
 
     [Fact]
