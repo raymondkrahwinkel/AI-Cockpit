@@ -14,7 +14,7 @@
     <Design.DataContext>
         <vm:AboutInfo AppName="AI-Cockpit" VersionText="0.3.0"
                       Description="Run several AI coding sessions side by side — each in its own profile, with its own provider, permissions and transcript."
-                      Providers="Claude Code · Ollama · LM Studio · plus any provider a plugin adds (Gemini, OpenAI, GitHub Models, Codex CLI)."
+                      Providers="Ollama · LM Studio · plus any provider a plugin adds (Claude, Codex, Gemini, OpenAI, GitHub Models)."
                       LicenseText="Apache 2.0 with the Commons Clause · © 2026 Raymond Krahwinkel / Krahwinkel-IT"
                       GitHubUrl="https://github.com/raymondkrahwinkel/AI-Cockpit"
                       IssuesUrl="https://github.com/raymondkrahwinkel/AI-Cockpit/issues"
