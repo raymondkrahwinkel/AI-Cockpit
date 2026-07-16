@@ -72,7 +72,7 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
-    public void TryAcquire_WithAWait_WhenTheHolderReleasesDuringIt_WinsTheHandoff()
+    public async Task TryAcquire_WithAWait_WhenTheHolderReleasesDuringIt_WinsTheHandoff()
     {
         // The restart race: the new cockpit starts while the old one still holds the claim, and takes it once the
         // old one lets go. With the zero wait the other tests use this returns null instead — which is the bug the
@@ -90,10 +90,10 @@ public sealed class SingleInstanceGuardTests
 
         // Let the waiter reach its WaitOne with the claim still held, so this exercises acquiring on release and
         // not merely acquiring a claim that was already free.
-        Thread.Sleep(300);
+        await Task.Delay(300);
         other.Dispose();
 
-        handoff.GetAwaiter().GetResult().Should().BeTrue("the outgoing cockpit released within the wait, so the restart must take the claim");
+        (await handoff).Should().BeTrue("the outgoing cockpit released within the wait, so the restart must take the claim");
     }
 
     [Fact]
