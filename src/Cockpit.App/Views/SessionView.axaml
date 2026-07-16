@@ -66,8 +66,13 @@
                                   ToolTip.Tip="Run this local model's tool calls without an Allow prompt each time (they still show as tool rows)"/>
                 </StackPanel>
 
-                <TextBlock Grid.Column="2" Text="{Binding Title}" FontWeight="SemiBold" FontSize="12"
-                           VerticalAlignment="Center" Margin="8,0,2,0"/>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="8,0,2,0" Spacing="1">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Right"/>
+                    <!-- AC-13: the agent/workflow statusline, under the title; hidden when blank. -->
+                    <TextBlock Text="{Binding Statusline}" FontSize="10" Opacity="0.65" HorizontalAlignment="Right"
+                               TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
 
                 <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,8,0">
                     <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"

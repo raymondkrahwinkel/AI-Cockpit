@@ -1,6 +1,8 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Toasts;
@@ -198,6 +200,40 @@ internal sealed class CockpitHost(
         {
             await store.SaveAsync(servers).ConfigureAwait(false);
         }
+    }
+
+    public Task SetSessionStatusline(string paneId, string statusline) =>
+        _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);
+
+    public Task SetSessionName(string paneId, string name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? Task.CompletedTask
+            : _MutateSessionAsync(paneId, session => session.Title = name.Trim());
+
+    // Find the session pane by its id and mutate it on the UI thread. A plugin or workflow may call from any
+    // thread, and the target may already be gone (a closed session) — a no-op then, never an error.
+    private Task _MutateSessionAsync(string paneId, Action<SessionPanelViewModel> mutate)
+    {
+        if (string.IsNullOrEmpty(paneId) || services.GetService<CockpitViewModel>() is not { } cockpit)
+        {
+            return Task.CompletedTask;
+        }
+
+        void Apply()
+        {
+            if (cockpit.Sessions.FirstOrDefault(session => session.PaneId == paneId) is { } target)
+            {
+                mutate(target);
+            }
+        }
+
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            Apply();
+            return Task.CompletedTask;
+        }
+
+        return Dispatcher.UIThread.InvokeAsync(Apply).GetTask();
     }
 
     // Maps by name, not ordinal — same reasoning as _ToServerScope below.
