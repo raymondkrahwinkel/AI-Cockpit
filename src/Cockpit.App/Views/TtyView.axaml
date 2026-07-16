@@ -53,19 +53,22 @@
                      one hides itself until Claude has reported it: before the first response it reports none of it,
                      and a bar sitting at "0%" would be a claim rather than a silence. -->
                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
-                            ToolTip.Tip="{Binding LimitsTooltip}">
+                            ToolTip.Tip="{Binding LimitsTooltip}"
+                            IsVisible="{Binding !IsTerminal}">
                     <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
                     <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
                     <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
                 </StackPanel>
                 <!-- Plugin-contributed header items (#: session header items) — same contribution point the SDK
-                     header renders, so a plugin writes its indicator once and it shows in both session kinds. -->
-                <controls:PluginSessionHeaderHost/>
+                     header renders, so a plugin writes its indicator once and it shows in both session kinds. Hidden
+                     for a terminal (#AC-25): a plugin session indicator has nothing to say about a plain shell. -->
+                <controls:PluginSessionHeaderHost IsVisible="{Binding !IsTerminal}"/>
                 <!-- Read-aloud (#35b): tails the live JSONL session transcript for assistant text. A speaker,
                      struck through when off (#73) — the header is a strip, and a word costs more room than the
                      thing it names. -->
                 <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
                               VerticalAlignment="Center"
+                              IsVisible="{Binding !IsTerminal}"
                               Content="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
                               ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}"/>
                 <!-- Redraw is a diagnostic, not part of the work: shown only with the debug controls on (#73). -->

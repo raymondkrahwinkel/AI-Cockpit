@@ -135,9 +135,25 @@
                     <Button Content="«" HorizontalAlignment="Right" Padding="8,2" Classes="Subtle"
                             Command="{Binding ToggleSidebarCommand}"
                             ToolTip.Tip="Collapse the sidebar"/>
-                    <!-- SDK vs TTY is chosen inside the New-session dialog (#32) — one button covers both. -->
-                    <Button Content="+ New session" Command="{Binding NewSessionCommand}"
-                            Classes="Accent" HorizontalAlignment="Stretch"/>
+                    <!-- SDK vs TTY is chosen inside the New-session dialog (#32) — the primary button covers both.
+                         The caret adds a plain terminal (#AC-25) without pushing it into the common one-click path:
+                         "new session" stays a single click, "new terminal" is one flyout down. Same MenuFlyout
+                         idiom as the workspace + button below. -->
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Classes="Accent" Padding="8,0" Content="▾"
+                                Margin="4,0,0,0" ToolTip.Tip="New session or terminal">
+                            <Button.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                    <MenuItem Header="💬  New session" Command="{Binding NewSessionCommand}"
+                                              ToolTip.Tip="An AI session — SDK or TTY, chosen in the dialog"/>
+                                    <MenuItem Header="🖥  New terminal" Command="{Binding NewTerminalCommand}"
+                                              ToolTip.Tip="A plain shell (your default, else the OS default) in a terminal pane"/>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                        <Button Content="+ New session" Command="{Binding NewSessionCommand}"
+                                Classes="Accent" HorizontalAlignment="Stretch"/>
+                    </DockPanel>
                 </StackPanel>
 
                 <!-- Footer: secondary "Tools" section — Audio (F0) lives here, out of the way of the
