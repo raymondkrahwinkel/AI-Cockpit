@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
@@ -14,13 +13,10 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// </summary>
 internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
 {
-    private static readonly IBrush _OkBrush = new SolidColorBrush(Color.Parse("#5AA576"));
-    private static readonly IBrush _WarnBrush = new SolidColorBrush(Color.Parse("#E0A33E"));
-
     private readonly TextBox _configDir;
     private readonly TextBox _executablePath;
-    private readonly TextBlock _configDirStatus = _StatusBlock();
-    private readonly TextBlock _executableStatus = _StatusBlock();
+    private readonly TextBlock _configDirStatus = ProviderConfigStatus.CreateLine();
+    private readonly TextBlock _executableStatus = ProviderConfigStatus.CreateLine();
 
     public Control View { get; }
 
@@ -74,11 +70,11 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         _configDirStatus.IsVisible = true;
         if (Directory.Exists(configDir))
         {
-            _SetStatus(_configDirStatus, "Folder found.", ok: true);
+            ProviderConfigStatus.Set(_configDirStatus, "Folder found.", isOk: true);
         }
         else
         {
-            _SetStatus(_configDirStatus, "Folder does not exist — the profile cannot be saved until it does.", ok: false);
+            ProviderConfigStatus.Set(_configDirStatus, "Folder does not exist — the profile cannot be saved until it does.", isOk: false);
         }
     }
 
@@ -89,21 +85,13 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         var resolved = ClaudeExecutableLocator.Resolve(command);
         if (Path.IsPathRooted(resolved) && File.Exists(resolved))
         {
-            _SetStatus(_executableStatus, $"Found: {resolved}", ok: true);
+            ProviderConfigStatus.Set(_executableStatus, $"Found: {resolved}", isOk: true);
         }
         else
         {
-            _SetStatus(_executableStatus, "Not found on PATH — check claude is installed, or paste an absolute path.", ok: false);
+            ProviderConfigStatus.Set(_executableStatus, "Not found on PATH — check claude is installed, or paste an absolute path.", isOk: false);
         }
     }
-
-    private static void _SetStatus(TextBlock block, string message, bool ok)
-    {
-        block.Text = (ok ? "✓ " : "✗ ") + message;
-        block.Foreground = ok ? _OkBrush : _WarnBrush;
-    }
-
-    private static TextBlock _StatusBlock() => new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
 
     public bool TryGetConfigJson(out string configJson)
     {

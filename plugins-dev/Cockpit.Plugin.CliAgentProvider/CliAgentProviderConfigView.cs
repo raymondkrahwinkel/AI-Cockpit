@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
@@ -13,16 +12,13 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// </summary>
 internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 {
-    private static readonly IBrush _OkBrush = new SolidColorBrush(Color.Parse("#5AA576"));
-    private static readonly IBrush _WarnBrush = new SolidColorBrush(Color.Parse("#E0A33E"));
-
     private readonly TextBox _command;
     private readonly TextBox _workingDirectory;
     private readonly ComboBox _sandboxMode;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _apiKey;
-    private readonly TextBlock _commandStatus = _StatusBlock();
-    private readonly TextBlock _workingDirectoryStatus = _StatusBlock();
+    private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
+    private readonly TextBlock _workingDirectoryStatus = ProviderConfigStatus.CreateLine();
 
     public Control View { get; }
 
@@ -88,18 +84,18 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         var command = _command.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrEmpty(command))
         {
-            _SetStatus(_commandStatus, "Required — enter \"codex\" or an absolute path to the executable.", ok: false);
+            ProviderConfigStatus.Set(_commandStatus, "Required — enter \"codex\" or an absolute path to the executable.", isOk: false);
             return;
         }
 
         var resolved = CliExecutableLocator.Resolve(command);
         if (Path.IsPathRooted(resolved) && File.Exists(resolved))
         {
-            _SetStatus(_commandStatus, $"Found: {resolved}", ok: true);
+            ProviderConfigStatus.Set(_commandStatus, $"Found: {resolved}", isOk: true);
         }
         else
         {
-            _SetStatus(_commandStatus, "Not found on PATH — check it is installed, or paste an absolute path.", ok: false);
+            ProviderConfigStatus.Set(_commandStatus, "Not found on PATH — check it is installed, or paste an absolute path.", isOk: false);
         }
     }
 
@@ -116,21 +112,13 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         _workingDirectoryStatus.IsVisible = true;
         if (Directory.Exists(directory))
         {
-            _SetStatus(_workingDirectoryStatus, "Folder found.", ok: true);
+            ProviderConfigStatus.Set(_workingDirectoryStatus, "Folder found.", isOk: true);
         }
         else
         {
-            _SetStatus(_workingDirectoryStatus, "Folder does not exist — the profile cannot be saved until it does.", ok: false);
+            ProviderConfigStatus.Set(_workingDirectoryStatus, "Folder does not exist — the profile cannot be saved until it does.", isOk: false);
         }
     }
-
-    private static void _SetStatus(TextBlock block, string message, bool ok)
-    {
-        block.Text = (ok ? "✓ " : "✗ ") + message;
-        block.Foreground = ok ? _OkBrush : _WarnBrush;
-    }
-
-    private static TextBlock _StatusBlock() => new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
 
     public bool TryGetConfigJson(out string configJson)
     {
