@@ -23,8 +23,8 @@ public sealed record AboutInfo(
     public const string DefaultIssuesUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit/issues";
     public const string DefaultPluginStoreUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins";
 
-    /// <summary>The providers the app ships with itself, always available regardless of what is installed.</summary>
-    private static readonly string[] BuiltInProviders = ["Claude Code", "Ollama", "LM Studio"];
+    /// <summary>The providers the core ships with itself, always available regardless of what is installed — the local OpenAI-compatible ones. Claude and every other agent are provider plugins now (Fase 4), so they come from the plugin registry, not this list.</summary>
+    private static readonly string[] BuiltInProviders = ["Ollama", "LM Studio"];
 
     /// <summary>
     /// Builds the About info from <paramref name="assembly"/>'s version metadata, preferring the
