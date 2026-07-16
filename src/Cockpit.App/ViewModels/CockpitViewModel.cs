@@ -656,6 +656,35 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Items for the Options font-family dropdown (#40): the curated families plus the "Custom…" sentinel.</summary>
     public IReadOnlyList<string> TerminalFontChoices => [.. TerminalFontFamilies, CustomFontChoice];
 
+    /// <summary>
+    /// The default-shell choices for the Options terminal picker (#AC-25): an "OS default" entry first, then every
+    /// shell <see cref="ShellCatalog"/> detected on this machine. Rebuilt on load so it reflects what is installed.
+    /// </summary>
+    public ObservableCollection<TerminalShellChoice> TerminalShellChoices { get; } = [];
+
+    /// <summary>
+    /// The chosen default shell a new terminal opens (#AC-25). Its <see cref="TerminalShellChoice.Value"/> is
+    /// persisted to <see cref="Cockpit.Core.Terminal.TerminalSettings.Shell"/> on save; "OS default" persists blank,
+    /// "Custom…" persists whatever the operator typed in <see cref="TerminalCustomShell"/>.
+    /// </summary>
+    [ObservableProperty]
+    private TerminalShellChoice? _selectedTerminalShell;
+
+    /// <summary>True when the shell picker is on "Custom…" (#AC-25), revealing the free-text box for a third-party shell path/command.</summary>
+    [ObservableProperty]
+    private bool _isTerminalShellCustom;
+
+    /// <summary>Free-text shell path or command entered when the picker is on "Custom…" (#AC-25) — e.g. <c>/usr/bin/fish</c>, <c>nu</c>, common on Linux/macOS. Resolved via <see cref="ShellCatalog.ForCommand"/> at launch.</summary>
+    [ObservableProperty]
+    private string _terminalCustomShell = string.Empty;
+
+    /// <summary>Sentinel <see cref="TerminalShellChoice.Value"/> for the "Custom…" entry that reveals the free-text shell box; any shell not in the detected list is reachable through it.</summary>
+    public const string CustomShellChoiceValue = "custom";
+
+    /// <summary>Reveals the custom-shell box when the picker is on "Custom…" (#AC-25), mirroring the font-family "Custom…" pattern.</summary>
+    partial void OnSelectedTerminalShellChanged(TerminalShellChoice? value) =>
+        IsTerminalShellCustom = value is not null && value.Value == CustomShellChoiceValue;
+
     /// <summary>Maps the dropdown selection to the effective font family (#40): "Custom…" reveals the free-text box and uses its value, any other choice is used directly.</summary>
     partial void OnTerminalFontSelectionChanged(string value)
     {
@@ -2096,6 +2125,52 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         TerminalFontFamily = settings.FontFamily;
         TerminalFontSize = settings.FontSize;
         SyncTerminalFontSelectionFromFamily();
+        _BuildTerminalShellChoices(settings.Shell);
+    }
+
+    /// <summary>
+    /// (Re)builds the Options default-shell picker (#AC-25) from the shells detected now, and selects the one the
+    /// saved <paramref name="configured"/> value names (its <see cref="ShellDescriptor.Id"/>, matched
+    /// case-insensitively) — falling back to "OS default" when it is blank or no longer resolves on this machine.
+    /// </summary>
+    private void _BuildTerminalShellChoices(string configured)
+    {
+        var shells = ShellCatalog.Detect();
+
+        TerminalShellChoices.Clear();
+        var osDefaultLabel = shells.Count > 0 ? $"OS default ({shells[0].DisplayName})" : "OS default";
+        TerminalShellChoices.Add(new TerminalShellChoice(osDefaultLabel, string.Empty));
+        foreach (var shell in shells)
+        {
+            TerminalShellChoices.Add(new TerminalShellChoice($"{shell.DisplayName} ({shell.Id})", shell.Id));
+        }
+        // The escape hatch for a third-party shell not detected here (fish, nushell, a wrapper) — common on
+        // Linux/macOS. Selecting it reveals a free-text box; the typed path/command is what gets persisted.
+        TerminalShellChoices.Add(new TerminalShellChoice("Custom…", CustomShellChoiceValue));
+
+        var value = configured?.Trim() ?? string.Empty;
+        var detected = value.Length == 0
+            ? null
+            : TerminalShellChoices.FirstOrDefault(choice =>
+                choice.Value != CustomShellChoiceValue && string.Equals(choice.Value, value, StringComparison.OrdinalIgnoreCase));
+
+        if (value.Length == 0)
+        {
+            TerminalCustomShell = string.Empty;
+            SelectedTerminalShell = TerminalShellChoices[0];
+        }
+        else if (detected is not null)
+        {
+            TerminalCustomShell = string.Empty;
+            SelectedTerminalShell = detected;
+        }
+        else
+        {
+            // A saved path/command that is not a detected shell id — restore it as the custom entry. Set the text
+            // before the selection so the reveal (OnSelectedTerminalShellChanged) already has it.
+            TerminalCustomShell = value;
+            SelectedTerminalShell = TerminalShellChoices.First(choice => choice.Value == CustomShellChoiceValue);
+        }
     }
 
     /// <summary>Persists the TTY terminal-appearance settings (#40) edited in the Options dialog to <c>cockpit.json</c>, clamping the font size to the supported range.</summary>
@@ -2112,7 +2187,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             : TerminalFontFamily.Trim();
         var fontSize = Math.Clamp(TerminalFontSize, TerminalSettings.MinFontSize, TerminalSettings.MaxFontSize);
 
-        await _terminalSettingsStore.SaveAsync(new TerminalSettings { FontFamily = fontFamily, FontSize = fontSize });
+        // Custom persists the typed path/command; a detected shell persists its id; OS default persists blank.
+        var shell = IsTerminalShellCustom
+            ? TerminalCustomShell.Trim()
+            : SelectedTerminalShell?.Value?.Trim() ?? string.Empty;
+
+        await _terminalSettingsStore.SaveAsync(new TerminalSettings { FontFamily = fontFamily, FontSize = fontSize, Shell = shell });
         TerminalFontFamily = fontFamily;
         TerminalFontSize = fontSize;
         TerminalSettingsStatus = "✓ Saved";
@@ -2341,6 +2421,61 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _LaunchSessionFromResultAsync(result);
+    }
+
+    /// <summary>
+    /// Opens a plain terminal pane (#AC-25) next to the AI sessions, running the operator's chosen default shell —
+    /// or, when none is configured, the OS default the <see cref="ShellCatalog"/> detects. Reuses the whole TTY
+    /// path: a terminal is another <see cref="TtyViewModel"/> in the <see cref="Sessions"/> collection, so the grid,
+    /// reorder and lifecycle are the existing ones. Runtime-only, exactly like an AI session.
+    /// </summary>
+    [RelayCommand]
+    private void NewTerminal()
+    {
+        if (_ttySessionFactory is null)
+        {
+            return;
+        }
+
+        var shell = _ResolveDefaultShell();
+        if (shell is null)
+        {
+            return;
+        }
+
+        var terminal = _ttySessionFactory();
+        AddSession(terminal, name: null, shell.DisplayName);
+        terminal.LaunchTerminal(shell);
+    }
+
+    /// <summary>
+    /// The shell a new terminal opens (#AC-25): the operator's configured default when it is set and still resolves
+    /// on this machine (matched by <see cref="ShellDescriptor.Id"/> or absolute path, so a configured "pwsh" survives
+    /// a machine where its path differs), otherwise the OS default — the first shell <see cref="ShellCatalog"/>
+    /// detects. Null only when the machine has no resolvable shell at all, which is near-impossible.
+    /// </summary>
+    private ShellDescriptor? _ResolveDefaultShell()
+    {
+        var shells = ShellCatalog.Detect();
+
+        // The effective configured value: the typed path/command when on "Custom…", else the picked shell's id.
+        var configured = (IsTerminalShellCustom ? TerminalCustomShell : SelectedTerminalShell?.Value)?.Trim();
+        if (string.IsNullOrEmpty(configured) || configured == CustomShellChoiceValue)
+        {
+            return shells.Count > 0 ? shells[0] : null;
+        }
+
+        var match = shells.FirstOrDefault(candidate =>
+            string.Equals(candidate.Id, configured, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(candidate.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            return match;
+        }
+
+        // A custom third-party shell (a path or command not in the detected list); resolve it directly, falling
+        // back to the OS default only when even that yields nothing (a blank command).
+        return ShellCatalog.ForCommand(configured) ?? (shells.Count > 0 ? shells[0] : null);
     }
 
     /// <summary>
