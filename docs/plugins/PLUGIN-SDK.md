@@ -651,6 +651,7 @@ complete file using every field below.
 ```json
 {
   "name": "My Cockpit plugin store",
+  "iconUrl": "logo.png",
   "plugins": [
     {
       "id": "github-issues",
@@ -691,7 +692,8 @@ complete file using every field below.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `name` | yes | The store's display name, shown as the catalogue title in the store dialog. |
+| `name` | yes | The store's display name — the catalogue title in the store dialog, and the store's name in **Manage stores** (Options → Plugins → Plugin stores). |
+| `iconUrl` | no | A logo image for the store, shown in **Manage stores**. An `http(s)` URL or a path relative to the index (e.g. `"logo.png"`); it is fetched and shown as the store's icon, falling back to the default storefront glyph when absent or unreachable. Capped at 1 MB and 8 s; a failed fetch is silent (the store just keeps the glyph). |
 | `plugins` | yes | Array of plugin entries, described below. |
 | `templates` | no | Array of workflow templates the store offers — flows somebody already drew. Described below; omit it and the store simply offers none. |
 
