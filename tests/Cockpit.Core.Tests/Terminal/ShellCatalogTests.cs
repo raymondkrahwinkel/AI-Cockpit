@@ -18,7 +18,7 @@ public class ShellCatalogTests
     [Fact]
     public void Build_Windows_ResolvesPwshWithExeExtensionAndLeadsWithIt()
     {
-        var pwsh = Path.Combine(@"C:\pwsh", "pwsh") + ".exe";
+        const string pwsh = @"C:\pwsh\pwsh.exe";
 
         var shells = ShellCatalog.Build(
             isWindows: true,
@@ -41,7 +41,7 @@ public class ShellCatalogTests
     [Fact]
     public void Build_Windows_NoComSpec_FallsBackToBareCmd()
     {
-        var cmd = Path.Combine(@"C:\Windows\System32", "cmd") + ".exe";
+        const string cmd = @"C:\Windows\System32\cmd.exe";
 
         var shells = ShellCatalog.Build(
             isWindows: true,
@@ -56,7 +56,7 @@ public class ShellCatalogTests
     [Fact]
     public void Build_Unix_LoginShellLeadsAndUsesItsFileName()
     {
-        var bash = Path.Combine("/usr/bin", "bash");
+        const string bash = "/usr/bin/bash";
 
         var shells = ShellCatalog.Build(
             isWindows: false,
@@ -74,7 +74,7 @@ public class ShellCatalogTests
     [Fact]
     public void Build_Unix_LoginShellSameBinaryAsCandidate_IsNotListedTwice()
     {
-        var bash = Path.Combine("/usr/bin", "bash");
+        const string bash = "/usr/bin/bash";
 
         var shells = ShellCatalog.Build(
             isWindows: false,
