@@ -656,6 +656,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Items for the Options font-family dropdown (#40): the curated families plus the "Custom…" sentinel.</summary>
     public IReadOnlyList<string> TerminalFontChoices => [.. TerminalFontFamilies, CustomFontChoice];
 
+    /// <summary>
+    /// The default-shell choices for the Options terminal picker (#AC-25): an "OS default" entry first, then every
+    /// shell <see cref="ShellCatalog"/> detected on this machine. Rebuilt on load so it reflects what is installed.
+    /// </summary>
+    public ObservableCollection<TerminalShellChoice> TerminalShellChoices { get; } = [];
+
+    /// <summary>
+    /// The chosen default shell a new terminal opens (#AC-25). Its <see cref="TerminalShellChoice.Value"/> is
+    /// persisted to <see cref="Cockpit.Core.Terminal.TerminalSettings.Shell"/> on save; "OS default" persists blank.
+    /// </summary>
+    [ObservableProperty]
+    private TerminalShellChoice? _selectedTerminalShell;
+
     /// <summary>Maps the dropdown selection to the effective font family (#40): "Custom…" reveals the free-text box and uses its value, any other choice is used directly.</summary>
     partial void OnTerminalFontSelectionChanged(string value)
     {
@@ -2096,6 +2109,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         TerminalFontFamily = settings.FontFamily;
         TerminalFontSize = settings.FontSize;
         SyncTerminalFontSelectionFromFamily();
+        _BuildTerminalShellChoices(settings.Shell);
+    }
+
+    /// <summary>
+    /// (Re)builds the Options default-shell picker (#AC-25) from the shells detected now, and selects the one the
+    /// saved <paramref name="configured"/> value names (its <see cref="ShellDescriptor.Id"/>, matched
+    /// case-insensitively) — falling back to "OS default" when it is blank or no longer resolves on this machine.
+    /// </summary>
+    private void _BuildTerminalShellChoices(string configured)
+    {
+        var shells = ShellCatalog.Detect();
+
+        TerminalShellChoices.Clear();
+        var osDefaultLabel = shells.Count > 0 ? $"OS default ({shells[0].DisplayName})" : "OS default";
+        TerminalShellChoices.Add(new TerminalShellChoice(osDefaultLabel, string.Empty));
+        foreach (var shell in shells)
+        {
+            TerminalShellChoices.Add(new TerminalShellChoice($"{shell.DisplayName} ({shell.Id})", shell.Id));
+        }
+
+        var value = configured?.Trim() ?? string.Empty;
+        SelectedTerminalShell =
+            TerminalShellChoices.FirstOrDefault(choice => string.Equals(choice.Value, value, StringComparison.OrdinalIgnoreCase))
+            ?? TerminalShellChoices[0];
     }
 
     /// <summary>Persists the TTY terminal-appearance settings (#40) edited in the Options dialog to <c>cockpit.json</c>, clamping the font size to the supported range.</summary>
@@ -2112,7 +2149,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             : TerminalFontFamily.Trim();
         var fontSize = Math.Clamp(TerminalFontSize, TerminalSettings.MinFontSize, TerminalSettings.MaxFontSize);
 
-        await _terminalSettingsStore.SaveAsync(new TerminalSettings { FontFamily = fontFamily, FontSize = fontSize });
+        var shell = SelectedTerminalShell?.Value?.Trim() ?? string.Empty;
+
+        await _terminalSettingsStore.SaveAsync(new TerminalSettings { FontFamily = fontFamily, FontSize = fontSize, Shell = shell });
         TerminalFontFamily = fontFamily;
         TerminalFontSize = fontSize;
         TerminalSettingsStatus = "✓ Saved";
@@ -2357,18 +2396,44 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        // Detect() is ordered best-first, so the first entry is the OS default; an empty result means no shell
-        // resolved at all (near-impossible on a real machine). The operator-configurable default arrives next step.
-        var shells = ShellCatalog.Detect();
-        if (shells.Count == 0)
+        var shell = _ResolveDefaultShell();
+        if (shell is null)
         {
             return;
         }
 
-        var shell = shells[0];
         var terminal = _ttySessionFactory();
         AddSession(terminal, name: null, shell.DisplayName);
         terminal.LaunchTerminal(shell);
+    }
+
+    /// <summary>
+    /// The shell a new terminal opens (#AC-25): the operator's configured default when it is set and still resolves
+    /// on this machine (matched by <see cref="ShellDescriptor.Id"/> or absolute path, so a configured "pwsh" survives
+    /// a machine where its path differs), otherwise the OS default — the first shell <see cref="ShellCatalog"/>
+    /// detects. Null only when the machine has no resolvable shell at all, which is near-impossible.
+    /// </summary>
+    private ShellDescriptor? _ResolveDefaultShell()
+    {
+        var shells = ShellCatalog.Detect();
+        if (shells.Count == 0)
+        {
+            return null;
+        }
+
+        var configured = SelectedTerminalShell?.Value?.Trim();
+        if (!string.IsNullOrEmpty(configured))
+        {
+            var match = shells.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, configured, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(candidate.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                return match;
+            }
+        }
+
+        return shells[0];
     }
 
     /// <summary>
