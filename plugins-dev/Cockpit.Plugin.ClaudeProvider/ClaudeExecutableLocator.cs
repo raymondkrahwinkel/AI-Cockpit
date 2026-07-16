@@ -52,7 +52,75 @@ internal static class ClaudeExecutableLocator
             return fromDesktopInstall;
         }
 
+        // Linux/macOS: the `claude` installer's launcher lives at ~/.local/bin/claude, which a login shell adds to
+        // PATH but a GUI or AppImage launch does not — so a blank profile reads "not found" and the session cannot
+        // spawn even though claude is installed. Fall back to the well-known install locations, the same way the
+        // Windows branch above does for the desktop install. Only for the bare "claude" command.
+        if (!OperatingSystem.IsWindows()
+            && command.Equals("claude", StringComparison.Ordinal)
+            && _TryUnixWellKnownInstall() is { } fromUnixInstall)
+        {
+            return fromUnixInstall;
+        }
+
         return command;
+    }
+
+    /// <summary>
+    /// The `claude` installer's launcher and older local-install layouts on Linux/macOS, none of which a GUI or
+    /// AppImage launch carries on PATH: <c>~/.local/bin/claude</c> (a symlink into the versioned install), then
+    /// <c>~/.claude/local/claude</c>, then the newest binary directly under <c>~/.local/share/claude/versions</c>.
+    /// Returns the first that exists.
+    /// </summary>
+    private static string? _TryUnixWellKnownInstall()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(home))
+        {
+            return null;
+        }
+
+        string[] launchers =
+        [
+            Path.Combine(home, ".local", "bin", "claude"),
+            Path.Combine(home, ".claude", "local", "claude"),
+        ];
+        foreach (var launcher in launchers)
+        {
+            if (File.Exists(launcher))
+            {
+                return launcher;
+            }
+        }
+
+        return PickNewestClaudeBinary(Path.Combine(home, ".local", "share", "claude", "versions"));
+    }
+
+    /// <summary>
+    /// Given the installer's versions directory (files named by version, e.g. <c>2.1.211</c>, each the binary
+    /// itself), returns the highest-versioned one — the fallback for when the launcher symlink is missing but the
+    /// versioned binaries are present. Internal for testing.
+    /// </summary>
+    internal static string? PickNewestClaudeBinary(string versionsDirectory)
+    {
+        if (!Directory.Exists(versionsDirectory))
+        {
+            return null;
+        }
+
+        string? newest = null;
+        Version? newestVersion = null;
+        foreach (var file in Directory.EnumerateFiles(versionsDirectory))
+        {
+            if (Version.TryParse(Path.GetFileName(file), out var version)
+                && (newestVersion is null || version > newestVersion))
+            {
+                newestVersion = version;
+                newest = file;
+            }
+        }
+
+        return newest;
     }
 
     /// <summary>
