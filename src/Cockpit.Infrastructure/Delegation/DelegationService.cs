@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -45,6 +46,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IDelegationAuditLog _auditLog;
     private readonly ISessionWorkspaces _workspaces;
+    private readonly IPluginProviderRegistry? _providerRegistry;
     private readonly Func<int, TimeSpan> _timeout;
     private readonly List<DelegatedTaskEntry> _tasks = [];
     private readonly Lock _tasksLock = new();
@@ -54,8 +56,9 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         ISessionManager sessionManager,
         IMcpServerStore mcpServerStore,
         IDelegationAuditLog auditLog,
-        ISessionWorkspaces workspaces)
-        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces)
+        ISessionWorkspaces workspaces,
+        IPluginProviderRegistry? providerRegistry = null)
+        : this(profileStore, sessionManager, mcpServerStore, auditLog, minutes => TimeSpan.FromMinutes(minutes), workspaces, providerRegistry)
     {
     }
 
@@ -66,13 +69,15 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         IMcpServerStore mcpServerStore,
         IDelegationAuditLog auditLog,
         Func<int, TimeSpan> timeout,
-        ISessionWorkspaces? workspaces = null)
+        ISessionWorkspaces? workspaces = null,
+        IPluginProviderRegistry? providerRegistry = null)
     {
         _profileStore = profileStore;
         _sessionManager = sessionManager;
         _mcpServerStore = mcpServerStore;
         _auditLog = auditLog;
         _workspaces = workspaces ?? NoSessionWorkspaces.Instance;
+        _providerRegistry = providerRegistry;
         _timeout = timeout;
     }
 
@@ -144,6 +149,110 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             updated.AllowedTaskTypes ?? [],
             updated.MaxConcurrent,
             _CountRunning(profile.Label));
+    }
+
+    /// <summary>The base URL a local provider defaults to when the caller does not give one.</summary>
+    private const string OllamaDefaultBaseUrl = "http://localhost:11434";
+    private const string LmStudioDefaultBaseUrl = "http://localhost:1234";
+
+    /// <summary>
+    /// Adds a local-model profile and saves it — but never as a delegation target. The soft purpose/tags a caller
+    /// suggests are carried, so the operator's later opt-in starts from them; the hard policy stays default and off
+    /// (<see cref="DelegationPolicy.AllowedAsTarget"/> false), because enrolling a target and setting its ceiling is
+    /// the operator's call. Local only: an Ollama or LM Studio model runs here and carries no login, so scaffolding
+    /// one cannot leak a credential or spend a subscription — a Claude profile is the operator's to make.
+    /// </summary>
+    public async Task<ScaffoldedProfileView> AddLocalModelProfileAsync(
+        string label,
+        string provider,
+        string model,
+        string? baseUrl,
+        string? purpose,
+        IReadOnlyList<string>? tags,
+        CancellationToken cancellationToken = default)
+    {
+        var trimmedLabel = _OrNull(label ?? string.Empty)
+            ?? throw new DelegationRejectedException("A profile needs a label.");
+        var trimmedModel = _OrNull(model ?? string.Empty)
+            ?? throw new DelegationRejectedException("A profile needs a model id, e.g. 'qwen2.5-coder:7b'.");
+
+        var profiles = await _profileStore.LoadAsync(cancellationToken);
+        if (profiles.Any(candidate => string.Equals(candidate.Label, trimmedLabel, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new DelegationRejectedException($"A profile named '{trimmedLabel}' already exists.");
+        }
+
+        var (config, resolvedBaseUrl) = _LocalProviderConfig(provider, trimmedModel, baseUrl);
+
+        var suggestedPurpose = _OrNull(purpose ?? string.Empty);
+        var policy = new DelegationPolicy(
+            AllowedAsTarget: false,
+            Purpose: suggestedPurpose,
+            Tags: tags is null ? null : _OrNull(tags));
+
+        var profile = new SessionProfile(
+            trimmedLabel,
+            ProviderConfig: config,
+            Purpose: suggestedPurpose,
+            Delegation: policy);
+
+        await _profileStore.SaveAsync(profiles.Append(profile).ToList(), cancellationToken);
+
+        return new ScaffoldedProfileView(
+            profile.Label,
+            profile.Provider.ToString(),
+            trimmedModel,
+            resolvedBaseUrl,
+            policy.Purpose,
+            policy.Tags ?? []);
+    }
+
+    /// <summary>
+    /// Every provider a session can run under: the two local ones a caller may scaffold with
+    /// <see cref="AddLocalModelProfileAsync"/>, then each provider a plugin registered — the operator's to set up,
+    /// since such a provider may carry a login. So a caller can discover what exists — and which of it is theirs to
+    /// add — instead of guessing provider names or finding out only when add_profile refuses.
+    /// </summary>
+    public IReadOnlyList<AvailableProviderView> ListProviders()
+    {
+        var providers = new List<AvailableProviderView>
+        {
+            new("ollama", "Ollama", Kind: "local", AddableWithAddProfile: true),
+            new("lmstudio", "LM Studio", Kind: "local", AddableWithAddProfile: true),
+        };
+
+        if (_providerRegistry is not null)
+        {
+            providers.AddRange(_providerRegistry.Registrations.Select(registration =>
+                new AvailableProviderView(registration.ProviderId, registration.DisplayName, Kind: "plugin", AddableWithAddProfile: false)));
+        }
+
+        return providers;
+    }
+
+    // Maps the caller's provider name to a local HTTP provider config, or refuses. Only the local models are a
+    // caller's to add; anything else (a Claude login and its credentials) is the operator's.
+    private static (ProviderConfig Config, string BaseUrl) _LocalProviderConfig(string provider, string model, string? baseUrl)
+    {
+        switch (_OrNull(provider ?? string.Empty)?.ToLowerInvariant())
+        {
+            case "ollama":
+            {
+                var url = _OrNull(baseUrl ?? string.Empty) ?? OllamaDefaultBaseUrl;
+                return (new OllamaConfig(url, model), url);
+            }
+
+            case "lmstudio" or "lm-studio" or "lm studio":
+            {
+                var url = _OrNull(baseUrl ?? string.Empty) ?? LmStudioDefaultBaseUrl;
+                return (new LmStudioConfig(url, model), url);
+            }
+
+            default:
+                throw new DelegationRejectedException(
+                    $"'{provider}' is not a local model provider. Only 'ollama' and 'lmstudio' can be added this way — " +
+                    "a Claude or other logged-in profile is the operator's to create.");
+        }
     }
 
     // An empty string (or an empty list) is how a caller says "there is nothing to say here" — stored as absent

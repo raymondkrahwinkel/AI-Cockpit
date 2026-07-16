@@ -56,6 +56,44 @@ internal sealed class OrchestratorTools
         }
     }
 
+    [McpServerTool(Name = "list_providers")]
+    [Description("Lists the providers a session can run under: the local ones you can set up yourself with add_profile (Ollama, LM Studio) and every provider your installed plugins register. Each says whether it is addable with add_profile — the plugin ones are the operator's to create, since a plugin provider may carry a login. Use it before add_profile to pick a valid provider name and to see what is available instead of guessing.")]
+    public string ListProviders()
+    {
+        return JsonSerializer.Serialize(_delegation.ListProviders(), SerializerOptions);
+    }
+
+    [McpServerTool(Name = "add_profile")]
+    [Description("Adds a LOCAL-model profile (Ollama or LM Studio) so it is ready to use — to start a session under, or for the operator to enrol as a delegation target. Use it when you need a local model to work with and one is not set up yet, instead of editing the profiles file by hand. It is added but NOT enabled as a delegation target: what a delegated session may do (its permission ceiling, its directories, how many at once) is the operator's to set, so you cannot delegate to it until they turn it on in the cockpit's profile settings. Only local models can be added this way; Claude and other logged-in profiles are the operator's to create. The purpose and tags you give are kept as suggestions for when they enable it.")]
+    public async Task<string> AddProfileAsync(
+        [Description("A unique display label for the new profile.")] string label,
+        [Description("The local provider: 'ollama' or 'lmstudio'.")] string provider,
+        [Description("The model id as the server reports it (from /v1/models), e.g. 'qwen2.5-coder:7b'.")] string model,
+        [Description("The server base URL. Omit for the provider default (Ollama http://localhost:11434, LM Studio http://localhost:1234).")] string? base_url,
+        [Description("What this profile is good for, in a sentence — shown in the picker and to whoever enables it.")] string? purpose,
+        [Description("Capability tags (code, summarize, cheap, local, …) to help pick it once enabled.")] string[]? tags,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var created = await _delegation.AddLocalModelProfileAsync(label, provider, model, base_url, purpose, tags, cancellationToken);
+            return JsonSerializer.Serialize(
+                new
+                {
+                    created,
+                    note = "Added and usable to start a session under. It is not a delegation target yet — enable it and " +
+                           "set its limits in the cockpit's profile settings before delegating to it.",
+                },
+                SerializerOptions);
+        }
+        catch (DelegationRejectedException rejected)
+        {
+            // The refusal is the answer: a duplicate label, a non-local provider, or a missing model — say which, so
+            // the caller can fix the call rather than guess why nothing was added.
+            return JsonSerializer.Serialize(new { error = rejected.Message }, SerializerOptions);
+        }
+    }
+
     [McpServerTool(Name = "delegate_task")]
     [Description("Hands a task to another profile, which runs it as a separate session. Returns a task id immediately; the task then runs in the background. A status of 'Queued' means the task is accepted and waiting for a free slot on that profile — it will start by itself, so poll get_task_status rather than delegating the same work again.")]
     public async Task<string> DelegateTaskAsync(
