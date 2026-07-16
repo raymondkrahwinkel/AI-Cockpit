@@ -61,6 +61,42 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
+    public void TryAcquire_WithAWait_WhileAnotherCockpitStillHoldsTheClaim_StillRefusesOnceItTimesOut()
+    {
+        var claimName = UniqueClaimName();
+        using var other = new CockpitHoldingTheClaim(claimName);
+
+        var second = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName, TimeSpan.FromMilliseconds(200));
+
+        second.Should().BeNull("the claim never came free, so even with a wait the second cockpit must stand down");
+    }
+
+    [Fact]
+    public async Task TryAcquire_WithAWait_WhenTheHolderReleasesDuringIt_WinsTheHandoff()
+    {
+        // The restart race: the new cockpit starts while the old one still holds the claim, and takes it once the
+        // old one lets go. With the zero wait the other tests use this returns null instead — which is the bug the
+        // wait fixes (the "already running" notice after "Restart now").
+        var claimName = UniqueClaimName();
+        var other = new CockpitHoldingTheClaim(claimName);
+
+        // Acquired and released on the one thread, because a mutex is owned by the thread that took it — the same
+        // reason the holder above lives on a thread of its own.
+        var handoff = Task.Run(() =>
+        {
+            using var next = SingleInstanceGuard.TryAcquire(isDevelopmentBuild: false, claimName, TimeSpan.FromSeconds(5));
+            return next is not null;
+        });
+
+        // Let the waiter reach its WaitOne with the claim still held, so this exercises acquiring on release and
+        // not merely acquiring a claim that was already free.
+        await Task.Delay(300);
+        other.Dispose();
+
+        (await handoff).Should().BeTrue("the outgoing cockpit released within the wait, so the restart must take the claim");
+    }
+
+    [Fact]
     public void TryAcquire_ForADevelopmentBuild_DoesNotHonourTheClaim()
     {
         var claimName = UniqueClaimName();

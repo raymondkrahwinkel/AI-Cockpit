@@ -88,6 +88,18 @@ jobs:
               ;;
           esac
 
+      # The Windows installer rides alongside the portable exe, as it does in the nightly: the .exe for the
+      # operator who wants nothing installed, the Setup.exe for the one who wants it in Program Files with a
+      # Start-menu entry and an uninstaller.
+      - name: Windows installer
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: |
+          scripts/package-windows-installer.ps1 `
+            -PublishDir publish/win-x64 `
+            -Version "${{ steps.version.outputs.version }}" `
+            -OutputPath "artifacts/ai-cockpit-${{ steps.version.outputs.version }}-win-x64-setup.exe"
+
       # The AppImage rides alongside the tarball, as it does in the nightly — a release that offered less than a
       # nightly would be a strange thing to ask anyone to upgrade to.
       - name: AppImage

@@ -184,7 +184,8 @@
                             <TextBlock Text="Push-to-talk key"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center"/>
-                            <TextBox Text="{Binding VoicePushToTalkKeyName}" Width="90"/>
+                            <controls:ShortcutCaptureControl Gesture="{Binding VoicePushToTalkKeyName, Mode=TwoWay}"
+                                                             Mode="SingleKey" MinWidth="110"/>
                         </StackPanel>
                         <TextBlock Text="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
@@ -208,8 +209,18 @@
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         <CheckBox Content="Global push-to-talk (works without focus)"
                                   IsChecked="{Binding VoiceGlobalPushToTalk}"/>
-                        <TextBlock Text="Requires restarting AI-Cockpit to take effect."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        <!-- Linux only: the global hotkey is a desktop-portal binding the compositor takes at
+                             startup, so a change to it applies on the next launch, not live (Windows re-arms it
+                             live and has no such line). The Restart-now button appears once a change is saved. -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                    IsVisible="{Binding IsLinuxPlatform}">
+                            <TextBlock Text="Requires restarting AI-Cockpit to take effect."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            <Button Content="Restart now" Classes="Accent"
+                                    Command="{Binding RestartAppCommand}"
+                                    IsVisible="{Binding VoiceGlobalPushToTalkNeedsRestart}"/>
+                        </StackPanel>
                         <TextBlock Text="On Linux, the physical key is assigned via System Settings → Shortcuts — this field is only a hint."
                                    IsVisible="{Binding IsLinuxPlatform}"
                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>

@@ -20,6 +20,13 @@ namespace Cockpit.App.Services;
 /// </remarks>
 internal sealed class AppRestartService : IAppRestartService, ISingletonService
 {
+    /// <summary>
+    /// Marks the launched process as a restart handoff rather than a fresh double-launch. The new instance reads
+    /// it (in <c>Program.Main</c>) and waits for this one to release the single-instance claim, instead of finding
+    /// it still held and refusing to start with the "already running" notice.
+    /// </summary>
+    internal const string RestartArgument = "--restarting";
+
     private readonly Action _launchNewInstance;
     private readonly Action _shutDownCurrentInstance;
 
@@ -54,14 +61,22 @@ internal sealed class AppRestartService : IAppRestartService, ISingletonService
         };
 
         // GetCommandLineArgs()[0] is the executable path itself (already captured as exePath above);
-        // ArgumentList only wants the actual arguments that followed it.
-        foreach (var arg in Environment.GetCommandLineArgs().Skip(1))
+        // BuildLaunchArguments takes only the arguments that followed it.
+        foreach (var arg in BuildLaunchArguments(Environment.GetCommandLineArgs().Skip(1).ToArray()))
         {
             startInfo.ArgumentList.Add(arg);
         }
 
         Process.Start(startInfo);
     }
+
+    /// <summary>
+    /// The arguments for the relaunched process: the current ones, plus the <see cref="RestartArgument"/> marker.
+    /// Any marker already there (this instance was itself started by a restart) is dropped first, so restart after
+    /// restart carries exactly one and the argument list cannot grow without bound.
+    /// </summary>
+    internal static IReadOnlyList<string> BuildLaunchArguments(IReadOnlyList<string> currentArguments) =>
+        [.. currentArguments.Where(argument => argument != RestartArgument), RestartArgument];
 
     private static void _ShutDownCurrentInstance()
     {
