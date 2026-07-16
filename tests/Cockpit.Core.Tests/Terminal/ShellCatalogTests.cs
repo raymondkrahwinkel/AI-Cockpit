@@ -88,6 +88,26 @@ public class ShellCatalogTests
     }
 
     [Fact]
+    public void ForCommand_Blank_ReturnsNull()
+    {
+        ShellCatalog.ForCommand("   ").Should().BeNull();
+    }
+
+    [Fact]
+    public void ForCommand_UnresolvedPath_PassesThroughSoThePtySurfacesTheError()
+    {
+        // A rooted path that does not exist resolves to nothing, so it is passed through unchanged rather than
+        // silently swapped for another shell — the pty then reports a real "not found" the operator can fix.
+        var descriptor = ShellCatalog.ForCommand("/opt/definitely-not-here/fish");
+
+        descriptor.Should().NotBeNull();
+        descriptor!.Id.Should().Be("custom");
+        descriptor.DisplayName.Should().Be("fish");
+        descriptor.ExecutablePath.Should().Be("/opt/definitely-not-here/fish");
+        descriptor.Arguments.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Build_NothingResolves_ReturnsEmpty()
     {
         var shells = ShellCatalog.Build(

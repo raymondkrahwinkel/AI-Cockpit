@@ -32,6 +32,27 @@ public static class ShellCatalog
             File.Exists);
 
     /// <summary>
+    /// A descriptor for an operator-specified custom shell (#AC-25) — any path or command, including a third-party
+    /// shell not in <see cref="Detect"/> (fish, nushell, xonsh, a login wrapper), which is common on Linux/macOS. The
+    /// command is resolved to an absolute path when it can be (a bare name via PATH, Windows extensions probed); when
+    /// it cannot, it is passed through unchanged so the pty surfaces a real "not found" the operator can fix, rather
+    /// than being silently swapped for another shell. Returns null only for a blank command.
+    /// </summary>
+    public static ShellDescriptor? ForCommand(string command)
+    {
+        var trimmed = command?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0)
+        {
+            return null;
+        }
+
+        var resolved = _Resolve(trimmed, Environment.GetEnvironmentVariable("PATH") ?? string.Empty, OperatingSystem.IsWindows(), File.Exists)
+            ?? trimmed;
+        var name = Path.GetFileNameWithoutExtension(trimmed);
+        return new ShellDescriptor("custom", string.IsNullOrEmpty(name) ? trimmed : name, resolved, []);
+    }
+
+    /// <summary>
     /// The per-OS detection, pure over its inputs so it can be tested without the shells it looks for. Each candidate
     /// is resolved against <paramref name="pathVariable"/> (and, on Windows, <c>PATHEXT</c>-style extension probing)
     /// via <paramref name="fileExists"/>; unresolved candidates are dropped rather than offered as a path that fails
