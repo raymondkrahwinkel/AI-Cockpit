@@ -33,4 +33,67 @@ public class ClaudeExecutableLocatorTests
     {
         ClaudeExecutableLocator.Resolve(command).Should().Be(command);
     }
+
+    [Fact]
+    public void PickNewestClaudeExe_MissingInstallRoot_ReturnsNull()
+    {
+        var absent = Path.Combine(Path.GetTempPath(), $"claude-code-{Guid.NewGuid():N}");
+
+        ClaudeExecutableLocator.PickNewestClaudeExe(absent).Should().BeNull();
+    }
+
+    [Fact]
+    public void PickNewestClaudeExe_PicksTheHighestVersionByVersionOrder_NotStringOrder()
+    {
+        // The desktop install keeps one directory per version; the newest one is what a fresh launch uses. Version
+        // ordering must win over string ordering, so 2.1.209 beats 2.1.99 (which string-sorts higher).
+        using var root = new _TempInstallRoot("2.1.99", "2.1.209", "2.1.205");
+
+        var picked = ClaudeExecutableLocator.PickNewestClaudeExe(root.Path);
+
+        picked.Should().Be(Path.Combine(root.Path, "2.1.209", "claude.exe"));
+    }
+
+    [Fact]
+    public void PickNewestClaudeExe_IgnoresVersionDirectoriesWithoutTheExecutable()
+    {
+        using var root = new _TempInstallRoot("2.1.209");
+        // A half-removed version directory with no claude.exe must not be chosen over a complete older one.
+        Directory.CreateDirectory(Path.Combine(root.Path, "2.2.0"));
+
+        var picked = ClaudeExecutableLocator.PickNewestClaudeExe(root.Path);
+
+        picked.Should().Be(Path.Combine(root.Path, "2.1.209", "claude.exe"));
+    }
+
+    private sealed class _TempInstallRoot : IDisposable
+    {
+        public string Path { get; }
+
+        public _TempInstallRoot(params string[] versionsWithExecutable)
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"claude-code-{Guid.NewGuid():N}");
+            foreach (var version in versionsWithExecutable)
+            {
+                var directory = System.IO.Path.Combine(Path, version);
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(System.IO.Path.Combine(directory, "claude.exe"), string.Empty);
+            }
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(Path))
+                {
+                    Directory.Delete(Path, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup of a temp directory; a locked file must not fail the test.
+            }
+        }
+    }
 }
