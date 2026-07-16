@@ -2344,6 +2344,34 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
+    /// Opens a plain terminal pane (#AC-25) next to the AI sessions, running the operator's chosen default shell —
+    /// or, when none is configured, the OS default the <see cref="ShellCatalog"/> detects. Reuses the whole TTY
+    /// path: a terminal is another <see cref="TtyViewModel"/> in the <see cref="Sessions"/> collection, so the grid,
+    /// reorder and lifecycle are the existing ones. Runtime-only, exactly like an AI session.
+    /// </summary>
+    [RelayCommand]
+    private void NewTerminal()
+    {
+        if (_ttySessionFactory is null)
+        {
+            return;
+        }
+
+        // Detect() is ordered best-first, so the first entry is the OS default; an empty result means no shell
+        // resolved at all (near-impossible on a real machine). The operator-configurable default arrives next step.
+        var shells = ShellCatalog.Detect();
+        if (shells.Count == 0)
+        {
+            return;
+        }
+
+        var shell = shells[0];
+        var terminal = _ttySessionFactory();
+        AddSession(terminal, name: null, shell.DisplayName);
+        terminal.LaunchTerminal(shell);
+    }
+
+    /// <summary>
     /// Opens a session on <paramref name="profile"/> for a plugin (#69) — a workflow step, a shortcut — and hands it
     /// <paramref name="prompt"/> as its first input. The profile's own defaults decide model, permissions and effort:
     /// naming a profile means "the way I set that one up", and a caller who knew better would have said so.
