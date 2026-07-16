@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
 
@@ -200,6 +201,79 @@ public class ManageProfilesDialogViewModelTests
                 list[0].Defaults!.AutoApproveTools),
             Arg.Any<CancellationToken>());
     }
+
+    // The profile's spawn environment variables (AC-22): rows load and save through the editable row VM, an
+    // invalid or duplicate key gates the save, and the editor only shows for a provider that declares the
+    // SupportsEnvVars capability.
+    [Fact]
+    public void ToProfile_CarriesTheEnvironmentVariableRows_IncludingTheSecretFlag()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
+        };
+        var row = new EditableProfileViewModel(profile, isLoggedIn: true);
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MY_TOKEN", "s3cret", isSecret: true));
+
+        var saved = row.ToProfile();
+
+        saved.EnvironmentVariables.Should().Equal(
+            new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS"),
+            new ProfileEnvironmentVariable("MY_TOKEN", "s3cret", IsSecret: true));
+    }
+
+    [Theory]
+    [InlineData("2INVALID")]
+    [InlineData("")]
+    public void IsValid_AnEnvironmentVariableWithAnUnsettableName_GatesTheSave(string key)
+    {
+        var row = new EditableProfileViewModel(new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")), isLoggedIn: true);
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel(key, "value"));
+
+        row.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValid_ADuplicateEnvironmentVariableKey_GatesTheSave()
+    {
+        var row = new EditableProfileViewModel(new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work")), isLoggedIn: true);
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/first"));
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/second"));
+
+        row.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SupportsEnvVars_FollowsThePluginProvidersDeclaredCapability()
+    {
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("env-capable").Returns(_Registration("env-capable", supportsEnvVars: true));
+        registry.Resolve("env-less").Returns(_Registration("env-less", supportsEnvVars: false));
+
+        var capable = new EditableProfileViewModel(
+            new SessionProfile("a", new PluginProviderConfig("env-capable", "{}")), isLoggedIn: true, pluginProviderRegistry: registry);
+        var incapable = new EditableProfileViewModel(
+            new SessionProfile("b", new PluginProviderConfig("env-less", "{}")), isLoggedIn: true, pluginProviderRegistry: registry);
+
+        capable.SupportsEnvVars.Should().BeTrue();
+        incapable.SupportsEnvVars.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SupportsEnvVars_IsFalseForAnHttpProvider_WhichSpawnsNothingToInjectInto()
+    {
+        var row = new EditableProfileViewModel(
+            new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1", null)), isLoggedIn: true);
+
+        row.SupportsEnvVars.Should().BeFalse();
+    }
+
+    private static SessionProviderRegistration _Registration(string providerId, bool supportsEnvVars) => new(
+        ProviderId: providerId,
+        DisplayName: providerId,
+        CreateDriverFactory: _ => null!,
+        Capabilities: new PluginSessionCapabilities(true, true) { SupportsEnvVars = supportsEnvVars },
+        CreateConfigView: _ => null!);
 
     [Fact]
     public async Task Save_WithAnEmptyConfigDir_DoesNotPersistAndReportsIt()

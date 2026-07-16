@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
@@ -153,6 +154,25 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <summary>Whether the selected plugin provider declares any start-option defaults to edit.</summary>
     public bool HasPluginOptionDefaults => PluginOptionDefaults.Count > 0;
 
+    /// <summary>
+    /// The profile's spawn environment variables (AC-22), one editable row each. Only shown when the provider
+    /// supports injection (<see cref="SupportsEnvVars"/>).
+    /// </summary>
+    public ObservableCollection<ProfileEnvironmentVariableViewModel> EnvironmentVariables { get; } = [];
+
+    /// <summary>
+    /// Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) —
+    /// a plugin provider's declared capability, or the in-tree Claude CLI's. False for the HTTP providers
+    /// (Ollama/LM Studio), which spawn nothing to inject into, so the editor never shows as a dead control.
+    /// </summary>
+    public bool SupportsEnvVars => SelectedProvider.Value switch
+    {
+        SessionProvider.Plugin => SelectedProvider.PluginProviderId is { } providerId
+            && _pluginProviderRegistry?.Resolve(providerId)?.Capabilities.SupportsEnvVars == true,
+        SessionProvider.ClaudeCli => SessionCapabilities.ClaudeCli.SupportsEnvVars,
+        _ => false,
+    };
+
     /// <summary>The alias suggestions for the editable Claude model field (see <see cref="SessionOptionCatalog.ClaudeModelSuggestions"/>).</summary>
     public IReadOnlyList<string> ClaudeModelSuggestions => SessionOptionCatalog.ClaudeModelSuggestions;
 
@@ -188,12 +208,24 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// </summary>
     public bool IsValid =>
         !string.IsNullOrWhiteSpace(Label)
+        && _AreEnvironmentVariablesValid()
         && SelectedProvider.Value switch
         {
             SessionProvider.ClaudeCli => !string.IsNullOrWhiteSpace(ConfigDir),
             SessionProvider.Plugin => PluginConfigView is not null && PluginConfigView.TryGetConfigJson(out _),
             _ => !string.IsNullOrWhiteSpace(BaseUrl) && !string.IsNullOrWhiteSpace(Model),
         };
+
+    // Every row a settable POSIX name, no key twice — a duplicate would silently overwrite its sibling at spawn.
+    private bool _AreEnvironmentVariablesValid() =>
+        EnvironmentVariables.All(row => row.IsKeyValid)
+        && EnvironmentVariables.Select(row => row.Key).Distinct(StringComparer.Ordinal).Count() == EnvironmentVariables.Count;
+
+    [RelayCommand]
+    private void AddEnvironmentVariable() => EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel());
+
+    [RelayCommand]
+    private void RemoveEnvironmentVariable(ProfileEnvironmentVariableViewModel row) => EnvironmentVariables.Remove(row);
 
     partial void OnIsLoggedInChanged(bool value)
     {
@@ -210,6 +242,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsPluginProviderMissing));
         OnPropertyChanged(nameof(DisplayLabel));
         OnPropertyChanged(nameof(BaseUrlPlaceholder));
+        OnPropertyChanged(nameof(SupportsEnvVars));
 
         // Point the base URL at the newly chosen provider's default port when adding a profile — including
         // switching Ollama↔LM Studio (11434↔1234) — unless the operator typed a custom URL we should keep.
@@ -334,6 +367,11 @@ public partial class EditableProfileViewModel : ViewModelBase
         // Build the generic per-profile option-default editors from the (possibly plugin) provider, pre-filled from
         // the profile's saved defaults — the provider-neutral successor to the typed permission/model/effort combos.
         _RefreshPluginOptionDefaults(profile.Defaults?.OptionDefaults);
+
+        foreach (var variable in profile.EnvironmentVariables ?? [])
+        {
+            EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel(variable.Key, variable.Value, variable.IsSecret));
+        }
     }
 
     /// <summary>Rebuilds an immutable profile from the current edits, for persisting on save.</summary>
@@ -352,7 +390,12 @@ public partial class EditableProfileViewModel : ViewModelBase
             string.IsNullOrWhiteSpace(Purpose) ? null : Purpose.Trim(),
             defaults,
             _ToDelegationPolicy(),
-            MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null);
+            MemoryLimitMb >= SessionMemoryLimit.MinimumMegabytes ? MemoryLimitMb : null)
+        {
+            EnvironmentVariables = EnvironmentVariables.Count > 0
+                ? [.. EnvironmentVariables.Select(row => row.ToDomain())]
+                : null,
+        };
     }
 
     // The per-profile option defaults the operator set, keyed by option key; only the ones actually chosen (a blank
