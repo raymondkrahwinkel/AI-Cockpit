@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
@@ -12,11 +13,16 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// </summary>
 internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
 {
+    private static readonly IBrush _OkBrush = new SolidColorBrush(Color.Parse("#5AA576"));
+    private static readonly IBrush _WarnBrush = new SolidColorBrush(Color.Parse("#E0A33E"));
+
     private readonly TextBox _command;
     private readonly TextBox _workingDirectory;
     private readonly ComboBox _sandboxMode;
     private readonly AutoCompleteBox _model;
     private readonly TextBox _apiKey;
+    private readonly TextBlock _commandStatus = _StatusBlock();
+    private readonly TextBlock _workingDirectoryStatus = _StatusBlock();
 
     public Control View { get; }
 
@@ -54,8 +60,10 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             {
                 _Label("Codex command / path"),
                 SettingsHelpRow.Build(_command, "Bare \"codex\" is resolved against PATH (including a Windows .cmd npm shim); or paste an absolute path to the executable."),
+                _commandStatus,
                 _Label("Working directory (optional — SDK sessions only)"),
                 SettingsHelpRow.Build(_workingDirectory, "A TTY session runs where the New-session dialog says, so it ignores this. An SDK session cannot be told where it runs — the plugin contract carries no working directory — so it uses this, and falls back to the cockpit's own directory when it is empty."),
+                _workingDirectoryStatus,
                 _Label("Sandbox mode"),
                 SettingsHelpRow.Build(_sandboxMode, "read-only is Codex's safe default. workspace-write allows edits inside the working directory; danger-full-access runs Codex with no sandboxing at all — only on a machine/workdir you fully trust."),
                 _Label("Model (optional)"),
@@ -64,7 +72,65 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 SettingsHelpRow.Build(_apiKey, "Only needed if this machine is not already logged in via \"codex login\". Set via CODEX_API_KEY for this spawn only — never passed as a CLI argument, never logged."),
             },
         };
+
+        // Live per-field feedback (#45): auto-detect the executable on PATH so the operator sees at once whether the
+        // command resolves (and where), and flag a working directory that does not exist — the two things that
+        // silently make a profile unusable otherwise.
+        _command.TextChanged += (_, _) => _UpdateCommandStatus();
+        _workingDirectory.TextChanged += (_, _) => _UpdateWorkingDirectoryStatus();
+        _UpdateCommandStatus();
+        _UpdateWorkingDirectoryStatus();
     }
+
+    /// <summary>Resolves the command against PATH (cross-OS, incl. Windows .cmd/.exe/.bat shims) and shows where it was found, or that it is not on PATH — informational, since a profile may legitimately pin a command for a machine that has it installed elsewhere.</summary>
+    private void _UpdateCommandStatus()
+    {
+        var command = _command.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(command))
+        {
+            _SetStatus(_commandStatus, "Required — enter \"codex\" or an absolute path to the executable.", ok: false);
+            return;
+        }
+
+        var resolved = CliExecutableLocator.Resolve(command);
+        if (Path.IsPathRooted(resolved) && File.Exists(resolved))
+        {
+            _SetStatus(_commandStatus, $"Found: {resolved}", ok: true);
+        }
+        else
+        {
+            _SetStatus(_commandStatus, "Not found on PATH — check it is installed, or paste an absolute path.", ok: false);
+        }
+    }
+
+    /// <summary>Flags a non-empty working directory that does not exist (the one thing that blocks saving besides an empty command); an empty value is fine (SDK sessions fall back to the cockpit's own directory).</summary>
+    private void _UpdateWorkingDirectoryStatus()
+    {
+        var directory = _workingDirectory.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(directory))
+        {
+            _workingDirectoryStatus.IsVisible = false;
+            return;
+        }
+
+        _workingDirectoryStatus.IsVisible = true;
+        if (Directory.Exists(directory))
+        {
+            _SetStatus(_workingDirectoryStatus, "Folder found.", ok: true);
+        }
+        else
+        {
+            _SetStatus(_workingDirectoryStatus, "Folder does not exist — the profile cannot be saved until it does.", ok: false);
+        }
+    }
+
+    private static void _SetStatus(TextBlock block, string message, bool ok)
+    {
+        block.Text = (ok ? "✓ " : "✗ ") + message;
+        block.Foreground = ok ? _OkBrush : _WarnBrush;
+    }
+
+    private static TextBlock _StatusBlock() => new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0) };
 
     public bool TryGetConfigJson(out string configJson)
     {
