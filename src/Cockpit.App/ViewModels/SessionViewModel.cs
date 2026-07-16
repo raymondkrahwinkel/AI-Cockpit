@@ -225,7 +225,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         LimitsTooltip = "Context window: 37% used";
 
         // Sample generic live controls (#45 D4) so the previewer/Screenshotter renders the header's live-control panel.
-        LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("model", "Model", ["gpt-5-codex", "gpt-5"], "gpt-5-codex"), (_, _) => Task.CompletedTask));
+        // Provider-neutral placeholder values on purpose: the core names no provider's models, not even in sample data.
+        LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("model", "Model", ["model-large", "model-fast"], "model-large"), (_, _) => Task.CompletedTask));
         LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], "medium"), (_, _) => Task.CompletedTask));
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "fix the layout bug in SessionView"));
