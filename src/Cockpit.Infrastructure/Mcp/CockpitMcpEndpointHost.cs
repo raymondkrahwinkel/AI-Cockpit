@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -81,11 +82,12 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
 
             var builder = WebApplication.CreateSlimBuilder();
             builder.Services.AddSingleton(_loggerFactory);
-            builder.Services.AddSingleton(tools.GetType(), tools);
-            builder.Services
-                .AddMcpServer()
-                .WithHttpTransport()
-                .WithTools([tools.GetType()]);
+
+            // Hand the SDK the pre-built tools instance, not its type: WithTools(Type) activates a fresh instance
+            // from this endpoint's own slim DI, where the tools' dependencies (resolved from the app's services when
+            // the instance was built) do not live — so it would fail to resolve them at the first tool call.
+            var mcpBuilder = builder.Services.AddMcpServer().WithHttpTransport();
+            _WithToolsInstance(mcpBuilder, tools);
 
             builder.WebHost.UseKestrel();
             // Port 0: the OS picks a free loopback port, so nothing to configure and no collision with a second cockpit.
@@ -153,6 +155,18 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
     /// </summary>
     internal static bool ShouldBeEnabled(bool enabledByDefault, McpServerConfig? existingEntry) =>
         enabledByDefault || (existingEntry?.Enabled ?? false);
+
+    // The generic WithTools<TToolType>(builder, TToolType target, JsonSerializerOptions?) overload — the one that
+    // registers a pre-built instance. Reached by reflection because the tools type is only known at runtime (a
+    // plugin's), and the SDK exposes no non-generic "register this instance" overload for a runtime Type.
+    private static readonly MethodInfo _WithToolsGeneric = typeof(McpServerBuilderExtensions).GetMethods()
+        .Single(method => method.Name == "WithTools"
+            && method.IsGenericMethodDefinition
+            && method.GetParameters() is { Length: 3 } parameters
+            && parameters[1].ParameterType.IsGenericMethodParameter);
+
+    private static void _WithToolsInstance(IMcpServerBuilder mcpBuilder, object tools) =>
+        _WithToolsGeneric.MakeGenericMethod(tools.GetType()).Invoke(null, [mcpBuilder, tools, null]);
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
