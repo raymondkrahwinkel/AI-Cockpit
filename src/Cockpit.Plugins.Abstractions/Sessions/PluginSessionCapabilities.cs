@@ -37,4 +37,14 @@ public sealed record PluginSessionCapabilities(
     /// modes (an HTTP model, Codex's sandbox) never advertises it.
     /// </summary>
     public bool SupportsPermissionModeSwitch { get; init; }
+
+    /// <summary>
+    /// Whether this provider's sessions honour a profile's own environment variables at spawn (AC-22) — backed by
+    /// the environment-carrying <see cref="IPluginSessionDriver.StartAsync(string?, string?, string?, IReadOnlyDictionary{string, string}?, IReadOnlyList{PluginMcpServer}?, IReadOnlyDictionary{string, string}?, CancellationToken)"/>
+    /// overload, which a driver that spawns a process overrides to apply them. Gates the profile editor's
+    /// env-var section, so a provider with nothing to inject into (an HTTP model) never shows a dead editor.
+    /// Init-only for the same back-compat reason as <see cref="SupportsLiveModelSwitch"/>; defaults to
+    /// <see langword="false"/>.
+    /// </summary>
+    public bool SupportsEnvVars { get; init; }
 }

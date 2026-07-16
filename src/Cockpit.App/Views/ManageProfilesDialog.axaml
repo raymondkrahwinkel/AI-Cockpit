@@ -8,7 +8,7 @@
         x:Class="Cockpit.App.Views.ManageProfilesDialog"
         x:DataType="vm:ManageProfilesDialogViewModel"
         Title="Manage profiles"
-        Width="620" Height="420" CanResize="False"
+        Width="860" Height="680" MinWidth="620" MinHeight="480"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -325,6 +325,47 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Per-profile environment variables (AC-22), injected into every session spawned under this
+                         profile. Gated on the provider's SupportsEnvVars capability, so a provider with nothing to
+                         inject into (an HTTP model) never shows a dead editor. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding SupportsEnvVars}">
+                        <TextBlock Text="ENVIRONMENT VARIABLES" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <TextBlock Text="Injected into every session spawned under this profile, terminal and headless alike. Mark a value as secret to store it encrypted and masked."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding EnvironmentVariables}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProfileEnvironmentVariableViewModel">
+                                    <Grid ColumnDefinitions="4*,5*,Auto,Auto" RowDefinitions="Auto,Auto"
+                                          ColumnSpacing="6" Margin="0,0,0,6">
+                                        <TextBox Grid.Column="0" Text="{Binding Key}" PlaceholderText="NAME"
+                                                 FontFamily="{StaticResource CockpitMonoFont}"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="value"
+                                                 FontFamily="{StaticResource CockpitMonoFont}"
+                                                 IsVisible="{Binding !IsSecret}"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="value"
+                                                 PasswordChar="•" IsVisible="{Binding IsSecret}"/>
+                                        <CheckBox Grid.Column="2" IsChecked="{Binding IsSecret}" Content="Secret"
+                                                  FontSize="11" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="3" Content="✕" Classes="Subtle" VerticalAlignment="Center"
+                                                Command="{Binding $parent[ItemsControl].((vm:EditableProfileViewModel)DataContext).RemoveEnvironmentVariableCommand}"
+                                                CommandParameter="{Binding}"/>
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,2,0,0"
+                                                   Text="Not a valid variable name — letters, digits and underscores, not starting with a digit."
+                                                   FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                   IsVisible="{Binding !IsKeyValid}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="+ Add variable" Classes="Subtle" HorizontalAlignment="Left"
+                                Foreground="{StaticResource CockpitAccentBrush}"
+                                Command="{Binding AddEnvironmentVariableCommand}"/>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

@@ -83,6 +83,10 @@ sealed class Program
         services.AddSingleton<ILoggerFactory>(loggerFactory);
         services.AddLogging();
 
+        // A GUI or AppImage launch hands this process a PATH without the user's bin directories, and every child
+        // inherits it (AC-19). Repair it once, up front, before anything resolves a tool or spawns a session.
+        StartupPathRepair.Run(loggerFactory.CreateLogger(typeof(StartupPathRepair)));
+
         services.AddCore().AddInfrastructure().AddServices(
             typeof(Cockpit.Core.DependencyInjection).Assembly,
             typeof(Cockpit.Infrastructure.DependencyInjection).Assembly,
@@ -250,13 +254,6 @@ sealed class Program
         watchdog.Start();
     }
 
-    // Avalonia configuration, don't remove; also used by visual designer.
-    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
-    private static extern int unsetenv(string name);
-
-    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
-    private static extern int setenv(string name, string value, int overwrite);
-
     // Puts the plugins this build ships into the operator's plugins directory (see BundledPluginInstaller).
     // Best-effort: a plugin that cannot be copied is logged and skipped, and the app carries on with whatever
     // is already installed — a bundled plugin is a convenience, not a dependency.
@@ -329,7 +326,9 @@ sealed class Program
 
         foreach (var key in markers)
         {
-            RemoveFromEnvironment(key);
+            // Managed + native (libc) both: Skia reads the native environ via getenv, so a managed-only removal
+            // would leave the host terminal's identity leaking through (the underline bug under Ghostty).
+            ProcessEnvironment.Remove(key);
         }
 
         // A terminal-specific TERM (e.g. xterm-ghostty) is what the SvcSystems/Skia render stack keys off,
@@ -338,38 +337,17 @@ sealed class Program
         if (!string.IsNullOrEmpty(term)
             && !string.Equals(term, Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue, StringComparison.OrdinalIgnoreCase))
         {
-            AssignEnvironment("TERM", Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue);
+            ProcessEnvironment.Assign("TERM", Cockpit.Core.Sessions.Tty.TtyEnvironment.TermValue);
         }
     }
 
     // Presence signal for nested agents (#45 D4 follow-up): a bare AI_COCKPIT=1, no version or per-session detail —
-    // a consumer keys off the variable existing. Via AssignEnvironment so it lands in the native environment too,
+    // a consumer keys off the variable existing. Via ProcessEnvironment so it lands in the native environment too,
     // which is what a spawned process inherits whichever path launches it; every session spawn inherits this
     // process's environment, so this one assignment reaches all of them (Claude CLI, Codex app-server, TTY).
-    private static void MarkCockpitEnvironment() => AssignEnvironment("AI_COCKPIT", "1");
+    private static void MarkCockpitEnvironment() => ProcessEnvironment.Assign("AI_COCKPIT", "1");
 
-    // Environment.SetEnvironmentVariable updates .NET's managed copy but does not reliably remove the variable
-    // from the native (libc) environment that Skia and other native libraries read via getenv — so on Unix we
-    // also call unsetenv/setenv directly. Without this the scrub has no effect on the render and the host
-    // terminal's identity still leaks through (the underline bug when Cockpit is launched from Ghostty).
-    private static void RemoveFromEnvironment(string key)
-    {
-        Environment.SetEnvironmentVariable(key, null);
-        if (!OperatingSystem.IsWindows())
-        {
-            unsetenv(key);
-        }
-    }
-
-    private static void AssignEnvironment(string key, string value)
-    {
-        Environment.SetEnvironmentVariable(key, value);
-        if (!OperatingSystem.IsWindows())
-        {
-            setenv(key, value, 1);
-        }
-    }
-
+    // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()

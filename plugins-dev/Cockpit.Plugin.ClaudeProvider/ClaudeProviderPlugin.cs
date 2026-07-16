@@ -17,7 +17,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "claude-provider",
         DisplayName: "Claude (bundled)",
-        Version: "0.2.11",
+        Version: "0.3.1",
         Author: "Cockpit",
         Description: "Claude as a provider plugin. Runs the real interactive Claude TUI in a pane (TTY), with the "
             + "cockpit's workspace-trust, shared MCP servers, usage limits and the operator's own statusline preserved. "
@@ -64,7 +64,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             ProviderId: ClaudeProviderIds.Claude,
             DisplayName: "Claude",
             CreateDriverFactory: _ => new ClaudeSdkSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson))
         {
             Options =

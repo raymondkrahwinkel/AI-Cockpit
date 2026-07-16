@@ -43,7 +43,43 @@ internal static class CliExecutableLocator
             }
         }
 
+        // Linux/macOS: an npm/bun/pipx CLI installed into ~/.local/bin (or ~/.bun/bin) is on a login shell's PATH
+        // but not on a GUI or AppImage launch's — so a bare "codex" fails to resolve and the session cannot spawn
+        // even though it is installed. Fall back to the standard user-local bins before giving up. Only for a bare
+        // command name (no separator); a relative path the operator typed is theirs to own.
+        if (!OperatingSystem.IsWindows()
+            && command.IndexOf(Path.DirectorySeparatorChar) < 0
+            && _TryUnixUserBin(command) is { } fromUserBin)
+        {
+            return fromUserBin;
+        }
+
         return command;
+    }
+
+    private static string? _TryUnixUserBin(string command)
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(home))
+        {
+            return null;
+        }
+
+        string[] userBins =
+        [
+            Path.Combine(home, ".local", "bin"),
+            Path.Combine(home, ".bun", "bin"),
+        ];
+        foreach (var directory in userBins)
+        {
+            var candidate = Path.Combine(directory, command);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private static string? _TryDirectory(string directory, string command)

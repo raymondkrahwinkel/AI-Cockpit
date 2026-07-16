@@ -15,6 +15,32 @@ public class CodexAppServerSessionDriverTests
 {
     private static CliAgentConfig _DefaultConfig() => new(WorkingDirectory: Path.GetTempPath());
 
+    // The profile's environment variables (AC-22) ride the environment-carrying StartAsync overload into the
+    // spawn, under everything the driver sets itself — the config's CODEX_HOME/auth keep the last word.
+    [Fact]
+    public async Task Start_LaysTheProfilesEnvironmentUnderTheConfigsOwnVariables()
+    {
+        var fake = new FakeCliSubprocess();
+        var config = new CliAgentConfig(WorkingDirectory: Path.GetTempPath(), ConfigDir: "/home/raymond/.codex-profile");
+        await using var driver = new CodexAppServerSessionDriver(() => fake, config, "codex");
+
+        var startTask = driver.StartAsync(
+            null, "/work", resumeSessionId: null, options: null, mcpServers: null,
+            environment: new Dictionary<string, string>
+            {
+                ["AI_OS_ROOT"] = "/home/raymond/AI-OS",
+                ["CODEX_HOME"] = "/somebody/elses/home",
+            },
+            CancellationToken.None);
+        await _RespondAsync(fake, "initialize", "{}");
+        await _RespondAsync(fake, "model/list", """{"data":[]}""");
+        await _RespondAsync(fake, "thread/start", """{"threadId":"thread-1"}""");
+        await startTask;
+
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("AI_OS_ROOT", "/home/raymond/AI-OS"));
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CODEX_HOME", "/home/raymond/.codex-profile"));
+    }
+
     [Fact]
     public async Task Start_DoesHandshake_PassesTheCockpitCwd_AndEmitsSessionInitialized()
     {

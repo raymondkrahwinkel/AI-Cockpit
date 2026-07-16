@@ -31,8 +31,26 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ILogger<TtyLau
     {
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
+        // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: they
+        // override what the cockpit inherited, and the provider keeps the last word — its overlay carries
+        // functional isolation (a config directory), which an operator variable must not be able to break.
+        if (profile?.EnvironmentVariables is { Count: > 0 } profileVariables)
+        {
+            var profileOverlay = ProfileEnvironmentVariable.ToOverlay(profileVariables);
+            if (TtyEnvironment.RejectedOverlayKeys(profileOverlay) is { Count: > 0 } rejectedProfileKeys)
+            {
+                logger.LogWarning(
+                    "Profile {Profile} configures host-controlled environment variables; ignored: {Variables}",
+                    profile.Label,
+                    string.Join(", ", rejectedProfileKeys));
+            }
+
+            baseEnvironment = TtyEnvironment.Compose(baseEnvironment, profileOverlay);
+        }
+
         // AC-13: hand the session its own pane id so the agent can name itself to the cockpit-session MCP's
-        // set_status tool. A dictionary the scrub already produced, so adding one host-owned entry is safe.
+        // set_status tool. Set after the profile's variables (a host-owned identity a profile must not shadow) and
+        // before the provider's overlay, which still keeps the last word.
         if (!string.IsNullOrEmpty(paneId))
         {
             baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
@@ -40,6 +58,7 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ILogger<TtyLau
                 ["COCKPIT_PANE_ID"] = paneId,
             };
         }
+
         var context = new TtyLaunchContext(
             profile,
             options,
