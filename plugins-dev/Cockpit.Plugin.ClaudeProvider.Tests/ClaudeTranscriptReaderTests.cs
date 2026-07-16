@@ -168,19 +168,22 @@ public class ClaudeTranscriptReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadActivityAsync_WhenAgentsAreKilled_LeavesBackgroundBusy_EvenWithAFreshSubAgentFile()
+    public async Task ReadActivityAsync_WhenAnAgentIsStoppedByUser_LeavesBackgroundBusy_EvenWithAFreshTranscript()
     {
         // The bug this guards: stopping a background agent writes a final line to its transcript, so a pure
-        // folder-mtime check keeps reading "still running". The main transcript's agents_killed system line ends
-        // it at once, so the dot moves off background (here: to Done, since the main turn had completed).
+        // folder-mtime check keeps reading "still running". The agent's meta.json marks it stoppedByUser at once,
+        // so the dot moves off background (here: to Done, since the main turn had completed).
         var transcriptPath = _CreateEmptyTranscriptFile();
         var subDir = Path.Combine(
             Path.GetDirectoryName(transcriptPath)!, Path.GetFileNameWithoutExtension(transcriptPath), "subagents");
+        Directory.CreateDirectory(subDir);
+        var agentTranscript = Path.Combine(subDir, "agent-abc.jsonl");
+        var agentMeta = Path.Combine(subDir, "agent-abc.meta.json");
 
         var reader = new ClaudeTranscriptReader();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var sawBackground = false;
-        PluginSessionActivity? afterKill = null;
+        PluginSessionActivity? afterStop = null;
         var consumeTask = Task.Run(async () =>
         {
             await foreach (var reading in reader.ReadActivityAsync(ConfigJson, NoBaseline, cts.Token))
@@ -191,26 +194,26 @@ public class ClaudeTranscriptReaderTests : IDisposable
                 }
                 else if (sawBackground && reading.Activity != PluginSessionActivity.None)
                 {
-                    afterKill = reading.Activity;
+                    afterStop = reading.Activity;
                     break;
                 }
             }
         });
 
         await Task.Delay(500);
-        // The main turn completes while a background agent runs → downgraded to background work.
-        Directory.CreateDirectory(subDir);
-        await File.WriteAllTextAsync(Path.Combine(subDir, "agent-abc.jsonl"), "{}\n");
+        // A running agent (no stop marker yet) while the main turn completes → downgraded to background work.
+        await File.WriteAllTextAsync(agentMeta, """{"agentType":"general-purpose","stoppedByUser":false}""");
+        await File.WriteAllTextAsync(agentTranscript, "{}\n");
         await File.AppendAllTextAsync(
             transcriptPath, """{"type":"assistant","message":{"role":"assistant","stop_reason":"end_turn"}}""" + "\n");
 
         await _WaitUntilAsync(() => sawBackground);
-        // The user stops the agent — and its transcript gets one last write, keeping the folder mtime fresh.
-        await File.WriteAllTextAsync(Path.Combine(subDir, "agent-abc.jsonl"), "{}\n{}\n");
-        await File.AppendAllTextAsync(transcriptPath, """{"type":"system","subtype":"agents_killed"}""" + "\n");
+        // The user stops the agent — its transcript gets one last write (fresh mtime), but the metadata says stopped.
+        await File.WriteAllTextAsync(agentTranscript, "{}\n{}\n");
+        await File.WriteAllTextAsync(agentMeta, """{"agentType":"general-purpose","stoppedByUser":true}""");
 
         await consumeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        afterKill.Should().Be(PluginSessionActivity.TurnComplete, "a killed background agent must free the dot despite a fresh sub-agent file");
+        afterStop.Should().Be(PluginSessionActivity.TurnComplete, "a user-stopped agent must free the dot despite a fresh transcript file");
     }
 
     private static async Task _WaitUntilAsync(Func<bool> condition)

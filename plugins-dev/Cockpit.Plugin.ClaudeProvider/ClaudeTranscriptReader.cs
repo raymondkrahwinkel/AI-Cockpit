@@ -81,20 +81,14 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         var charBuffer = new char[readBuffer.Length];
         var pendingLine = new StringBuilder();
         var mainTurnComplete = false;
-        // The main transcript authoritatively brackets a background agent's life: an "Agent" tool_use starts one,
-        // a system "agents_killed" line ends every running one at once (a stopped agent's own transcript has no
-        // clean end, so the folder mtime alone would linger). Recent sub-agent writes then say it is still going.
-        var agentsKilled = false;
         var lastEmitted = PluginSessionActivity.None;
-
-        bool SubAgentsRunning() => !agentsKilled && _SubAgentsActive(subAgentDir);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             var bytesRead = await stream.ReadAsync(readBuffer, cancellationToken).ConfigureAwait(false);
             if (bytesRead <= 0)
             {
-                if (SubAgentsRunning())
+                if (_SubAgentsActive(subAgentDir))
                 {
                     // The main agent is quiet but a background agent is still writing — keep the session off "done"
                     // and shown as background work, re-emitted each poll so the host's safety timeout never fires.
@@ -128,15 +122,6 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                 var line = pendingLine.ToString();
                 pendingLine.Clear();
 
-                if (_IsAgentsKilled(line))
-                {
-                    agentsKilled = true;
-                }
-                else if (_IsAgentSpawn(line))
-                {
-                    agentsKilled = false;
-                }
-
                 var activity = ClassifyLine(line);
                 if (activity == PluginSessionActivity.TurnComplete)
                 {
@@ -149,7 +134,7 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
 
                 // A completed main turn while a background agent still runs is background work, not done — the dot
                 // should read "working (background)" until the agent itself ends.
-                var emit = activity == PluginSessionActivity.TurnComplete && SubAgentsRunning()
+                var emit = activity == PluginSessionActivity.TurnComplete && _SubAgentsActive(subAgentDir)
                     ? PluginSessionActivity.BackgroundBusy
                     : activity;
                 if (emit != PluginSessionActivity.None)
@@ -215,7 +200,14 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    /// <summary>True when a sub-agent transcript under <paramref name="subAgentDir"/> was written within <see cref="SubAgentActivityWindow"/> — the session is still doing background work.</summary>
+    /// <summary>
+    /// True when a background sub-agent under <paramref name="subAgentDir"/> is still running. Each agent is a pair
+    /// <c>agent-&lt;id&gt;.jsonl</c> (its transcript) + <c>agent-&lt;id&gt;.meta.json</c> (its metadata, which carries
+    /// <c>stoppedByUser</c>). An agent counts as running when its metadata does not mark it stopped <em>and</em> its
+    /// transcript was written within <see cref="SubAgentActivityWindow"/> — the metadata ends a stopped agent at once
+    /// (stopping writes one last transcript line, so the mtime alone would linger), and the window lets a running
+    /// agent's own thinking pauses pass while a finished one lapses.
+    /// </summary>
     private static bool _SubAgentsActive(string subAgentDir)
     {
         if (!Directory.Exists(subAgentDir))
@@ -226,8 +218,20 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         var now = DateTime.UtcNow;
         try
         {
-            return Directory.EnumerateFiles(subAgentDir, "*.jsonl")
-                .Any(file => now - File.GetLastWriteTimeUtc(file) < SubAgentActivityWindow);
+            foreach (var transcript in Directory.EnumerateFiles(subAgentDir, "agent-*.jsonl"))
+            {
+                if (_AgentStoppedByUser(transcript))
+                {
+                    continue;
+                }
+
+                if (now - File.GetLastWriteTimeUtc(transcript) < SubAgentActivityWindow)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         catch (Exception)
         {
@@ -236,52 +240,26 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         }
     }
 
-    /// <summary>True for the main-transcript <c>system</c> line Claude writes when background agents are stopped (<c>subtype: "agents_killed"</c>) — ends the background-work state at once rather than waiting for the folder to go quiet.</summary>
-    private static bool _IsAgentsKilled(string jsonLine) =>
-        _MatchesSystemSubtype(jsonLine, "agents_killed");
-
-    /// <summary>True when the line is an assistant message spawning a background agent (a <c>tool_use</c> named <c>"Agent"</c>) — clears a prior kill so a newly started agent counts again.</summary>
-    private static bool _IsAgentSpawn(string jsonLine)
+    /// <summary>True when the agent's <c>agent-&lt;id&gt;.meta.json</c> marks it <c>stoppedByUser</c> — the authoritative per-agent stop signal Claude writes when the operator kills a background agent.</summary>
+    private static bool _AgentStoppedByUser(string transcriptPath)
     {
+        var metaPath = Path.Combine(
+            Path.GetDirectoryName(transcriptPath) ?? string.Empty,
+            Path.GetFileNameWithoutExtension(transcriptPath) + ".meta.json");
         try
         {
-            using var document = System.Text.Json.JsonDocument.Parse(jsonLine);
-            var root = document.RootElement;
-            if (!root.TryGetProperty("message", out var message)
-                || !message.TryGetProperty("content", out var content)
-                || content.ValueKind != System.Text.Json.JsonValueKind.Array)
+            if (!File.Exists(metaPath))
             {
                 return false;
             }
 
-            foreach (var block in content.EnumerateArray())
-            {
-                if (block.TryGetProperty("type", out var type) && type.GetString() == "tool_use"
-                    && block.TryGetProperty("name", out var name) && name.GetString() == "Agent")
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(metaPath));
+            return document.RootElement.TryGetProperty("stoppedByUser", out var stopped)
+                && stopped.ValueKind == System.Text.Json.JsonValueKind.True;
         }
-        catch (System.Text.Json.JsonException)
+        catch (Exception)
         {
-            return false;
-        }
-    }
-
-    private static bool _MatchesSystemSubtype(string jsonLine, string subtype)
-    {
-        try
-        {
-            using var document = System.Text.Json.JsonDocument.Parse(jsonLine);
-            var root = document.RootElement;
-            return root.TryGetProperty("type", out var type) && type.GetString() == "system"
-                && root.TryGetProperty("subtype", out var sub) && sub.GetString() == subtype;
-        }
-        catch (System.Text.Json.JsonException)
-        {
+            // Unreadable metadata is not proof of a stop — fall back to the transcript's own activity window.
             return false;
         }
     }
