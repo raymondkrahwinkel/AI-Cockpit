@@ -58,6 +58,54 @@ public class SessionProfileEntryTests
         resaved.Provider!.PluginConfigJson.Should().Contain("/home/raymond/.claude-work").And.Contain("/usr/local/bin/claude");
     }
 
+    // A secret variable's value lands in the SecretValue field — the name the secret rule recognises — so it
+    // rides the existing encrypt-at-rest/scrub-from-backups machinery; a plain value stays readable on purpose.
+    [Fact]
+    public void FromDomain_SplitsProfileEnvironmentVariablesBySecrecy_SoOnlySecretsRouteThroughEncryption()
+    {
+        var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null))
+        {
+            EnvironmentVariables =
+            [
+                new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS"),
+                new ProfileEnvironmentVariable("MY_API_TOKEN", "s3cret", IsSecret: true),
+            ],
+        };
+
+        var entry = SessionProfileEntry.FromDomain(profile);
+
+        entry.EnvironmentVariables.Should().HaveCount(2);
+        entry.EnvironmentVariables![0].Value.Should().Be("/home/raymond/AI-OS");
+        entry.EnvironmentVariables[0].SecretValue.Should().BeNull();
+        entry.EnvironmentVariables[1].Value.Should().BeNull();
+        entry.EnvironmentVariables[1].SecretValue.Should().Be("s3cret");
+    }
+
+    [Fact]
+    public void ToDomain_AfterRoundTripping_KeepsEachVariablesValueAndSecrecy()
+    {
+        var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null))
+        {
+            EnvironmentVariables =
+            [
+                new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS"),
+                new ProfileEnvironmentVariable("MY_API_TOKEN", "s3cret", IsSecret: true),
+            ],
+        };
+
+        var roundTripped = SessionProfileEntry.FromDomain(profile).ToDomain();
+
+        roundTripped.EnvironmentVariables.Should().Equal(profile.EnvironmentVariables);
+    }
+
+    [Fact]
+    public void ToDomain_WithoutEnvironmentVariables_LeavesTheProfileWithoutAny()
+    {
+        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/home/raymond/.claude-work" };
+
+        entry.ToDomain().EnvironmentVariables.Should().BeNull();
+    }
+
     [Fact]
     public void ToDomain_MigratesALegacyClaudeProfilesTypedDefaults_IntoTheGenericOptionDefaults()
     {
