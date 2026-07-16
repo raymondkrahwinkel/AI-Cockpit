@@ -24,7 +24,7 @@ namespace Cockpit.App.Services;
 public sealed class SessionDialogService : ISessionDialogService, ISingletonService
 {
     private readonly ISessionProfileStore _profileStore;
-    private readonly IClaudeProfileLoginChecker _loginChecker;
+    private readonly IProfileLoginChecker _loginChecker;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
@@ -36,7 +36,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
-        IClaudeProfileLoginChecker loginChecker,
+        IProfileLoginChecker loginChecker,
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
         IPluginProviderRegistry pluginProviderRegistry,

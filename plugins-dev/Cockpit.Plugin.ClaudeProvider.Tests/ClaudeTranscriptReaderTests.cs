@@ -1,19 +1,22 @@
-using Cockpit.Infrastructure.Voice;
+using System.Text.Json;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 
-namespace Cockpit.Core.Tests.Voice;
+namespace Cockpit.Plugin.ClaudeProvider.Tests;
 
 /// <summary>
-/// <see cref="ClaudeSessionTranscriptReader"/> (#35b/#39): locates the session's live JSONL transcript as
-/// the new <c>configDir/projects/*/​*.jsonl</c> file that appears after launch (not matched by a forced
-/// session id — that is undocumented for interactive sessions), waiting for it to appear if the launch
-/// hasn't written it yet, tails it from its current end so history is never replayed, and buffers a
-/// partial line across polls so a write caught mid-line never surfaces as a corrupt/truncated read.
+/// <see cref="ClaudeTranscriptReader"/> (#35b/#39, weg A): locates the session's live JSONL transcript as the
+/// new <c>configDir/projects/*/*.jsonl</c> file that appears after launch (not matched by a forced session id —
+/// undocumented for interactive sessions), waiting for it if the launch has not written it yet, tails it from
+/// its current end so history is never replayed, and buffers a partial line across polls so a write caught
+/// mid-line never surfaces as a corrupt/truncated read. Ported from the host's former in-tree reader test; the
+/// only difference is the reader is keyed by the plugin's own config JSON rather than a host-supplied path.
 /// </summary>
-public class ClaudeSessionTranscriptReaderTests : IDisposable
+public class ClaudeTranscriptReaderTests : IDisposable
 {
     private readonly string _configDir = Directory.CreateTempSubdirectory("cockpit-transcript-reader-tests-").FullName;
+
+    // The reader resolves its state directory from the plugin's opaque config JSON, so pin the temp dir there.
+    private string ConfigJson => JsonSerializer.Serialize(new ClaudeProviderConfig(ConfigDir: _configDir), ClaudeProviderConfig.JsonOptions);
 
     // No transcript from a prior session exists, so the one the test writes is always the "new" one.
     private static readonly IReadOnlySet<string> NoBaseline = new HashSet<string>();
@@ -66,12 +69,12 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
     public async Task ReadAssistantTextAsync_WhenTheTranscriptDoesNotExistYet_WaitsForItThenTailsIt()
     {
         var projectDir = Path.Combine(_configDir, "projects", "some-cwd-hash");
-        var reader = new ClaudeSessionTranscriptReader(NullLogger<ClaudeSessionTranscriptReader>.Instance);
+        var reader = new ClaudeTranscriptReader();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var received = new List<string>();
         var consumeTask = Task.Run(async () =>
         {
-            await foreach (var text in reader.ReadAssistantTextAsync(_configDir, NoBaseline, cts.Token))
+            await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, NoBaseline, cts.Token))
             {
                 received.Add(text);
                 break;
@@ -96,12 +99,12 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
     public async Task ReadLinesAsync_YieldsEveryAppendedRawLine_NotJustAssistantText()
     {
         var transcriptPath = _CreateEmptyTranscriptFile();
-        var reader = new ClaudeSessionTranscriptReader(NullLogger<ClaudeSessionTranscriptReader>.Instance);
+        var reader = new ClaudeTranscriptReader();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var received = new List<string>();
         var consumeTask = Task.Run(async () =>
         {
-            await foreach (var line in reader.ReadLinesAsync(_configDir, NoBaseline, cts.Token))
+            await foreach (var line in reader.ReadLinesAsync(ConfigJson, NoBaseline, cts.Token))
             {
                 received.Add(line);
                 if (received.Count == 2)
@@ -122,9 +125,9 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
     }
 
     /// <summary>
-    /// Drives one <see cref="ClaudeSessionTranscriptReader.ReadAssistantTextAsync"/> consumption in the
-    /// background (the natural <c>await foreach</c> shape production code uses), appends the given lines to
-    /// the transcript once it is underway, and returns the first assistant text the reader yields.
+    /// Drives one <see cref="ClaudeTranscriptReader.ReadAssistantTextAsync"/> consumption in the background (the
+    /// natural <c>await foreach</c> shape production code uses), appends the given lines to the transcript once
+    /// it is underway, and returns the first assistant text the reader yields.
     /// </summary>
     private async Task<string> _ConsumeOneLineAsync(
         string transcriptPath,
@@ -132,12 +135,12 @@ public class ClaudeSessionTranscriptReaderTests : IDisposable
         TimeSpan? thenDelay = null,
         IReadOnlyList<string>? appendAfterDelay = null)
     {
-        var reader = new ClaudeSessionTranscriptReader(NullLogger<ClaudeSessionTranscriptReader>.Instance);
+        var reader = new ClaudeTranscriptReader();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var received = new List<string>();
         var consumeTask = Task.Run(async () =>
         {
-            await foreach (var text in reader.ReadAssistantTextAsync(_configDir, NoBaseline, cts.Token))
+            await foreach (var text in reader.ReadAssistantTextAsync(ConfigJson, NoBaseline, cts.Token))
             {
                 received.Add(text);
                 break;

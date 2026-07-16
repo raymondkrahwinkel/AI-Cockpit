@@ -51,7 +51,7 @@ public class TtyReadAloudTests
     public async Task ReadResponsesAloud_OnAfterLaunchConfigured_TailsTheConfiguredSession_AndEnqueuesAssistantText()
     {
         var reader = _Reader();
-        reader.ReadAssistantTextAsync(Arg.Any<string>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
+        reader.ReadAssistantTextAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => _YieldThenWaitForCancellation("Here is the tty answer.", callInfo.ArgAt<CancellationToken>(2)));
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
@@ -62,7 +62,7 @@ public class TtyReadAloudTests
 
         await _WaitUntilAsync(() => voicePlaybackQueue.ReceivedCalls().Any());
 
-        reader.Received(1).ReadAssistantTextAsync("/config/work", Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>());
+        reader.Received(1).ReadAssistantTextAsync(Work, Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>());
         voicePlaybackQueue.Received(1).Enqueue(
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Here is the tty answer." })),
             vm.TtsVoiceId);
@@ -72,7 +72,7 @@ public class TtyReadAloudTests
     public async Task ReadResponsesAloud_OnWithoutAProfile_StillTailsTheDefaultConfigDirSession_AndEnqueues()
     {
         var reader = _Reader();
-        reader.ReadAssistantTextAsync(Arg.Any<string>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
+        reader.ReadAssistantTextAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => _YieldThenWaitForCancellation("Profile-less answer.", callInfo.ArgAt<CancellationToken>(2)));
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
@@ -83,8 +83,10 @@ public class TtyReadAloudTests
 
         await _WaitUntilAsync(() => voicePlaybackQueue.ReceivedCalls().Any());
 
+        // A profile-less session passes a null profile through to the reader façade, which routes it to the
+        // default provider — the reader still tails, so read-aloud works without a profile.
         reader.Received(1).ReadAssistantTextAsync(
-            Arg.Is<string>(dir => !string.IsNullOrWhiteSpace(dir)), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>());
+            (SessionProfile?)null, Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>());
         voicePlaybackQueue.Received(1).Enqueue(
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Profile-less answer." })),
             vm.TtsVoiceId);
@@ -94,7 +96,7 @@ public class TtyReadAloudTests
     public async Task DisposeAsync_WhileReadingAloud_StopsPlaybackSoAClosedSessionGoesSilent()
     {
         var reader = _Reader();
-        reader.ReadAssistantTextAsync(Arg.Any<string>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
+        reader.ReadAssistantTextAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
             .Returns(_ => _EmptyTranscript());
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var vm = new ClaudeTtyViewModel(
@@ -125,7 +127,7 @@ public class TtyReadAloudTests
     {
         CancellationToken? capturedToken = null;
         var reader = _Reader();
-        reader.ReadAssistantTextAsync(Arg.Any<string>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
+        reader.ReadAssistantTextAsync(Arg.Any<SessionProfile?>(), Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 capturedToken = callInfo.ArgAt<CancellationToken>(2);
@@ -156,7 +158,7 @@ public class TtyReadAloudTests
     private static ISessionTranscriptReader _Reader()
     {
         var reader = Substitute.For<ISessionTranscriptReader>();
-        reader.SnapshotTranscripts(Arg.Any<string>()).Returns(new HashSet<string>());
+        reader.SnapshotTranscripts(Arg.Any<SessionProfile?>()).Returns(new HashSet<string>());
         return reader;
     }
 

@@ -17,7 +17,7 @@ namespace Cockpit.App.ViewModels;
 public partial class ManageProfilesDialogViewModel : ViewModelBase
 {
     private readonly ISessionProfileStore? _profileStore;
-    private readonly IClaudeProfileLoginChecker? _loginChecker;
+    private readonly IProfileLoginChecker? _loginChecker;
     private readonly IModelCatalog? _modelCatalog;
     private readonly IPluginProviderRegistry? _pluginProviderRegistry;
     private readonly IReadOnlyList<SessionProviderOption> _providers;
@@ -63,7 +63,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 
     public ManageProfilesDialogViewModel(
         ISessionProfileStore profileStore,
-        IClaudeProfileLoginChecker loginChecker,
+        IProfileLoginChecker loginChecker,
         IModelCatalog? modelCatalog = null,
         IPluginProviderRegistry? pluginProviderRegistry = null)
     {
