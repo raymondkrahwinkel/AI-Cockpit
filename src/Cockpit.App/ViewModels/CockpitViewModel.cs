@@ -2653,6 +2653,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
+    /// Sets a session's agent/workflow statusline by its <see cref="SessionPanelViewModel.PaneId"/> (#AC-13) — the
+    /// line shown under its title in the header and sidebar. Returns whether a live session matched; false is a
+    /// no-op (the session may have closed), never an error. Must be called on the UI thread — the host API that a
+    /// plugin/agent reaches this through marshals to it.
+    /// </summary>
+    public bool SetSessionStatusline(string paneId, string statusline)
+    {
+        if (Sessions.FirstOrDefault(session => session.PaneId == paneId) is not { } target)
+        {
+            return false;
+        }
+
+        target.Statusline = statusline ?? string.Empty;
+        return true;
+    }
+
+    /// <summary>
+    /// Renames a session — the title in its header and sidebar — by its <see cref="SessionPanelViewModel.PaneId"/>
+    /// (#AC-13). A blank name is ignored. Returns whether a live session matched. Must be called on the UI thread.
+    /// </summary>
+    public bool SetSessionName(string paneId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || Sessions.FirstOrDefault(session => session.PaneId == paneId) is not { } target)
+        {
+            return false;
+        }
+
+        target.Title = name.Trim();
+        return true;
+    }
+
+    /// <summary>
     /// Edge-triggered attention routing: fires the presence-aware notifier once, on the transition
     /// into <see cref="SessionStatus.NeedsAttention"/> — not on every status touch while it stays
     /// there. The notifier itself decides present-toast vs away-webhook.

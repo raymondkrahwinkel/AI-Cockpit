@@ -115,6 +115,14 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false);
         var environment = _BuildEnvironment(userHome);
 
+        // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the
+        // cockpit-session MCP server's set_status tool. The host sets this option per session; a session started
+        // without it (an older host) simply gets no variable.
+        if (_ResolveOption(options, WellKnownPluginSessionOptions.PaneId, defaultValue: null) is { Length: > 0 } paneId)
+        {
+            environment["COCKPIT_PANE_ID"] = paneId;
+        }
+
         var subprocess = _subprocessFactory();
         _subprocess = subprocess;
         subprocess.Start(_executablePath, arguments, resolvedWorkingDirectory, environment);

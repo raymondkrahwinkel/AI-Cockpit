@@ -35,6 +35,23 @@ public sealed class PluginActions(
         return Task.CompletedTask;
     }
 
+    public Task SetActiveSessionStatusAsync(string? statusline = null, string? name = null) =>
+        Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (cockpit.SelectedSession is { } session)
+            {
+                if (statusline is not null)
+                {
+                    session.Statusline = statusline;
+                }
+
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    session.Title = name.Trim();
+                }
+            }
+        }).GetTask();
+
     /// <summary>
     /// Hands work to another profile as a background task and waits for the answer (#67, #69). The task goes through
     /// the cockpit's own delegation service, so it is refused by the same rules an agent's delegation is refused by,

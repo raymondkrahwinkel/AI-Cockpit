@@ -37,6 +37,16 @@ public interface ICockpitActions
         throw new NotSupportedException("This host cannot start sessions.");
 
     /// <summary>
+    /// Sets the statusline shown under the active (selected) session's name — what it is working on — and optionally
+    /// renames it (#AC-13): the workflow half of the feature, so a flow that started a session on a ticket can label
+    /// it with the ticket number, and clear it when the work moves on. The active session is the one a preceding
+    /// start-session step just opened and selected. A <see langword="null"/> <paramref name="statusline"/> leaves it,
+    /// an empty string clears it; a blank <paramref name="name"/> leaves the title. No-op when there is no active
+    /// session. Default no-op so a plugin built against this SDK still works on an older host.
+    /// </summary>
+    Task SetActiveSessionStatusAsync(string? statusline = null, string? name = null) => Task.CompletedTask;
+
+    /// <summary>
     /// Hands work to another profile as a background task and waits for what it produces (#67, #69) — the cockpit's
     /// own delegation, done for a plugin. The task appears in the delegated-tasks view like any other, because an
     /// agent working invisibly is exactly what this project does not do.

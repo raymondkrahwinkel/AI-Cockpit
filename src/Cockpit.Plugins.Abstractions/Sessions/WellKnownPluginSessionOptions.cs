@@ -20,4 +20,12 @@ public static class WellKnownPluginSessionOptions
     /// <see cref="PluginSessionCapabilities.SupportsLiveModelSwitch"/> receives a mid-session model change.
     /// </summary>
     public const string Model = "model";
+
+    /// <summary>
+    /// The option key by which the host hands a plugin driver the session's own pane id (#AC-13). A provider that
+    /// spawns a child process should set it as the <c>COCKPIT_PANE_ID</c> environment variable, so the agent inside
+    /// can name its own session to the cockpit-session MCP server's <c>set_status</c> tool. A provider with nothing
+    /// to spawn simply ignores it. The TTY route sets the variable host-side and does not use this key.
+    /// </summary>
+    public const string PaneId = "cockpit.pane-id";
 }

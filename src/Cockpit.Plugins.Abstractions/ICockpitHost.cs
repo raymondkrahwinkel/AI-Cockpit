@@ -212,6 +212,35 @@ public interface ICockpitHost
     Task RemoveMcpServer(string name) => Task.CompletedTask;
 
     /// <summary>
+    /// Sets the short free-text statusline shown under a session's title, in its header and the sidebar (#AC-13) —
+    /// what a workflow or plugin uses to say what that session is working on (a ticket it picked up from YouTrack or
+    /// GitHub, a phase), or clears it with an empty string. The session is named by its <c>IPluginSessionContext.PaneId</c>
+    /// (also <see cref="ICockpitSessionObserver.ActivePaneId"/>); a paneId that matches no live session is a no-op.
+    /// Marshals to the UI thread itself, so call it fire-and-forget from any context. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched.
+    /// </summary>
+    Task SetSessionStatusline(string paneId, string statusline) => Task.CompletedTask;
+
+    /// <summary>
+    /// Renames a session — the title shown in its header and the sidebar — named by its <c>IPluginSessionContext.PaneId</c>
+    /// (#AC-13), so a workflow can label a session after the ticket or task it just started on it. A blank name is
+    /// ignored; a paneId that matches no live session is a no-op. Marshals to the UI thread itself. Default no-op so
+    /// existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </summary>
+    Task SetSessionName(string paneId, string name) => Task.CompletedTask;
+
+    /// <summary>
+    /// Adds an in-process MCP server to the cockpit (#AC-12): the host mounts <paramref name="tools"/> — an already-
+    /// built class whose <c>[McpServerTool]</c> methods are the tools, constructed by the plugin with its own
+    /// dependencies — on a loopback address and auto-publishes it to the registry under <paramref name="serverName"/>
+    /// as its own MCP server, tickable per session. This is how a plugin gives agents its own tools (workflows,
+    /// say) without any Kestrel or registry code. Idempotent per name. <paramref name="enabledByDefault"/> follows
+    /// the same on-by-default rule as a built-in cockpit MCP. Call it fire-and-forget from
+    /// <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host implementations keep compiling.
+    /// </summary>
+    Task AddMcpEndpoint(string serverName, object tools, bool enabledByDefault = true) => Task.CompletedTask;
+
+    /// <summary>
     /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):
     /// the active session's working directory and a stream of session output, so a plugin can react to what
     /// a session is doing rather than only writing into it. Default returns
