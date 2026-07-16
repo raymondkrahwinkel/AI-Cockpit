@@ -13,9 +13,22 @@ namespace Cockpit.App.Plugins;
 /// for it. Instantiation is a delegate seam so the orchestration is testable without real assembly
 /// loading. One plugin that throws is logged and skipped — it never takes the app or its siblings down.
 /// </summary>
-internal sealed class PluginManager(ILogger<PluginManager> logger, PluginDiagnostics diagnostics) : IDisposable
+internal sealed class PluginManager(
+    ILogger<PluginManager> logger,
+    PluginDiagnostics diagnostics,
+    Version? hostAbstractionsVersion = null,
+    Func<ICockpitPlugin, Version?>? builtAgainstResolver = null) : IDisposable
 {
     private readonly List<(DiscoveredPlugin Discovered, ICockpitPlugin Plugin)> _loaded = [];
+
+    // The abstractions version this app actually ships, and how to read the one a plugin was built against —
+    // both seams so a test can drive the drift check without a purpose-built assembly. The defaults are the
+    // real thing: the host's own Cockpit.Plugins.Abstractions, and the version baked into the plugin's assembly
+    // reference at compile time (which no manifest can misstate).
+    private readonly Version _hostAbstractions =
+        hostAbstractionsVersion ?? typeof(AbstractionsContract).Assembly.GetName().Version ?? new Version(0, 0);
+
+    private readonly Func<ICockpitPlugin, Version?> _builtAgainst = builtAgainstResolver ?? _ReadBuiltAgainstAbstractions;
 
     /// <summary>The plugins that actually loaded — their manifests, for the host to read what they declared (e.g. which storage keys hold a credential).</summary>
     public IReadOnlyList<DiscoveredPlugin> Loaded => [.. _loaded.Select(entry => entry.Discovered)];
@@ -70,8 +83,37 @@ internal sealed class PluginManager(ILogger<PluginManager> logger, PluginDiagnos
             }
 
             _loaded.Add((candidate, plugin));
+            _WarnIfBuiltAgainstNewerHost(candidate, plugin);
         }
     }
+
+    // The plugin loaded — the reference to Cockpit.Plugins.Abstractions resolved to the host's own copy. But if
+    // it was compiled against a newer SDK than this app ships, it may call a member that copy does not have, and
+    // that fails somewhere the operator never sees. It stays loaded (an older app running a plugin from a newer
+    // one usually works), but this says so out loud instead of leaving it to surface as an unexplained throw.
+    private void _WarnIfBuiltAgainstNewerHost(DiscoveredPlugin candidate, ICockpitPlugin plugin)
+    {
+        var builtAgainst = _builtAgainst(plugin);
+        if (!AbstractionsCompatibility.BuiltAgainstNewerHost(builtAgainst, _hostAbstractions))
+        {
+            return;
+        }
+
+        logger.LogWarning(
+            "Plugin {PluginId} was built against Cockpit SDK {BuiltAgainst}, newer than this app's {Host}; it is loaded but may call members this app does not have.",
+            candidate.FolderId, builtAgainst, _hostAbstractions);
+        diagnostics.Record(
+            candidate.FolderId,
+            candidate.Manifest.Name,
+            "compatibility",
+            $"Built against a newer Cockpit SDK ({builtAgainst}) than this app ({_hostAbstractions}) — it is loaded but may misbehave. Update the app, or reinstall the plugin build made for it.",
+            PluginIssueSeverity.Warning);
+    }
+
+    private static Version? _ReadBuiltAgainstAbstractions(ICockpitPlugin plugin) =>
+        plugin.GetType().Assembly.GetReferencedAssemblies()
+            .FirstOrDefault(name => string.Equals(name.Name, "Cockpit.Plugins.Abstractions", StringComparison.Ordinal))?
+            .Version;
 
     /// <summary>
     /// Phase 2 — after the container is built and the UI exists: give each loaded plugin the host built
