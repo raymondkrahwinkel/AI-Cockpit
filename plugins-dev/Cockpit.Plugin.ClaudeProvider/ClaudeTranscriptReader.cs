@@ -27,8 +27,14 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
     public IReadOnlySet<string> SnapshotTranscripts(string configJson) =>
         _EnumerateTranscripts(_ResolveStateDirectory(configJson)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>How recently a sub-agent transcript must have been written to count the session as still doing background work — a bit above the poll interval so an actively-writing sub-agent always registers, while a finished one lapses within a couple of polls.</summary>
-    private static readonly TimeSpan SubAgentActivityWindow = TimeSpan.FromSeconds(10);
+    /// <summary>
+    /// How recently a sub-agent transcript must have been written to still count as running. Generous on purpose:
+    /// a sub-agent that pauses to think writes nothing for a while yet is still working, so a short window would
+    /// wrongly declare it finished. A <em>stopped</em> agent does not rely on this window lapsing — the main
+    /// transcript's <c>agents_killed</c> system line ends it at once — and a completed one ends when the main agent
+    /// resumes on its result, so this only has to outlast a sub-agent's own thinking pauses.
+    /// </summary>
+    private static readonly TimeSpan SubAgentActivityWindow = TimeSpan.FromSeconds(30);
 
     public async IAsyncEnumerable<string> ReadAssistantTextAsync(
         string configJson,
@@ -56,9 +62,9 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
             yield break;
         }
 
-        // Sub-agents (the Task tool) are recorded in a sibling directory named after the session id, not in the
-        // main transcript — <dir>/<id>.jsonl (tailed here) alongside <dir>/<id>/subagents/*.jsonl. So while the
-        // main transcript is quiet mid-turn, recent writes there mean the session is still doing background work.
+        // Background sub-agents (the "Agent" tool) are recorded in a sibling directory named after the session id,
+        // not in the main transcript — <dir>/<id>.jsonl (tailed here) alongside <dir>/<id>/subagents/*.jsonl. A
+        // backgrounded agent even ends the main agent's own turn, so the session is not done while one still runs.
         var subAgentDir = Path.Combine(
             Path.GetDirectoryName(transcriptPath) ?? configDir,
             Path.GetFileNameWithoutExtension(transcriptPath),
@@ -74,18 +80,33 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         var readBuffer = new byte[8192];
         var charBuffer = new char[readBuffer.Length];
         var pendingLine = new StringBuilder();
-        var inTurn = false;
+        var mainTurnComplete = false;
+        // The main transcript authoritatively brackets a background agent's life: an "Agent" tool_use starts one,
+        // a system "agents_killed" line ends every running one at once (a stopped agent's own transcript has no
+        // clean end, so the folder mtime alone would linger). Recent sub-agent writes then say it is still going.
+        var agentsKilled = false;
+        var lastEmitted = PluginSessionActivity.None;
+
+        bool SubAgentsRunning() => !agentsKilled && _SubAgentsActive(subAgentDir);
 
         while (!cancellationToken.IsCancellationRequested)
         {
             var bytesRead = await stream.ReadAsync(readBuffer, cancellationToken).ConfigureAwait(false);
             if (bytesRead <= 0)
             {
-                // No new main-transcript output. If a turn is in flight but the main agent has gone quiet while a
-                // sub-agent is still writing, that is background work — keep the session off "done" and show it.
-                if (inTurn && _SubAgentsActive(subAgentDir))
+                if (SubAgentsRunning())
                 {
+                    // The main agent is quiet but a background agent is still writing — keep the session off "done"
+                    // and shown as background work, re-emitted each poll so the host's safety timeout never fires.
+                    lastEmitted = PluginSessionActivity.BackgroundBusy;
                     yield return new PluginTranscriptActivity(PluginSessionActivity.BackgroundBusy, null);
+                }
+                else if (lastEmitted == PluginSessionActivity.BackgroundBusy)
+                {
+                    // The background work just ended (the agent finished or was killed); move off "working" to the
+                    // main agent's own state, so the dot does not stay stuck on background after the sub-agent is gone.
+                    lastEmitted = mainTurnComplete ? PluginSessionActivity.TurnComplete : PluginSessionActivity.Busy;
+                    yield return new PluginTranscriptActivity(lastEmitted, null);
                 }
 
                 await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
@@ -107,17 +128,36 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
                 var line = pendingLine.ToString();
                 pendingLine.Clear();
 
-                var activity = ClassifyLine(line);
-                if (activity == PluginSessionActivity.Busy)
+                if (_IsAgentsKilled(line))
                 {
-                    inTurn = true;
+                    agentsKilled = true;
                 }
-                else if (activity == PluginSessionActivity.TurnComplete)
+                else if (_IsAgentSpawn(line))
                 {
-                    inTurn = false;
+                    agentsKilled = false;
                 }
 
-                yield return new PluginTranscriptActivity(activity, line);
+                var activity = ClassifyLine(line);
+                if (activity == PluginSessionActivity.TurnComplete)
+                {
+                    mainTurnComplete = true;
+                }
+                else if (activity == PluginSessionActivity.Busy)
+                {
+                    mainTurnComplete = false;
+                }
+
+                // A completed main turn while a background agent still runs is background work, not done — the dot
+                // should read "working (background)" until the agent itself ends.
+                var emit = activity == PluginSessionActivity.TurnComplete && SubAgentsRunning()
+                    ? PluginSessionActivity.BackgroundBusy
+                    : activity;
+                if (emit != PluginSessionActivity.None)
+                {
+                    lastEmitted = emit;
+                }
+
+                yield return new PluginTranscriptActivity(emit, line);
             }
 
             pendingLine.Append(charBuffer, chunkStart, charCount - chunkStart);
@@ -192,6 +232,56 @@ internal sealed class ClaudeTranscriptReader : IPluginTranscriptReader
         catch (Exception)
         {
             // A sub-agent file vanishing mid-enumeration is not a status error — treat as no background activity.
+            return false;
+        }
+    }
+
+    /// <summary>True for the main-transcript <c>system</c> line Claude writes when background agents are stopped (<c>subtype: "agents_killed"</c>) — ends the background-work state at once rather than waiting for the folder to go quiet.</summary>
+    private static bool _IsAgentsKilled(string jsonLine) =>
+        _MatchesSystemSubtype(jsonLine, "agents_killed");
+
+    /// <summary>True when the line is an assistant message spawning a background agent (a <c>tool_use</c> named <c>"Agent"</c>) — clears a prior kill so a newly started agent counts again.</summary>
+    private static bool _IsAgentSpawn(string jsonLine)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(jsonLine);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("message", out var message)
+                || !message.TryGetProperty("content", out var content)
+                || content.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            foreach (var block in content.EnumerateArray())
+            {
+                if (block.TryGetProperty("type", out var type) && type.GetString() == "tool_use"
+                    && block.TryGetProperty("name", out var name) && name.GetString() == "Agent")
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool _MatchesSystemSubtype(string jsonLine, string subtype)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(jsonLine);
+            var root = document.RootElement;
+            return root.TryGetProperty("type", out var type) && type.GetString() == "system"
+                && root.TryGetProperty("subtype", out var sub) && sub.GetString() == subtype;
+        }
+        catch (System.Text.Json.JsonException)
+        {
             return false;
         }
     }
