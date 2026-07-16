@@ -87,6 +87,22 @@ public class PluginSourceInstallerTests : IDisposable
         _registrations.Saved["clock"].Enabled.Should().BeTrue();
     }
 
+    // A stray Cockpit.Plugins.Abstractions.dll in a source folder (a test project's output offered one, which is
+    // how the dev sync first poisoned the plugin folders) must never be copied in: the shared contract loads from
+    // the host, and a second copy gives the plugin's ICockpitPlugin its own identity and the loader rejects it.
+    [Fact]
+    public async Task Copy_NeverCarriesTheSharedAbstractionsAssemblyIntoAPluginFolder()
+    {
+        var source = _WriteSource("clock", "1.0.0");
+        await File.WriteAllTextAsync(Path.Combine(source, "Cockpit.Plugins.Abstractions.dll"), "shared-contract");
+
+        await new PluginSourceInstaller(_registrations, null)
+            .InstallFromSourceFoldersAsync([source], _plugins, installNew: true);
+
+        File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugin.clock.dll")).Should().BeTrue();
+        File.Exists(Path.Combine(_plugins, "clock", "Cockpit.Plugins.Abstractions.dll")).Should().BeFalse();
+    }
+
     private string _InstalledAssembly(string id) =>
         File.ReadAllText(Path.Combine(_plugins, id, $"Cockpit.Plugin.{id}.dll"));
 

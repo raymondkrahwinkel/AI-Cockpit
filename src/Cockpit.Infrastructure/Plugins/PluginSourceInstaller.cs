@@ -159,7 +159,18 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
         Directory.CreateDirectory(target);
         foreach (var file in Directory.EnumerateFiles(source))
         {
-            File.Copy(file, Path.Combine(target, Path.GetFileName(file)), overwrite: true);
+            var name = Path.GetFileName(file);
+
+            // The shared contract must load once, from the host. A copy sitting in a plugin folder gives that
+            // plugin's ICockpitPlugin a second identity, and the loader then rejects the plugin as having "no
+            // usable entry type". A plugin never carries the abstractions assembly (it references it with
+            // Private=false); refuse to copy it in even if a stray build output offers one.
+            if (name.StartsWith("Cockpit.Plugins.Abstractions.", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            File.Copy(file, Path.Combine(target, name), overwrite: true);
         }
     }
 }
