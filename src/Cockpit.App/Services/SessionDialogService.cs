@@ -27,6 +27,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IProfileLoginChecker _loginChecker;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly IMcpServerCatalog _mcpServerCatalog;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly IConversationPickerRegistry _conversationPickers;
@@ -39,6 +40,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IProfileLoginChecker loginChecker,
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
+        IMcpServerCatalog mcpServerCatalog,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
         IConversationPickerRegistry conversationPickers,
@@ -52,6 +54,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _loginChecker = loginChecker;
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
+        _mcpServerCatalog = mcpServerCatalog;
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
@@ -65,8 +68,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
+        // The New-session picker reads the catalog (registry + plugin-provided servers, AC-11) so a plugin's
+        // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
-            _profileStore, _loginChecker, _mcpServerStore, _workingPathStore, _conversationPickers,
+            _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
             _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry);
         await viewModel.LoadAsync();
 

@@ -45,7 +45,7 @@ public class SessionDriverFactoryTests
     }
 
     [Fact]
-    public async Task Create_WithAPluginProfile_WiresTheMcpServerStore_SoTheSessionsSelectionFansOutToTheDriver()
+    public async Task Create_WithAPluginProfile_WiresTheMcpServerCatalog_SoTheSessionsSelectionFansOutToTheDriver()
     {
         var innerDriver = new FakePluginSessionDriver();
         var driverFactory = Substitute.For<IPluginSessionDriverFactory>();
@@ -59,20 +59,21 @@ public class SessionDriverFactoryTests
         var registry = new PluginProviderRegistry();
         registry.Register(registration);
 
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
         });
-        var services = new ServiceCollection().AddSingleton(store).BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(catalog).BuildServiceProvider();
         var factory = new SessionDriverFactory(services, registry);
         var profile = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
 
         var driver = factory.Create(profile);
         await driver.StartAsync(enabledMcpServerNames: new HashSet<string> { "cockpit-orchestrator" });
 
-        // The factory must hand the shared registry store to the adapter, or the operator's per-session MCP
-        // selection never reaches the plugin driver — the "Connected (0 tools)" regression.
+        // The factory must hand the effective MCP catalog (registry + plugin-provided servers, AC-11) to the
+        // adapter, or the operator's per-session MCP selection never reaches the plugin driver — the
+        // "Connected (0 tools)" regression.
         innerDriver.LastMcpServers.Should().ContainSingle().Which.Name.Should().Be("cockpit-orchestrator");
     }
 

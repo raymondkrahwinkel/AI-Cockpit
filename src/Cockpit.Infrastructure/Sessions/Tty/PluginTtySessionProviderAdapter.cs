@@ -24,7 +24,7 @@ internal sealed class PluginTtySessionProviderAdapter(
     string providerId,
     IPluginTtyProvider inner,
     string configJson,
-    IMcpServerStore? mcpServerStore = null) : ITtySessionProvider
+    IMcpServerCatalog? mcpServerCatalog = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
 
@@ -60,14 +60,14 @@ internal sealed class PluginTtySessionProviderAdapter(
     /// </summary>
     private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry()
     {
-        if (mcpServerStore is null)
+        if (mcpServerCatalog is null)
         {
             return ([], false);
         }
 
         try
         {
-            var registry = mcpServerStore.LoadAsync().GetAwaiter().GetResult();
+            var registry = mcpServerCatalog.GetServersAsync().GetAwaiter().GetResult();
             var servers = registry
                 .Where(McpConfigFile.IsAgentEligible)
                 .Select(_ToPluginMcpServer)
