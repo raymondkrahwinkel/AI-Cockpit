@@ -226,9 +226,18 @@ public sealed class StartupPathRepairTests
     {
         var home = OperatingSystem.IsWindows() ? @"C:\Users\user" : "/home/user";
 
-        StartupPathRepair.UserBinDirectories(home).Should().Equal(
+        IEnumerable<string> expected =
+        [
             Path.Combine(home, ".local", "bin"),
             Path.Combine(home, ".bun", "bin"),
-            Path.Combine(home, "bin"));
+            Path.Combine(home, "bin"),
+        ];
+        if (OperatingSystem.IsMacOS())
+        {
+            // A Finder launch misses Homebrew's directories the way a Linux GUI launch misses ~/.local/bin.
+            expected = expected.Concat(["/opt/homebrew/bin", "/usr/local/bin"]);
+        }
+
+        StartupPathRepair.UserBinDirectories(home).Should().Equal(expected);
     }
 }

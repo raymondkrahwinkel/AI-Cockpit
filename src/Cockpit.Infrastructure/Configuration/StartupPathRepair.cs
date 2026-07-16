@@ -91,14 +91,23 @@ public static class StartupPathRepair
         }
     }
 
-    // ~/.local/bin (pipx, uv, the claude installer's launcher), ~/.bun/bin (bun installs, codex), ~/bin (the
-    // classic). The same directories the per-locator fallbacks know, minus the executable-specific ones.
-    internal static IEnumerable<string> UserBinDirectories(string home) =>
-    [
-        Path.Combine(home, ".local", "bin"),
-        Path.Combine(home, ".bun", "bin"),
-        Path.Combine(home, "bin"),
-    ];
+    // ~/.local/bin (pipx, uv, the claude installer's launcher — on macOS too), ~/.bun/bin (bun installs, codex),
+    // ~/bin (the classic). The same directories the per-locator fallbacks know, minus the executable-specific ones.
+    internal static IEnumerable<string> UserBinDirectories(string home)
+    {
+        yield return Path.Combine(home, ".local", "bin");
+        yield return Path.Combine(home, ".bun", "bin");
+        yield return Path.Combine(home, "bin");
+
+        if (OperatingSystem.IsMacOS())
+        {
+            // A Finder/launchd launch gets the bare system PATH (/usr/bin:/bin:/usr/sbin:/sbin) — Homebrew's
+            // directories are the practical user bins there: /opt/homebrew/bin on Apple Silicon, /usr/local/bin
+            // on Intel. On Linux /usr/local/bin is already in every default PATH, so this stays macOS-only.
+            yield return "/opt/homebrew/bin";
+            yield return "/usr/local/bin";
+        }
+    }
 
     internal static bool ContainsEntry(string path, string directory)
     {
@@ -162,10 +171,12 @@ public static class StartupPathRepair
 
     private static string? _ReadLoginShellPath(ILogger logger)
     {
+        // SHELL is not guaranteed for a launchd-started GUI app on macOS — fall back to the platform default
+        // login shell (zsh since Catalina) rather than /bin/sh, whose init would miss the user's PATH exports.
         var shell = Environment.GetEnvironmentVariable("SHELL");
         if (string.IsNullOrWhiteSpace(shell))
         {
-            shell = "/bin/sh";
+            shell = OperatingSystem.IsMacOS() ? "/bin/zsh" : "/bin/sh";
         }
 
         return ReadLoginShellPath(shell, LoginShellTimeout, logger);
