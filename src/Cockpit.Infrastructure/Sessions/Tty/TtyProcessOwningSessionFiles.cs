@@ -43,7 +43,7 @@ internal sealed class TtyProcessOwningSessionFiles(
     }
 
     /// <summary>Best-effort: a session that has already exited must not fail on its own cleanup. Whatever
-    /// survives is swept on the next start (<c>TtyMcpConfigFile.SweepStale</c>, <c>StatusLineRelay.SweepStale</c>).</summary>
+    /// survives is swept on the next start (<c>TtyMcpConfigFile.SweepStale</c>, and the provider plugin sweeps its own statusline files).</summary>
     private static void _Delete(string path)
     {
         try

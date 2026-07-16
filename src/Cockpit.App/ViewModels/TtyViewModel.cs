@@ -111,7 +111,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// What this session is spending, each drawn as a small bar in the header: how full the context window is, and
     /// how much of the five-hour and weekly allowance is gone. Null until Claude has said — it reports none of it
     /// before the first response, and a bar reading "0%" would be a claim rather than a silence. Fed by the
-    /// statusline relay (<c>StatusLineRelay</c>), which is the only place the allowances are readable at all.
+    /// statusline relay the provider plugin installs, which is the only place the allowances are readable at all.
     /// </summary>
     [ObservableProperty]
     private double? _contextUsedPercent;
@@ -456,7 +456,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
-    /// Starts reading this session's limits from the file Claude's statusline writes (see <c>StatusLineRelay</c>).
+    /// Starts reading this session's limits from the file the provider plugin's statusline writes.
     /// Polled rather than watched: the file is rewritten whole every few seconds by a shell script, and a
     /// filesystem watcher on a write-then-rename fires more often than it tells you anything.
     /// </summary>

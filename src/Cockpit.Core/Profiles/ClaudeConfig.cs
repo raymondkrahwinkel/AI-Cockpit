@@ -13,7 +13,7 @@ namespace Cockpit.Core.Profiles;
 /// <param name="ConfigDir">
 /// The directory used as <c>CLAUDE_CONFIG_DIR</c> for a session under this profile, holding its
 /// <c>.credentials.json</c> and <c>.claude.json</c>. The CLI's default (<c>~/.claude</c>) is a valid value and is
-/// treated specially at spawn time — see <see cref="Cockpit.Core.Sessions.ClaudeConfigDirectory"/>.
+/// treated specially at spawn time by the provider plugin that owns the Claude machinery.
 /// </param>
 /// <param name="ExecutablePath">
 /// Executable to spawn. <see langword="null"/> means "resolve the bundled/default executable at spawn time".

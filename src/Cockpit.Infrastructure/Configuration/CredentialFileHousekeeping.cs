@@ -28,9 +28,8 @@ public static class CredentialFileHousekeeping
 
             TtyMcpConfigFile.SweepStale();
 
-            // The statusline snapshots of sessions that were killed rather than closed. Not credentials, but a
-            // session's spending is nobody's business once it is over.
-            StatusLineRelay.SweepStale();
+            // The statusline snapshots of killed sessions are swept by the provider plugin that now owns the
+            // statusline (Fase 4), at its own startup — the host no longer holds any provider's statusline files.
         }
         catch (Exception)
         {
