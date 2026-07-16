@@ -8,7 +8,7 @@
         x:Class="Cockpit.App.Views.ManageProfilesDialog"
         x:DataType="vm:ManageProfilesDialogViewModel"
         Title="Manage profiles"
-        Width="620" Height="420" CanResize="False"
+        Width="860" Height="680" MinWidth="620" MinHeight="480"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
