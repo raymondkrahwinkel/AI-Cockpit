@@ -45,8 +45,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
     private readonly GitHubPullRequestsSettings _settings;
     private readonly ICockpitHost _host;
-    private readonly GitHubPullRequestsClient _http = new();
-    private readonly GitHubPrGhClient _gh = new();
+    private readonly PullRequestFeed _feed = new();
     private readonly DispatcherTimer _autoRefresh;
     private readonly DispatcherTimer _signalRefresh;
 
@@ -229,63 +228,26 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         _loading.IsVisible = !quiet;
         try
         {
-            IReadOnlyList<GitHubPullRequest> all;
+            var result = await _feed.LoadAsync(_settings, forceRefresh, CancellationToken.None);
+
+            // The HTTP mode talks to one repository; with none set there is nothing to query, and an empty list
+            // here would read as "no open pull requests" rather than "not configured".
+            if (result.RepositoryMissing)
+            {
+                _Say("No repository set, and the GitHub CLI is off — open the settings above.");
+                return;
+            }
+
+            // A review request is news this section acts on — it announces the new ones (a toast) and stripes
+            // them — where the feed only reports them. In HTTP mode the feed finds none, and skipping the
+            // announce there leaves the seen-set untouched rather than clearing it.
+            _reviewRequested = result.ReviewRequested.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
             if (_settings.UseGitHubCli)
             {
-                var reviewRequested = await _gh.SearchReviewRequestedAsync(forceRefresh, CancellationToken.None);
-                _reviewRequested = reviewRequested.Select(pullRequest => pullRequest.Url).ToHashSet(StringComparer.Ordinal);
-                _AnnounceArrivals(reviewRequested);
-
-                var open = await _gh.SearchOpenPullRequestsAsync(_settings.GhOwner, assignedToMe: false, forceRefresh, CancellationToken.None);
-
-                // Everything open in the repositories the operator watches, whoever opened it. The searches above
-                // all ask "which of these are mine", which is the wrong question for a project you are responsible
-                // for: five open pull requests in a repo of yours, none of them yours, showed nothing at all.
-                var watched = new List<GitHubPullRequest>();
-                if (_settings.WatchEverythingIAmInvolvedWith)
-                {
-                    watched.AddRange(await _gh.SearchInvolvedAsync(forceRefresh, CancellationToken.None));
-                }
-
-                foreach (var scope in _settings.WatchedReposList)
-                {
-                    watched.AddRange(await _gh.SearchWatchedAsync(scope, forceRefresh, CancellationToken.None));
-                }
-
-                // One list: a review request is an open pull request that happens to be waiting on you, and the search
-                // that finds it is a different query — not a different kind of thing. Merged by url so a PR that is
-                // found by two of the three searches does not appear twice.
-                var seen = new HashSet<string>(_reviewRequested, StringComparer.Ordinal);
-                all = reviewRequested
-                    .Concat(open.Concat(watched).Where(pullRequest => seen.Add(pullRequest.Url)))
-                    .ToList();
-            }
-            else
-            {
-                // The HTTP mode talks to one repository and has no review-requested search, so nothing is waiting on
-                // you as far as this section can tell.
-                _reviewRequested = new HashSet<string>(StringComparer.Ordinal);
-
-                if (string.IsNullOrWhiteSpace(_settings.Owner) || string.IsNullOrWhiteSpace(_settings.Repo))
-                {
-                    _Say("No repository set, and the GitHub CLI is off — open the settings above.");
-                    return;
-                }
-
-                all = await _http.GetOpenPullRequestsAsync(_settings.Owner, _settings.Repo, _settings.Token, assignedToMe: false, CancellationToken.None);
+                _AnnounceArrivals(result.ReviewRequested);
             }
 
-            // Optional repository filter: when set, keep only PRs in the chosen owner/repo list.
-            var filter = _settings.RepoFilterSet;
-            var visible = filter.Count == 0 ? all : all.Where(pullRequest => filter.Contains(pullRequest.Repository));
-
-            // Newest activity on top — a commit, a review, a comment. The list is short (five by default), so the
-            // question it has to answer is "what moved", not "what exists": a pull request somebody touched an hour
-            // ago belongs above one that has been sitting open since March. One without a date sorts last rather
-            // than to the top, which is what DateTimeOffset.MinValue does for a null.
-            _loaded = visible
-                .OrderByDescending(pullRequest => pullRequest.UpdatedAt ?? DateTimeOffset.MinValue)
-                .ToList();
+            _loaded = result.PullRequests;
 
             _Say(null);
             _Render();
@@ -594,41 +556,9 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         _status.IsVisible = !string.IsNullOrEmpty(message);
     }
 
-    private void _OpenInBrowser(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return;
-        }
+    private void _OpenInBrowser(string? url) => PullRequestActions.OpenInBrowser(_host, url);
 
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception exception)
-        {
-            _host.ShowToast($"Could not open the browser: {exception.Message}", PluginToastSeverity.Error);
-        }
-    }
-
-    private async Task _InjectAsync(GitHubPullRequest pullRequest)
-    {
-        var parts = pullRequest.Repository.Split('/', 2);
-        var owner = parts.Length == 2 ? parts[0] : _settings.Owner;
-        var repo = parts.Length == 2 ? parts[1] : _settings.Repo;
-        var prompt = PromptTemplate.Render(_settings.Template, pullRequest, owner, repo);
-
-        if (_host.Actions.HasActiveSession)
-        {
-            await _host.Actions.InjectIntoActiveSessionAsync(prompt);
-            _host.ShowToast($"PR #{pullRequest.Number} added to the session's prompt.", PluginToastSeverity.Success);
-        }
-        else
-        {
-            await _host.Actions.SetClipboardTextAsync(prompt);
-            _host.ShowToast($"No active session — PR #{pullRequest.Number}'s prompt copied to the clipboard.", PluginToastSeverity.Information);
-        }
-    }
+    private Task _InjectAsync(GitHubPullRequest pullRequest) => PullRequestActions.InjectAsync(_host, _settings, pullRequest);
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
