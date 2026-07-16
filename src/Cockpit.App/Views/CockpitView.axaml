@@ -700,7 +700,7 @@
                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
                                     </Border>
                                     <!-- ContentControl + ViewLocator picks SessionView (SDK) or
-                                         ClaudeTtyView (TTY) from the panel view model's type. -->
+                                         TtyView (TTY) from the panel view model's type. -->
                                     <ContentControl Content="{Binding}"/>
                                 </DockPanel>
                             </Border>

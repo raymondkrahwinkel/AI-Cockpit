@@ -65,7 +65,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
 
     public IAsyncEnumerable<SessionEvent> Events => _events.Reader.ReadAllAsync();
 
-    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, CancellationToken cancellationToken = default)
+    // launchOptions is unused: a built-in HTTP chat provider declares no per-session launch options.
+    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
     {
         // workingDirectory is unused: a local OpenAI-compatible session talks HTTP to a model server; there is
         // no spawned process with a cwd to point at a project folder.

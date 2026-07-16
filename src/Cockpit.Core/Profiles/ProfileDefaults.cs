@@ -14,4 +14,19 @@ namespace Cockpit.Core.Profiles;
 /// gates through its own permission modes instead. Defaults to <see langword="false"/> so existing profiles
 /// keep prompting for every tool call until the operator opts in.
 /// </param>
-public sealed record ProfileDefaults(string PermissionMode, string Model, string Effort, bool AutoApproveTools = false);
+public sealed record ProfileDefaults(
+    [property: Obsolete("Legacy Claude-CLI default; Claude is a provider plugin now and its start defaults live in OptionDefaults. Read only by the one-time migration and its persistence — do not use in new code. Will be removed once no config carries it.")] string PermissionMode,
+    [property: Obsolete("Legacy Claude-CLI default; use OptionDefaults instead. Read only by the one-time migration and its persistence. Will be removed.")] string Model,
+    [property: Obsolete("Legacy Claude-CLI default; use OptionDefaults instead. Read only by the one-time migration and its persistence. Will be removed.")] string Effort,
+    bool AutoApproveTools = false)
+{
+    /// <summary>
+    /// Per-profile defaults for the provider plugin's own declared launch options (permission mode, model and effort
+    /// for Claude; sandbox for Codex), keyed by each option's key. The Manage-profiles dialog fills these from the
+    /// plugin's declared options and the New-session dialog pre-selects them, so a plugin profile remembers its
+    /// preferred start settings — the provider-neutral successor to the typed <see cref="PermissionMode"/>/
+    /// <see cref="Model"/>/<see cref="Effort"/> above, which were the in-tree Claude route's own vocabulary.
+    /// <see langword="null"/> means each option falls back to its own declared default.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? OptionDefaults { get; init; }
+}

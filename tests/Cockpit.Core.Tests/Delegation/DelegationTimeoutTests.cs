@@ -83,7 +83,7 @@ public class DelegationTimeoutTests
     {
         var profile = new SessionProfile(
             "local",
-            ConfigDir: string.Empty,
+            new ClaudeConfig(string.Empty),
             Delegation: new DelegationPolicy(AllowedAsTarget: true, TimeoutMinutes: timeoutMinutes));
 
         var profileStore = Substitute.For<ISessionProfileStore>();

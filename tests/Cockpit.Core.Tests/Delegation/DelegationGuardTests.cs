@@ -25,7 +25,7 @@ public class DelegationGuardTests
     public async Task DelegateAsync_ToAProfileThatIsNotATarget_IsRefused()
     {
         // The default: a profile is not a delegation target until someone opts it in by hand.
-        var service = _ServiceWith(new SessionProfile("private", "/home/raymond/.claude"));
+        var service = _ServiceWith(new SessionProfile("private", new ClaudeConfig("/home/raymond/.claude")));
 
         var delegate_ = async () => await service.DelegateAsync(new DelegationRequest("private", "do work"));
 
@@ -108,7 +108,7 @@ public class DelegationGuardTests
     {
         // An agent cannot delegate to what it cannot see; the opted-out profile is simply absent.
         var service = _ServiceWith(
-            new SessionProfile("private", "/home/raymond/.claude"),
+            new SessionProfile("private", new ClaudeConfig("/home/raymond/.claude")),
             _Target("local", policy => policy with { Purpose = "cheap bulk work", Tags = ["local", "cheap"] }));
 
         var targets = await service.ListTargetsAsync();
@@ -136,7 +136,7 @@ public class DelegationGuardTests
             Arg.Any<string?>(),
             Arg.Any<IReadOnlySet<string>?>(),
             Arg.Any<string?>(),
-            Arg.Any<SessionResume?>(), Arg.Any<CancellationToken>());
+            Arg.Any<SessionResume?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -178,6 +178,7 @@ public class DelegationGuardTests
                 servers!.Contains("filesystem") && !servers.Contains("cockpit-orchestrator")),
             Arg.Any<string?>(),
             Arg.Any<SessionResume?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -203,6 +204,7 @@ public class DelegationGuardTests
             Arg.Is<IReadOnlySet<string>?>(servers => servers!.Contains("cockpit-orchestrator")),
             Arg.Any<string?>(),
             Arg.Any<SessionResume?>(),
+            Arg.Any<IReadOnlyDictionary<string, string>?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -316,7 +318,7 @@ public class DelegationGuardTests
     private static SessionProfile _Target(string label, Func<DelegationPolicy, DelegationPolicy>? tune = null)
     {
         var policy = new DelegationPolicy(AllowedAsTarget: true);
-        return new SessionProfile(label, ConfigDir: string.Empty, Delegation: tune?.Invoke(policy) ?? policy);
+        return new SessionProfile(label, new ClaudeConfig(string.Empty), Delegation: tune?.Invoke(policy) ?? policy);
     }
 
     private static DelegationService _ServiceWith(params SessionProfile[] profiles)

@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
@@ -14,7 +16,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerStore? mcpServerStore = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -22,30 +24,154 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // mapped straight through instead of forced false: every built-in example plugin already reports it
     // false (IPluginSessionDriver.SendUserMessageAsync has no images parameter yet, #64 fase 2), so this
     // stays honest without another host-side change once that surface can actually carry images.
+    // Live model switch and permission-mode switch are now mapped straight through (Fase 4 D4): the narrow surface can
+    // back them via SetLiveOptionAsync, which SetModelAsync/SetPermissionModeAsync below are wired to, so a plugin that
+    // declares it (the Claude provider) drives the host's native model/permission dropdowns. Plan mode and thinking
+    // budget still have no equivalent on the narrow surface and stay false.
     public SessionCapabilities Capabilities { get; } = new(
         SupportsTools: pluginCapabilities.SupportsTools,
         SupportsPermissions: pluginCapabilities.SupportsPermissions,
-        SupportsLiveModelSwitch: false,
+        SupportsLiveModelSwitch: pluginCapabilities.SupportsLiveModelSwitch,
         SupportsPlanMode: false,
         SupportsThinking: false,
-        SupportsVision: pluginCapabilities.SupportsVision);
+        SupportsVision: pluginCapabilities.SupportsVision,
+        SupportsPermissionModeSwitch: pluginCapabilities.SupportsPermissionModeSwitch);
 
     public string? SessionId => inner.SessionId;
+
+    // The plugin driver's process, when it spawns one (Codex app-server), so the host's resource meter has
+    // something to weigh (#78, D10) — null for an HTTP-backed provider, same as the ISessionDriver default.
+    public int? ProcessId => inner.ProcessId;
 
     public SessionProfile? Profile { get; private set; }
 
     public IAsyncEnumerable<SessionEvent> Events => _AdaptEventsAsync();
 
-    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, CancellationToken cancellationToken = default)
+    // The plugin driver reports its status as a provider-neutral snapshot (#45 D7); map it to the core model the
+    // header renders — each window carried through with the label the provider chose, so the host imposes no
+    // window vocabulary. The Claude-CLI-only live-control no-ops above have no state to poll; this one does,
+    // because a plugin provider (Codex) genuinely reports usage the narrow surface can carry.
+    public SessionStatusFeed? CurrentStatus => _MapStatus(inner.Status);
+
+    private static SessionStatusFeed? _MapStatus(PluginSessionStatus? status) =>
+        status is { HasAny: true }
+            ? new SessionStatusFeed(
+                status.ContextUsedPercent,
+                [.. status.RateLimits.Select(window => new SessionRateWindow(window.Label, window.UsedPercent, window.ResetsAt))])
+            : null;
+
+    // The plugin driver's mid-session controls (#45 D4), mapped to the core form the header's live-control panel
+    // renders. Unlike the Claude-CLI live switches below (no-ops here — the narrow surface has no typed members for
+    // them), a plugin provider genuinely reports these and answers SetLiveOptionAsync, so they carry through.
+    public IReadOnlyList<SessionLiveOption> LiveOptions =>
+        [.. inner.LiveOptions.Select(option => new SessionLiveOption(option.Key, option.Label, option.Choices, option.DefaultValue) { ChoiceLabels = option.ChoiceLabels })];
+
+    public Task SetLiveOptionAsync(string key, string value, CancellationToken cancellationToken = default) =>
+        inner.SetLiveOptionAsync(key, value, cancellationToken);
+
+    public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
     {
-        // workingDirectory is unused: a plugin session driver is not a spawned claude process with a cwd — it
-        // runs however the plugin implements it (HTTP, etc.).
+        // workingDirectory, resume, launchOptions and the session's MCP servers are passed through (#45 D5, #44):
+        // a plugin driver that spawns a CLI (Codex app-server) runs in a cwd, resumes a thread by id, honours the
+        // operator's answers to the options it declared (sandbox, model), and exposes the registry servers the
+        // operator selected. Dropping them here is what made the Codex plugin ask for a working directory the
+        // cockpit already had, left its sandbox/model unreachable per session, and reported "Connected (0 tools)".
+        // A driver with no cwd/history/options/tool source of its own (an HTTP provider) simply ignores them. Only
+        // BySessionId resume crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
         Profile = profile;
-        await inner.StartAsync(model, cancellationToken).ConfigureAwait(false);
+        var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
+        var mcpServers = await _ResolveMcpServersAsync(enabledMcpServerNames, cancellationToken).ConfigureAwait(false);
+
+        // The host carries the operator's permission-mode selection as a typed parameter (a Claude concept older than
+        // the plugin surface, which has no such parameter). Fold it into the options map under the well-known key so a
+        // provider that declared a permission-mode option actually receives the choice — without it, a Claude plugin
+        // session always fell back to the driver's own default (e.g. an operator's launch-time "bypassPermissions"
+        // silently became "default"). The operator's explicit choice in the launch options wins; the typed value only
+        // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
+        // choice is what let a profile's stale default run a write tool ungated.
+        var options = _MergePermissionMode(launchOptions, permissionMode);
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken).ConfigureAwait(false);
     }
 
+    private static IReadOnlyDictionary<string, string>? _MergePermissionMode(IReadOnlyDictionary<string, string>? launchOptions, string? permissionMode)
+    {
+        if (string.IsNullOrWhiteSpace(permissionMode))
+        {
+            return launchOptions;
+        }
+
+        var merged = launchOptions is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(launchOptions);
+
+        // The operator's explicit choice in the provider's own permission-mode launch option wins; the host's typed
+        // fold only supplies one when the options carry none (a route with no permission-mode option of its own). Without
+        // this, a profile's stale typed default silently overrode a launch-time change in the generic dropdown — a
+        // session started with "Ask permissions" ran a write tool ungated because bypass folded over it.
+        if (!merged.ContainsKey(WellKnownPluginSessionOptions.PermissionMode))
+        {
+            merged[WellKnownPluginSessionOptions.PermissionMode] = permissionMode;
+        }
+
+        return merged;
+    }
+
+    /// <summary>
+    /// Turns the operator's per-session MCP selection into the concrete endpoints the plugin driver exposes:
+    /// the shared per-session narrowing (<see cref="McpServerRegistryFilter.ApplySessionSelection"/>, the same
+    /// one <c>ClaudeCliProcess</c> and the local-model tool-loop apply) intersected with the agent-eligible
+    /// servers (<see cref="McpConfigFile.IsAgentEligible"/>). The registry lives host-side (plugin isolation
+    /// keeps it out of the driver), so the adapter resolves names to definitions here. No store (a unit test
+    /// that does not wire one) means no fan-out. Best-effort — a transient <c>cockpit.json</c> read failure
+    /// launches the session without the shared servers rather than failing the whole start, matching how the
+    /// Claude fan-out treats the same read.
+    /// </summary>
+    private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, CancellationToken cancellationToken)
+    {
+        if (mcpServerStore is null)
+        {
+            return [];
+        }
+
+        try
+        {
+            var registry = await mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            return McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
+                .Where(McpConfigFile.IsAgentEligible)
+                .Select(_ToPluginMcpServer)
+                .OfType<PluginMcpServer>()
+                .ToList();
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
+    // Mirrors McpConfigFile's Claude mapping: HTTP → url with a static bearer token for an API-key server (the
+    // driver keeps it off the command line), stdio → command/args. A server missing its transport target is dropped.
+    private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
+    {
+        McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
+        {
+            Name = server.Name,
+            Url = server.Url,
+            BearerToken = server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey) ? server.ApiKey : null,
+        },
+        McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
+        {
+            Name = server.Name,
+            Command = server.Command,
+            Args = server.Args,
+        },
+        _ => null,
+    };
+
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
-        inner.SendUserMessageAsync(text, cancellationToken);
+        inner.SendUserMessageAsync(
+            text,
+            images?.Select(image => new PluginImageAttachment(image.MediaType, image.Base64Data)).ToList(),
+            cancellationToken);
 
     public Task InterruptAsync(CancellationToken cancellationToken = default) =>
         inner.InterruptAsync(cancellationToken);
@@ -56,15 +182,23 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     public Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) =>
         inner.SetAutoApproveToolsAsync(enabled, cancellationToken);
 
-    // No always-allow rule persistence in the narrow plugin surface — approve the single outstanding
-    // decision only, same as an operator clicking "Allow" once, rather than silently dropping the call.
+    // Always-allow is session-scoped on the narrow plugin surface (D4): forward the intent so a driver that can
+    // persist it for the session (Codex's acceptForSession) does, and one that cannot falls back to a one-time
+    // allow via the interface default. The Claude rule args (toolName/input/scope) have no equivalent here — a
+    // cross-restart per-profile rule stays a Claude-CLI concern, which is why they are not passed on.
     public Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string proposedInputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default) =>
-        inner.RespondToPermissionAsync(toolUseId, allow: true, cancellationToken);
+        inner.AllowPermissionAlwaysAsync(toolUseId, cancellationToken);
 
     // No live control channel behind the narrow interface — these Claude-CLI-only operations are deliberate no-ops.
-    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    // The host's native permission-mode / model dropdowns switch mid-session through these; wire them to the plugin's
+    // generic live-option surface under the well-known keys (Fase 4 D4). A plugin that does not declare the matching
+    // SupportsLiveModelSwitch / SupportsPermissionModeSwitch capability never has the host call these, and one that
+    // declares no such live option no-ops it in SetLiveOptionAsync — so this is safe for every plugin.
+    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
+        inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
 
-    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
+        inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.Model, model ?? string.Empty, cancellationToken);
 
     public Task SetMaxThinkingTokensAsync(int maxThinkingTokens, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
@@ -83,8 +217,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         PluginSessionInitialized initialized => new SessionInitialized
         {
             SessionId = initialized.SessionId,
-            Cwd = string.Empty,
+            Cwd = initialized.Cwd ?? string.Empty,
             Tools = initialized.Tools,
+        },
+        PluginAssistantThinkingDelta thinking => new AssistantThinkingDelta
+        {
+            SessionId = thinking.SessionId,
+            BlockIndex = thinking.BlockIndex,
+            Thinking = thinking.Thinking,
         },
         PluginAssistantTextDelta delta => new AssistantTextDelta
         {
@@ -120,6 +260,11 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
             Result = turnCompleted.Result,
             IsError = turnCompleted.IsError,
             StopReason = turnCompleted.StopReason,
+            Usage = turnCompleted.Usage is { } usage
+                ? new TokenUsage(usage.InputTokens, usage.OutputTokens, usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+                : null,
+            TotalCostUsd = turnCompleted.TotalCostUsd,
+            NumTurns = turnCompleted.NumTurns,
         },
         PluginSessionError error => new SessionError
         {

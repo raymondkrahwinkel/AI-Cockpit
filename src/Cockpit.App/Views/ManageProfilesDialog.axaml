@@ -276,9 +276,9 @@
                             </StackPanel>
                             <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                                 <TextBlock Text="Model" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <ComboBox ItemsSource="{Binding $parent[Window].((vm:ManageProfilesDialogViewModel)DataContext).Models}"
-                                          SelectedItem="{Binding SelectedModel}"
-                                          DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                                <AutoCompleteBox ItemsSource="{Binding ClaudeModelSuggestions}" Text="{Binding ClaudeModel}"
+                                                 FilterMode="ContainsOrdinal" MinimumPrefixLength="0" IsTextCompletionEnabled="False"
+                                                 HorizontalAlignment="Stretch"/>
                             </StackPanel>
                             <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                                 <TextBlock Text="Effort" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
@@ -296,6 +296,35 @@
                                 </StackPanel>
                             </StackPanel>
                         </Grid>
+                    </StackPanel>
+
+                    <!-- Session defaults for a plugin provider (Claude and Codex are both plugins now): the provider's
+                         own declared start options, rendered generically from its declaration and pre-filled from the
+                         profile's saved defaults. The provider-neutral successor to the Claude-CLI block above. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding HasPluginOptionDefaults}">
+                        <TextBlock Text="SESSION DEFAULTS" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <TextBlock Text="Pre-selected for every new session under this profile; each can still be changed when a session is started."
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <ItemsControl ItemsSource="{Binding PluginOptionDefaults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PluginTtyOptionSelectionViewModel">
+                                    <Grid ColumnDefinitions="120,*" Margin="0,0,0,6">
+                                        <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center" FontSize="12"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding ChoiceItems}"
+                                                  SelectedValueBinding="{Binding Value}" SelectedValue="{Binding Value, Mode=TwoWay}"
+                                                  DisplayMemberBinding="{Binding Label}"
+                                                  IsVisible="{Binding !IsFreeText}" HorizontalAlignment="Stretch"
+                                                  PlaceholderText="(default)"/>
+                                        <TextBox Grid.Column="1" Text="{Binding Value}" IsVisible="{Binding IsFreeText}"
+                                                 PlaceholderText="(default)"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

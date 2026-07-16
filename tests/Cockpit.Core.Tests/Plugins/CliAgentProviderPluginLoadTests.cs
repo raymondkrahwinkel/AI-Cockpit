@@ -49,7 +49,13 @@ public class CliAgentProviderPluginLoadTests
         registration.ProviderId.Should().Be("cli-agent-provider.codex");
         registration.DisplayName.Should().Be("Codex (CLI)");
         registration.Capabilities.SupportsTools.Should().BeTrue();
-        registration.Capabilities.SupportsPermissions.Should().BeFalse();
+        // The interactive Codex provider is now the app-server driver (#45 fase 3), which does support live
+        // approvals — where the headless exec driver it replaced reported no permission support.
+        registration.Capabilities.SupportsPermissions.Should().BeTrue();
+        // The real registration must carry the live model/list resolver (increment 2 step C), not just the
+        // static options — asserted on the actual plugin object, since the dialog-side test only proves the
+        // host renders a hand-rolled one. Not invoked here: doing so would spawn a real codex app-server.
+        registration.ResolveOptionsAsync.Should().NotBeNull("the Codex SDK provider fills its Model dropdown from model/list");
 
         // The driver factory is usable through the narrow plugin contract without the host ever seeing this
         // plugin's concrete types. CreateConfigView is not exercised here — it builds a real Avalonia Control,
@@ -58,6 +64,19 @@ public class CliAgentProviderPluginLoadTests
         var driverFactory = registration.CreateDriverFactory(host.Services);
         var driver = driverFactory.Create("""{"Command":"codex","WorkingDirectory":"."}""");
         driver.Should().NotBeNull();
+
+        // The plugin also offers Codex's real interactive TUI (#45 fase B2), under the same provider id as
+        // the session provider above — a profile names a provider, and what that provider can do is what it
+        // registered, both here.
+        host.TtyProviders.Should().ContainSingle();
+        var ttyRegistration = host.TtyProviders.Single();
+        ttyRegistration.ProviderId.Should().Be("cli-agent-provider.codex");
+        ttyRegistration.DisplayName.Should().Be("Codex (CLI)");
+        ttyRegistration.Options.Should().Contain(option => option.Key == "sandbox");
+        ttyRegistration.Options.Should().Contain(option => option.Key == "model");
+        // Same live model/list upgrade on the TTY route (increment 2 step C) — the real registration carries it.
+        ttyRegistration.ResolveOptionsAsync.Should().NotBeNull("the Codex TTY provider fills its Model dropdown from model/list too");
+        ttyRegistration.CreateProvider(host.Services).Should().NotBeNull();
 
         plugin.Dispose();
     }
@@ -87,6 +106,8 @@ public class CliAgentProviderPluginLoadTests
     {
         public List<SessionProviderRegistration> SessionProviders { get; } = [];
 
+        public List<TtyProviderRegistration> TtyProviders { get; } = [];
+
         public IServiceProvider Services { get; } = new ServiceCollection().BuildServiceProvider();
 
         public ICockpitActions Actions { get; } = new NoActions();
@@ -108,6 +129,8 @@ public class CliAgentProviderPluginLoadTests
         public Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560) => Task.CompletedTask;
 
         public void AddSessionProvider(SessionProviderRegistration registration) => SessionProviders.Add(registration);
+
+        public void AddTtyProvider(TtyProviderRegistration registration) => TtyProviders.Add(registration);
     }
 
     private sealed class NoActions : ICockpitActions

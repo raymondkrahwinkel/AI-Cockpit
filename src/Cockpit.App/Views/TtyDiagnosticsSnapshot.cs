@@ -4,7 +4,7 @@ namespace Cockpit.App.Views;
 
 /// <summary>
 /// Formats a compact single-line snapshot of Exclr8's <see cref="TerminalBuffer"/> render state, for the
-/// #58 TTY-glitch diagnostic logging in <c>ClaudeTtyView</c>: cursor position, DECSTBM scroll-region
+/// #58 TTY-glitch diagnostic logging in <c>TtyView</c>: cursor position, DECSTBM scroll-region
 /// margins, scrollback viewport offset, grid size, and any active selection's anchor/active endpoints.
 ///
 /// <para>Decompiling Exclr8.Terminal 1.0.7 (ilspycmd) showed every one of these — <see cref="TerminalBuffer.CursorRow"/>/

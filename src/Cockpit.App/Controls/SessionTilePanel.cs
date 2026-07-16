@@ -16,7 +16,7 @@ namespace Cockpit.App.Controls;
 /// Cells are a sparse list (<see cref="_cells"/>): each entry is a pane's data context or <c>null</c> for a
 /// hole, so a pane's position survives a reorder and the free-placement holes are first-class. It is kept
 /// separate from the bound collection because moving an item there rebuilds its container (a fresh
-/// <c>ClaudeTtyView</c> with no pty → a black terminal). Column/row weights are <b>positional</b> (a column
+/// <c>TtyView</c> with no pty → a black terminal). Column/row weights are <b>positional</b> (a column
 /// keeps its width as panes move through it). The geometry (weighting, gutter and cell hit-testing, cell
 /// placement) lives in <see cref="StackPaneMath"/> / <see cref="PlaceInCells"/> so it stays unit-testable;
 /// this panel owns only the pointer plumbing and the weight/cell stores.

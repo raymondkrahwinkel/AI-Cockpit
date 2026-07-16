@@ -22,6 +22,8 @@ internal sealed class ProcessCliSubprocess : ICliSubprocess
     private bool _started;
     private bool _disposed;
 
+    public int? ProcessId => !_disposed && _started && _process is { HasExited: false } process ? process.Id : null;
+
     public bool HasExited => _disposed || (_started && (_process?.HasExited ?? true));
 
     public int? ExitCode => !_disposed && _started && _process is { HasExited: true } process ? process.ExitCode : null;

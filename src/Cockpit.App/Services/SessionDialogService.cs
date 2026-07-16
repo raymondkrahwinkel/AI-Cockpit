@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.App.Services;
 
@@ -23,23 +24,27 @@ namespace Cockpit.App.Services;
 public sealed class SessionDialogService : ISessionDialogService, ISingletonService
 {
     private readonly ISessionProfileStore _profileStore;
-    private readonly IClaudeProfileLoginChecker _loginChecker;
+    private readonly IProfileLoginChecker _loginChecker;
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly IConversationPickerRegistry _conversationPickers;
     private readonly DelegatedTasksViewModel _delegatedTasks;
+    private readonly ITtySessionProviderResolver _ttyProviderResolver;
+    private readonly IPluginTtyProviderRegistry _ttyProviderRegistry;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
-        IClaudeProfileLoginChecker loginChecker,
+        IProfileLoginChecker loginChecker,
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
         IConversationPickerRegistry conversationPickers,
-        DelegatedTasksViewModel delegatedTasks)
+        DelegatedTasksViewModel delegatedTasks,
+        ITtySessionProviderResolver ttyProviderResolver,
+        IPluginTtyProviderRegistry ttyProviderRegistry)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -49,6 +54,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _mcpServerStore = mcpServerStore;
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
+        _ttyProviderResolver = ttyProviderResolver;
+        _ttyProviderRegistry = ttyProviderRegistry;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -58,7 +65,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return null;
         }
 
-        var viewModel = new NewSessionDialogViewModel(_profileStore, _loginChecker, _mcpServerStore, _workingPathStore, _conversationPickers);
+        var viewModel = new NewSessionDialogViewModel(
+            _profileStore, _loginChecker, _mcpServerStore, _workingPathStore, _conversationPickers,
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };

@@ -169,6 +169,22 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Registers the provider's CLI as one that can run as the real interactive TUI in a pane — the plugin
+    /// equivalent of the built-in <c>claude</c> TTY mode.
+    /// <para>
+    /// Separate from <see cref="AddSessionProvider"/> rather than a field on it, because a provider offers what
+    /// it can: a local model has no TUI, a TUI-only agent has no headless driver, and Claude and Codex have both.
+    /// A provider that registers both uses the same <see cref="TtyProviderRegistration.ProviderId"/> for each —
+    /// a profile names a provider, and what that provider can do is what it registered.
+    /// </para>
+    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds)
+    /// keep compiling untouched — only the app's own host overrides it.
+    /// </summary>
+    void AddTtyProvider(TtyProviderRegistration registration)
+    {
+    }
+
+    /// <summary>
     /// Registers (or updates) an HTTP MCP server in the shared registry (#60) — e.g. a YouTrack/JetBrains
     /// remote MCP endpoint — so both session worlds (the local tool-loop and the Claude fan-out) can use its
     /// tools without the user having to add it by hand in the MCP-servers dialog. Idempotent upsert-by-name:

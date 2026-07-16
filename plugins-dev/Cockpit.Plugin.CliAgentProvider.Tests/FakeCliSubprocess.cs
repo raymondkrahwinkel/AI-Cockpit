@@ -35,6 +35,8 @@ internal sealed class FakeCliSubprocess : ICliSubprocess
 
     public bool Disposed { get; private set; }
 
+    public int? ProcessId { get; set; } = 4242;
+
     public bool HasExited { get; private set; }
 
     public int? ExitCode { get; set; }
