@@ -44,7 +44,17 @@ public sealed class SingleInstanceGuard : IDisposable
     /// </returns>
     public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild) => TryAcquire(isDevelopmentBuild, ClaimName);
 
-    internal static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, string claimName)
+    /// <summary>
+    /// As <see cref="TryAcquire(bool)"/>, but waits up to <paramref name="claimWait"/> for the claim to come free
+    /// instead of giving up the instant it is taken. A restart hands the claim from the old cockpit to the new one
+    /// (<see cref="Cockpit.App.Services.AppRestartService"/>): the new process starts while the old one is still
+    /// shutting down and holding the claim, so without a wait it would lose the race and refuse to start. A plain
+    /// double-launch keeps the zero wait and still stands down at once.
+    /// </summary>
+    public static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, TimeSpan claimWait) =>
+        TryAcquire(isDevelopmentBuild, ClaimName, claimWait);
+
+    internal static SingleInstanceGuard? TryAcquire(bool isDevelopmentBuild, string claimName, TimeSpan claimWait = default)
     {
         if (isDevelopmentBuild)
         {
@@ -61,7 +71,7 @@ public sealed class SingleInstanceGuard : IDisposable
 
         try
         {
-            if (claim.WaitOne(TimeSpan.Zero))
+            if (claim.WaitOne(claimWait))
             {
                 return new SingleInstanceGuard(claim);
             }
