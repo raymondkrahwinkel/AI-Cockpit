@@ -66,6 +66,68 @@ public class ClaudeExecutableLocatorTests
         picked.Should().Be(Path.Combine(root.Path, "2.1.209", "claude.exe"));
     }
 
+    [Fact]
+    public void PickNewestClaudeBinary_MissingVersionsDirectory_ReturnsNull()
+    {
+        var absent = Path.Combine(Path.GetTempPath(), $"claude-versions-{Guid.NewGuid():N}");
+
+        ClaudeExecutableLocator.PickNewestClaudeBinary(absent).Should().BeNull();
+    }
+
+    [Fact]
+    public void PickNewestClaudeBinary_PicksTheHighestVersionByVersionOrder_NotStringOrder()
+    {
+        // The Linux/macOS installer keeps the binaries as files named by version, directly under the versions
+        // directory (~/.local/share/claude/versions). The newest is what a launcher symlink points at; version
+        // ordering must win, so 2.1.209 beats 2.1.99 (which string-sorts higher).
+        using var versions = new _TempVersionsDir("2.1.99", "2.1.209", "2.1.205");
+
+        var picked = ClaudeExecutableLocator.PickNewestClaudeBinary(versions.Path);
+
+        picked.Should().Be(Path.Combine(versions.Path, "2.1.209"));
+    }
+
+    [Fact]
+    public void PickNewestClaudeBinary_IgnoresFilesWhoseNameIsNotAVersion()
+    {
+        using var versions = new _TempVersionsDir("2.1.209");
+        File.WriteAllText(Path.Combine(versions.Path, "latest"), string.Empty); // a non-version file must not win
+
+        var picked = ClaudeExecutableLocator.PickNewestClaudeBinary(versions.Path);
+
+        picked.Should().Be(Path.Combine(versions.Path, "2.1.209"));
+    }
+
+    private sealed class _TempVersionsDir : IDisposable
+    {
+        public string Path { get; }
+
+        public _TempVersionsDir(params string[] versionFiles)
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"claude-versions-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Path);
+            foreach (var version in versionFiles)
+            {
+                File.WriteAllText(System.IO.Path.Combine(Path, version), string.Empty);
+            }
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(Path))
+                {
+                    Directory.Delete(Path, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
     private sealed class _TempInstallRoot : IDisposable
     {
         public string Path { get; }
