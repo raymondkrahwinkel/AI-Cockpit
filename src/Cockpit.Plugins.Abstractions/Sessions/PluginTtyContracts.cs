@@ -145,4 +145,32 @@ public sealed record TtyProviderRegistration(
     /// plugin keeps constructing this the old way and simply reports no dynamic options.
     /// </summary>
     public Func<string, CancellationToken, Task<IReadOnlyList<PluginTtyLaunchOption>>>? ResolveOptionsAsync { get; init; }
+
+    /// <summary>
+    /// Builds the provider's transcript reader for the host's read-aloud (#35b) and status (#39) — the piece that
+    /// tails this provider's own on-disk conversation record, keeping the host free of any transcript format. The
+    /// host resolves this once from the container and dispatches to it for a session under this provider.
+    /// <see langword="null"/> (the default) when the provider records no tailable transcript, and the host offers
+    /// no read-aloud/status-from-transcript for it. Init-only so adding it does not change the constructor
+    /// signature — an already-compiled plugin keeps constructing this the old way and simply reports no reader.
+    /// </summary>
+    public Func<IServiceProvider, IPluginTranscriptReader>? CreateTranscriptReader { get; init; }
+
+    /// <summary>
+    /// Answers whether a profile under this provider is logged in, from its opaque <c>ConfigJson</c> — the host
+    /// gates a session start and shows the login prompt generically without knowing what "logged in" means for any
+    /// CLI. Existence-only by contract (Iron Law #8 — never read a credential's contents). <see langword="null"/>
+    /// (the default) when the provider has no login concept, and the host treats such a profile as always ready.
+    /// Init-only, so an already-compiled plugin keeps its constructor and simply reports no login gate.
+    /// </summary>
+    public Func<string, bool>? IsLoggedIn { get; init; }
+
+    /// <summary>
+    /// Discovers profiles already configured on this machine for this provider, offered to the host at startup so
+    /// a fresh install adopts an existing login instead of the operator recreating it. The provider owns the
+    /// discovery (only it knows where its CLI keeps state); the host labels and mints what it reports.
+    /// <see langword="null"/> (the default) when the provider self-detects nothing. Init-only, so an
+    /// already-compiled plugin keeps its constructor and simply contributes no auto-detected profiles.
+    /// </summary>
+    public Func<IReadOnlyList<PluginDetectedProfile>>? DetectProfiles { get; init; }
 }
