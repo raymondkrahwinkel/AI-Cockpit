@@ -35,6 +35,13 @@ public sealed record SessionCapabilities(
     bool SupportsResume = false,
     bool SupportsPermissionModeSwitch = false)
 {
+    /// <summary>
+    /// Whether this driver's sessions honour a profile's own environment variables at spawn (AC-22) — the
+    /// host-side mirror of <c>PluginSessionCapabilities.SupportsEnvVars</c>, which gates the profile editor's
+    /// env-var section. Defaults to <see langword="false"/> so existing construction stays non-injecting.
+    /// </summary>
+    public bool SupportsEnvVars { get; init; }
+
     /// <summary>The Claude-CLI driver: native tools, permission prompts, live model/permission control, plan mode, thinking, image input, and resuming an earlier conversation.</summary>
     public static SessionCapabilities ClaudeCli { get; } = new(
         SupportsTools: true,
@@ -44,5 +51,9 @@ public sealed record SessionCapabilities(
         SupportsThinking: true,
         SupportsVision: true,
         SupportsResume: true,
-        SupportsPermissionModeSwitch: true);
+        SupportsPermissionModeSwitch: true)
+    {
+        // The TTY route injects a profile's variables host-side (TtyLauncher), so a Claude session honours them.
+        SupportsEnvVars = true,
+    };
 }

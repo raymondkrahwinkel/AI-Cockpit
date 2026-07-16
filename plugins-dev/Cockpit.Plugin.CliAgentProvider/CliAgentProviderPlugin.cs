@@ -42,7 +42,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals —
             // hence SupportsPermissions: true, where the exec route reported false.
             CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson))
         {
             Options = [sdkSandbox, sdkModelFallback],

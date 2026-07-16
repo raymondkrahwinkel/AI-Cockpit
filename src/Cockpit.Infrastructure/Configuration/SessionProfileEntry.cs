@@ -41,6 +41,9 @@ internal sealed class SessionProfileEntry
     /// <summary>A ceiling on the session CLI's memory, in MB. Absent — the normal case — means no ceiling: a capped session that needs more memory dies rather than slows.</summary>
     public int? MemoryLimitMb { get; set; }
 
+    /// <summary>The profile's spawn environment variables (AC-22); absent means none.</summary>
+    public List<ProfileEnvironmentVariableEntry>? EnvironmentVariables { get; set; }
+
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
@@ -55,6 +58,9 @@ internal sealed class SessionProfileEntry
         Provider = ProviderConfigEntry.FromDomain(profile.ProviderConfig),
         Delegation = DelegationPolicyEntry.FromDomain(profile.Delegation),
         MemoryLimitMb = profile.MemoryLimitMb,
+        EnvironmentVariables = profile.EnvironmentVariables is { Count: > 0 } variables
+            ? [.. variables.Select(ProfileEnvironmentVariableEntry.FromDomain)]
+            : null,
     };
 
     public SessionProfile ToDomain()
@@ -70,6 +76,11 @@ internal sealed class SessionProfileEntry
             defaults = ClaudePluginProfile.WithMigratedOptionDefaults(defaults);
         }
 
-        return new(Label, providerConfig, Purpose, defaults, Delegation?.ToDomain(), MemoryLimitMb);
+        return new(Label, providerConfig, Purpose, defaults, Delegation?.ToDomain(), MemoryLimitMb)
+        {
+            EnvironmentVariables = EnvironmentVariables is { Count: > 0 }
+                ? [.. EnvironmentVariables.Select(entry => entry.ToDomain())]
+                : null,
+        };
     }
 }

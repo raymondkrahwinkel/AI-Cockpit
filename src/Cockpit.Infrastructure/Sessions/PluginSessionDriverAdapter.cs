@@ -1,9 +1,11 @@
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -16,7 +18,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -35,7 +37,10 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         SupportsPlanMode: false,
         SupportsThinking: false,
         SupportsVision: pluginCapabilities.SupportsVision,
-        SupportsPermissionModeSwitch: pluginCapabilities.SupportsPermissionModeSwitch);
+        SupportsPermissionModeSwitch: pluginCapabilities.SupportsPermissionModeSwitch)
+    {
+        SupportsEnvVars = pluginCapabilities.SupportsEnvVars,
+    };
 
     public string? SessionId => inner.SessionId;
 
@@ -90,7 +95,46 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
         // choice is what let a profile's stale default run a write tool ungated.
         var options = _MergePermissionMode(launchOptions, permissionMode);
-        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken).ConfigureAwait(false);
+        var environment = _ProfileSpawnEnvironment(profile);
+        await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The profile's environment variables (AC-22) as the plugin driver receives them — scrubbed host-side
+    /// before anything crosses the plugin boundary: a variable on a host-controlled key (an
+    /// <c>ANTHROPIC_*</c> credential, a nested-agent marker) is dropped here, the same rule the TTY route
+    /// applies in <c>TtyLauncher</c>, so no plugin has to be trusted to apply it. Dropping is logged by name,
+    /// never by value.
+    /// </summary>
+    private IReadOnlyDictionary<string, string>? _ProfileSpawnEnvironment(SessionProfile? profile)
+    {
+        if (profile?.EnvironmentVariables is not { Count: > 0 } variables)
+        {
+            return null;
+        }
+
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal);
+        var rejected = new List<string>();
+        foreach (var variable in variables)
+        {
+            if (TtyEnvironment.IsHostControlled(variable.Key))
+            {
+                rejected.Add(variable.Key);
+                continue;
+            }
+
+            environment[variable.Key] = variable.Value;
+        }
+
+        if (rejected.Count > 0)
+        {
+            logger?.LogWarning(
+                "Profile {Profile} configures host-controlled environment variables; ignored: {Variables}",
+                profile.Label,
+                string.Join(", ", rejected));
+        }
+
+        return environment.Count == 0 ? null : environment;
     }
 
     private static IReadOnlyDictionary<string, string>? _MergePermissionMode(IReadOnlyDictionary<string, string>? launchOptions, string? permissionMode)
