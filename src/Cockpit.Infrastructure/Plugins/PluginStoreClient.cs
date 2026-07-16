@@ -14,6 +14,9 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 {
     private static readonly HttpClient Http = new();
 
+    /// <summary>A store logo is a small image, not a payload — anything larger is refused rather than downloaded.</summary>
+    private const long MaxLogoBytes = 1_048_576;
+
     public async Task<PluginStoreFetchResult> FetchIndexAsync(string storeUrl, CancellationToken cancellationToken = default)
     {
         if (!PluginStoreUrl.TryResolveIndexUrl(storeUrl, out var indexUrl, out var urlError))
@@ -110,6 +113,55 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         catch (Exception exception)
         {
             return new WorkflowTemplateDownloadResult(false, $"Could not download the template: {exception.Message}", null);
+        }
+    }
+
+    public async Task<PluginStoreImageResult> DownloadImageAsync(string indexUrl, string iconUrl, CancellationToken cancellationToken = default)
+    {
+        Uri resolved;
+        try
+        {
+            // Absolute icon URLs come through unchanged; a relative one resolves against the index, the same
+            // way a version's zip path does.
+            resolved = new Uri(new Uri(indexUrl), iconUrl);
+        }
+        catch (Exception exception)
+        {
+            return new PluginStoreImageResult(false, $"The store index has a bad icon URL: {exception.Message}", null);
+        }
+
+        if (resolved.Scheme != Uri.UriSchemeHttp && resolved.Scheme != Uri.UriSchemeHttps)
+        {
+            return new PluginStoreImageResult(false, "A store icon must be an http(s) URL.", null);
+        }
+
+        try
+        {
+            // A logo must never stall a browse: bound it in time on top of the size cap.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(8));
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, resolved);
+            request.Headers.UserAgent.ParseAdd("Cockpit-PluginStore");
+            using var response = await Http.SendAsync(request, timeout.Token).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            if (response.Content.Headers.ContentLength > MaxLogoBytes)
+            {
+                return new PluginStoreImageResult(false, "The store icon is too large.", null);
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(timeout.Token).ConfigureAwait(false);
+            if (bytes.Length > MaxLogoBytes)
+            {
+                return new PluginStoreImageResult(false, "The store icon is too large.", null);
+            }
+
+            return new PluginStoreImageResult(true, null, bytes);
+        }
+        catch (Exception exception)
+        {
+            return new PluginStoreImageResult(false, $"Could not download the store icon: {exception.Message}", null);
         }
     }
 

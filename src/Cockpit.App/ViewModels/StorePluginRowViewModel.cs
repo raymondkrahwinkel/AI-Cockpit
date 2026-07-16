@@ -101,4 +101,13 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
 
     /// <summary>Whether the primary action button does anything — false once installed and up to date, when it becomes a disabled badge instead.</summary>
     public bool CanTakePrimaryAction => CanInstall || CanUpdate;
+
+    /// <summary>At-a-glance install-state chip for the catalogue row: "Update" when a newer version is offered, "Installed" once up to date, or null when not installed (nothing shown).</summary>
+    public string? StateBadgeText => !IsInstalled ? null : UpdateAvailable ? "Update" : "Installed";
+
+    /// <summary>Whether to show the <see cref="StateBadgeText"/> chip — only once installed.</summary>
+    public bool HasStateBadge => IsInstalled;
+
+    /// <summary>Theme brush key for the state chip: amber when an update is available, green once up to date — resolved in the view by the status-brush converter.</summary>
+    public string StateBadgeBrushKey => UpdateAvailable ? "CockpitStatusWaitingBrush" : "CockpitStatusDoneBrush";
 }
