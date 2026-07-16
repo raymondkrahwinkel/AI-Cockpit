@@ -54,4 +54,22 @@ public class AppRestartServiceTests
 
         shutdownCalls.Should().Be(1);
     }
+
+    [Fact]
+    public void BuildLaunchArguments_AppendsTheRestartMarker_SoTheNewInstanceWaitsOutTheHandoff()
+    {
+        var arguments = AppRestartService.BuildLaunchArguments(["--screenshot", "out.png"]);
+
+        arguments.Should().Equal("--screenshot", "out.png", AppRestartService.RestartArgument);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_DropsAMarkerAlreadyPresent_SoRestartAfterRestartCarriesExactlyOne()
+    {
+        // This instance was itself started by a restart, so it already carries the marker. Without dropping it
+        // first the list would gain one on every restart and grow without bound.
+        var arguments = AppRestartService.BuildLaunchArguments(["--flag", AppRestartService.RestartArgument]);
+
+        arguments.Should().Equal("--flag", AppRestartService.RestartArgument);
+    }
 }

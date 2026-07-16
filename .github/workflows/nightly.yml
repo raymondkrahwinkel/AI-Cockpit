@@ -149,6 +149,18 @@ jobs:
               ;;
           esac
 
+      # A Windows installer as well as the portable exe, and not instead of it: the .exe above is the thing you
+      # download and double-click with nothing to install, the Setup.exe is for the operator who wants it in
+      # Program Files with a Start-menu entry and an uninstaller. Both wrap the same published exe.
+      - name: Windows installer
+        if: matrix.rid == 'win-x64'
+        shell: pwsh
+        run: |
+          scripts/package-windows-installer.ps1 `
+            -PublishDir publish/win-x64 `
+            -Version "${{ steps.version.outputs.version }}" `
+            -OutputPath "artifacts/ai-cockpit-nightly-win-x64-setup.exe"
+
       # An AppImage as well as the tarball, and not instead of it: the tarball is what you unpack on a server or
       # feed to a package build, the AppImage is what a person double-clicks. Built from the publish that already
       # happened, so both artifacts are the same bytes.
