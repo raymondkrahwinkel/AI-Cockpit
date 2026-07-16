@@ -14,12 +14,14 @@ namespace Cockpit.Infrastructure.Mcp;
 /// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
 /// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
 /// </summary>
-internal sealed class McpToolProvider(IMcpServerStore store, IMcpOAuthAuthorizer oauthAuthorizer, ILogger<McpToolProvider> logger)
+internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, CancellationToken cancellationToken = default)
     {
-        var registry = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        // The effective set — registry plus what active plugins provide (AC-11) — so a local model gets a
+        // plugin's MCP servers too, and the per-session selection can narrow them like any other.
+        var registry = await catalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
         var sessionRegistry = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
         var clients = new List<McpClient>();
         var tools = new List<AIFunction>();

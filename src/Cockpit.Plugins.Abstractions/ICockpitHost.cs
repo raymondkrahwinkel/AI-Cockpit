@@ -202,6 +202,16 @@ public interface ICockpitHost
     Task AddMcpServer(McpServerContribution contribution) => Task.CompletedTask;
 
     /// <summary>
+    /// Removes an MCP server from the shared registry by name (#60, AC-11), if it is there. A plugin that now
+    /// owns its MCP servers through <see cref="Mcp.IPluginMcpProvider"/> uses this to reclaim the entries an
+    /// earlier version pushed into the registry, so they stop appearing in the MCP-servers manager and are the
+    /// plugin's to manage from here on. A no-op when no entry of that name exists. Returns a <see cref="Task"/>
+    /// because it persists to disk; call it fire-and-forget from a synchronous contribution point, same as
+    /// <see cref="AddMcpServer"/>. Default no-op so existing host implementations keep compiling untouched.
+    /// </summary>
+    Task RemoveMcpServer(string name) => Task.CompletedTask;
+
+    /// <summary>
     /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):
     /// the active session's working directory and a stream of session output, so a plugin can react to what
     /// a session is doing rather than only writing into it. Default returns

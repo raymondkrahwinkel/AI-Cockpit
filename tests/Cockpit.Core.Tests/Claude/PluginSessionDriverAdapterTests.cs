@@ -252,13 +252,13 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_ResolvesTheSelectedRegistryServers_ToTheInnerDriver_MappingTheApiKeyToABearerToken()
     {
         var inner = new FakePluginSessionDriver();
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
             new() { Name = "youtrack", Transport = McpTransport.Http, Url = "http://127.0.0.1:9000/mcp", Auth = McpServerAuth.ApiKey, ApiKey = "yt-pat-value" },
         });
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, store);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
 
         await adapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "cockpit-orchestrator", "youtrack" });
 
@@ -280,14 +280,14 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_ExcludesLocalOnlyAndTheReservedPermissionServer_FromTheFanOut()
     {
         var inner = new FakePluginSessionDriver();
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
             new() { Name = "filesystem", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Scope = McpServerScope.LocalOnly },
             new() { Name = McpConfigFile.ServerName, Transport = McpTransport.Http, Url = "http://127.0.0.1:2/mcp" },
         });
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, store);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
 
         // No per-session selection — every eligible server, but a local-model-only server and the reserved
         // permission-server key (Codex prompts for approvals itself) must never fan out to the agent.
@@ -300,13 +300,13 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_HonoursThePerSessionSelection_WhenOneWasMade()
     {
         var inner = new FakePluginSessionDriver();
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
         {
             new() { Name = "a", Transport = McpTransport.Http, Url = "http://a/mcp" },
             new() { Name = "b", Transport = McpTransport.Http, Url = "http://b/mcp" },
         });
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, store);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
 
         await adapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "a" });
 
@@ -317,10 +317,10 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_WhenTheRegistryReadFails_StartsWithoutMcpServers_RatherThanFailingTheWholeSession()
     {
         var inner = new FakePluginSessionDriver();
-        var store = Substitute.For<IMcpServerStore>();
-        store.LoadAsync(Arg.Any<CancellationToken>())
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromException<IReadOnlyList<McpServerConfig>>(new InvalidOperationException("cockpit.json is locked")));
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, store);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
 
         // A transient registry read failure must degrade to no fan-out (matching the Claude path), never take
         // the whole session start down with it.

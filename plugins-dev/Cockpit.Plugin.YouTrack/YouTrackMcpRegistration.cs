@@ -13,19 +13,33 @@ namespace Cockpit.Plugin.YouTrack;
 internal static class YouTrackMcpRegistration
 {
     /// <summary>
-    /// One contribution per <paramref name="instances"/> entry that has both a URL and a token set — an
-    /// instance still being filled in (either field blank) contributes nothing rather than registering a
-    /// server that could never connect. Named <c>"YouTrack: {Label}"</c> so multiple instances register
-    /// distinct registry entries instead of colliding on upsert-by-name.
+    /// One contribution per <paramref name="instances"/> entry that opts in (<see cref="YouTrackInstance.AddMcpToSessions"/>,
+    /// AC-11) and has both a URL and a token set — an instance still being filled in (either field blank)
+    /// contributes nothing rather than a server that could never connect, and one with MCP turned off contributes
+    /// nothing by choice. Named via <see cref="ServerName"/> so multiple instances stay distinct.
     /// </summary>
     public static IReadOnlyList<McpServerContribution> BuildContributions(IReadOnlyList<YouTrackInstance> instances) =>
         instances
-            .Where(instance => !string.IsNullOrWhiteSpace(instance.InstanceUrl) && !string.IsNullOrWhiteSpace(instance.Token))
+            .Where(instance => instance.AddMcpToSessions
+                && !string.IsNullOrWhiteSpace(instance.InstanceUrl)
+                && !string.IsNullOrWhiteSpace(instance.Token))
             .Select(instance => new McpServerContribution(
-                Name: $"YouTrack: {instance.Label}",
+                Name: ServerName(instance.Label),
                 Url: DeriveMcpEndpoint(instance.InstanceUrl),
                 BearerToken: instance.Token))
             .ToList();
+
+    /// <summary>
+    /// The registry names this plugin owns, for every instance regardless of opt-in or completeness (AC-11): what
+    /// an earlier version pushed into the shared registry, so the plugin can reclaim those entries on load and
+    /// take their management over itself. Derived from the label the same way <see cref="BuildContributions"/>
+    /// names them.
+    /// </summary>
+    public static IReadOnlyList<string> ManagedServerNames(IReadOnlyList<YouTrackInstance> instances) =>
+        instances.Select(instance => ServerName(instance.Label)).ToList();
+
+    /// <summary>The registry key / display name for an instance's MCP server, e.g. <c>"YouTrack: Personal"</c>.</summary>
+    internal static string ServerName(string label) => $"YouTrack: {label}";
 
     /// <summary>
     /// The JetBrains remote MCP endpoint, derived from the instance's REST API base URL: drop a trailing

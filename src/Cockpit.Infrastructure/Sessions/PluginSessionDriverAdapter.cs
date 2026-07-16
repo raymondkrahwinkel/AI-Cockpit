@@ -16,7 +16,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerStore? mcpServerStore = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -128,14 +128,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     /// </summary>
     private async Task<IReadOnlyList<PluginMcpServer>> _ResolveMcpServersAsync(IReadOnlySet<string>? enabledServerNames, CancellationToken cancellationToken)
     {
-        if (mcpServerStore is null)
+        if (mcpServerCatalog is null)
         {
             return [];
         }
 
         try
         {
-            var registry = await mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var registry = await mcpServerCatalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
             return McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
                 .Where(McpConfigFile.IsAgentEligible)
                 .Select(_ToPluginMcpServer)

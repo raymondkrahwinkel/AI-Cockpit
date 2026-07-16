@@ -629,7 +629,7 @@ public class NewSessionDialogViewModelTests
         var loginChecker = Substitute.For<IProfileLoginChecker>();
         loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
         var vm = new NewSessionDialogViewModel(
-            store, loginChecker, mcpServerStore: null, workingPathStore: null, conversationPickers: null,
+            store, loginChecker, mcpServerCatalog: null, workingPathStore: null, conversationPickers: null,
             ttyResolver, ttyProviderRegistry: null, sessionRegistry);
 
         await vm.LoadAsync();          // selects the TTY profile
@@ -666,7 +666,7 @@ public class NewSessionDialogViewModelTests
         }
 
         return new NewSessionDialogViewModel(
-            store, loginChecker, mcpServerStore: null, workingPathStore: null, conversationPickers: null,
+            store, loginChecker, mcpServerCatalog: null, workingPathStore: null, conversationPickers: null,
             ttyProviderResolver: null, ttyProviderRegistry: null, sessionProviderRegistry);
     }
 
@@ -698,7 +698,7 @@ public class NewSessionDialogViewModelTests
         }
 
         return new NewSessionDialogViewModel(
-            store, loginChecker, mcpServerStore: null, workingPathStore: null, conversationPickers: null,
+            store, loginChecker, mcpServerCatalog: null, workingPathStore: null, conversationPickers: null,
             ttyProviderResolver, ttyProviderRegistry);
     }
 
@@ -715,9 +715,9 @@ public class NewSessionDialogViewModelTests
             loginChecker.IsLoggedIn(profile).Returns(true);
         }
 
-        var mcpServerStore = Substitute.For<IMcpServerStore>();
-        mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
+        var mcpServerCatalog = Substitute.For<IMcpServerCatalog>();
+        mcpServerCatalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
 
-        return new NewSessionDialogViewModel(store, loginChecker, mcpServerStore);
+        return new NewSessionDialogViewModel(store, loginChecker, mcpServerCatalog);
     }
 }

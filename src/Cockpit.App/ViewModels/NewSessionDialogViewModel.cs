@@ -34,7 +34,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 {
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly ISessionProfileStore? _profileStore;
-    private readonly IMcpServerStore? _mcpServerStore;
+    private readonly IMcpServerCatalog? _mcpServerCatalog;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private readonly ConversationPickerRegistration? _conversationPicker;
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
@@ -297,7 +297,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public NewSessionDialogViewModel(
         ISessionProfileStore profileStore,
         IProfileLoginChecker loginChecker,
-        IMcpServerStore? mcpServerStore = null,
+        IMcpServerCatalog? mcpServerCatalog = null,
         IWorkingPathHistoryStore? workingPathStore = null,
         IConversationPickerRegistry? conversationPickers = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
@@ -307,7 +307,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
-        _mcpServerStore = mcpServerStore;
+        _mcpServerCatalog = mcpServerCatalog;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
@@ -315,8 +315,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the
-    /// shared registry's enabled MCP servers (#44) into the checklist, all pre-checked.
+    /// Loads the profiles and selects the first, so the dialog opens ready to confirm. Also loads the enabled MCP
+    /// servers (#44) into the checklist, all pre-checked — from the catalog, so a plugin's own servers (AC-11) are
+    /// offered and uncheckable here alongside the registry's.
     /// </summary>
     public async Task LoadAsync()
     {
@@ -334,9 +335,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
         SelectedProfile = Profiles.FirstOrDefault();
 
-        if (_mcpServerStore is not null)
+        if (_mcpServerCatalog is not null)
         {
-            var registry = await _mcpServerStore.LoadAsync();
+            var registry = await _mcpServerCatalog.GetServersAsync();
             McpServers.Clear();
             foreach (var server in registry.Where(server => server.Enabled))
             {
