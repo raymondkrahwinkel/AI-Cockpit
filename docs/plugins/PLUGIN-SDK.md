@@ -235,6 +235,11 @@ against your provider persists `ProviderId` + the config JSON; the host's driver
 `IPluginSessionDriver` to satisfy its own full session-driver contract and no-ops whatever your capabilities
 don't support.
 
+For the small green/amber **✓/✗ feedback line** under a config field — a resolved executable path, a working
+directory that exists — the SDK offers `ProviderConfigStatus` (`CreateLine()` builds the `TextBlock`, `Set(line,
+message, isOk)` fills it), so every provider's config view shows the same status affordance instead of
+hand-rolling its own brushes and prefixes. The Codex and Claude provider config views are the worked examples.
+
 ## Widget plugins — a pane on a Dashboard workspace
 
 A **Dashboard** workspace hosts widget panes the way a Sessions workspace hosts sessions and terminals. Every
@@ -496,6 +501,16 @@ A plugin is bound to the host's Avalonia major (and the abstractions major). Ref
 version the host uses** (12.0.5 today). A mismatch fails at load, not compile, and — unlike the
 `abstractionsVersion` gate — is not caught up front with a clean message; it surfaces as a runtime load or
 binding error.
+
+**Built against a newer SDK than the host.** Within a major the abstractions contract only grows, so a plugin
+built against an *older* minor than the host runs fine — everything it calls still exists. The reverse is the
+risk: a plugin built against a *newer* SDK minor may call a member the running host does not have, which would
+otherwise surface as a runtime failure out of sight. The host derives this from the plugin's **own compiled
+reference** to `Cockpit.Plugins.Abstractions` (which no manifest can misstate) and, when a loaded plugin was
+built against a newer SDK than it ships, **loads it anyway but says so loudly** — a warning in the startup
+banner and against the plugin's row in the manager — rather than letting it fail silently. It is, in effect, an
+auto-derived `minHostVersion`; keep the manifest's `minHostVersion` honest too, since that one *refuses* rather
+than warns.
 
 ### Building views: prefer code over XAML
 

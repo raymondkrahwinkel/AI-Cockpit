@@ -89,6 +89,47 @@ public class PluginManagerTests
         second.DisposeCount.Should().Be(1);
     }
 
+    [Fact]
+    public void LoadAndConfigure_WhenAPluginWasBuiltAgainstANewerSdk_LoadsItButRecordsAWarning()
+    {
+        var discovered = _Discovered("ahead", PluginLoadDecision.Load);
+        var diagnostics = new PluginDiagnostics();
+        var manager = new PluginManager(
+            NullLogger<PluginManager>.Instance,
+            diagnostics,
+            hostAbstractionsVersion: new Version(1, 2, 0, 0),
+            builtAgainstResolver: _ => new Version(1, 3, 0, 0));
+
+        manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => new FakePlugin("ahead"));
+
+        // Loaded despite the drift — an older app running a newer plugin usually works …
+        manager.Loaded.Select(plugin => plugin.FolderId).Should().Equal("ahead");
+        // … but it is said out loud, as a warning rather than a load failure.
+        var issue = diagnostics.ForFolder("ahead");
+        issue.Should().NotBeNull();
+        issue!.Severity.Should().Be(PluginIssueSeverity.Warning);
+        issue.Phase.Should().Be("compatibility");
+    }
+
+    [Theory]
+    [InlineData(1, 2, 0, 0)] // equal
+    [InlineData(1, 1, 0, 0)] // older
+    public void LoadAndConfigure_WhenAPluginWasBuiltAgainstAnOlderOrEqualSdk_RecordsNoWarning(int major, int minor, int build, int revision)
+    {
+        var discovered = _Discovered("fine", PluginLoadDecision.Load);
+        var diagnostics = new PluginDiagnostics();
+        var manager = new PluginManager(
+            NullLogger<PluginManager>.Instance,
+            diagnostics,
+            hostAbstractionsVersion: new Version(1, 2, 0, 0),
+            builtAgainstResolver: _ => new Version(major, minor, build, revision));
+
+        manager.LoadAndConfigure([discovered], new ServiceCollection(), _ => new FakePlugin("fine"));
+
+        manager.Loaded.Select(plugin => plugin.FolderId).Should().Equal("fine");
+        diagnostics.Failures.Should().BeEmpty();
+    }
+
     private static PluginManager _Manager() => new(NullLogger<PluginManager>.Instance, new PluginDiagnostics());
 
     private static DiscoveredPlugin _Discovered(string id, PluginLoadDecision decision) => new(

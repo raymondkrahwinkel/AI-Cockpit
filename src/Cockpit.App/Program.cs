@@ -101,6 +101,11 @@ sealed class Program
             // Failing to install one must not cost the operator the plugins they installed themselves, so this
             // is best-effort and discovery runs regardless.
             _InstallBundledPlugins(loggerFactory);
+#if DEBUG
+            // Dev inner loop only: replace already-installed first-party plugins with their freshly built bytes,
+            // so a rebuild lands in the sandbox without a hand copy. A release has no plugins-dev to find.
+            _RefreshDevPlugins(loggerFactory);
+#endif
 
             var discoveredPlugins = new PluginBootstrap()
                 .DiscoverAsync(AbstractionsContract.Version).GetAwaiter().GetResult();
@@ -278,6 +283,33 @@ sealed class Program
                 exception, "Could not install the bundled plugins; continuing with whatever is already installed.");
         }
     }
+
+#if DEBUG
+    // Refreshes already-installed first-party plugins from their freshly built output (see DevPluginInstaller):
+    // the dev-machine half of the "installed copy does not move with source" fix. Best-effort and DEBUG only —
+    // it only refreshes what is installed, never installs anything new, and finds nothing off a dev checkout.
+    private static void _RefreshDevPlugins(ILoggerFactory loggerFactory)
+    {
+        try
+        {
+            var refreshed = new DevPluginInstaller(loggerFactory.CreateLogger<DevPluginInstaller>())
+                .InstallAsync(PluginBootstrap.PluginsRoot)
+                .GetAwaiter()
+                .GetResult();
+
+            if (refreshed.Count > 0)
+            {
+                loggerFactory.CreateLogger<Program>().LogInformation(
+                    "Refreshed first-party plugins from the dev build: {Plugins}", string.Join(", ", refreshed));
+            }
+        }
+        catch (Exception exception)
+        {
+            loggerFactory.CreateLogger<Program>().LogWarning(
+                exception, "Could not refresh dev plugins; continuing with whatever is already installed.");
+        }
+    }
+#endif
 
     // Removes the host terminal's self-identification from this process's own environment (see the call in
     // Main). Reuses the same marker set TtyEnvironment scrubs for the claude pty (#58): TERM_PROGRAM(_VERSION)
