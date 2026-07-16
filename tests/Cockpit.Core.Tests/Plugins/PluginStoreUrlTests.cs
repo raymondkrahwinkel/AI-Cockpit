@@ -50,4 +50,29 @@ public class PluginStoreUrlTests
         var zip = PluginStoreUrl.ResolveZipUrl("https://raw.githubusercontent.com/o/r/main/index.json", "github-issues/github-issues-1.0.0.zip");
         zip.Should().Be("https://raw.githubusercontent.com/o/r/main/github-issues/github-issues-1.0.0.zip");
     }
+
+    [Theory]
+    [InlineData("https://github.com/octocat/hello-world", "octocat/hello-world")]
+    [InlineData("https://github.com/octocat/hello-world/tree/dev", "octocat/hello-world")]
+    [InlineData("https://raw.githubusercontent.com/octocat/hello-world/main/index.json", "octocat/hello-world")]
+    [InlineData("https://plugins.example.dev/store/index.json", "plugins.example.dev")]
+    [InlineData("https://plugins.example.dev/", "plugins.example.dev")]
+    public void DeriveDisplayName_KnownShapes_ReadsAsOwnerRepoOrHost(string url, string expected)
+    {
+        PluginStoreUrl.DeriveDisplayName(url).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void DeriveDisplayName_Blank_FallsBackToPlaceholder(string url)
+    {
+        PluginStoreUrl.DeriveDisplayName(url).Should().Be("Unknown store");
+    }
+
+    [Fact]
+    public void DeriveDisplayName_Unparseable_FallsBackToItself()
+    {
+        PluginStoreUrl.DeriveDisplayName("not a url").Should().Be("not a url");
+    }
 }

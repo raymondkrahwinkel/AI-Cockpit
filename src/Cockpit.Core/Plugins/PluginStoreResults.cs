@@ -8,3 +8,6 @@ public sealed record PluginStoreDownloadResult(bool IsSuccess, string? Error, st
 
 /// <summary>The result of fetching a template's flow: the JSON itself, or why it could not be had.</summary>
 public sealed record WorkflowTemplateDownloadResult(bool IsSuccess, string? Error, string? Json);
+
+/// <summary>Outcome of fetching a store's logo image (#62): the raw image bytes on success (an http(s) image within the size cap), or a reason it failed — a broken logo falls back to the store's emoji/default glyph and never blocks browsing.</summary>
+public sealed record PluginStoreImageResult(bool IsSuccess, string? Error, byte[]? Bytes);

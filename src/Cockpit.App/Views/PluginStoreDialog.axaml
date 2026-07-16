@@ -3,7 +3,6 @@
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:views="using:Cockpit.App.Views"
         xmlns:core="using:Cockpit.Core.Plugins"
-        xmlns:sys="using:System"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -58,48 +57,41 @@
 
         <Grid ColumnDefinitions="200,*,Auto">
 
-            <!-- Sidebar: Discover / All plugins / categories / Installed / Available updates, plus the
-                 collapsible "+ Manage stores" panel (store-URL add/remove moved here from Options). -->
+            <!-- Sidebar: Discover / All plugins / categories / Workflow templates up top, with Installed and
+                 Available updates pinned to the foot of the column (above "+ Manage stores") rather than
+                 trailing the categories — two ListBoxes over one shared SelectedSidebarItem (§sidebar split). -->
             <DockPanel Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}">
-                <StackPanel DockPanel.Dock="Bottom" Margin="8" Spacing="6">
-                    <Button Content="+ Manage stores" Classes="Subtle" HorizontalAlignment="Left"
-                            Foreground="{StaticResource CockpitAccentBrush}"
-                            Command="{Binding ToggleManageStoresCommand}"/>
+                <DockPanel.Styles>
+                    <!-- A zero-count "Installed"/"Available updates" entry is greyed out and unclickable
+                         rather than hidden — IsEnabled=False both dims it (default disabled styling) and
+                         blocks selection. Shared by both sidebar ListBoxes. -->
+                    <Style Selector="ListBoxItem" x:DataType="vm:PluginStoreSidebarItem">
+                        <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                    </Style>
+                </DockPanel.Styles>
 
-                    <StackPanel Spacing="6" IsVisible="{Binding IsManageStoresOpen}">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBox Text="{Binding Manager.NewStoreUrl}" Width="120" FontSize="11"
-                                     PlaceholderText="owner/repo or index.json URL"/>
-                            <Button Content="Add" Classes="Compact" Command="{Binding Manager.AddStoreCommand}"/>
-                        </StackPanel>
-                        <ItemsControl ItemsSource="{Binding Manager.Stores}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="sys:String">
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
-                                        <TextBlock Text="{Binding}" FontSize="10" VerticalAlignment="Center"
-                                                   MaxWidth="120" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                        <Button Content="✕" Classes="Compact Subtle" FontSize="10"
-                                                Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                Command="{Binding $parent[ItemsControl].((vm:PluginStoreDialogViewModel)DataContext).Manager.RemoveStoreCommand}"
-                                                CommandParameter="{Binding}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                <!-- Opens the Manage-stores dialog (add/remove stores, each with its name/icon/count) — moved
+                     out of this sidebar into its own dialog (§manage-stores). -->
+                <Button DockPanel.Dock="Bottom" Content="⚙ Manage stores" Classes="Subtle" Margin="8"
+                        HorizontalAlignment="Left" Foreground="{StaticResource CockpitAccentBrush}"
+                        Click="OnManageStores"/>
+
+                <!-- Installed / Available updates, pinned to the foot above Manage stores. -->
+                <StackPanel DockPanel.Dock="Bottom" Margin="4,6,4,0">
+                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="6,0,6,6"/>
+                    <ListBox ItemsSource="{Binding SecondarySidebarItems}" SelectedItem="{Binding SelectedSidebarItem}"
+                             Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:PluginStoreSidebarItem">
+                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </StackPanel>
 
-                <ListBox ItemsSource="{Binding SidebarItems}" SelectedItem="{Binding SelectedSidebarItem}"
-                         Background="Transparent" Margin="4">
-                    <ListBox.Styles>
-                        <!-- A zero-count "Installed"/"Available updates" entry is greyed out and unclickable
-                             rather than hidden — IsEnabled=False both dims it (default disabled styling)
-                             and blocks selection. -->
-                        <Style Selector="ListBoxItem" x:DataType="vm:PluginStoreSidebarItem">
-                            <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
-                        </Style>
-                    </ListBox.Styles>
+                <ListBox ItemsSource="{Binding PrimarySidebarItems}" SelectedItem="{Binding SelectedSidebarItem}"
+                         Background="Transparent" Margin="4" VerticalAlignment="Top">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:PluginStoreSidebarItem">
                             <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
@@ -296,48 +288,29 @@
                 </StackPanel>
 
                 <ScrollViewer IsVisible="{Binding !HasNoStores}">
-                    <StackPanel Margin="16" Spacing="16">
+                    <StackPanel Margin="16" Spacing="8">
 
-                        <!-- Discover rails: Featured + Recently added, above the same "All plugins" grid. -->
-                        <StackPanel Spacing="8" IsVisible="{Binding ShowDiscoverRails}">
-                            <StackPanel Spacing="8" IsVisible="{Binding HasFeaturedPlugins}">
-                                <TextBlock Text="Featured" FontWeight="SemiBold"/>
-                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                                    <ItemsControl ItemsSource="{Binding FeaturedPlugins}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" Spacing="10"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:StorePluginRowViewModel">
-                                                <views:StorePluginCardView/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-                            </StackPanel>
-
-                            <StackPanel Spacing="8" IsVisible="{Binding HasRecentlyAddedPlugins}">
-                                <TextBlock Text="Recently added" FontWeight="SemiBold"/>
-                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                                    <ItemsControl ItemsSource="{Binding RecentlyAddedPlugins}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" Spacing="10"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:StorePluginRowViewModel">
-                                                <views:StorePluginCardView/>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
-                            </StackPanel>
-
-                            <TextBlock Text="All plugins" FontWeight="SemiBold"/>
+                        <!-- Featured group: the store's hand-picked plugins, as a vertical list above the full
+                             catalogue (Discover only). Each carries the accent left-edge from Border.storeRow.featured. -->
+                        <StackPanel Spacing="6" IsVisible="{Binding HasFeaturedPlugins}">
+                            <TextBlock Text="Featured" Classes="storeSectionHeader"/>
+                            <ItemsControl ItemsSource="{Binding FeaturedPlugins}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="8"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StorePluginRowViewModel">
+                                        <views:StorePluginCardView/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
+
+                        <!-- "All plugins" header divides the Featured rail from the full list; on a category or
+                             updates filter the list stands alone without a redundant header. -->
+                        <TextBlock Text="All plugins" Classes="storeSectionHeader" IsVisible="{Binding ShowDiscoverRails}"/>
 
                         <TextBlock Text="{Binding EmptyStateMessage}"
                                    IsVisible="{Binding !HasFilteredResults}"
@@ -346,7 +319,7 @@
                         <ItemsControl ItemsSource="{Binding FilteredPlugins}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel Orientation="Horizontal" ItemSpacing="10" LineSpacing="10"/>
+                                    <StackPanel Spacing="8"/>
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>

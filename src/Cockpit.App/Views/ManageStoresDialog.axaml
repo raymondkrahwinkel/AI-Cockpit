@@ -1,0 +1,108 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.ManageStoresDialog"
+        x:DataType="vm:PluginManagerViewModel"
+        Title="Manage plugin stores"
+        Width="560" Height="560" MinWidth="440" MinHeight="360"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:PluginManagerViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Footer: the manager's status line on the left, Close on the right. -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="11"
+                           MaxWidth="360" TextTrimming="CharacterEllipsis"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <Button Grid.Column="1" Content="Close" Click="OnClose"/>
+            </Grid>
+        </Border>
+
+        <!-- Header: what a store is, and the add row. -->
+        <StackPanel DockPanel.Dock="Top" Margin="18,16,18,10" Spacing="10">
+            <StackPanel Spacing="3">
+                <TextBlock Text="Plugin stores" FontSize="16" FontWeight="SemiBold"/>
+                <TextBlock Text="A store is a public index.json listing plugins and workflow templates. Add one to browse and install what it offers; already-installed plugins stay installed if you remove it."
+                           FontSize="11.5" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <TextBox Grid.Column="0" Text="{Binding NewStoreUrl}"
+                         PlaceholderText="github.com/owner/repo  ·  or an index.json URL"/>
+                <Button Grid.Column="1" Content="Add store" Classes="Accent" Command="{Binding AddStoreCommand}"/>
+            </Grid>
+        </StackPanel>
+
+        <!-- Store list, or an empty state when none are configured. -->
+        <Panel Margin="14,4,14,12">
+            <TextBlock Text="No plugin stores yet. Add one above to start browsing plugins."
+                       IsVisible="{Binding !StoreInfos.Count}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="300"
+                       TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+
+            <ScrollViewer IsVisible="{Binding StoreInfos.Count}">
+                <ItemsControl ItemsSource="{Binding StoreInfos}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="8"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PluginStoreInfo">
+                            <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="{StaticResource CockpitPanelRadius}" Padding="12,10">
+                                <Grid ColumnDefinitions="Auto,*,Auto">
+
+                                    <Border Grid.Column="0" Width="40" Height="40" CornerRadius="9" ClipToBounds="True"
+                                            Background="{StaticResource CockpitPanelBgBrush}" VerticalAlignment="Center">
+                                        <Panel>
+                                            <!-- The store's real logo when its index.json advertised one; otherwise
+                                                 its emoji, otherwise the default storefront glyph. -->
+                                            <Image Source="{Binding Logo}" IsVisible="{Binding HasLogo}"
+                                                   Width="40" Height="40" Stretch="UniformToFill"/>
+                                            <TextBlock Text="{Binding IconOrDefault}" FontSize="20"
+                                                       IsVisible="{Binding !HasLogo}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Panel>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13.5"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Url}" FontSize="11"
+                                                   FontFamily="{StaticResource CockpitMonoFont}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        <TextBlock Text="{Binding CountText}" FontSize="11"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                    </StackPanel>
+
+                                    <Button Grid.Column="2" Content="Remove" Classes="Subtle Compact"
+                                            VerticalAlignment="Center"
+                                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                                            Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).RemoveStoreCommand}"
+                                            CommandParameter="{Binding Url}"
+                                            ToolTip.Tip="Remove this store from the catalogue"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Panel>
+    </DockPanel>
+</Window>

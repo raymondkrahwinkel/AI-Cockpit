@@ -32,6 +32,17 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
 
     public ObservableCollection<PluginStoreSidebarItem> SidebarItems { get; } = [];
 
+    /// <summary>The sidebar's top group — Discover, All plugins, the categories and Workflow templates —
+    /// bound to the top ListBox. <see cref="SecondarySidebarItems"/> (Installed / Available updates) is
+    /// split off so it can be pinned to the foot of the column, above "Manage stores", rather than trailing
+    /// the categories. Both ListBoxes share <see cref="SelectedSidebarItem"/>; see its setter for why the
+    /// split needs no extra selection plumbing.</summary>
+    public ObservableCollection<PluginStoreSidebarItem> PrimarySidebarItems { get; } = [];
+
+    /// <summary>The sidebar's bottom group — Installed and Available updates — pinned to the foot of the
+    /// categories column (see <see cref="PrimarySidebarItems"/>).</summary>
+    public ObservableCollection<PluginStoreSidebarItem> SecondarySidebarItems { get; } = [];
+
     public ObservableCollection<StorePluginRowViewModel> FilteredPlugins { get; } = [];
 
     public ObservableCollection<StorePluginRowViewModel> FeaturedPlugins { get; } = [];
@@ -44,14 +55,38 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     [ObservableProperty]
     private PluginStoreSortMode _selectedSortMode = PluginStoreSortMode.NameAscending;
 
-    [ObservableProperty]
     private PluginStoreSidebarItem? _selectedSidebarItem;
+
+    /// <summary>
+    /// The selected sidebar scope. Bound (two-way) by <b>both</b> sidebar ListBoxes — the top
+    /// <see cref="PrimarySidebarItems"/> group and the bottom <see cref="SecondarySidebarItems"/> group.
+    /// </summary>
+    /// <remarks>
+    /// When the selection moves from one group to the other, the ListBox that no longer holds it resets its
+    /// own SelectedItem to null and, two-way, pushes that null back here — which would blank the real
+    /// selection the other list just made. The selection only ever moves from one real item to another, so a
+    /// null (or an unchanged, value-equal) write is ignored: the owning list keeps the highlight and the
+    /// other simply shows nothing selected. Ignoring the value-equal write also mirrors the source-generated
+    /// property this replaced, so a catalogue rebuild that re-selects the same scope stays a no-op.
+    /// </remarks>
+    public PluginStoreSidebarItem? SelectedSidebarItem
+    {
+        get => _selectedSidebarItem;
+        set
+        {
+            if (value is null || value.Equals(_selectedSidebarItem))
+            {
+                return;
+            }
+
+            _selectedSidebarItem = value;
+            OnPropertyChanged();
+            _OnSelectedSidebarItemChanged(value);
+        }
+    }
 
     [ObservableProperty]
     private StorePluginRowViewModel? _selectedPlugin;
-
-    [ObservableProperty]
-    private bool _isManageStoresOpen;
 
     /// <summary>Design-time constructor for the previewer.</summary>
     public PluginStoreDialogViewModel() : this(new PluginManagerViewModel())
@@ -304,9 +339,6 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
     }
 
     [RelayCommand]
-    private void ToggleManageStores() => IsManageStoresOpen = !IsManageStoresOpen;
-
-    [RelayCommand]
     private Task RefreshAsync() => LoadAsync();
 
     [RelayCommand]
@@ -320,7 +352,7 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         _RecomputeFiltered();
     }
 
-    partial void OnSelectedSidebarItemChanged(PluginStoreSidebarItem? value)
+    private void _OnSelectedSidebarItemChanged(PluginStoreSidebarItem? value)
     {
         OnPropertyChanged(nameof(IsInstalledView));
         OnPropertyChanged(nameof(IsTemplatesView));
@@ -381,6 +413,22 @@ public sealed partial class PluginStoreDialogViewModel : ViewModelBase, IDisposa
         SidebarItems.Add(PluginStoreSidebarItem.Templates(_manager.AvailableTemplates.Count));
         SidebarItems.Add(PluginStoreSidebarItem.Installed(installedCount));
         SidebarItems.Add(PluginStoreSidebarItem.UpdatesAvailable(updatesCount));
+
+        // Split the flat list into the two ListBoxes the sidebar renders: everything but Installed/Updates
+        // up top, those two pinned to the foot of the column (above "Manage stores").
+        PrimarySidebarItems.Clear();
+        SecondarySidebarItems.Clear();
+        foreach (var item in SidebarItems)
+        {
+            if (item.Filter.Kind is PluginStoreFilterKind.Installed or PluginStoreFilterKind.UpdatesAvailable)
+            {
+                SecondarySidebarItems.Add(item);
+            }
+            else
+            {
+                PrimarySidebarItems.Add(item);
+            }
+        }
 
         var match = previousFilter is null ? null : SidebarItems.FirstOrDefault(item => item.Filter == previousFilter);
         SelectedSidebarItem = match ?? SidebarItems[0];
