@@ -10,10 +10,11 @@ namespace Cockpit.Core.Terminal;
 /// </summary>
 /// <remarks>
 /// Detection is best-effort and ordered by preference: the first entry is the sensible default. On Windows that is
-/// PowerShell 7 (<c>pwsh</c>) if installed, else Windows PowerShell, then <c>cmd</c>, then <c>wsl</c> when a distro is
-/// present. On Linux/macOS the login shell (<c>$SHELL</c>) leads, then <c>bash</c>/<c>zsh</c>/<c>sh</c>. The pure
-/// <see cref="Build"/> overload takes the environment and a file-probe so the per-OS logic is unit-testable off the
-/// host it describes.
+/// PowerShell 7 (<c>pwsh</c>) if installed, else Windows PowerShell, then <c>cmd</c>, then <c>wsl</c> when present. On
+/// Linux/macOS the login shell (<c>$SHELL</c>) leads, then <c>bash</c>/<c>zsh</c>/<c>sh</c>. It resolves against the
+/// real filesystem and this OS — <see cref="Build"/> is a seam that takes the environment values so a test can point
+/// it at a temp directory of real shell files, but it deliberately does not simulate a foreign OS: <see cref="Detect"/>
+/// only ever runs on the OS it describes, so leaning on <see cref="Path"/> here is correct, not a shortcut.
 /// </remarks>
 public static class ShellCatalog
 {
@@ -25,11 +26,42 @@ public static class ShellCatalog
     /// </summary>
     public static IReadOnlyList<ShellDescriptor> Detect() =>
         Build(
-            OperatingSystem.IsWindows(),
             Environment.GetEnvironmentVariable("PATH") ?? string.Empty,
             Environment.GetEnvironmentVariable("SHELL"),
-            Environment.GetEnvironmentVariable("COMSPEC"),
-            File.Exists);
+            Environment.GetEnvironmentVariable("COMSPEC"));
+
+    /// <summary>
+    /// The detection over an explicit environment (this OS, the real filesystem), so a test can drive it with a PATH
+    /// pointing at a temp directory of real shell files. Each candidate is resolved via <see cref="_Resolve"/>;
+    /// unresolved candidates are dropped rather than offered as a path that fails to spawn, and the same binary is
+    /// never listed twice. Internal for unit tests.
+    /// </summary>
+    internal static IReadOnlyList<ShellDescriptor> Build(string pathVariable, string? shellEnvironmentVariable, string? comSpec)
+    {
+        var candidates = OperatingSystem.IsWindows()
+            ? _WindowsCandidates(comSpec)
+            : _UnixCandidates(shellEnvironmentVariable);
+
+        var shells = new List<ShellDescriptor>();
+        var seenPaths = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
+        foreach (var (id, displayName, command, arguments) in candidates)
+        {
+            if (_Resolve(command, pathVariable) is not { } executable)
+            {
+                continue;
+            }
+
+            // Two names can resolve to the same binary (a `$SHELL` of /bin/bash plus the `bash` candidate); keep the
+            // first, which is the more-preferred, so the picker never shows the same shell twice.
+            if (seenPaths.Add(executable))
+            {
+                shells.Add(new ShellDescriptor(id, displayName, executable, arguments));
+            }
+        }
+
+        return shells;
+    }
 
     /// <summary>
     /// A descriptor for an operator-specified custom shell (#AC-25) — any path or command, including a third-party
@@ -46,48 +78,9 @@ public static class ShellCatalog
             return null;
         }
 
-        var resolved = _Resolve(trimmed, Environment.GetEnvironmentVariable("PATH") ?? string.Empty, OperatingSystem.IsWindows(), File.Exists)
-            ?? trimmed;
+        var resolved = _Resolve(trimmed, Environment.GetEnvironmentVariable("PATH") ?? string.Empty) ?? trimmed;
         var name = Path.GetFileNameWithoutExtension(trimmed);
         return new ShellDescriptor("custom", string.IsNullOrEmpty(name) ? trimmed : name, resolved, []);
-    }
-
-    /// <summary>
-    /// The per-OS detection, pure over its inputs so it can be tested without the shells it looks for. Each candidate
-    /// is resolved against <paramref name="pathVariable"/> (and, on Windows, <c>PATHEXT</c>-style extension probing)
-    /// via <paramref name="fileExists"/>; unresolved candidates are dropped rather than offered as a path that fails
-    /// to spawn. Internal for unit tests.
-    /// </summary>
-    internal static IReadOnlyList<ShellDescriptor> Build(
-        bool isWindows,
-        string pathVariable,
-        string? shellEnvironmentVariable,
-        string? comSpec,
-        Func<string, bool> fileExists)
-    {
-        var candidates = isWindows
-            ? _WindowsCandidates(comSpec)
-            : _UnixCandidates(shellEnvironmentVariable);
-
-        var shells = new List<ShellDescriptor>();
-        var seenPaths = new HashSet<string>(isWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-
-        foreach (var (id, displayName, command, arguments) in candidates)
-        {
-            if (_Resolve(command, pathVariable, isWindows, fileExists) is not { } executable)
-            {
-                continue;
-            }
-
-            // Two names can resolve to the same binary (a `$SHELL` of /bin/bash plus the `bash` candidate); keep the
-            // first, which is the more-preferred, so the picker never shows the same shell twice.
-            if (seenPaths.Add(executable))
-            {
-                shells.Add(new ShellDescriptor(id, displayName, executable, arguments));
-            }
-        }
-
-        return shells;
     }
 
     // PowerShell 7 first (the modern default), then Windows PowerShell, then cmd via %COMSPEC% (always present), then
@@ -124,11 +117,12 @@ public static class ShellCatalog
     }
 
     /// <summary>
-    /// Resolves a shell command to an absolute path, or null when it is not on this machine. A rooted path is taken as
-    /// given (subject to the file probe); a bare name is looked up on PATH — on Windows trying <c>.exe</c>/<c>.cmd</c>/
-    /// <c>.bat</c> per directory, the same reason the Claude locator does (<c>Process</c> does no <c>PATHEXT</c> lookup).
+    /// Resolves a shell command to an absolute path on this machine, or null when it is not here. A rooted path is
+    /// taken as given (subject to the file probe); a bare name is looked up on PATH — on Windows trying <c>.exe</c>/
+    /// <c>.cmd</c>/<c>.bat</c> per directory, the same reason the Claude locator does (<c>Process</c> does no
+    /// <c>PATHEXT</c> lookup). Host-native by design: it only ever runs for the OS it is on.
     /// </summary>
-    private static string? _Resolve(string command, string pathVariable, bool isWindows, Func<string, bool> fileExists)
+    private static string? _Resolve(string command, string pathVariable)
     {
         if (string.IsNullOrWhiteSpace(command))
         {
@@ -137,7 +131,7 @@ public static class ShellCatalog
 
         if (Path.IsPathRooted(command))
         {
-            return fileExists(command) ? command : null;
+            return File.Exists(command) ? command : null;
         }
 
         foreach (var directory in pathVariable.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
@@ -153,11 +147,11 @@ public static class ShellCatalog
                 continue;
             }
 
-            if (isWindows && !Path.HasExtension(command))
+            if (OperatingSystem.IsWindows() && !Path.HasExtension(command))
             {
                 foreach (var extension in _WindowsExecutableExtensions)
                 {
-                    if (fileExists(candidate + extension))
+                    if (File.Exists(candidate + extension))
                     {
                         return candidate + extension;
                     }
@@ -166,7 +160,7 @@ public static class ShellCatalog
                 continue;
             }
 
-            if (fileExists(candidate))
+            if (File.Exists(candidate))
             {
                 return candidate;
             }
