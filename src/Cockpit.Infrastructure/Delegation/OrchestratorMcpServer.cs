@@ -8,7 +8,6 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
-using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
 
@@ -31,7 +30,6 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
 
     private readonly IDelegationService _delegation;
     private readonly IMcpServerStore _mcpServerStore;
-    private readonly ISessionProfileStore _profileStore;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OrchestratorMcpServer> _logger;
     private WebApplication? _app;
@@ -39,12 +37,10 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
     public OrchestratorMcpServer(
         IDelegationService delegation,
         IMcpServerStore mcpServerStore,
-        ISessionProfileStore profileStore,
         ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
         _mcpServerStore = mcpServerStore;
-        _profileStore = profileStore;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<OrchestratorMcpServer>();
     }
@@ -89,20 +85,24 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
     /// opt-in the design asks for on the calling side, without a second, parallel mechanism.
     /// </summary>
     /// <remarks>
-    /// Enabled exactly when at least one profile is a delegation target: the tools are worth having the moment
-    /// there is somewhere to delegate to, and are pointless — a menu of nothing — when there is not. So the
-    /// operator opts in by marking a profile as a target in Manage profiles, not by remembering a second switch
-    /// here. The URL is rewritten on every start, since the port is OS-assigned.
+    /// Enabled by default (on first registration): the tools are worth having from the first run — and
+    /// <c>add_profile</c> in particular has to work <em>before</em> any delegation target exists, or the first one
+    /// could never be scaffolded through it. On later starts the operator's own on/off choice is kept, and only
+    /// the URL is refreshed (the port is OS-assigned). It used to be rewritten to "enabled only if a target
+    /// exists" on every start, which reset both the default and any manual toggle — the reason it read as off
+    /// every time. Whether a session actually receives these tools is still gated per session, so "enabled" here
+    /// is availability, not a blanket hand-out.
     /// </remarks>
     private async Task _PublishToRegistryAsync(string url, CancellationToken cancellationToken)
     {
         try
         {
-            var profiles = await _profileStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-            var hasTargets = profiles.Any(profile => profile.DelegationPolicy.AllowedAsTarget);
-
             var servers = (await _mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false)).ToList();
             var existing = servers.FindIndex(server => string.Equals(server.Name, ServerName, StringComparison.Ordinal));
+
+            // First registration: on. Thereafter: whatever the operator last chose — the app refreshes the URL but
+            // does not touch their switch.
+            var enabled = ShouldBeEnabled(existing < 0 ? null : servers[existing]);
 
             var entry = new McpServerConfig
             {
@@ -112,7 +112,7 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
                 // kind of thing this is for, and the tool loop speaks the same HTTP MCP.
                 Scope = McpServerScope.All,
                 Url = url,
-                Enabled = hasTargets,
+                Enabled = enabled,
             };
 
             if (existing < 0)
@@ -125,10 +125,7 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
             }
 
             await _mcpServerStore.SaveAsync(servers, cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation(
-                "Orchestrator MCP server {State} — {Targets} profile(s) accept delegated work.",
-                hasTargets ? "enabled" : "disabled",
-                profiles.Count(profile => profile.DelegationPolicy.AllowedAsTarget));
+            _logger.LogInformation("Orchestrator MCP server published ({State}) at {Url}.", enabled ? "enabled" : "disabled", url);
         }
         catch (Exception ex)
         {
@@ -136,6 +133,13 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
             _logger.LogWarning(ex, "Could not publish the orchestrator MCP server into the registry.");
         }
     }
+
+    /// <summary>
+    /// Whether the orchestrator server is enabled on this publish: on when it has never been registered, otherwise
+    /// whatever the operator last set. Pulled out so the "on by default, then leave the operator's switch alone"
+    /// rule is testable without standing up the Kestrel host.
+    /// </summary>
+    internal static bool ShouldBeEnabled(McpServerConfig? existingEntry) => existingEntry is null || existingEntry.Enabled;
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {

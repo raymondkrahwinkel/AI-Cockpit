@@ -146,6 +146,88 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             _CountRunning(profile.Label));
     }
 
+    /// <summary>The base URL a local provider defaults to when the caller does not give one.</summary>
+    private const string OllamaDefaultBaseUrl = "http://localhost:11434";
+    private const string LmStudioDefaultBaseUrl = "http://localhost:1234";
+
+    /// <summary>
+    /// Adds a local-model profile and saves it — but never as a delegation target. The soft purpose/tags a caller
+    /// suggests are carried, so the operator's later opt-in starts from them; the hard policy stays default and off
+    /// (<see cref="DelegationPolicy.AllowedAsTarget"/> false), because enrolling a target and setting its ceiling is
+    /// the operator's call. Local only: an Ollama or LM Studio model runs here and carries no login, so scaffolding
+    /// one cannot leak a credential or spend a subscription — a Claude profile is the operator's to make.
+    /// </summary>
+    public async Task<ScaffoldedProfileView> AddLocalModelProfileAsync(
+        string label,
+        string provider,
+        string model,
+        string? baseUrl,
+        string? purpose,
+        IReadOnlyList<string>? tags,
+        CancellationToken cancellationToken = default)
+    {
+        var trimmedLabel = _OrNull(label ?? string.Empty)
+            ?? throw new DelegationRejectedException("A profile needs a label.");
+        var trimmedModel = _OrNull(model ?? string.Empty)
+            ?? throw new DelegationRejectedException("A profile needs a model id, e.g. 'qwen2.5-coder:7b'.");
+
+        var profiles = await _profileStore.LoadAsync(cancellationToken);
+        if (profiles.Any(candidate => string.Equals(candidate.Label, trimmedLabel, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new DelegationRejectedException($"A profile named '{trimmedLabel}' already exists.");
+        }
+
+        var (config, resolvedBaseUrl) = _LocalProviderConfig(provider, trimmedModel, baseUrl);
+
+        var suggestedPurpose = _OrNull(purpose ?? string.Empty);
+        var policy = new DelegationPolicy(
+            AllowedAsTarget: false,
+            Purpose: suggestedPurpose,
+            Tags: tags is null ? null : _OrNull(tags));
+
+        var profile = new SessionProfile(
+            trimmedLabel,
+            ConfigDir: string.Empty,
+            Purpose: suggestedPurpose,
+            ProviderConfig: config,
+            Delegation: policy);
+
+        await _profileStore.SaveAsync(profiles.Append(profile).ToList(), cancellationToken);
+
+        return new ScaffoldedProfileView(
+            profile.Label,
+            profile.Provider.ToString(),
+            trimmedModel,
+            resolvedBaseUrl,
+            policy.Purpose,
+            policy.Tags ?? []);
+    }
+
+    // Maps the caller's provider name to a local HTTP provider config, or refuses. Only the local models are a
+    // caller's to add; anything else (a Claude login and its credentials) is the operator's.
+    private static (ProviderConfig Config, string BaseUrl) _LocalProviderConfig(string provider, string model, string? baseUrl)
+    {
+        switch (_OrNull(provider ?? string.Empty)?.ToLowerInvariant())
+        {
+            case "ollama":
+            {
+                var url = _OrNull(baseUrl ?? string.Empty) ?? OllamaDefaultBaseUrl;
+                return (new OllamaConfig(url, model), url);
+            }
+
+            case "lmstudio" or "lm-studio" or "lm studio":
+            {
+                var url = _OrNull(baseUrl ?? string.Empty) ?? LmStudioDefaultBaseUrl;
+                return (new LmStudioConfig(url, model), url);
+            }
+
+            default:
+                throw new DelegationRejectedException(
+                    $"'{provider}' is not a local model provider. Only 'ollama' and 'lmstudio' can be added this way — " +
+                    "a Claude or other logged-in profile is the operator's to create.");
+        }
+    }
+
     // An empty string (or an empty list) is how a caller says "there is nothing to say here" — stored as absent
     // rather than as a blank that reads like a value.
     private static string? _OrNull(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

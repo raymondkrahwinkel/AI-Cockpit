@@ -44,6 +44,24 @@ public interface IDelegationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Scaffolds a new local-model profile (Ollama or LM Studio) and persists it (#67, AC-6), so a session can run
+    /// under it and the operator can later enrol it as a delegation target. Created deliberately <em>not</em> as a
+    /// target — <see cref="DelegationPolicy.AllowedAsTarget"/> stays false: what a delegated session may do (its
+    /// permission ceiling, the directories it may work in, how many tasks at once) is the operator's to set, so a
+    /// caller can add a local model but never make itself something it may delegate to. Only local providers may be
+    /// added this way; a Claude or other logged-in profile carries credentials and is the operator's to create.
+    /// Rejects a blank label, a label already taken, an unknown provider, or a blank model.
+    /// </summary>
+    Task<ScaffoldedProfileView> AddLocalModelProfileAsync(
+        string label,
+        string provider,
+        string model,
+        string? baseUrl,
+        string? purpose,
+        IReadOnlyList<string>? tags,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Starts a task on <paramref name="profileLabel"/>. Rejects rather than spawns when the profile is unknown,
     /// is not a target, does not accept the declared task type, or was handed a working directory it does not
     /// allow. When the profile (or the cockpit) is at its concurrency cap the task is accepted as
@@ -74,6 +92,18 @@ public interface IDelegationService
     /// <summary>Stops the task and its session. Safe to call on an unknown or already-finished task.</summary>
     Task<DelegatedTaskView?> StopAsync(string taskId);
 }
+
+/// <summary>
+/// A profile a caller just scaffolded (#67, AC-6): added and usable to start a session under, but not yet a
+/// delegation target — enrolling it, and setting what a delegated task under it may do, is the operator's call.
+/// </summary>
+public sealed record ScaffoldedProfileView(
+    string Label,
+    string Provider,
+    string Model,
+    string BaseUrl,
+    string? Purpose,
+    IReadOnlyList<string> Tags);
 
 /// <summary>A profile a task may be handed to, as a calling agent sees it (#67).</summary>
 public sealed record DelegationTargetView(
