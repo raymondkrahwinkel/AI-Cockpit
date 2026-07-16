@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
 
@@ -20,9 +21,9 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-pull-requests",
         DisplayName: "GitHub Pull Requests",
-        Version: "2.0.0",
+        Version: "2.1.0",
         Author: "Cockpit",
-        Description: "Shows your open GitHub pull requests inline under the session list (how many is configurable, and you can limit it to specific repositories), refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP — plus a dialog with an \"Assigned to me\" filter. Left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). Pull requests waiting for your review are listed separately under \"Review requested\", each with an Open button, and a new one raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.");
+        Description: "Shows your open GitHub pull requests inline under the session list (how many is configurable, and you can limit it to specific repositories), refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP — plus a dialog with an \"Assigned to me\" filter, and a Dashboard widget showing the same list as a resizable pane with its own item count. Left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). Pull requests waiting for your review are listed separately under \"Review requested\", each with an Open button, and a new one raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.");
 
     public void ConfigureServices(IServiceCollection services)
     {
@@ -43,6 +44,20 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
 
         host.AddSettings(() => new GitHubPullRequestsSettingsControl(settings));
         host.AddSideMenuSection("Open PRs", () => new GitHubPullRequestsSideSectionControl(settings, host));
+
+        // The same list as a Dashboard pane (#AC-18): the side section is always under the session list, this is
+        // for a workspace given over to widgets. The lambda closes over `host` so the widget can inject prompts and
+        // open the dialog, and is handed each instance's own IWidgetContext for its per-pane count. The id keeps a
+        // "widgets." prefix and is persisted with every placed instance, so it is an API surface — changing it would
+        // orphan widgets on dashboards people have already arranged.
+        host.AddWidget(new WidgetRegistration("widgets.github-pull-requests", "GitHub Pull Requests", context => new GitHubPullRequestsWidget(settings, host, context))
+        {
+            Icon = "🔀",
+            Description = "Your open pull requests, with a configurable count.",
+            DefaultColumnSpan = 6,
+            DefaultRowSpan = 8,
+            CreateConfigView = context => new GitHubPullRequestsWidgetSettingsView(context),
+        });
     }
 
     public void Dispose() => _merged?.Dispose();
