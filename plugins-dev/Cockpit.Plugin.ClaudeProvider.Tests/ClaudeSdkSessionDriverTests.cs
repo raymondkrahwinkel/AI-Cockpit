@@ -219,6 +219,51 @@ public class ClaudeSdkSessionDriverTests : IDisposable
         driver.LiveOptions.Should().NotContain(option => option.Key == ClaudeSdkSessionDriver.PermissionModeOptionKey);
     }
 
+    // The profile's environment variables (AC-22) ride the environment-carrying StartAsync overload into the
+    // spawn; the driver's own rules — the ANTHROPIC_* drop and the config-dir export — keep the last word.
+    [Fact]
+    public async Task Start_AppliesTheProfilesEnvironmentVariablesToTheSpawn()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
+            environment: new Dictionary<string, string> { ["AI_OS_ROOT"] = "/home/raymond/AI-OS" },
+            CancellationToken.None);
+
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("AI_OS_ROOT", "/home/raymond/AI-OS"));
+    }
+
+    [Fact]
+    public async Task Start_AProfileSuppliedAnthropicCredential_IsRemovedFromTheSpawnNotHandedToTheCli()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
+            environment: new Dictionary<string, string> { ["ANTHROPIC_API_KEY"] = "smuggled" },
+            CancellationToken.None);
+
+        // Null = remove at the subprocess seam: the key must be an explicit removal, never the smuggled value.
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("ANTHROPIC_API_KEY", null));
+    }
+
+    [Fact]
+    public async Task Start_AProfileVariableCannotRedirectTheConfigDir_TheProfilesOwnDirWins()
+    {
+        var fake = new FakeClaudeSdkSubprocess();
+        await using var driver = _CreateDriver(fake);
+
+        await driver.StartAsync(
+            model: null, workingDirectory: _tempDir, resumeSessionId: null, options: null, mcpServers: null,
+            environment: new Dictionary<string, string> { ["CLAUDE_CONFIG_DIR"] = "/somebody/elses/profile" },
+            CancellationToken.None);
+
+        fake.EnvironmentVariables.Should().Contain(new KeyValuePair<string, string?>("CLAUDE_CONFIG_DIR", _tempDir));
+    }
+
     private ClaudeSdkSessionDriver _CreateDriver(FakeClaudeSdkSubprocess fake) =>
         // A temp config dir keeps StartAsync's workspace-trust write off the real ~/.claude.json.
         new(() => fake, new ClaudeProviderConfig(ConfigDir: _tempDir), executablePath: "claude");

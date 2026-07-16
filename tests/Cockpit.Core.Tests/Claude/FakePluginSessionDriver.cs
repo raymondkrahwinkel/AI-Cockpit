@@ -38,6 +38,8 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
 
     public IReadOnlyList<PluginMcpServer>? LastMcpServers { get; private set; }
 
+    public IReadOnlyDictionary<string, string>? LastEnvironment { get; private set; }
+
     public bool Started { get; private set; }
 
     public bool Interrupted { get; private set; }
@@ -64,6 +66,12 @@ internal sealed class FakePluginSessionDriver : IPluginSessionDriver
         LastLaunchOptions = options;
         LastMcpServers = mcpServers;
         return StartAsync(model, cancellationToken);
+    }
+
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, CancellationToken cancellationToken)
+    {
+        LastEnvironment = environment;
+        return StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
     }
 
     public Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default)

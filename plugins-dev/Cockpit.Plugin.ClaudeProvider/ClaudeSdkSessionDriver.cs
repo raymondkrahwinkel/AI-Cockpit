@@ -55,6 +55,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private string? _model;
     private string _effort = "medium";
     private IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
+    private IReadOnlyDictionary<string, string>? _profileEnvironment;
 
     public ClaudeSdkSessionDriver(Func<IClaudeSdkSubprocess> subprocessFactory, ClaudeProviderConfig config, string executablePath)
     {
@@ -70,6 +71,7 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     {
         SupportsLiveModelSwitch = true,
         SupportsPermissionModeSwitch = true,
+        SupportsEnvVars = true,
     };
 
     public string? SessionId => _sessionId;
@@ -82,6 +84,14 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
         StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, mcpServers: null, cancellationToken);
+
+    // The environment-carrying overload (AC-22): the profile's variables arrive host-scrubbed; stash them for
+    // _BuildEnvironment, where the driver's own rules (ANTHROPIC_* drop, CLAUDE_CONFIG_DIR) keep the last word.
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, CancellationToken cancellationToken)
+    {
+        _profileEnvironment = environment;
+        return StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
+    }
 
     public async Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
@@ -329,11 +339,21 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     {
         var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
-        // Drop any inherited ANTHROPIC_* credential: inheriting one silently moves the session off the operator's
-        // subscription and onto API-key billing (the same rule the host's spawn applies). Null tells the subprocess
-        // seam to remove the variable from the child's environment.
+        // The profile's own variables (AC-22) go in first: the credential drop and the config-dir rule below
+        // must keep the last word, so an operator variable can never reintroduce a credential or point the CLI
+        // at another profile's config.
+        foreach (var (key, value) in _profileEnvironment ?? new Dictionary<string, string>())
+        {
+            environment[key] = value;
+        }
+
+        // Drop any ANTHROPIC_* credential, inherited or profile-supplied: one that reaches the CLI silently moves
+        // the session off the operator's subscription and onto API-key billing (the same rule the host's spawn
+        // applies). Null tells the subprocess seam to remove the variable from the child's environment.
         foreach (var key in Environment.GetEnvironmentVariables().Keys.Cast<string>()
-                     .Where(name => name.StartsWith("ANTHROPIC_", StringComparison.OrdinalIgnoreCase)))
+                     .Concat(environment.Keys)
+                     .Where(name => name.StartsWith("ANTHROPIC_", StringComparison.OrdinalIgnoreCase))
+                     .ToList())
         {
             environment[key] = null;
         }

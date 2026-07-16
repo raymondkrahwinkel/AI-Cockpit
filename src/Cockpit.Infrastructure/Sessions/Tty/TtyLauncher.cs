@@ -29,6 +29,24 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ILogger<TtyLau
         SessionResume? resume = null)
     {
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
+
+        // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: they
+        // override what the cockpit inherited, and the provider keeps the last word — its overlay carries
+        // functional isolation (a config directory), which an operator variable must not be able to break.
+        if (profile?.EnvironmentVariables is { Count: > 0 } profileVariables)
+        {
+            var profileOverlay = ProfileEnvironmentVariable.ToOverlay(profileVariables);
+            if (TtyEnvironment.RejectedOverlayKeys(profileOverlay) is { Count: > 0 } rejectedProfileKeys)
+            {
+                logger.LogWarning(
+                    "Profile {Profile} configures host-controlled environment variables; ignored: {Variables}",
+                    profile.Label,
+                    string.Join(", ", rejectedProfileKeys));
+            }
+
+            baseEnvironment = TtyEnvironment.Compose(baseEnvironment, profileOverlay);
+        }
+
         var context = new TtyLaunchContext(
             profile,
             options,

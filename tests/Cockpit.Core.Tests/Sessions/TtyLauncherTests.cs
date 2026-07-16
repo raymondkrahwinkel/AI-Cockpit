@@ -251,6 +251,98 @@ public class TtyLauncherTests
         }
     }
 
+    // The profile's own variables (AC-22) sit between the inherited base and the provider's overlay: an
+    // operator value overrides what the cockpit inherited, the provider keeps the last word, and the
+    // host-controlled scrub applies to the operator exactly as it does to a provider.
+    [Fact]
+    public void Launch_AProfileEnvironmentVariable_ReachesThePtyHostAndTheProvidersBaseEnvironment()
+    {
+        var (launcher, ptyHostFactory) = CreateLauncher();
+        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
+        var provider = Provider(spec);
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
+        };
+
+        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+
+        provider.Received(1).BuildLaunch(Arg.Is<TtyLaunchContext>(context =>
+            context.BaseEnvironment["AI_OS_ROOT"] == "/home/raymond/AI-OS"));
+        ptyHostFactory.Received(1).Start(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["AI_OS_ROOT"] == "/home/raymond/AI-OS"),
+            80,
+            24);
+    }
+
+    [Fact]
+    public void Launch_WhenTheProfileAndTheProviderSetTheSameVariable_TheProvidersOverlayWins()
+    {
+        var (launcher, ptyHostFactory) = CreateLauncher();
+        var spec = new TtyLaunchSpec(
+            "/usr/bin/cli",
+            [],
+            new Dictionary<string, string?> { ["SHARED_VAR"] = "from-the-provider" },
+            "/wd",
+            []);
+        var provider = Provider(spec);
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("SHARED_VAR", "from-the-profile")],
+        };
+
+        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+
+        ptyHostFactory.Received(1).Start(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["SHARED_VAR"] == "from-the-provider"),
+            80,
+            24);
+    }
+
+    [Fact]
+    public void Launch_AProfileVariableOnAHostControlledKey_NeverReachesThePtyHostAndIsLoggedByName()
+    {
+        const string variable = "ANTHROPIC_API_KEY";
+        Environment.SetEnvironmentVariable(variable, null);
+        try
+        {
+            var logger = Substitute.For<ILogger<TtyLauncher>>();
+            var (launcher, ptyHostFactory) = CreateLauncher(logger);
+            var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
+            var provider = Provider(spec);
+            var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+            {
+                EnvironmentVariables = [new ProfileEnvironmentVariable(variable, "set-by-the-operator", IsSecret: true)],
+            };
+
+            launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+
+            ptyHostFactory.Received(1).Start(
+                Arg.Any<string>(),
+                Arg.Any<IReadOnlyList<string>>(),
+                Arg.Any<string>(),
+                Arg.Is<IReadOnlyDictionary<string, string>>(env => !env.ContainsKey(variable)),
+                80,
+                24);
+            logger.Received(1).Log(
+                LogLevel.Warning,
+                Arg.Any<EventId>(),
+                Arg.Is<object>(state => state!.ToString()!.Contains(variable) && !state.ToString()!.Contains("set-by-the-operator")),
+                null,
+                Arg.Any<Func<object, Exception?, string>>());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+    }
+
     [Fact]
     public void Launch_WithSessionScopedFilesAndAStatusFile_DeletesThemWhenTheReturnedProcessIsDisposed()
     {

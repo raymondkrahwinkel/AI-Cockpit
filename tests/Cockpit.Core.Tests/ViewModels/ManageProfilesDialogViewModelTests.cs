@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
 
@@ -200,6 +201,99 @@ public class ManageProfilesDialogViewModelTests
                 list[0].Defaults!.AutoApproveTools),
             Arg.Any<CancellationToken>());
     }
+
+    // The profile's spawn environment variables (AC-22): rows load and save through the editable row VM, an
+    // invalid or duplicate key gates the save, and the editor only shows for a provider that declares the
+    // SupportsEnvVars capability.
+    [Fact]
+    public void ToProfile_CarriesTheEnvironmentVariableRows_IncludingTheSecretFlag()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
+        };
+        var row = new EditableProfileViewModel(profile, isLoggedIn: true);
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MY_TOKEN", "s3cret", isSecret: true));
+
+        var saved = row.ToProfile();
+
+        saved.EnvironmentVariables.Should().Equal(
+            new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS"),
+            new ProfileEnvironmentVariable("MY_TOKEN", "s3cret", IsSecret: true));
+    }
+
+    // The env-row gates are proven on a profile that is otherwise valid (an Ollama profile with base URL and
+    // model filled), so IsValid flips on the rows alone — a legacy ClaudeConfig profile resolves to the Ollama
+    // fallback with empty fields and is invalid regardless, which would make these assertions prove nothing.
+    private static EditableProfileViewModel _ValidLocalRow() => new(
+        new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1", null)), isLoggedIn: true);
+
+    [Theory]
+    [InlineData("2INVALID")]
+    [InlineData("")]
+    public void IsValid_AnEnvironmentVariableWithAnUnsettableName_GatesTheSave(string key)
+    {
+        var row = _ValidLocalRow();
+        row.IsValid.Should().BeTrue("the gate below must be attributable to the row, not to an incomplete profile");
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel(key, "value"));
+
+        row.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsValid_ADuplicateEnvironmentVariableKey_GatesTheSave()
+    {
+        var row = _ValidLocalRow();
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/first"));
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("AI_OS_ROOT", "/second"));
+
+        row.IsValid.Should().BeFalse();
+    }
+
+    // The spawn composition folds case-insensitively (TtyEnvironment, the Claude driver), so two case-variant
+    // rows are one variable at spawn and one value would silently win — the save gate must catch them as the
+    // duplicate they effectively are.
+    [Fact]
+    public void IsValid_ACaseVariantDuplicateEnvironmentVariableKey_GatesTheSave()
+    {
+        var row = _ValidLocalRow();
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MyVar", "/first"));
+        row.EnvironmentVariables.Add(new ProfileEnvironmentVariableViewModel("MYVAR", "/second"));
+
+        row.IsValid.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SupportsEnvVars_FollowsThePluginProvidersDeclaredCapability()
+    {
+        var registry = Substitute.For<IPluginProviderRegistry>();
+        registry.Resolve("env-capable").Returns(_Registration("env-capable", supportsEnvVars: true));
+        registry.Resolve("env-less").Returns(_Registration("env-less", supportsEnvVars: false));
+
+        var capable = new EditableProfileViewModel(
+            new SessionProfile("a", new PluginProviderConfig("env-capable", "{}")), isLoggedIn: true, pluginProviderRegistry: registry);
+        var incapable = new EditableProfileViewModel(
+            new SessionProfile("b", new PluginProviderConfig("env-less", "{}")), isLoggedIn: true, pluginProviderRegistry: registry);
+
+        capable.SupportsEnvVars.Should().BeTrue();
+        incapable.SupportsEnvVars.Should().BeFalse();
+    }
+
+    [Fact]
+    public void SupportsEnvVars_IsFalseForAnHttpProvider_WhichSpawnsNothingToInjectInto()
+    {
+        var row = new EditableProfileViewModel(
+            new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1", null)), isLoggedIn: true);
+
+        row.SupportsEnvVars.Should().BeFalse();
+    }
+
+    private static SessionProviderRegistration _Registration(string providerId, bool supportsEnvVars) => new(
+        ProviderId: providerId,
+        DisplayName: providerId,
+        CreateDriverFactory: _ => null!,
+        Capabilities: new PluginSessionCapabilities(true, true) { SupportsEnvVars = supportsEnvVars },
+        CreateConfigView: _ => null!);
 
     [Fact]
     public async Task Save_WithAnEmptyConfigDir_DoesNotPersistAndReportsIt()
