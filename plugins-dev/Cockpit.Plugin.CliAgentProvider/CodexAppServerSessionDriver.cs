@@ -68,6 +68,7 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     // sandbox (there is always one in effect), like the model — so the panel opens on the active sandbox rather than
     // blank, and each turn re-asserts it as a SandboxPolicy object.
     private string? _sandbox;
+    private IReadOnlyDictionary<string, string>? _profileEnvironment;
 
     // The controls this session can switch mid-conversation (#45 D4), built once at start from the model listing
     // and the effective model. Set on the starting thread before StartAsync returns and only read afterwards, so
@@ -99,7 +100,10 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         _model = config.Model;
     }
 
-    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true);
+    public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true)
+    {
+        SupportsEnvVars = true,
+    };
 
     public string? SessionId => _threadId;
 
@@ -113,6 +117,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
 
     public Task StartAsync(string? model = null, CancellationToken cancellationToken = default) =>
         StartAsync(model, workingDirectory: null, resumeSessionId: null, options: null, mcpServers: null, cancellationToken);
+
+    // The environment-carrying overload (AC-22): the profile's variables arrive host-scrubbed; stash them so the
+    // spawn below lays them under the config's own variables (auth env-var, CODEX_HOME), which keep the last word.
+    public Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, CancellationToken cancellationToken)
+    {
+        _profileEnvironment = environment;
+        return StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
+    }
 
     public async Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken)
     {
@@ -132,6 +144,18 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         // rides the process environment, never the command line (see CodexMcpConfig).
         var mcpLaunch = CodexMcpConfig.Build(mcpServers);
         var environmentVariables = _config.BuildEnvironmentVariables();
+
+        // The profile's own variables (AC-22) lay under everything the driver sets itself: the config's auth
+        // env-var/CODEX_HOME and the MCP bearer tokens keep the last word, so an operator variable cannot
+        // redirect the CLI's home or clobber a session credential.
+        foreach (var (key, value) in _profileEnvironment ?? new Dictionary<string, string>())
+        {
+            if (!environmentVariables.ContainsKey(key))
+            {
+                environmentVariables[key] = value;
+            }
+        }
+
         foreach (var (key, value) in mcpLaunch.EnvironmentVariables)
         {
             environmentVariables[key] = value;

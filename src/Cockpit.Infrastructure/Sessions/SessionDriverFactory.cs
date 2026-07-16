@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
@@ -48,6 +49,6 @@ internal sealed class SessionDriverFactory(IServiceProvider services, IPluginPro
         // handing the endpoints to the plugin driver — the registry stays host-side (plugin isolation). GetService,
         // not GetRequiredService: the store is always registered in the running app, and its absence (a unit test
         // that wires only the registry) simply means no fan-out, which the adapter already handles.
-        return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetService<IMcpServerCatalog>());
+        return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetService<IMcpServerCatalog>(), services.GetService<ILogger<PluginSessionDriverAdapter>>());
     }
 }

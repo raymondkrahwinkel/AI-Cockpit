@@ -50,6 +50,18 @@ public interface IPluginSessionDriver : IAsyncDisposable
     Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, CancellationToken cancellationToken) =>
         StartAsync(model, cancellationToken);
 
+    /// <summary>
+    /// Starts the session with, additionally, the profile's own environment variables to inject into the spawned
+    /// process (AC-22) — already scrubbed host-side (a host-controlled key never crosses this boundary), so a
+    /// driver applies them as-is, before its own variables: the driver's config-dir/credential rules keep the
+    /// last word. The default drops them and calls the overload above: a provider that spawns nothing (an HTTP
+    /// model) has no process to put them in, and an already-compiled plugin keeps loading. A driver that does
+    /// spawn overrides this and reports <see cref="PluginSessionCapabilities.SupportsEnvVars"/> so the host
+    /// offers the profile editor in the first place.
+    /// </summary>
+    Task StartAsync(string? model, string? workingDirectory, string? resumeSessionId, IReadOnlyDictionary<string, string>? options, IReadOnlyList<PluginMcpServer>? mcpServers, IReadOnlyDictionary<string, string>? environment, CancellationToken cancellationToken) =>
+        StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, cancellationToken);
+
     /// <summary>Sends a user message; the session stays open for further turns afterwards.</summary>
     Task SendUserMessageAsync(string text, CancellationToken cancellationToken = default);
 

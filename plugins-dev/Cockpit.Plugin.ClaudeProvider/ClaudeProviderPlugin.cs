@@ -64,7 +64,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             ProviderId: ClaudeProviderIds.Claude,
             DisplayName: "Claude",
             CreateDriverFactory: _ => new ClaudeSdkSessionDriverFactory(),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true),
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson))
         {
             Options =
