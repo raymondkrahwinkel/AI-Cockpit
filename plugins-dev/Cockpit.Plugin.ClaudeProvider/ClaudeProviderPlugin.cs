@@ -17,7 +17,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "claude-provider",
         DisplayName: "Claude (bundled)",
-        Version: "0.3.1",
+        Version: "0.4.0",
         Author: "Cockpit",
         Description: "Claude as a provider plugin. Runs the real interactive Claude TUI in a pane (TTY), with the "
             + "cockpit's workspace-trust, shared MCP servers, usage limits and the operator's own statusline preserved. "
@@ -34,10 +34,14 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
         // equivalent of the host's former startup housekeeping, now that the statusline lives here).
         ClaudeStatusLine.SweepStale();
 
+        // The cockpit can install and manage the claude binary itself (AC-20). Registering the descriptor lets the
+        // host resolve a managed copy; the providers below prefer it over PATH via host.ResolveManagedCliPath.
+        host.AddManagedCli(ClaudeManagedCli.Descriptor);
+
         host.AddTtyProvider(new TtyProviderRegistration(
             ProviderId: ClaudeProviderIds.Claude,
             DisplayName: "Claude",
-            CreateProvider: _ => new ClaudeTtyProvider(),
+            CreateProvider: _ => new ClaudeTtyProvider(host.ResolveManagedCliPath),
             Options:
             [
                 new PluginTtyLaunchOption(ClaudeTtyProvider.PermissionModeKey, "Permission mode", ClaudeOptionChoices.PermissionModes, "default")
@@ -63,9 +67,9 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
         host.AddSessionProvider(new SessionProviderRegistration(
             ProviderId: ClaudeProviderIds.Claude,
             DisplayName: "Claude",
-            CreateDriverFactory: _ => new ClaudeSdkSessionDriverFactory(),
+            CreateDriverFactory: _ => new ClaudeSdkSessionDriverFactory(host.ResolveManagedCliPath),
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
-            CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson))
+            CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =
             [

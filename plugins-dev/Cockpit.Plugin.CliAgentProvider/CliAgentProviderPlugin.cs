@@ -16,7 +16,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "cli-agent-provider",
         DisplayName: "CLI Agent Provider (Codex)",
-        Version: "0.1.1",
+        Version: "0.3.0",
         Author: "Cockpit",
         Description: "Experimental: adds Codex CLI as a selectable session provider, driven as a subprocess per turn. Requires the codex CLI installed and authenticated on this machine (CODEX_API_KEY or `codex login`). No in-band tool-permission channel — the sandbox/approval mode is fixed per profile.");
 
@@ -28,6 +28,10 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        // The cockpit can install and manage the codex binary itself (AC-20). Registering the descriptor lets the host
+        // resolve a managed copy; the driver factory and TTY provider prefer it over PATH via host.ResolveManagedCliPath.
+        host.AddManagedCli(CodexManagedCli.Descriptor);
+
         // The per-session start defaults the New-session dialog asks about — the same two whichever kind of
         // session a profile opens, so it means the same thing either way. Sandbox is a fixed set; Model is
         // declared as free text (the fallback) but the dialog upgrades it to the live model/list at open
@@ -41,14 +45,14 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // The app-server driver replaces the headless exec driver as the interactive Codex provider (#45
             // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals —
             // hence SupportsPermissions: true, where the exec route reported false.
-            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(),
+            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath),
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
-            CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson))
+            CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson, host))
         {
             Options = [sdkSandbox, sdkModelFallback],
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
-                var listing = await _ListModelsAsync(configJson, cancellationToken).ConfigureAwait(false);
+                var listing = await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken).ConfigureAwait(false);
                 var model = listing.Ids.Count == 0
                     ? sdkModelFallback
                     : new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
@@ -66,12 +70,12 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         host.AddTtyProvider(new TtyProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
-            CreateProvider: _ => new CodexTtyProvider(),
+            CreateProvider: _ => new CodexTtyProvider(host.ResolveManagedCliPath),
             Options: [ttySandbox, ttyModelFallback])
         {
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
-                var listing = await _ListModelsAsync(configJson, cancellationToken).ConfigureAwait(false);
+                var listing = await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken).ConfigureAwait(false);
                 var model = listing.Ids.Count == 0
                     ? ttyModelFallback
                     : new PluginTtyLaunchOption(CodexTtyProvider.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
@@ -81,10 +85,13 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
     }
 
     /// <summary>Reads the models this profile's codex offers (increment 2 step C) — shared by the SDK and TTY option resolvers.</summary>
-    private static async Task<CodexModelListing> _ListModelsAsync(string configJson, CancellationToken cancellationToken)
+    private static async Task<CodexModelListing> _ListModelsAsync(string configJson, Func<string, string?>? managedResolver, CancellationToken cancellationToken)
     {
         var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();
-        var executablePath = CliExecutableLocator.Resolve(config.Command);
+        // Resolve with the managed copy too, so a codex installed only via the managed installer (not on PATH) still
+        // lists its models — otherwise the New-session Model dropdown falls back to free text even though the session
+        // itself would spawn the managed binary fine.
+        var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
         return await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken).ConfigureAwait(false);
     }
 
