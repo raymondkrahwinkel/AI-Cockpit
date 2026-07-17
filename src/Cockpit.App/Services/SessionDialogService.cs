@@ -28,6 +28,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IMcpServerCatalog _mcpServerCatalog;
+    private readonly IReadOnlyList<ICockpitInternalMcpProvider> _internalMcpProviders;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
     private readonly IConversationPickerRegistry _conversationPickers;
@@ -41,6 +42,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
         IMcpServerCatalog mcpServerCatalog,
+        IEnumerable<ICockpitInternalMcpProvider> internalMcpProviders,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
         IConversationPickerRegistry conversationPickers,
@@ -55,6 +57,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
         _mcpServerCatalog = mcpServerCatalog;
+        _internalMcpProviders = [.. internalMcpProviders];
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
@@ -121,7 +124,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             return;
         }
 
-        var viewModel = new McpServersViewModel(_mcpServerStore);
+        var viewModel = new McpServersViewModel(_mcpServerStore, _internalMcpProviders);
         await viewModel.LoadAsync();
 
         var dialog = new McpServersDialog { DataContext = viewModel };
