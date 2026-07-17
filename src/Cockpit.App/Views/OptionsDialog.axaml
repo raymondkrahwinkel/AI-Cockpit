@@ -8,7 +8,7 @@
         x:Class="Cockpit.App.Views.OptionsDialog"
         x:DataType="vm:CockpitViewModel"
         Title="Options"
-        Width="680" Height="680"
+        Width="760" Height="680"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -33,564 +33,675 @@
             </Grid>
         </Border>
 
+        <!-- AC-69 redesign: the top tab-bar stays, but each tab's body is now a master–detail split — a
+             left sub-navigation rail (Border.subnavRail + ListBox.subnav) beside a detail column with its
+             own scroll. A tab scales by gaining rail items instead of growing into one long scroll. Voice
+             is the fully-worked example (Read-aloud · Transcribe · Cleanup, switched by a Carousel bound to
+             the rail); the other tabs hang their existing content under a one-item rail and split into their
+             own sub-pages in their own tickets. Pure presentation — every binding and the shared Save are
+             unchanged. -->
         <TabControl x:Name="Tabs">
 
             <TabItem Header="Notifications">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Local notifications" FontWeight="SemiBold"/>
-                        <CheckBox Content="Show a local notification when a session needs you (while you're at the PC)"
-                                  IsChecked="{Binding LocalNotificationsEnabled}"/>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <TextBlock Text="Discord (when away)" FontWeight="SemiBold"/>
-                        <CheckBox Content="Send a Discord notification when a session needs you while you're away"
-                                  IsChecked="{Binding DiscordNotificationsEnabled}"/>
-                        <StackPanel Spacing="4" IsVisible="{Binding DiscordNotificationsEnabled}">
-                            <TextBlock Text="Discord webhook URL"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-                            <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="NOTIFICATIONS"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>General</ListBoxItem>
+                            </ListBox>
                         </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <TextBlock Text="Local notifications" FontWeight="SemiBold"/>
+                            <CheckBox Content="Show a local notification when a session needs you (while you're at the PC)"
+                                      IsChecked="{Binding LocalNotificationsEnabled}"/>
 
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Text="Away after (idle minutes)"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
-                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                            <TextBlock Text="Discord (when away)" FontWeight="SemiBold"/>
+                            <CheckBox Content="Send a Discord notification when a session needs you while you're away"
+                                      IsChecked="{Binding DiscordNotificationsEnabled}"/>
+                            <StackPanel Spacing="4" IsVisible="{Binding DiscordNotificationsEnabled}">
+                                <TextBlock Text="Discord webhook URL"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://discord.com/api/webhooks/..."/>
+                            </StackPanel>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Away after (idle minutes)"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
+                                               Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="How long without keyboard/mouse before you count as away (used for the Discord channel)."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                            <TextBlock Text="Sessions finishing and falling quiet" FontWeight="SemiBold"/>
+                            <CheckBox Content="Tell me when a session is done (only when I'm not looking at it)"
+                                      IsChecked="{Binding NotifyOnSessionFinished}"/>
+                            <CheckBox Content="Tell me when a session goes idle"
+                                      IsChecked="{Binding NotifyOnSessionIdle}"/>
+                            <CheckBox Content="Tell me when every session is idle — nothing is running any more"
+                                      IsChecked="{Binding NotifyWhenAllSessionsIdle}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Session goes idle after (minutes)"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Value="{Binding SessionIdleMinutes}" Minimum="0" Maximum="240"
+                                               Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="How long a finished session stays &quot;done&quot; before it counts as idle. 0 leaves it on &quot;done&quot;. This is about a session having nothing to do — not about you being away."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         </StackPanel>
-                        <TextBlock Text="How long without keyboard/mouse before you count as away (used for the Discord channel)."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <TextBlock Text="Sessions finishing and falling quiet" FontWeight="SemiBold"/>
-                        <CheckBox Content="Tell me when a session is done (only when I'm not looking at it)"
-                                  IsChecked="{Binding NotifyOnSessionFinished}"/>
-                        <CheckBox Content="Tell me when a session goes idle"
-                                  IsChecked="{Binding NotifyOnSessionIdle}"/>
-                        <CheckBox Content="Tell me when every session is idle — nothing is running any more"
-                                  IsChecked="{Binding NotifyWhenAllSessionsIdle}"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Text="Session goes idle after (minutes)"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <NumericUpDown Value="{Binding SessionIdleMinutes}" Minimum="0" Maximum="240"
-                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-                        <TextBlock Text="How long a finished session stays &quot;done&quot; before it counts as idle. 0 leaves it on &quot;done&quot;. This is about a session having nothing to do — not about you being away."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Sessions">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Session behaviour" FontWeight="SemiBold"/>
-                        <CheckBox Content="Close a session when you type &quot;exit&quot;"
-                                  IsChecked="{Binding AutoCloseOnExit}"/>
-                        <TextBlock Text="The message is still sent; the session closes once that turn finishes."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <TextBlock Text="Layout" FontWeight="SemiBold"/>
-                        <!-- The cockpit-wide default. These bind to the Global… properties on purpose: a
-                             sessions workspace can override them from its own ⚙, and binding the effective
-                             value here would save that workspace's choice over the default the moment Options
-                             was opened on it. -->
-                        <CheckBox Content="Show one session at a time (no grid)"
-                                  IsChecked="{Binding GlobalSingleSessionLayout}"/>
-                        <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Stack sessions vertically (one column)"
-                                  IsChecked="{Binding GlobalStackSessionsVertically}"
-                                  IsEnabled="{Binding !GlobalSingleSessionLayout}"/>
-                        <TextBlock Text="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <TextBlock Text="This is the default for every sessions workspace. One can arrange itself differently from its own ⚙, above the grid."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Minimize to tray when closing the window"
-                                  IsChecked="{Binding MinimizeToTrayOnClose}"/>
-                        <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <TextBlock Text="Transcript" FontWeight="SemiBold"/>
-                        <CheckBox Content="Show a timestamp on each message"
-                                  IsChecked="{Binding ShowTimestamps}"/>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <TextBlock Text="Delegation" FontWeight="SemiBold"/>
-                        <CheckBox Content="Let sessions delegate work to other profiles (orchestrator MCP)"
-                                  IsChecked="{Binding OrchestratorMcpEnabled}"
-                                  ToolTip.Tip="Offers the cockpit-orchestrator tools (delegate_task, add_profile, …) to sessions. Turn it off to keep delegation out of every session; a session still won't get them unless it was started with delegation enabled."/>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-
-                        <!-- TTY-only (#40): the SDK transcript renders its own chat UI, not a terminal
-                             grid, so a font setting has nothing to apply to there. One global setting for
-                             every TTY session — not per-profile or per-session. -->
-                        <TextBlock Text="Terminal (TTY sessions)" FontWeight="SemiBold"/>
-                        <!-- Which shell a New terminal opens (#AC-25). "OS default" (blank) uses the machine's
-                             preferred shell; the list is what was detected on this machine. Applies to terminal
-                             panes only — an AI session runs its provider's CLI, not a shell. -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Default shell"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding TerminalShellChoices}"
-                                      SelectedItem="{Binding SelectedTerminalShell}"
-                                      Width="260"
-                                      ToolTip.Tip="Which shell a new terminal opens; OS default uses your system's preferred shell">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:TerminalShellChoice">
-                                        <TextBlock Text="{Binding Label}"/>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="SESSIONS"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>General</ListBoxItem>
+                            </ListBox>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding IsTerminalShellCustom}">
-                            <TextBlock Text="Custom shell"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <TextBox Text="{Binding TerminalCustomShell}" Width="260"
-                                     PlaceholderText="e.g. /usr/bin/fish or nu"
-                                     ToolTip.Tip="Full path or command of any shell — a third-party shell (fish, nushell, …) not in the list works too"/>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <TextBlock Text="Session behaviour" FontWeight="SemiBold"/>
+                            <CheckBox Content="Close a session when you type &quot;exit&quot;"
+                                      IsChecked="{Binding AutoCloseOnExit}"/>
+                            <TextBlock Text="The message is still sent; the session closes once that turn finishes."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                            <TextBlock Text="Layout" FontWeight="SemiBold"/>
+                            <!-- The cockpit-wide default. These bind to the Global… properties on purpose: a
+                                 sessions workspace can override them from its own ⚙, and binding the effective
+                                 value here would save that workspace's choice over the default the moment Options
+                                 was opened on it. -->
+                            <CheckBox Content="Show one session at a time (no grid)"
+                                      IsChecked="{Binding GlobalSingleSessionLayout}"/>
+                            <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <CheckBox Content="Stack sessions vertically (one column)"
+                                      IsChecked="{Binding GlobalStackSessionsVertically}"
+                                      IsEnabled="{Binding !GlobalSingleSessionLayout}"/>
+                            <TextBlock Text="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <TextBlock Text="This is the default for every sessions workspace. One can arrange itself differently from its own ⚙, above the grid."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <CheckBox Content="Minimize to tray when closing the window"
+                                      IsChecked="{Binding MinimizeToTrayOnClose}"/>
+                            <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                            <TextBlock Text="Transcript" FontWeight="SemiBold"/>
+                            <CheckBox Content="Show a timestamp on each message"
+                                      IsChecked="{Binding ShowTimestamps}"/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                            <TextBlock Text="Delegation" FontWeight="SemiBold"/>
+                            <CheckBox Content="Let sessions delegate work to other profiles (orchestrator MCP)"
+                                      IsChecked="{Binding OrchestratorMcpEnabled}"
+                                      ToolTip.Tip="Offers the cockpit-orchestrator tools (delegate_task, add_profile, …) to sessions. Turn it off to keep delegation out of every session; a session still won't get them unless it was started with delegation enabled."/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                            <!-- TTY-only (#40): the SDK transcript renders its own chat UI, not a terminal
+                                 grid, so a font setting has nothing to apply to there. One global setting for
+                                 every TTY session — not per-profile or per-session. -->
+                            <TextBlock Text="Terminal (TTY sessions)" FontWeight="SemiBold"/>
+                            <!-- Which shell a New terminal opens (#AC-25). "OS default" (blank) uses the machine's
+                                 preferred shell; the list is what was detected on this machine. Applies to terminal
+                                 panes only — an AI session runs its provider's CLI, not a shell. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Default shell"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding TerminalShellChoices}"
+                                          SelectedItem="{Binding SelectedTerminalShell}"
+                                          Width="260"
+                                          ToolTip.Tip="Which shell a new terminal opens; OS default uses your system's preferred shell">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:TerminalShellChoice">
+                                            <TextBlock Text="{Binding Label}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsTerminalShellCustom}">
+                                <TextBlock Text="Custom shell"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center"/>
+                                <TextBox Text="{Binding TerminalCustomShell}" Width="260"
+                                         PlaceholderText="e.g. /usr/bin/fish or nu"
+                                         ToolTip.Tip="Full path or command of any shell — a third-party shell (fish, nushell, …) not in the list works too"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Font family"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding TerminalFontChoices}"
+                                          SelectedItem="{Binding TerminalFontSelection}"
+                                          Width="260"
+                                          ToolTip.Tip="Pick a common monospace font, or choose Custom… to enter your own"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsTerminalFontCustom}">
+                                <TextBlock Text="Custom font"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center"/>
+                                <TextBox Text="{Binding TerminalCustomFontFamily}" Width="260"
+                                         PlaceholderText="e.g. JetBrains Mono, monospace"
+                                         ToolTip.Tip="Type a font family name; a comma-separated fallback list also works"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Font size"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                           VerticalAlignment="Center"/>
+                                <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="32"
+                                               Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Font family"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding TerminalFontChoices}"
-                                      SelectedItem="{Binding TerminalFontSelection}"
-                                      Width="260"
-                                      ToolTip.Tip="Pick a common monospace font, or choose Custom… to enter your own"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                                    IsVisible="{Binding IsTerminalFontCustom}">
-                            <TextBlock Text="Custom font"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <TextBox Text="{Binding TerminalCustomFontFamily}" Width="260"
-                                     PlaceholderText="e.g. JetBrains Mono, monospace"
-                                     ToolTip.Tip="Type a font family name; a comma-separated fallback list also works"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Text="Font size"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="32"
-                                           Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-                        <TextBlock Text="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
 
+            <!-- Voice: the fully-worked sub-navigation. Read-aloud · Transcribe · Cleanup are three pages
+                 switched by a Carousel bound to the rail's selection, instead of one long scroll. Dictation
+                 input (mic, push-to-talk, language, auto-submit) sits under Transcribe — it is the capture
+                 side of speech-to-text; AC-68 fills the model/backend advisor into that same page later. -->
             <TabItem Header="Voice">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Voice input" FontWeight="SemiBold"/>
-                        <CheckBox Content="Enable push-to-talk dictation"
-                                  IsChecked="{Binding VoiceEnabled}"/>
-                        <TextBlock Text="Off by default: the Whisper model only downloads once you turn this on."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Microphone"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding InputDevices}"
-                                      SelectedItem="{Binding SelectedInputDevice}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="VOICE"/>
+                            <ListBox x:Name="VoiceNav" Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>Read-aloud</ListBoxItem>
+                                <ListBoxItem>Transcribe</ListBoxItem>
+                                <ListBoxItem>Cleanup</ListBoxItem>
+                            </ListBox>
                         </StackPanel>
-                        <TextBlock Text="Which microphone the dictation captures from. 'System default' follows your OS setting."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Push-to-talk key"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <controls:ShortcutCaptureControl Gesture="{Binding VoicePushToTalkKeyName, Mode=TwoWay}"
-                                                             Mode="SingleKey" MinWidth="110"/>
-                        </StackPanel>
-                        <TextBlock Text="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <!-- What the hotkey is really triggered by, which the cockpit does not always decide: a
-                             Wayland compositor owns the binding and takes the key above only as a hint, and macOS
-                             has no global hotkey at all. Reported rather than assumed — the field above looked
-                             like it settled all three and on Linux was not even read. Only shown once global
-                             push-to-talk is on, since off means there is nothing to report. -->
-                        <TextBlock Text="{Binding VoiceGlobalHotkeyTrigger, StringFormat='Global hotkey: {0}'}"
-                                   IsVisible="{Binding VoiceGlobalHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Dictation language"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding SttLanguages}"
-                                      SelectedItem="{Binding SelectedSttLanguage}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
-                        </StackPanel>
-                        <TextBlock Text="Set a fixed language for more reliable transcription than auto-detect."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Global push-to-talk (works without focus)"
-                                  IsChecked="{Binding VoiceGlobalPushToTalk}"/>
-                        <!-- Linux only: the global hotkey is a desktop-portal binding the compositor takes at
-                             startup, so a change to it applies on the next launch, not live (Windows re-arms it
-                             live and has no such line). The Restart-now button appears once a change is saved. -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                    IsVisible="{Binding IsLinuxPlatform}">
-                            <TextBlock Text="Requires restarting AI-Cockpit to take effect."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
-                                       VerticalAlignment="Center" TextWrapping="Wrap"/>
-                            <Button Content="Restart now" Classes="Accent"
-                                    Command="{Binding RestartAppCommand}"
-                                    IsVisible="{Binding VoiceGlobalPushToTalkNeedsRestart}"/>
-                        </StackPanel>
-                        <TextBlock Text="On Linux, the physical key is assigned via System Settings → Shortcuts — this field is only a hint."
-                                   IsVisible="{Binding IsLinuxPlatform}"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Send automatically after dictation (press Enter)"
-                                  IsChecked="{Binding VoiceAutoSubmit}"/>
-                        <TextBlock Text="On: the transcript is submitted straight away. Off: it is placed in the input for you to review first."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <!-- Open mic is turned on/off at runtime from the sidebar mic button, not here; this
-                             is only its tuning. -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
-                            <TextBlock Text="Open-mic: end utterance after (silence ms)"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
-                                           Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-                        <!-- AC-9's microphone half. Off by default and it says why on the row: a threshold filters
-                             the room, not the cockpit's own voice, so on speakers this stops read-aloud the moment
-                             it starts. Under open-mic's tuning because it needs the same open microphone. -->
-                        <CheckBox Content="Stop read-aloud when I start talking"
-                                  IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"
-                                  IsVisible="{Binding VoiceEnabled}"/>
-                        <TextBlock Text="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops read-aloud and needs neither. Use headphones: on speakers the microphone hears the read-aloud itself and stops it straight away."
-                                   IsVisible="{Binding VoiceEnabled}"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                    IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
-                            <TextBlock Text="…when the microphone is louder than"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
-                                           Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-                        <TextBlock Text="Transcription" FontWeight="SemiBold"/>
-                        <TextBlock Text="Turns your speech into text with Whisper, on-device. This is the speech-to-text model — separate from the local LLM that tidies the text below."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Transcription model"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <TextBox Text="{Binding VoiceModelName}" Width="150"
-                                     ToolTip.Tip="Whisper ggml model, e.g. large-v3-turbo, small, base, tiny — larger is more accurate but slower"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Transcription backend"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding VoiceBackendPreferences}"
-                                      SelectedItem="{Binding SelectedVoiceBackendPreference}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                        </StackPanel>
+                    </Border>
+                    <Carousel Grid.Column="1" SelectedIndex="{Binding #VoiceNav.SelectedIndex}" PageTransition="{x:Null}">
 
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
-                        <TextBlock Text="Cleanup" FontWeight="SemiBold"/>
-                        <CheckBox Content="Clean up transcript with local LLM"
-                                  IsChecked="{Binding VoiceCleanupEnabled}"/>
-                        <TextBlock Text="Sends the transcript to a local OpenAI-compatible server (Ollama or LM Studio). Falls back to the raw transcript automatically when it is unavailable or its output looks unreliable."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Auto-detect the local server (Ollama / LM Studio)"
-                                  IsChecked="{Binding VoiceAutoDetectLocalLlm}"
-                                  IsVisible="{Binding VoiceCleanupEnabled}"/>
-                        <TextBlock Text="Detects whichever server is running and picks a model from it, so the same setting works on a laptop with Ollama and a desktop with LM Studio. Turn it off to set the server and model by hand."
-                                   IsVisible="{Binding VoiceCleanupEnabled}"
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowLocalLlmServerPicker}">
-                            <TextBlock Text="Prefer server"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding LocalLlmPreferences}"
-                                      SelectedItem="{Binding SelectedLocalLlmPreference}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
-                            <TextBlock Text="Cleanup model"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <TextBox Text="{Binding VoiceCleanupModel}" Width="150"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
-                            <TextBlock Text="Local LLM URL"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <TextBox Text="{Binding VoiceCleanupBaseUrl}" Width="150"
-                                     PlaceholderText="http://localhost:11434 (Ollama) / :1234 (LM Studio)"/>
-                        </StackPanel>
+                        <!-- Read-aloud -->
+                        <ScrollViewer>
+                            <StackPanel Spacing="8" Margin="16">
+                                <TextBlock Text="Read aloud" FontWeight="SemiBold"/>
+                                <TextBlock Text="Per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <CheckBox Content="Rewrite replies into natural speech with the local LLM"
+                                          IsChecked="{Binding VoiceNaturalizeReadAloud}"/>
+                                <TextBlock Text="Uses the same local LLM as transcript cleanup to phrase paths, code and lists naturally before speaking. Adds a short local LLM call per turn."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="English voice"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding TtsVoices}"
+                                              SelectedItem="{Binding SelectedTtsVoice}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Dutch voice"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding TtsVoices}"
+                                              SelectedItem="{Binding SelectedDutchTtsVoice}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                </StackPanel>
+                                <TextBlock Text="With natural-speech rewriting on, mixed Dutch/English replies are split by language and each part is spoken by its own voice (no single voice covers both)."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Output device"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding OutputDevices}"
+                                              SelectedItem="{Binding SelectedOutputDevice}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                                </StackPanel>
+                                <TextBlock Text="Which speaker/headset read-aloud plays to. 'System default' follows your OS setting."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
+                                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
 
-                        <TextBlock Text="Voice output — read aloud" FontWeight="SemiBold"/>
-                        <TextBlock Text="Per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Rewrite replies into natural speech with the local LLM"
-                                  IsChecked="{Binding VoiceNaturalizeReadAloud}"/>
-                        <TextBlock Text="Uses the same local LLM as transcript cleanup to phrase paths, code and lists naturally before speaking. Adds a short local LLM call per turn."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="English voice"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding TtsVoices}"
-                                      SelectedItem="{Binding SelectedTtsVoice}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Dutch voice"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding TtsVoices}"
-                                      SelectedItem="{Binding SelectedDutchTtsVoice}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
-                        </StackPanel>
-                        <TextBlock Text="With natural-speech rewriting on, mixed Dutch/English replies are split by language and each part is spoken by its own voice (no single voice covers both)."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="Output device"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                       VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding OutputDevices}"
-                                      SelectedItem="{Binding SelectedOutputDevice}"
-                                      DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
-                        </StackPanel>
-                        <TextBlock Text="Which speaker/headset read-aloud plays to. 'System default' follows your OS setting."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </ScrollViewer>
+                                <TextBlock Text="While you're talking" FontWeight="SemiBold"/>
+                                <!-- AC-9's microphone half. Off by default and it says why on the row: a threshold filters
+                                     the room, not the cockpit's own voice, so on speakers this stops read-aloud the moment
+                                     it starts. Needs the open microphone, so its silence tuning sits with it. -->
+                                <CheckBox Content="Stop read-aloud when I start talking"
+                                          IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"
+                                          IsVisible="{Binding VoiceEnabled}"/>
+                                <TextBlock Text="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops read-aloud and needs neither. Use headphones: on speakers the microphone hears the read-aloud itself and stops it straight away."
+                                           IsVisible="{Binding VoiceEnabled}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                            IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                                    <TextBlock Text="…when the microphone is louder than"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
+                                                   Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
+                                </StackPanel>
+                                <!-- Open mic is turned on/off at runtime from the sidebar mic button, not here; this
+                                     is only its tuning. -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
+                                    <TextBlock Text="Open-mic: end utterance after (silence ms)"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
+                                                   Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Transcribe -->
+                        <ScrollViewer>
+                            <StackPanel Spacing="8" Margin="16">
+                                <TextBlock Text="Dictation" FontWeight="SemiBold"/>
+                                <CheckBox Content="Enable push-to-talk dictation"
+                                          IsChecked="{Binding VoiceEnabled}"/>
+                                <TextBlock Text="Off by default: the Whisper model only downloads once you turn this on."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Microphone"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding InputDevices}"
+                                              SelectedItem="{Binding SelectedInputDevice}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                                </StackPanel>
+                                <TextBlock Text="Which microphone the dictation captures from. 'System default' follows your OS setting."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Push-to-talk key"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <controls:ShortcutCaptureControl Gesture="{Binding VoicePushToTalkKeyName, Mode=TwoWay}"
+                                                                     Mode="SingleKey" MinWidth="110"/>
+                                </StackPanel>
+                                <TextBlock Text="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <!-- What the hotkey is really triggered by, which the cockpit does not always decide: a
+                                     Wayland compositor owns the binding and takes the key above only as a hint, and macOS
+                                     has no global hotkey at all. Reported rather than assumed — the field above looked
+                                     like it settled all three and on Linux was not even read. Only shown once global
+                                     push-to-talk is on, since off means there is nothing to report. -->
+                                <TextBlock Text="{Binding VoiceGlobalHotkeyTrigger, StringFormat='Global hotkey: {0}'}"
+                                           IsVisible="{Binding VoiceGlobalHotkeyTrigger, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Dictation language"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding SttLanguages}"
+                                              SelectedItem="{Binding SelectedSttLanguage}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
+                                </StackPanel>
+                                <TextBlock Text="Set a fixed language for more reliable transcription than auto-detect."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <CheckBox Content="Global push-to-talk (works without focus)"
+                                          IsChecked="{Binding VoiceGlobalPushToTalk}"/>
+                                <!-- Linux only: the global hotkey is a desktop-portal binding the compositor takes at
+                                     startup, so a change to it applies on the next launch, not live (Windows re-arms it
+                                     live and has no such line). The Restart-now button appears once a change is saved. -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                            IsVisible="{Binding IsLinuxPlatform}">
+                                    <TextBlock Text="Requires restarting AI-Cockpit to take effect."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                               VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                    <Button Content="Restart now" Classes="Accent"
+                                            Command="{Binding RestartAppCommand}"
+                                            IsVisible="{Binding VoiceGlobalPushToTalkNeedsRestart}"/>
+                                </StackPanel>
+                                <TextBlock Text="On Linux, the physical key is assigned via System Settings → Shortcuts — this field is only a hint."
+                                           IsVisible="{Binding IsLinuxPlatform}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <CheckBox Content="Send automatically after dictation (press Enter)"
+                                          IsChecked="{Binding VoiceAutoSubmit}"/>
+                                <TextBlock Text="On: the transcript is submitted straight away. Off: it is placed in the input for you to review first."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                                <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
+                                <TextBlock Text="Transcription" FontWeight="SemiBold"/>
+                                <TextBlock Text="Turns your speech into text with Whisper, on-device. This is the speech-to-text model — separate from the local LLM that tidies the text on the Cleanup page."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Transcription model"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding VoiceModelName}" Width="150"
+                                             ToolTip.Tip="Whisper ggml model, e.g. large-v3-turbo, small, base, tiny — larger is more accurate but slower"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Transcription backend"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding VoiceBackendPreferences}"
+                                              SelectedItem="{Binding SelectedVoiceBackendPreference}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Cleanup -->
+                        <ScrollViewer>
+                            <StackPanel Spacing="8" Margin="16">
+                                <TextBlock Text="Cleanup" FontWeight="SemiBold"/>
+                                <TextBlock Text="Tidies the raw transcript with a local LLM. Sends it to a local OpenAI-compatible server (Ollama or LM Studio) and falls back to the raw transcript automatically when it is unavailable or its output looks unreliable."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <CheckBox Content="Clean up transcript with local LLM"
+                                          IsChecked="{Binding VoiceCleanupEnabled}"/>
+                                <CheckBox Content="Auto-detect the local server (Ollama / LM Studio)"
+                                          IsChecked="{Binding VoiceAutoDetectLocalLlm}"
+                                          IsVisible="{Binding VoiceCleanupEnabled}"/>
+                                <TextBlock Text="Detects whichever server is running and picks a model from it, so the same setting works on a laptop with Ollama and a desktop with LM Studio. Turn it off to set the server and model by hand."
+                                           IsVisible="{Binding VoiceCleanupEnabled}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowLocalLlmServerPicker}">
+                                    <TextBlock Text="Prefer server"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding LocalLlmPreferences}"
+                                              SelectedItem="{Binding SelectedLocalLlmPreference}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
+                                    <TextBlock Text="Cleanup model"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding VoiceCleanupModel}" Width="150"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
+                                    <TextBlock Text="Local LLM URL"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding VoiceCleanupBaseUrl}" Width="150"
+                                             PlaceholderText="http://localhost:11434 (Ollama) / :1234 (LM Studio)"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                    </Carousel>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Shortcuts">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold"/>
-                        <TextBlock Text="Click a shortcut and press the keys you want (Esc cancels, ✕ clears; clearing it unbinds the shortcut). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke — except the session switch, which stays live over the terminal so you can always switch away."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="SHORTCUTS"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>Keys</ListBoxItem>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold"/>
+                            <TextBlock Text="Click a shortcut and press the keys you want (Esc cancels, ✕ clears; clearing it unbinds the shortcut). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke — except the session switch, which stays live over the terminal so you can always switch away."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
-                        <ItemsControl ItemsSource="{Binding ShortcutRows}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ShortcutRowViewModel">
-                                    <Grid ColumnDefinitions="*,200" Margin="0,3">
-                                        <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                        <controls:ShortcutCaptureControl Grid.Column="1" Gesture="{Binding Gesture, Mode=TwoWay}"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding ShortcutRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ShortcutRowViewModel">
+                                        <Grid ColumnDefinitions="*,200" Margin="0,3">
+                                            <TextBlock Grid.Column="0" Text="{Binding Label}" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <controls:ShortcutCaptureControl Grid.Column="1" Gesture="{Binding Gesture, Mode=TwoWay}"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
 
-                        <TextBlock Text="Plugin-contributed shortcuts (marked &quot;plugin&quot;) can be changed here too."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </ScrollViewer>
+                            <TextBlock Text="Plugin-contributed shortcuts (marked &quot;plugin&quot;) can be changed here too."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Updates">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Updates" FontWeight="SemiBold"/>
-                        <TextBlock Text="AI-Cockpit asks GitHub whether a newer build exists. It does not install itself: replacing a running, unsigned application on three platforms is a promise this project cannot keep, and an updater that half-keeps it is worse than a link you click yourself."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
-                            <TextBlock Text="This build:" Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding CurrentBuild}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" VerticalAlignment="Center"/>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="UPDATES"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>General</ListBoxItem>
+                            </ListBox>
                         </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <TextBlock Text="Updates" FontWeight="SemiBold"/>
+                            <TextBlock Text="AI-Cockpit asks GitHub whether a newer build exists. It does not install itself: replacing a running, unsigned application on three platforms is a promise this project cannot keep, and an updater that half-keeps it is worse than a link you click yourself."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
-                        <CheckBox Content="Look for a newer build when AI-Cockpit starts" IsChecked="{Binding CheckForUpdatesOnStartup}"/>
-                        <CheckBox Content="Also tell me about nightly builds" IsChecked="{Binding IncludeNightlyBuilds}"
-                                  ToolTip.Tip="The rolling build of main, as it was last night. Things there are expected to break."/>
-                        <TextBlock Text="Nightlies are main, built last night. Useful for trying something that landed today; not what you run a working day on."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                                <TextBlock Text="This build:" Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding CurrentBuild}" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11" VerticalAlignment="Center"/>
+                            </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                            <Button Content="Check now" Click="OnCheckForUpdates" IsEnabled="{Binding CanCheckForUpdates}"/>
-                            <Button Content="Open the release" Classes="Accent" Click="OnOpenUpdate" IsVisible="{Binding HasUpdate}"/>
+                            <CheckBox Content="Look for a newer build when AI-Cockpit starts" IsChecked="{Binding CheckForUpdatesOnStartup}"/>
+                            <CheckBox Content="Also tell me about nightly builds" IsChecked="{Binding IncludeNightlyBuilds}"
+                                      ToolTip.Tip="The rolling build of main, as it was last night. Things there are expected to break."/>
+                            <TextBlock Text="Nightlies are main, built last night. Useful for trying something that landed today; not what you run a working day on."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                                <Button Content="Check now" Click="OnCheckForUpdates" IsEnabled="{Binding CanCheckForUpdates}"/>
+                                <Button Content="Open the release" Classes="Accent" Click="OnOpenUpdate" IsVisible="{Binding HasUpdate}"/>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding UpdateStatus}" IsVisible="{Binding UpdateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
                         </StackPanel>
-
-                        <TextBlock Text="{Binding UpdateStatus}" IsVisible="{Binding UpdateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Backup">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Back up AI-Cockpit" FontWeight="SemiBold"/>
-                        <TextBlock Text="One archive with your settings, profiles, plugins and everything they saved. The speech models are left out on purpose — they are gigabytes, and they download again in minutes. The same archive is what you carry to another machine."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <CheckBox Content="Include my keys and tokens" IsChecked="{Binding BackupIncludesCredentials}"
-                                  ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring."/>
-                        <TextBlock Text="Off by default. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
-
-                        <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
-                                  ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside AI-Cockpit's directory"/>
-                        <TextBlock Text="These hold the agents' logins. Needed to move a machine; not needed to undo a mistake."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
-
-                        <TextBlock Text="Plugins to include" FontWeight="SemiBold" Margin="0,10,0,0"/>
-                        <TextBlock Text="A plugin's binaries and everything it stored travel together, or not at all. All of them unless you say otherwise."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <ItemsControl ItemsSource="{Binding BackupPlugins}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:BackupPluginViewModel">
-                                    <CheckBox Content="{Binding Name}" IsChecked="{Binding Selected}" Margin="0,1"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                            <Button Content="Create backup…" Classes="Accent" Click="OnCreateBackup" IsEnabled="{Binding CanBackUp}"/>
-                            <Button Content="Restore from a backup…" Click="OnRestoreBackup" IsEnabled="{Binding CanBackUp}"/>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="BACKUP"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>Backup &amp; restore</ListBoxItem>
+                            </ListBox>
                         </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <TextBlock Text="Back up AI-Cockpit" FontWeight="SemiBold"/>
+                            <TextBlock Text="One archive with your settings, profiles, plugins and everything they saved. The speech models are left out on purpose — they are gigabytes, and they download again in minutes. The same archive is what you carry to another machine."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
-                        <TextBlock Text="Restoring replaces every setting, profile and plugin here. What is in place now is moved aside rather than deleted, and AI-Cockpit restarts afterwards."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <CheckBox Content="Include my keys and tokens" IsChecked="{Binding BackupIncludesCredentials}"
+                                      ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring."/>
+                            <TextBlock Text="Off by default. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
 
-                        <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                    </StackPanel>
-                </ScrollViewer>
+                            <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
+                                      ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside AI-Cockpit's directory"/>
+                            <TextBlock Text="These hold the agents' logins. Needed to move a machine; not needed to undo a mistake."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+
+                            <TextBlock Text="Plugins to include" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                            <TextBlock Text="A plugin's binaries and everything it stored travel together, or not at all. All of them unless you say otherwise."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <ItemsControl ItemsSource="{Binding BackupPlugins}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:BackupPluginViewModel">
+                                        <CheckBox Content="{Binding Name}" IsChecked="{Binding Selected}" Margin="0,1"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                                <Button Content="Create backup…" Classes="Accent" Click="OnCreateBackup" IsEnabled="{Binding CanBackUp}"/>
+                                <Button Content="Restore from a backup…" Click="OnRestoreBackup" IsEnabled="{Binding CanBackUp}"/>
+                            </StackPanel>
+
+                            <TextBlock Text="Restoring replaces every setting, profile and plugin here. What is in place now is moved aside rather than deleted, and AI-Cockpit restarts afterwards."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <TextBlock Text="{Binding BackupStatus}" IsVisible="{Binding BackupStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Security">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Encrypt your credentials" FontWeight="SemiBold"/>
-                        <TextBlock Text="Your provider API keys, MCP bearer tokens and the plugins' tokens are stored in cockpit.json. Encrypting them means the file gives up nothing without your password — if it is copied, synced, backed up, or the laptop walks off."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                CornerRadius="6" Padding="12" Margin="0,4">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="Encrypted — AI-Cockpit asks for your password when it starts"
-                                           IsVisible="{Binding Security.IsEncrypted}"
-                                           FontSize="12.5" Foreground="{StaticResource CockpitStatusDoneBrush}"/>
-                                <TextBlock Text="Not encrypted — your keys and tokens are readable in cockpit.json"
-                                           IsVisible="{Binding !Security.IsEncrypted}"
-                                           FontSize="12.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            </StackPanel>
-                        </Border>
-
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="Encrypt with a password…" Classes="Accent"
-                                    IsVisible="{Binding !Security.IsEncrypted}" Click="OnEnableEncryption"/>
-                            <Button Content="Change password…"
-                                    IsVisible="{Binding Security.IsEncrypted}" Click="OnChangePassword"/>
-                            <Button Content="Turn off encryption…"
-                                    IsVisible="{Binding Security.IsEncrypted}" Click="OnDisableEncryption"/>
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="SECURITY"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>Encryption</ListBoxItem>
+                            </ListBox>
                         </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <TextBlock Text="Encrypt your credentials" FontWeight="SemiBold"/>
+                            <TextBlock Text="Your provider API keys, MCP bearer tokens and the plugins' tokens are stored in cockpit.json. Encrypting them means the file gives up nothing without your password — if it is copied, synced, backed up, or the laptop walks off."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
-                        <TextBlock Text="{Binding Security.Status}"
-                                   IsVisible="{Binding Security.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
-                                   TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="6" Padding="12" Margin="0,4">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Encrypted — AI-Cockpit asks for your password when it starts"
+                                               IsVisible="{Binding Security.IsEncrypted}"
+                                               FontSize="12.5" Foreground="{StaticResource CockpitStatusDoneBrush}"/>
+                                    <TextBlock Text="Not encrypted — your keys and tokens are readable in cockpit.json"
+                                               IsVisible="{Binding !Security.IsEncrypted}"
+                                               FontSize="12.5" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                </StackPanel>
+                            </Border>
 
-                        <TextBlock Text="If you forget the password" FontWeight="SemiBold" Margin="0,12,0,0"/>
-                        <TextBlock Text="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Encrypt with a password…" Classes="Accent"
+                                        IsVisible="{Binding !Security.IsEncrypted}" Click="OnEnableEncryption"/>
+                                <Button Content="Change password…"
+                                        IsVisible="{Binding Security.IsEncrypted}" Click="OnChangePassword"/>
+                                <Button Content="Turn off encryption…"
+                                        IsVisible="{Binding Security.IsEncrypted}" Click="OnDisableEncryption"/>
+                            </StackPanel>
 
-                        <TextBlock Text="If something goes wrong halfway" FontWeight="SemiBold" Margin="0,10,0,0"/>
-                        <TextBlock Text="It cannot leave you with half a file. The new config is written beside the old one and renamed over it in one step, so you have either the old one or the new one — never a mix — and the previous version is kept as cockpit.json.bak. A value that will not convert aborts the whole thing and touches nothing. And an already-encrypted value is never encrypted a second time, so a config that ended up mixed anyway (a restored backup, a hand edit) still opens, and the rest is encrypted on the next save."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding Security.Status}"
+                                       IsVisible="{Binding Security.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       TextWrapping="Wrap" Margin="0,4,0,0"/>
 
-                        <TextBlock Text="What this does not do" FontWeight="SemiBold" Margin="0,10,0,0"/>
-                        <TextBlock Text="It protects the file, not a running AI-Cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </ScrollViewer>
+                            <TextBlock Text="If you forget the password" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                            <TextBlock Text="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <TextBlock Text="If something goes wrong halfway" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                            <TextBlock Text="It cannot leave you with half a file. The new config is written beside the old one and renamed over it in one step, so you have either the old one or the new one — never a mix — and the previous version is kept as cockpit.json.bak. A value that will not convert aborts the whole thing and touches nothing. And an already-encrypted value is never encrypted a second time, so a config that ended up mixed anyway (a restored backup, a hand edit) still opens, and the rest is encrypted on the next save."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <TextBlock Text="What this does not do" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                            <TextBlock Text="It protects the file, not a running AI-Cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
 
             <TabItem Header="Debug">
-                <ScrollViewer>
-                    <StackPanel Spacing="8" Margin="16">
-                        <TextBlock Text="Diagnostics" FontWeight="SemiBold"/>
-                        <TextBlock Text="Controls that exist to investigate AI-Cockpit itself, rather than to do the work. They are hidden by default: a session header is a strip, and a button you never need does not belong in it."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <CheckBox Content="Show debug controls" IsChecked="{Binding ShowDebugControls}"
-                                  ToolTip.Tip="Adds the Redraw button to every TTY session's header — it forces the terminal to repaint when a resize or focus change left the TUI misaligned"/>
-
-                        <!-- Render backend (AC-67). Only meaningful on macOS, so shown there — plus in any dev build,
-                             so it can be verified off-Mac. The backend is fixed at startup, so a saved change offers
-                             a restart, the same affordance the Voice tab uses for the Linux global hotkey. -->
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"
-                                IsVisible="{Binding ShowRenderBackendSetting}"/>
-                        <StackPanel Spacing="6" IsVisible="{Binding ShowRenderBackendSetting}">
-                            <TextBlock Text="Render backend (macOS)" FontWeight="SemiBold"/>
-                            <TextBlock Text="Which graphics backend AI-Cockpit draws with. Auto lets macOS pick (Metal); switch to OpenGL or Software to test whether the Metal path is behind runaway memory growth (AC-57). No effect on Windows/Linux."
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="DEBUG"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>Diagnostics</ListBoxItem>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <TextBlock Text="Diagnostics" FontWeight="SemiBold"/>
+                            <TextBlock Text="Controls that exist to investigate AI-Cockpit itself, rather than to do the work. They are hidden by default: a session header is a strip, and a button you never need does not belong in it."
                                        Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Text="Backend" VerticalAlignment="Center"/>
-                                <ComboBox ItemsSource="{Binding RenderBackendChoices}"
-                                          SelectedItem="{Binding RenderBackendSelection}"
-                                          Width="180"/>
-                                <TextBlock Text="{Binding RenderingSettingsStatus}"
-                                           IsVisible="{Binding RenderingSettingsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            <CheckBox Content="Show debug controls" IsChecked="{Binding ShowDebugControls}"
+                                      ToolTip.Tip="Adds the Redraw button to every TTY session's header — it forces the terminal to repaint when a resize or focus change left the TUI misaligned"/>
+
+                            <!-- Render backend (AC-67). Only meaningful on macOS, so shown there — plus in any dev build,
+                                 so it can be verified off-Mac. The backend is fixed at startup, so a saved change offers
+                                 a restart, the same affordance the Voice tab uses for the Linux global hotkey. -->
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"
+                                    IsVisible="{Binding ShowRenderBackendSetting}"/>
+                            <StackPanel Spacing="6" IsVisible="{Binding ShowRenderBackendSetting}">
+                                <TextBlock Text="Render backend (macOS)" FontWeight="SemiBold"/>
+                                <TextBlock Text="Which graphics backend AI-Cockpit draws with. Auto lets macOS pick (Metal); switch to OpenGL or Software to test whether the Metal path is behind runaway memory growth (AC-57). No effect on Windows/Linux."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Backend" VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding RenderBackendChoices}"
+                                              SelectedItem="{Binding RenderBackendSelection}"
+                                              Width="180"/>
+                                    <TextBlock Text="{Binding RenderingSettingsStatus}"
+                                               IsVisible="{Binding RenderingSettingsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                            IsVisible="{Binding RenderBackendNeedsRestart}">
+                                    <TextBlock Text="Saved — restart to apply the new render backend."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                               VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                    <Button Content="Restart Cockpit" Classes="Accent"
+                                            Command="{Binding RestartAppCommand}"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"/>
+
+                            <TextBlock Text="System diagnostics" FontWeight="SemiBold"/>
+                            <TextBlock Text="What this install runs on, how it draws, and what it is holding in memory — plus any crash or out-of-memory logs the OS wrote. Copy it into a report instead of hunting through Activity Monitor and crash-report folders."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Refresh" Click="OnRefreshDiagnostics"/>
+                                <Button Content="Copy diagnostics" Click="OnCopyDiagnostics"/>
+                                <TextBlock Text="{Binding Diagnostics.Status}"
+                                           IsVisible="{Binding Diagnostics.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            VerticalAlignment="Center"
                                            Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                        IsVisible="{Binding RenderBackendNeedsRestart}">
-                                <TextBlock Text="Saved — restart to apply the new render backend."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
-                                           VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <Button Content="Restart Cockpit" Classes="Accent"
-                                        Command="{Binding RestartAppCommand}"/>
-                            </StackPanel>
+
+                            <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                    CornerRadius="6" Padding="12" Margin="0,4">
+                                <SelectableTextBlock Text="{Binding Diagnostics.Report}"
+                                                     FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
+                                                     Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                     TextWrapping="NoWrap"/>
+                            </Border>
                         </StackPanel>
-
-                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"/>
-
-                        <TextBlock Text="System diagnostics" FontWeight="SemiBold"/>
-                        <TextBlock Text="What this install runs on, how it draws, and what it is holding in memory — plus any crash or out-of-memory logs the OS wrote. Copy it into a report instead of hunting through Activity Monitor and crash-report folders."
-                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Content="Refresh" Click="OnRefreshDiagnostics"/>
-                            <Button Content="Copy diagnostics" Click="OnCopyDiagnostics"/>
-                            <TextBlock Text="{Binding Diagnostics.Status}"
-                                       IsVisible="{Binding Diagnostics.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
-                        </StackPanel>
-
-                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
-                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                CornerRadius="6" Padding="12" Margin="0,4">
-                            <SelectableTextBlock Text="{Binding Diagnostics.Report}"
-                                                 FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
-                                                 Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                                 TextWrapping="NoWrap"/>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+                </Grid>
             </TabItem>
 
         </TabControl>
