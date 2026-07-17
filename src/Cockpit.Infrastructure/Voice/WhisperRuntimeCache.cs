@@ -57,8 +57,15 @@ internal static class WhisperRuntimeCache
     /// <summary>
     /// Makes sure the best runtime this machine can use is on disk before the factory is built. Walks the
     /// planner's order and stops at the first backend that is both usable here and cached (or fetchable).
+    /// <para>
+    /// Returns whether a fetched GPU runtime now lives in the cache for this order. The caller needs that answer
+    /// because <c>RuntimeOptions.LibraryPath</c> may only point at the cache when there is genuinely something
+    /// there: Whisper.net searches <em>only</em> that path once it is set, so pointing it at a cache that holds no
+    /// runtime for the chosen order would hide the bundled CPU natives next to the exe and hard-fail dictation.
+    /// A CPU-only resolution (or a GPU whose fetch failed) returns <c>false</c> — the bundled CPU is the floor.
+    /// </para>
     /// </summary>
-    public static async Task EnsureAvailableAsync(
+    public static async Task<bool> EnsureAvailableAsync(
         IReadOnlyList<WhisperRuntimeBackend> order,
         WhisperHostPlatform platform,
         CancellationToken cancellationToken,
@@ -68,7 +75,7 @@ internal static class WhisperRuntimeCache
         var architecture = _CurrentArchitecture();
         if (architecture is null)
         {
-            return;
+            return false;
         }
 
         // Before the walk, not after a successful one: a machine that has stopped being able to use any GPU at
@@ -91,7 +98,7 @@ internal static class WhisperRuntimeCache
 
                 if (_IsCached(package) || await _TryFetchAsync(package, backend, cancellationToken, logger, progress).ConfigureAwait(false))
                 {
-                    return;
+                    return true;
                 }
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
@@ -102,6 +109,11 @@ internal static class WhisperRuntimeCache
                     exception, "Whisper {Backend} runtime could not be provisioned; trying the next backend", backend);
             }
         }
+
+        // Nothing in the order was a fetchable GPU runtime (a CPU-only resolution, or every GPU fetch fell through):
+        // the bundled CPU runtime beside the exe carries transcription, and the caller must leave LibraryPath unset
+        // so Whisper.net's default-path search can find it.
+        return false;
     }
 
     private static bool _IsCached(WhisperRuntimePackage package) =>
