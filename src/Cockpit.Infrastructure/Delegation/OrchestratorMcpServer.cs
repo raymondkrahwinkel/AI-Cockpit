@@ -25,32 +25,47 @@ namespace Cockpit.Infrastructure.Delegation;
 /// to delegate on.
 /// </remarks>
 internal sealed class OrchestratorMcpServer
-    : IHostedService, IOrchestratorServerState, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
+    : IHostedService, IOrchestratorServerState, ICockpitInternalMcpProvider, IDelegationMcpToggle, ISingletonService, IAsyncDisposable
 {
     /// <summary>The MCP server name, shared with the spawn paths that decide whether a session gets these tools.</summary>
     public const string ServerName = DelegationMcp.ServerName;
 
     private readonly IDelegationService _delegation;
     private readonly McpAuthKey _authKey;
+    private readonly IDelegationSettingsStore _settingsStore;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OrchestratorMcpServer> _logger;
     private WebApplication? _app;
+    private volatile bool _mcpEnabled = true;
 
     public OrchestratorMcpServer(
         IDelegationService delegation,
         McpAuthKey authKey,
+        IDelegationSettingsStore settingsStore,
         ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
         _authKey = authKey;
+        _settingsStore = settingsStore;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<OrchestratorMcpServer>();
     }
 
     public string? OrchestratorMcpUrl { get; private set; }
 
+    /// <summary>Whether the orchestrator MCP is offered to sessions (AC-40) — the Options toggle, loaded on start.</summary>
+    public bool McpEnabled => _mcpEnabled;
+
+    public async Task SetMcpEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        _mcpEnabled = enabled;
+        await _settingsStore.SaveAsync(new DelegationSettings { McpEnabled = enabled }, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        _mcpEnabled = (await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false)).McpEnabled;
+
         var builder = WebApplication.CreateSlimBuilder();
         builder.Services.AddSingleton(_loggerFactory);
         builder.Services.AddSingleton(_delegation);
@@ -83,9 +98,9 @@ internal sealed class OrchestratorMcpServer
     }
 
     /// <summary>
-    /// The orchestrator as the session fan-out sees it (AC-40): its live loopback URL and this run's auth flag,
-    /// answered live rather than published into the operator's registry, so the MCP-servers manager never lists it.
-    /// Always enabled for now; the Options toggle will gate it. Empty until the server has bound its port.
+    /// The orchestrator as the session fan-out sees it (AC-40): its live loopback URL, this run's auth flag, and the
+    /// operator's on/off from the Options toggle — answered live rather than published into the registry, so the
+    /// MCP-servers manager never lists it. Empty until the server has bound its port.
     /// </summary>
     public IReadOnlyList<McpServerConfig> GetServers() =>
         OrchestratorMcpUrl is { } url
@@ -99,7 +114,7 @@ internal sealed class OrchestratorMcpServer
                     // kind of thing this is for, and the tool loop speaks the same HTTP MCP.
                     Scope = McpServerScope.All,
                     Url = url,
-                    Enabled = true,
+                    Enabled = _mcpEnabled,
                     CockpitHosted = true,
                 },
             ]
