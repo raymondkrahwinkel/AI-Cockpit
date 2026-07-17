@@ -51,6 +51,32 @@ public class WorkflowMcpToolsTests
     }
 
     [Fact]
+    public async Task Run_IsRefusedWhileDisarmed_AndRunsOnceArmed()
+    {
+        var storage = new _InMemoryStorage();
+        var host = Substitute.For<ICockpitHost>();
+        host.WorkflowSteps.Returns([]);
+        var tools = new WorkflowMcpTools(new WorkflowStore(storage), new RunStore(storage), host);
+
+        // A safe manual-start → notify flow, created disarmed by default.
+        var id = _Json(tools.CreateWorkflow(
+            "Ping",
+            steps_json: """[{"typeId":"cockpit.manual","name":"Start"},{"typeId":"cockpit.notify","name":"Tell","parameters":{"Message":"hi"}}]""",
+            connections_json: """[{"from":0,"output":0,"to":1}]""")).GetProperty("id").GetString()!;
+
+        // The operator has not armed it, so the agent route is refused — the arm switch gates the agent too (#AC-62).
+        var refused = _Json(await tools.RunWorkflow(id));
+        refused.GetProperty("ok").GetBoolean().Should().BeFalse();
+        refused.GetProperty("error").GetString().Should().Contain("not armed");
+
+        // Once the operator arms it, the same call runs the flow to completion.
+        _Json(tools.SetWorkflowActive(id, true)).GetProperty("active").GetBoolean().Should().BeTrue();
+        var ran = _Json(await tools.RunWorkflow(id));
+        ran.GetProperty("ok").GetBoolean().Should().BeTrue();
+        ran.GetProperty("status").GetString().Should().Be("Succeeded");
+    }
+
+    [Fact]
     public void Create_WithAnUnknownStepType_IsRefused_NamingTheOffendingType()
     {
         var storage = new _InMemoryStorage();
