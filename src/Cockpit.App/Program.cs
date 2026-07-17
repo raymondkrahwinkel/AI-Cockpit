@@ -31,6 +31,16 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Headless calibration child (AC-68): a measurement of one Whisper backend, spawned by the running cockpit
+        // because Whisper.net loads its native runtime once per process. This must be the very first thing Main
+        // does — before the single-instance guard (which would refuse a second cockpit), before Avalonia, plugins
+        // and DI — so the child pays for none of that and only measures, prints its result, and exits.
+        if (Cockpit.Infrastructure.Voice.HeadlessCalibration.IsRequested(args))
+        {
+            Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessCalibration.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
+            return;
+        }
+
         // Strip everything the host owns from this process's own environment before Avalonia starts or anything
         // spawns a child: the agent-session markers of a Claude Code session the cockpit may have been launched
         // from (else a spawned session adopts the parent's id — AC-42), the host terminal's self-identification
