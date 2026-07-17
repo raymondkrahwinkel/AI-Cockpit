@@ -94,11 +94,13 @@ public sealed record VoiceSettings
     public string OutputDeviceName { get; init; } = "";
 
     /// <summary>
-    /// When true, read-aloud (#35) first rewrites the assistant text into natural spoken sentences via the
-    /// local LLM (reusing <see cref="CleanupModel"/>/<see cref="CleanupBaseUrl"/>) before synthesis,
-    /// so paths, code and markdown read as natural speech. Off by default (adds a local LLM call per turn).
+    /// How read-aloud (#35) renders a reply before speaking it: <see cref="Cockpit.Core.Voice.ReadAloudMode.Verbatim"/>
+    /// (no LLM pass), <see cref="Cockpit.Core.Voice.ReadAloudMode.Naturalized"/> (rewrite into natural speech) or
+    /// <see cref="Cockpit.Core.Voice.ReadAloudMode.Summarized"/> (summarize to the essence). The last two reuse
+    /// <see cref="CleanupModel"/>/<see cref="CleanupBaseUrl"/> and add a local LLM call per turn. A fresh install
+    /// starts on Verbatim; a config saved before this key existed migrates from the old on/off naturalize flag.
     /// </summary>
-    public bool NaturalizeReadAloud { get; init; }
+    public ReadAloudMode ReadAloudMode { get; init; } = ReadAloudMode.Verbatim;
 
     /// <summary>
     /// When true, open-mic dictation listens continuously and detects speech start/stop itself (VAD

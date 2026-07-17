@@ -216,9 +216,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private ITranscriptCleanupService? _cleanupService;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.NaturalizeReadAloud"/>: rewrite assistant text into natural spoken form via the local LLM before read-aloud synthesis (#35).</summary>
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudMode"/>: how a reply is rendered before read-aloud synthesis (verbatim / naturalized / summarized) (#35).</summary>
     [ObservableProperty]
-    private bool _naturalizeReadAloud;
+    private ReadAloudMode _readAloudMode = ReadAloudMode.Verbatim;
 
     /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
     [ObservableProperty]
@@ -320,7 +320,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         GlobalPushToTalkEnabled = settings.GlobalPushToTalk;
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
         TtsVoiceSid = settings.TtsVoiceSid;
-        NaturalizeReadAloud = settings.NaturalizeReadAloud;
+        ReadAloudMode = settings.ReadAloudMode;
     }
 
     /// <summary>
@@ -354,10 +354,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
-        if (NaturalizeReadAloud && _cleanupService is not null)
+        if (_cleanupService is not null && ReadAloudMode is ReadAloudMode.Naturalized or ReadAloudMode.Summarized)
         {
-            var natural = await _cleanupService.NaturalizeForSpeechAsync(string.Join(" ", sentences));
-            var segments = SpeechLanguageRouter.Route(natural);
+            var joined = string.Join(" ", sentences);
+            var rewritten = ReadAloudMode == ReadAloudMode.Summarized
+                ? await _cleanupService.SummarizeForSpeechAsync(joined)
+                : await _cleanupService.NaturalizeForSpeechAsync(joined);
+            var segments = SpeechLanguageRouter.Route(rewritten);
             if (segments.Count > 0)
             {
                 _voicePlaybackQueue?.Enqueue(segments, TtsVoiceSid);

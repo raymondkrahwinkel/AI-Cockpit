@@ -16,4 +16,12 @@ public interface ITranscriptCleanupService
     /// the original text whenever the model is unavailable or returns nothing; never throws to the caller.
     /// </summary>
     Task<string> NaturalizeForSpeechAsync(string text, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Summarizes assistant text to its essence for read-aloud (#35) — shorter than the reply, but preserving
+    /// every number, decision, warning and action item and inventing nothing — via the same local LLM, with
+    /// the same language tagging as <see cref="NaturalizeForSpeechAsync"/>. Falls back to the original text
+    /// whenever the model is unavailable or returns nothing; never throws to the caller.
+    /// </summary>
+    Task<string> SummarizeForSpeechAsync(string text, CancellationToken cancellationToken = default);
 }

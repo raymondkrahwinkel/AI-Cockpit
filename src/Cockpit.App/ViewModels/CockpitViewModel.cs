@@ -1467,9 +1467,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private OpenMicCoordinator? _openMic;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.NaturalizeReadAloud"/>: rewrite read-aloud text into natural speech via the local LLM before synthesis (#35). Off by default.</summary>
+    /// <summary>Read-aloud rendering modes (#35) offered by the Options flyout combo box.</summary>
+    public IReadOnlyList<ReadAloudModeOption> ReadAloudModes { get; } =
+    [
+        new("Verbatim — read the reply as-is", ReadAloudMode.Verbatim),
+        new("Naturalized — rewrite into natural speech", ReadAloudMode.Naturalized),
+        new("Summarized — speak a short summary", ReadAloudMode.Summarized),
+    ];
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudMode"/>: how read-aloud renders a reply before speaking it (#35). Verbatim by default.</summary>
     [ObservableProperty]
-    private bool _voiceNaturalizeReadAloud;
+    private ReadAloudModeOption _selectedReadAloudMode = new("Verbatim — read the reply as-is", ReadAloudMode.Verbatim);
 
     /// <summary>Selectable read-aloud voices (#35) offered by the Options flyout combo box — SupertonicTTS speaker choices.</summary>
     public IReadOnlyList<TtsVoiceOption> TtsVoices => TtsVoiceCatalog.Voices;
@@ -2852,7 +2860,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceOpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs;
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
-        VoiceNaturalizeReadAloud = settings.NaturalizeReadAloud;
+        SelectedReadAloudMode = ReadAloudModes.FirstOrDefault(mode => mode.Value == settings.ReadAloudMode) ?? ReadAloudModes[0];
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
 
@@ -2935,7 +2943,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             OpenMicSilenceTimeoutMs = VoiceOpenMicSilenceTimeoutMs > 0 ? VoiceOpenMicSilenceTimeoutMs : 800,
             StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
-            NaturalizeReadAloud = VoiceNaturalizeReadAloud,
+            ReadAloudMode = SelectedReadAloudMode.Value,
             TtsVoiceSid = SelectedTtsVoice.Sid,
             SttLanguage = SelectedSttLanguage.Code,
             InputDeviceName = SelectedInputDevice.DeviceName ?? "",
@@ -2947,7 +2955,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // load-at-start behaviour, which the hold path re-reads).
         foreach (var session in Sessions)
         {
-            session.NaturalizeReadAloud = VoiceNaturalizeReadAloud;
+            session.ReadAloudMode = SelectedReadAloudMode.Value;
             session.TtsVoiceSid = SelectedTtsVoice.Sid;
         }
 

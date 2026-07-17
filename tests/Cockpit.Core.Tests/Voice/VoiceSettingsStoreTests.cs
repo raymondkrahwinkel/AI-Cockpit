@@ -60,6 +60,7 @@ public class VoiceSettingsStoreTests : IDisposable
             GlobalPushToTalk = true,
             AutoSubmitAfterVoice = true,
             TtsVoiceSid = 3,
+            ReadAloudMode = ReadAloudMode.Summarized,
             SttLanguage = "nl",
             InputDeviceName = "Yeti Stereo Microphone",
             OutputDeviceName = "Built-in Speakers",
@@ -80,11 +81,39 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.GlobalPushToTalk.Should().BeTrue();
         loaded.AutoSubmitAfterVoice.Should().BeTrue();
         loaded.TtsVoiceSid.Should().Be(3);
+        loaded.ReadAloudMode.Should().Be(ReadAloudMode.Summarized);
         loaded.SttLanguage.Should().Be("nl");
         loaded.InputDeviceName.Should().Be("Yeti Stereo Microphone");
         loaded.OutputDeviceName.Should().Be("Built-in Speakers");
         loaded.OpenMicEnabled.Should().BeTrue();
         loaded.OpenMicSilenceTimeoutMs.Should().Be(1200);
+    }
+
+    [Fact]
+    public async Task LoadAsync_DefaultConfig_ReadAloudModeIsVerbatim()
+    {
+        var store = new VoiceSettingsStore(_configFilePath);
+
+        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Verbatim);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyNaturalizeFlagOn_MigratesToNaturalizedMode()
+    {
+        // A config written before read-aloud gained the three-way mode carries only the old on/off flag.
+        await File.WriteAllTextAsync(_configFilePath, """{ "Voice": { "NaturalizeReadAloud": true } }""");
+        var store = new VoiceSettingsStore(_configFilePath);
+
+        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Naturalized);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyNaturalizeFlagOff_MigratesToVerbatimMode()
+    {
+        await File.WriteAllTextAsync(_configFilePath, """{ "Voice": { "NaturalizeReadAloud": false } }""");
+        var store = new VoiceSettingsStore(_configFilePath);
+
+        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Verbatim);
     }
 
     [Fact]
