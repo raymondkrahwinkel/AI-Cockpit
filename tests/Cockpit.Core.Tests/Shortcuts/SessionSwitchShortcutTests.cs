@@ -5,16 +5,17 @@ namespace Cockpit.Core.Tests.Shortcuts;
 
 /// <summary>
 /// The session switch is an ordinary, rebindable shortcut rather than a setting of its own. Two rules matter
-/// and are easy to break silently: it ships bound to Ctrl+Up/Ctrl+Down, and — unlike every other shortcut — it
-/// stays live while the operator types in the embedded terminal, which is exactly when switching away is needed.
+/// and are easy to break silently: it ships bound to Ctrl+Shift+Up/Ctrl+Shift+Down (the bare Ctrl+arrows moved
+/// to spatial pane focus, AC-31), and — unlike every other shortcut — it stays live while the operator types in
+/// the embedded terminal, which is exactly when switching away is needed.
 /// </summary>
 public class SessionSwitchShortcutTests
 {
     [Fact]
-    public void Catalog_BindsTheSessionSwitchToCtrlArrowByDefault()
+    public void Catalog_BindsTheSessionSwitchToCtrlShiftArrowByDefault()
     {
-        ShortcutCatalog.DefaultGesture(ShortcutAction.PreviousSession).Should().Be("Ctrl+Up");
-        ShortcutCatalog.DefaultGesture(ShortcutAction.NextSession).Should().Be("Ctrl+Down");
+        ShortcutCatalog.DefaultGesture(ShortcutAction.PreviousSession).Should().Be("Ctrl+Shift+Up");
+        ShortcutCatalog.DefaultGesture(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
     }
 
     [Fact]

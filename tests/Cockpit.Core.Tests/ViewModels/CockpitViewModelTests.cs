@@ -843,9 +843,9 @@ public class CockpitViewModelTests
         var duplicateSession = vm.ActiveShortcuts.Single(binding => binding.Label == "Duplicate active session");
         var manageProfiles = vm.ActiveShortcuts.Single(binding => binding.Label == "Manage profiles");
 
-        previousSession.Gesture.Should().Be("Ctrl+Up");
+        previousSession.Gesture.Should().Be("Ctrl+Shift+Up");
         previousSession.ActiveInTerminal.Should().BeTrue();
-        nextSession.Gesture.Should().Be("Ctrl+Down");
+        nextSession.Gesture.Should().Be("Ctrl+Shift+Down");
         nextSession.ActiveInTerminal.Should().BeTrue();
 
         // Session-management actions fire over a focused terminal (Raymond's call).

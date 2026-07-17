@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Cockpit.Core.Shortcuts;
 
 namespace Cockpit.App.Controls;
 
@@ -191,6 +192,30 @@ public sealed class SessionTilePanel : Panel
     }
 
     /// <summary>
+    /// The pane spatially adjacent to <paramref name="active"/> in <paramref name="direction"/> — the one whose
+    /// cell sits next to the active pane's in the grid, skipping holes — or null when there is none (a grid edge,
+    /// or <paramref name="active"/> is not placed). A read of the geometry only: the caller moves the selection,
+    /// nothing is re-parented (a <see cref="PlacePane"/>-style move would rebuild the pty).
+    /// </summary>
+    public object? NeighbourInDirection(object active, PaneDirection direction)
+    {
+        ReconcileCells();
+        var fromCell = _cells.IndexOf(active);
+        if (fromCell < 0)
+        {
+            return null;
+        }
+
+        var occupied = new bool[_cells.Count];
+        for (var i = 0; i < _cells.Count; i++)
+        {
+            occupied[i] = _cells[i] is not null;
+        }
+
+        return NeighbourCell(occupied, fromCell, direction, StackVertically) is { } cell ? _cells[cell] : null;
+    }
+
+    /// <summary>
     /// Pure cell placement: moves <paramref name="dragged"/> to <paramref name="cell"/> within
     /// <paramref name="cells"/>, swapping with whatever is there (a hole leaves a hole behind), padding with
     /// holes to reach the cell, then trimming trailing holes. Returns whether anything changed.
@@ -325,16 +350,24 @@ public sealed class SessionTilePanel : Panel
     /// Maps a cell index to its (column, row) for the current fill order: column-major when stacking
     /// vertically (a column fills top-to-bottom before the next starts), row-major otherwise.
     /// </summary>
-    private (int Col, int Row) CellOf(int index, int columns, int rows)
+    private (int Col, int Row) CellOf(int index, int columns, int rows) =>
+        CellCoords(index, columns, rows, StackVertically);
+
+    /// <summary>The static core of <see cref="CellOf"/>: (column, row) for a cell index in the given fill order.</summary>
+    private static (int Col, int Row) CellCoords(int index, int columns, int rows, bool stackVertically)
     {
         var span = rows < 1 ? 1 : rows;
         var cols = columns < 1 ? 1 : columns;
-        return StackVertically ? (index / span, index % span) : (index % cols, index / cols);
+        return stackVertically ? (index / span, index % span) : (index % cols, index / cols);
     }
 
     /// <summary>Inverse of <see cref="CellOf"/>: the cell index at a given column/row.</summary>
     private int LinearOf(int col, int row, int columns, int rows) =>
-        StackVertically ? col * rows + row : row * columns + col;
+        LinearIndex(col, row, columns, rows, StackVertically);
+
+    /// <summary>The static core of <see cref="LinearOf"/>: the cell index at a given column/row in the given fill order.</summary>
+    private static int LinearIndex(int col, int row, int columns, int rows, bool stackVertically) =>
+        stackVertically ? col * rows + row : row * columns + col;
 
     /// <summary>
     /// Reconciles the cell list with the live panes: drops closed sessions (leaving holes), and gives each
@@ -459,5 +492,44 @@ public sealed class SessionTilePanel : Panel
 
         var columns = cellCount <= 1 ? 1 : 2;
         return (columns, (cellCount + columns - 1) / columns);
+    }
+
+    /// <summary>
+    /// The cell holding the pane spatially adjacent to <paramref name="fromCell"/> in
+    /// <paramref name="direction"/>, or null when the grid edge is reached first. Walks cell by cell along the
+    /// direction and returns the first occupied one, so it skips holes (an emptied cell, or the gap a 3-pane
+    /// 2×2 leaves) and lands on the nearest actual pane — "the pane to my left", never an empty slot.
+    /// <paramref name="occupied"/> is the cell list, true where a pane sits.
+    /// </summary>
+    internal static int? NeighbourCell(IReadOnlyList<bool> occupied, int fromCell, PaneDirection direction, bool stackVertically)
+    {
+        var count = occupied.Count;
+        if (fromCell < 0 || fromCell >= count)
+        {
+            return null;
+        }
+
+        var (columns, rows) = Dimensions(count, stackVertically);
+        var (col, row) = CellCoords(fromCell, columns, rows, stackVertically);
+        var (stepCol, stepRow) = direction switch
+        {
+            PaneDirection.Left => (-1, 0),
+            PaneDirection.Right => (1, 0),
+            PaneDirection.Up => (0, -1),
+            _ => (0, 1),
+        };
+
+        for (int c = col + stepCol, r = row + stepRow;
+             c >= 0 && c < columns && r >= 0 && r < rows;
+             c += stepCol, r += stepRow)
+        {
+            var index = LinearIndex(c, r, columns, rows, stackVertically);
+            if (index >= 0 && index < count && occupied[index])
+            {
+                return index;
+            }
+        }
+
+        return null;
     }
 }
