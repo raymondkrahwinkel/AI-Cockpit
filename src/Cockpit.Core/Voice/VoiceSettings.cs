@@ -69,19 +69,12 @@ public sealed record VoiceSettings
     public bool AutoSubmitAfterVoice { get; init; }
 
     /// <summary>
-    /// Piper voice id for read-aloud (#35), e.g. "en_US-lessac-medium" or "nl_NL-ronnie-medium" — also
-    /// the sherpa-onnx model archive name (<c>vits-piper-{id}.tar.bz2</c>), downloaded and cached on
-    /// first use the same way the Whisper model is. This is the English/primary voice; mixed Dutch/English
-    /// read-aloud routes Dutch segments to <see cref="TtsVoiceIdDutch"/> instead.
+    /// SupertonicTTS speaker id (sid) for read-aloud (#35). One multilingual model voices every language, so
+    /// this single speaker choice (the timbre) is used for both Dutch and English — mixed replies pass the
+    /// language per segment rather than switching voice. The model downloads and caches on first use the same
+    /// way the Whisper model does. Defaults to sid 1, the first offered voice.
     /// </summary>
-    public string TtsVoiceId { get; init; } = "en_US-lessac-medium";
-
-    /// <summary>
-    /// Piper voice id for the Dutch segments of a read-aloud reply. No single sherpa-onnx voice covers both
-    /// Dutch and English, so when read-aloud naturalization tags language runs (<c>[[nl]]</c>/<c>[[en]]</c>),
-    /// the Dutch runs are synthesized with this voice and the English runs with <see cref="TtsVoiceId"/>.
-    /// </summary>
-    public string TtsVoiceIdDutch { get; init; } = "nl_NL-ronnie-medium";
+    public int TtsVoiceSid { get; init; } = 1;
 
     /// <summary>
     /// Whisper transcription language as an ISO-639-1 code ("nl", "en", …) or "auto" to let Whisper

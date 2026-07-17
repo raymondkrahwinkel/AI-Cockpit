@@ -833,7 +833,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
 
         var markdown = string.Join("\n\n", _currentTurnAssistantEntries.Select(entry => entry.Text));
-        _ = EnqueueReadAloudAsync(markdown, TtsVoiceId);
+        _ = EnqueueReadAloudAsync(markdown);
     }
 
     /// <summary>On-demand read-aloud for a single transcript row (#35) — works regardless of <see cref="ReadResponsesAloud"/>, since the speaker button next to an assistant reply is an explicit request to hear it.</summary>
@@ -845,7 +845,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             return;
         }
 
-        _ = EnqueueReadAloudAsync(entry.Text, TtsVoiceId);
+        _ = EnqueueReadAloudAsync(entry.Text);
     }
 
     // The runtime pumps the driver off the UI thread and raises each event here (#68); marshalling onto the UI

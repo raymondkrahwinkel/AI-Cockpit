@@ -44,9 +44,12 @@ internal sealed class VoiceSettingsEntry
 
     public bool AutoSubmitAfterVoice { get; set; }
 
-    public string TtsVoiceId { get; set; } = "en_US-lessac-medium";
-
-    public string TtsVoiceIdDutch { get; set; } = "nl_NL-ronnie-medium";
+    /// <summary>
+    /// SupertonicTTS speaker id for read-aloud. The pre-Supertonic <c>TtsVoiceId</c>/<c>TtsVoiceIdDutch</c>
+    /// Piper-voice keys have no meaningful mapping onto a Supertonic sid, so a config written before this key
+    /// existed is simply read at the default sid (the old keys are ignored) rather than migrated.
+    /// </summary>
+    public int TtsVoiceSid { get; set; } = 1;
 
     public string SttLanguage { get; set; } = "auto";
 
@@ -78,8 +81,7 @@ internal sealed class VoiceSettingsEntry
         PushToTalkKeyName = settings.PushToTalkKeyName,
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
-        TtsVoiceId = settings.TtsVoiceId,
-        TtsVoiceIdDutch = settings.TtsVoiceIdDutch,
+        TtsVoiceSid = settings.TtsVoiceSid,
         SttLanguage = settings.SttLanguage,
         InputDeviceName = settings.InputDeviceName,
         OutputDeviceName = settings.OutputDeviceName,
@@ -107,8 +109,7 @@ internal sealed class VoiceSettingsEntry
         PushToTalkKeyName = PushToTalkKeyName,
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
-        TtsVoiceId = TtsVoiceId,
-        TtsVoiceIdDutch = TtsVoiceIdDutch,
+        TtsVoiceSid = TtsVoiceSid,
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,

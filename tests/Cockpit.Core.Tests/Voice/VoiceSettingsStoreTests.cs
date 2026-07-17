@@ -33,8 +33,7 @@ public class VoiceSettingsStoreTests : IDisposable
         settings.PushToTalkKeyName.Should().Be("F9");
         settings.GlobalPushToTalk.Should().BeFalse();
         settings.AutoSubmitAfterVoice.Should().BeFalse();
-        settings.TtsVoiceId.Should().Be("en_US-lessac-medium");
-        settings.TtsVoiceIdDutch.Should().Be("nl_NL-ronnie-medium");
+        settings.TtsVoiceSid.Should().Be(1);
         settings.SttLanguage.Should().Be("auto");
         settings.InputDeviceName.Should().BeEmpty();
         settings.OutputDeviceName.Should().BeEmpty();
@@ -60,8 +59,7 @@ public class VoiceSettingsStoreTests : IDisposable
             PushToTalkKeyName = "F10",
             GlobalPushToTalk = true,
             AutoSubmitAfterVoice = true,
-            TtsVoiceId = "nl_NL-ronnie-medium",
-            TtsVoiceIdDutch = "nl_BE-nathalie-medium",
+            TtsVoiceSid = 3,
             SttLanguage = "nl",
             InputDeviceName = "Yeti Stereo Microphone",
             OutputDeviceName = "Built-in Speakers",
@@ -81,8 +79,7 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.PushToTalkKeyName.Should().Be("F10");
         loaded.GlobalPushToTalk.Should().BeTrue();
         loaded.AutoSubmitAfterVoice.Should().BeTrue();
-        loaded.TtsVoiceId.Should().Be("nl_NL-ronnie-medium");
-        loaded.TtsVoiceIdDutch.Should().Be("nl_BE-nathalie-medium");
+        loaded.TtsVoiceSid.Should().Be(3);
         loaded.SttLanguage.Should().Be("nl");
         loaded.InputDeviceName.Should().Be("Yeti Stereo Microphone");
         loaded.OutputDeviceName.Should().Be("Built-in Speakers");
