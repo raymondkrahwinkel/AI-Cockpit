@@ -1,5 +1,6 @@
 using Avalonia;
 using Cockpit.App.Services;
+using Cockpit.Core.Rendering;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Services;
@@ -41,4 +42,24 @@ public class RenderBackendOverrideTests
     [InlineData("metal2")]
     public void Parse_UnknownOrEmpty_IsNoOverride(string? value) =>
         RenderBackendOverride.Parse(value).Should().BeNull();
+
+    // AC-67: the Options choice maps through the same modes as the env var.
+    [Fact]
+    public void FromChoice_Auto_IsNoOverride() =>
+        RenderBackendOverride.FromChoice(RenderBackendChoice.Auto).Should().BeNull();
+
+    [Fact]
+    public void FromChoice_OpenGl_PrefersOpenGlThenSoftware()
+    {
+        var selection = RenderBackendOverride.FromChoice(RenderBackendChoice.OpenGl);
+
+        selection.Should().NotBeNull();
+        selection!.Label.Should().Be("OpenGL");
+        selection.Modes.Should().Equal(AvaloniaNativeRenderingMode.OpenGl, AvaloniaNativeRenderingMode.Software);
+    }
+
+    [Fact]
+    public void FromChoice_Metal_PrefersMetalThenSoftware() =>
+        RenderBackendOverride.FromChoice(RenderBackendChoice.Metal)!.Modes
+            .Should().Equal(AvaloniaNativeRenderingMode.Metal, AvaloniaNativeRenderingMode.Software);
 }

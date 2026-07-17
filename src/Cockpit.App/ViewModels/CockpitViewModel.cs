@@ -29,6 +29,9 @@ using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Abstractions.Rendering;
+using Cockpit.Core.Configuration;
+using Cockpit.Core.Rendering;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Plugins;
@@ -669,6 +672,80 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Items for the Options font-family dropdown (#40): the curated families plus the "Custom…" sentinel.</summary>
     public IReadOnlyList<string> TerminalFontChoices => [.. TerminalFontFamilies, CustomFontChoice];
 
+    // ── AC-67: macOS render-backend selector (Auto / Metal / OpenGL / Software) ──────────────────────────────
+    private readonly IRenderingSettingsStore? _renderingSettingsStore;
+
+    /// <summary>The backend the app actually started on (what it is rendering with now), so a save can tell whether
+    /// the operator's choice differs and a restart is needed. Fixed for the session — only a restart re-reads it.</summary>
+    private RenderBackendChoice _startupRenderBackend = RenderBackendChoice.Auto;
+
+    /// <summary>Selected item in the Options render-backend dropdown (AC-67): Auto / Metal / OpenGL / Software.</summary>
+    [ObservableProperty]
+    private string _renderBackendSelection = "Auto";
+
+    /// <summary>True once a saved render-backend choice differs from what this process started on — reveals "Restart now".</summary>
+    [ObservableProperty]
+    private bool _renderBackendNeedsRestart;
+
+    [ObservableProperty]
+    private string _renderingSettingsStatus = string.Empty;
+
+    /// <summary>The render-backend choices offered by the Options dropdown.</summary>
+    public IReadOnlyList<string> RenderBackendChoices { get; } = ["Auto", "Metal", "OpenGL", "Software"];
+
+    /// <summary>True on macOS, where the render backend is a real choice; gates the setting's visibility.</summary>
+    public bool IsMacOsPlatform { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
+
+    /// <summary>Whether to show the render-backend setting (AC-67): where it does something — macOS — plus in any dev
+    /// build, so it can be verified on a Windows/Linux dev machine even though it is inert there for release users.</summary>
+    public bool ShowRenderBackendSetting => IsMacOsPlatform || CockpitBuild.IsDevelopment;
+
+    private static string RenderBackendLabel(RenderBackendChoice choice) => choice switch
+    {
+        RenderBackendChoice.Metal => "Metal",
+        RenderBackendChoice.OpenGl => "OpenGL",
+        RenderBackendChoice.Software => "Software",
+        _ => "Auto",
+    };
+
+    private static RenderBackendChoice RenderBackendFromLabel(string label) => label switch
+    {
+        "Metal" => RenderBackendChoice.Metal,
+        "OpenGL" => RenderBackendChoice.OpenGl,
+        "Software" => RenderBackendChoice.Software,
+        _ => RenderBackendChoice.Auto,
+    };
+
+    private async Task LoadRenderingSettingsAsync()
+    {
+        if (_renderingSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _renderingSettingsStore.LoadAsync();
+        _startupRenderBackend = settings.Backend;
+        RenderBackendSelection = RenderBackendLabel(settings.Backend);
+        RenderBackendNeedsRestart = false;
+    }
+
+    /// <summary>Persists the render-backend choice (AC-67). Avalonia fixes the backend once at startup, so a save that
+    /// changes it from what this process started on flags <see cref="RenderBackendNeedsRestart"/> to offer a restart.</summary>
+    [RelayCommand]
+    private async Task SaveRenderingSettingsAsync()
+    {
+        if (_renderingSettingsStore is null)
+        {
+            return;
+        }
+
+        var choice = RenderBackendFromLabel(RenderBackendSelection);
+        await _renderingSettingsStore.SaveAsync(new RenderingSettings { Backend = choice });
+        RenderBackendNeedsRestart = choice != _startupRenderBackend;
+        RenderingSettingsStatus = "✓ Saved";
+    }
+    // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
     /// <summary>
     /// The default-shell choices for the Options terminal picker (#AC-25): an "OS default" entry first, then every
     /// shell <see cref="ShellCatalog"/> detected on this machine. Rebuilt on load so it reflects what is installed.
@@ -1194,6 +1271,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DelegatedTasksViewModel? delegatedTasks = null,
         IDebugSettingsStore? debugSettingsStore = null,
         IDelegationMcpToggle? delegationMcpToggle = null,
+        IRenderingSettingsStore? renderingSettingsStore = null,
         ResourceMonitor? resourceMonitor = null,
         DiagnosticsCollector? diagnosticsCollector = null,
         IBackupService? backupService = null,
@@ -1256,6 +1334,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The orchestrator loads its own setting on startup (before the UI), so its live value seeds the toggle here.
         _delegationMcpToggle = delegationMcpToggle;
         _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
+        _renderingSettingsStore = renderingSettingsStore;
         _resourceMonitor = resourceMonitor;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
@@ -1280,6 +1359,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = LoadTerminalSettingsAsync();
         _ = LoadShortcutSettingsAsync();
         _ = LoadDebugSettingsAsync();
+        _ = LoadRenderingSettingsAsync();
         _ = LoadPluginMenuPreferencesAsync(pluginRegistrationStore);
 
         // Plugin shortcuts arrive as plugins initialize; each changes the active bindings and the Options list.
@@ -2899,6 +2979,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveTerminalSettingsCommand.ExecuteAsync(null);
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
         await SaveDebugSettingsCommand.ExecuteAsync(null);
+        await SaveRenderingSettingsCommand.ExecuteAsync(null);
         AllSettingsStatus = "✓ Saved";
     }
 

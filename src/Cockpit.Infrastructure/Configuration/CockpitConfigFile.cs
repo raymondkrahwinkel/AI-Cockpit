@@ -56,6 +56,10 @@ internal sealed class CockpitConfigFile
     /// <summary>Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.</summary>
     public TerminalSettingsEntry? Terminal { get; set; }
 
+    /// <summary>The render backend the operator forced (AC-67); owned by the rendering-settings store. Also read
+    /// directly, before the container exists, by <see cref="RenderBackendConfig"/> to configure Avalonia at startup.</summary>
+    public RenderingSettingsEntry? Rendering { get; set; }
+
     /// <summary>Plugin enable + consent state (#14) keyed by plugin folder id; owned by the plugin-registration store.</summary>
     /// <summary>Whether the cockpit looks for a newer build of itself, and which builds it will mention (#71).</summary>
     public UpdateSettingsEntry? Updates { get; set; }
