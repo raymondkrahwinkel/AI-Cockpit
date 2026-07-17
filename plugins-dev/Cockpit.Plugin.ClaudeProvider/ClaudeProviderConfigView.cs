@@ -20,14 +20,17 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _configDirStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _executableStatus = ProviderConfigStatus.CreateLine();
 
+    private readonly ICockpitHost _host;
     private readonly ManagedCliConfigSection _managedCli;
 
     public Control View { get; }
 
     public ClaudeProviderConfigView(string? existingConfigJson, ICockpitHost host)
     {
+        _host = host;
         var existing = ClaudeProviderConfig.Parse(existingConfigJson);
-        _managedCli = new ManagedCliConfigSection(host, ClaudeManagedCli.CliName, "Claude CLI");
+        // The panel refreshes the executable-status line after install/remove, so the two never disagree.
+        _managedCli = new ManagedCliConfigSection(host, ClaudeManagedCli.CliName, "Claude CLI", _UpdateExecutableStatus);
 
         _configDir = new TextBox
         {
@@ -84,18 +87,32 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
         }
     }
 
-    /// <summary>Resolves the claude executable against PATH (blank falls back to the bare "claude"), so the operator sees whether it is installed and where — informational, since a profile may pin a command for a machine that has it elsewhere.</summary>
+    /// <summary>
+    /// Resolves the claude executable exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one
+    /// line, what will run and whether it is a cockpit-managed copy — so this never contradicts the managed panel below.
+    /// </summary>
     private void _UpdateExecutableStatus()
     {
         var command = _executablePath.Text?.Trim() is { Length: > 0 } path ? path : "claude";
-        var resolved = ClaudeExecutableLocator.Resolve(command);
-        if (Path.IsPathRooted(resolved) && File.Exists(resolved))
+        var isPinned = Path.IsPathRooted(command);
+        var resolved = ClaudeExecutableLocator.Resolve(command, _host.ResolveManagedCliPath);
+        var managedPath = _host.ResolveManagedCliPath(ClaudeManagedCli.CliName);
+
+        if (!isPinned && !string.IsNullOrEmpty(managedPath) && string.Equals(resolved, managedPath, StringComparison.Ordinal))
         {
-            ProviderConfigStatus.Set(_executableStatus, $"Found: {resolved}", isOk: true);
+            ProviderConfigStatus.Set(_executableStatus, $"Managed by Cockpit — this copy is used: {resolved}", isOk: true);
+        }
+        else if (isPinned && File.Exists(resolved))
+        {
+            ProviderConfigStatus.Set(_executableStatus, $"Using pinned path (not managed): {resolved}", isOk: true);
+        }
+        else if (Path.IsPathRooted(resolved) && File.Exists(resolved))
+        {
+            ProviderConfigStatus.Set(_executableStatus, $"Found on PATH (not managed): {resolved}", isOk: true);
         }
         else
         {
-            ProviderConfigStatus.Set(_executableStatus, "Not found on PATH — check claude is installed, or paste an absolute path.", isOk: false);
+            ProviderConfigStatus.Set(_executableStatus, "Not found — install it below, put claude on PATH, or paste an absolute path.", isOk: false);
         }
     }
 

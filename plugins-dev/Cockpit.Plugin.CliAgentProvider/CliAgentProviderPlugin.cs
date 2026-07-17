@@ -52,7 +52,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             Options = [sdkSandbox, sdkModelFallback],
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
-                var listing = await _ListModelsAsync(configJson, cancellationToken).ConfigureAwait(false);
+                var listing = await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken).ConfigureAwait(false);
                 var model = listing.Ids.Count == 0
                     ? sdkModelFallback
                     : new PluginSessionLaunchOption(CodexAppServerSessionDriver.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
@@ -75,7 +75,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         {
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
             {
-                var listing = await _ListModelsAsync(configJson, cancellationToken).ConfigureAwait(false);
+                var listing = await _ListModelsAsync(configJson, host.ResolveManagedCliPath, cancellationToken).ConfigureAwait(false);
                 var model = listing.Ids.Count == 0
                     ? ttyModelFallback
                     : new PluginTtyLaunchOption(CodexTtyProvider.ModelOptionKey, "Model", listing.Ids, listing.DefaultId);
@@ -85,10 +85,13 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
     }
 
     /// <summary>Reads the models this profile's codex offers (increment 2 step C) — shared by the SDK and TTY option resolvers.</summary>
-    private static async Task<CodexModelListing> _ListModelsAsync(string configJson, CancellationToken cancellationToken)
+    private static async Task<CodexModelListing> _ListModelsAsync(string configJson, Func<string, string?>? managedResolver, CancellationToken cancellationToken)
     {
         var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions) ?? new CliAgentConfig();
-        var executablePath = CliExecutableLocator.Resolve(config.Command);
+        // Resolve with the managed copy too, so a codex installed only via the managed installer (not on PATH) still
+        // lists its models — otherwise the New-session Model dropdown falls back to free text even though the session
+        // itself would spawn the managed binary fine.
+        var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
         return await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cancellationToken).ConfigureAwait(false);
     }
 

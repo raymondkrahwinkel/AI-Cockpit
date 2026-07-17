@@ -26,15 +26,31 @@ internal static class CodexManagedCli
         CliName = CliName,
         ResolveLatestVersionAsync = async (http, cancellationToken) =>
         {
-            var json = await _GetGitHubJsonAsync(http, $"{ReleasesApiBase}/latest", cancellationToken).ConfigureAwait(false);
+            // Do not trust /releases/latest to be a codex CLI release: the repo also publishes other trains, and its
+            // "latest" could be one of those. List releases (newest first) and take the first published rust-v tag.
+            var json = await _GetGitHubJsonAsync(http, $"{ReleasesApiBase}?per_page=30", cancellationToken).ConfigureAwait(false);
             using var document = JsonDocument.Parse(json);
-            var tag = document.RootElement.TryGetProperty("tag_name", out var tagElement) ? tagElement.GetString() : null;
-            if (string.IsNullOrEmpty(tag))
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
             {
-                throw new InvalidOperationException("The codex latest release has no tag name.");
+                throw new InvalidOperationException("The codex releases response was not a list.");
             }
 
-            return ParseVersion(tag);
+            foreach (var release in document.RootElement.EnumerateArray())
+            {
+                if ((release.TryGetProperty("draft", out var draft) && draft.GetBoolean())
+                    || (release.TryGetProperty("prerelease", out var prerelease) && prerelease.GetBoolean()))
+                {
+                    continue;
+                }
+
+                var tag = release.TryGetProperty("tag_name", out var tagElement) ? tagElement.GetString() : null;
+                if (!string.IsNullOrEmpty(tag) && tag.StartsWith("rust-v", StringComparison.Ordinal))
+                {
+                    return ParseVersion(tag);
+                }
+            }
+
+            throw new InvalidOperationException("No published codex rust-v release was found.");
         },
         BuildDownloadPlanAsync = async (http, platform, version, cancellationToken) =>
         {
@@ -109,6 +125,14 @@ internal static class CodexManagedCli
                 throw new InvalidOperationException($"The codex asset '{assetName}' has no download URL.");
             }
 
+            // The URL comes from the release JSON; require it to be an https GitHub download host so a spoofed/edge
+            // response cannot point the fetch at an arbitrary target. (Content is digest-bound regardless, but the
+            // request target itself should not be attacker-chosen.)
+            if (!_IsTrustedDownloadUrl(url))
+            {
+                throw new InvalidOperationException($"The codex asset '{assetName}' has an untrusted download URL ('{url}') and was refused.");
+            }
+
             if (string.IsNullOrEmpty(digest) || !digest.StartsWith("sha256:", StringComparison.Ordinal))
             {
                 throw new InvalidOperationException($"The codex asset '{assetName}' has no sha256 digest to verify against.");
@@ -128,6 +152,14 @@ internal static class CodexManagedCli
 
         throw new InvalidOperationException($"The codex release does not contain the asset '{assetName}'.");
     }
+
+    // An https download from GitHub's own release hosts — github.com serves the redirect, objects.githubusercontent.com the bytes.
+    private static bool _IsTrustedDownloadUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && (uri.Host == "github.com"
+            || uri.Host == "objects.githubusercontent.com"
+            || uri.Host.EndsWith(".githubusercontent.com", StringComparison.Ordinal));
 
     // GitHub's API rejects requests without a User-Agent; send one and ask for the documented REST media type.
     private static async Task<string> _GetGitHubJsonAsync(HttpClient http, string url, CancellationToken cancellationToken)

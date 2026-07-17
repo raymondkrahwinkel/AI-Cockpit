@@ -101,6 +101,26 @@ public sealed class ManagedCliServiceTests : IDisposable
         result.Error.Should().Contain("acme");
     }
 
+    [Theory]
+    [InlineData("../../../etc/cron.d/x")] // path traversal
+    [InlineData("..")]
+    [InlineData("1.2.3-alpha.1")]         // non-numeric: install would be invisible to resolution
+    [InlineData("not-a-version")]
+    public async Task EnsureInstalled_RejectsUnsafeOrNonNumericVersion_BeforeDownloading(string version)
+    {
+        // A handler that throws if hit — the version is refused before any bytes are fetched.
+        var handler = new StubHttpMessageHandler(_ => throw new InvalidOperationException("must not download"));
+        var service = _Service(handler);
+        service.Register(_Descriptor("acme", version, _RawPlan("x"u8.ToArray())));
+
+        var result = await service.EnsureInstalledAsync("acme");
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("version");
+        handler.CallCount.Should().Be(0);
+        Directory.Exists(Path.Combine(_root, "cli", "acme")).Should().BeFalse();
+    }
+
     [Fact]
     public async Task EnsureInstalled_NoDescriptor_Fails()
     {

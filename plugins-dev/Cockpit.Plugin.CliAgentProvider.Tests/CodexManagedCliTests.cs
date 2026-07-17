@@ -14,9 +14,9 @@ public class CodexManagedCliTests
         {
           "tag_name": "rust-v0.144.5",
           "assets": [
-            { "name": "codex-x86_64-unknown-linux-musl.tar.gz", "browser_download_url": "https://example.test/codex-x86_64-unknown-linux-musl.tar.gz", "digest": "sha256:1111aaaa" },
-            { "name": "codex-aarch64-apple-darwin.tar.gz",      "browser_download_url": "https://example.test/codex-aarch64-apple-darwin.tar.gz",      "digest": "sha256:2222bbbb" },
-            { "name": "codex-x86_64-pc-windows-msvc.exe.tar.gz","browser_download_url": "https://example.test/codex-x86_64-pc-windows-msvc.exe.tar.gz","digest": "sha256:3333cccc" }
+            { "name": "codex-x86_64-unknown-linux-musl.tar.gz", "browser_download_url": "https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-unknown-linux-musl.tar.gz", "digest": "sha256:1111aaaa" },
+            { "name": "codex-aarch64-apple-darwin.tar.gz",      "browser_download_url": "https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-aarch64-apple-darwin.tar.gz",      "digest": "sha256:2222bbbb" },
+            { "name": "codex-x86_64-pc-windows-msvc.exe.tar.gz","browser_download_url": "https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-pc-windows-msvc.exe.tar.gz","digest": "sha256:3333cccc" }
           ]
         }
         """;
@@ -53,7 +53,7 @@ public class CodexManagedCliTests
     {
         var plan = CodexManagedCli.BuildPlan(new ManagedCliPlatform("linux", "x64", false), Release);
 
-        plan.Url.Should().Be("https://example.test/codex-x86_64-unknown-linux-musl.tar.gz");
+        plan.Url.Should().Be("https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-unknown-linux-musl.tar.gz");
         plan.ExpectedSha256.Should().Be("1111aaaa"); // the "sha256:" prefix is stripped
         plan.ArchiveFormat.Should().Be(ManagedCliArchiveFormat.TarGz);
         plan.ExecutableEntryName.Should().Be("codex-x86_64-unknown-linux-musl");
@@ -66,11 +66,25 @@ public class CodexManagedCliTests
     {
         var plan = CodexManagedCli.BuildPlan(new ManagedCliPlatform("win32", "x64", false), Release);
 
-        plan.Url.Should().Be("https://example.test/codex-x86_64-pc-windows-msvc.exe.tar.gz");
+        plan.Url.Should().Be("https://github.com/openai/codex/releases/download/rust-v0.144.5/codex-x86_64-pc-windows-msvc.exe.tar.gz");
         plan.ExpectedSha256.Should().Be("3333cccc");
         plan.ExecutableEntryName.Should().Be("codex-x86_64-pc-windows-msvc.exe");
         plan.ExecutableFileName.Should().Be("codex.exe");
         plan.NeedsExecutableBit.Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildPlan_RejectsAnUntrustedDownloadUrl()
+    {
+        // A spoofed release JSON pointing the download off GitHub must be refused, even though content stays digest-bound.
+        const string release = """
+            { "tag_name": "rust-v0.144.5", "assets": [
+              { "name": "codex-x86_64-unknown-linux-musl.tar.gz", "browser_download_url": "https://evil.example.com/codex.tar.gz", "digest": "sha256:1111aaaa" } ] }
+            """;
+
+        var act = () => CodexManagedCli.BuildPlan(new ManagedCliPlatform("linux", "x64", false), release);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*untrusted*");
     }
 
     [Fact]

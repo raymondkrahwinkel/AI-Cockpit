@@ -21,6 +21,7 @@ public sealed class ManagedCliConfigSection
     private readonly ICockpitHost _host;
     private readonly string _cliName;
     private readonly string _displayName;
+    private readonly Action? _onStateChanged;
     private readonly TextBlock _status = ProviderConfigStatus.CreateLine();
     private readonly Button _installButton = new() { Content = "Install" };
     private readonly Button _removeButton = new() { Content = "Remove", IsVisible = false };
@@ -28,11 +29,16 @@ public sealed class ManagedCliConfigSection
     /// <summary>The control to place in the provider config view's field stack.</summary>
     public Control View { get; }
 
-    public ManagedCliConfigSection(ICockpitHost host, string cliName, string displayName)
+    /// <param name="onStateChanged">
+    /// Invoked (on the UI thread) after an install or remove changes what is on disk, so the host config view can
+    /// refresh its own "what will run" line — keeping the executable-status and this panel from disagreeing.
+    /// </param>
+    public ManagedCliConfigSection(ICockpitHost host, string cliName, string displayName, Action? onStateChanged = null)
     {
         _host = host;
         _cliName = cliName;
         _displayName = displayName;
+        _onStateChanged = onStateChanged;
 
         _installButton.Click += async (_, _) => await _InstallAsync();
         _removeButton.Click += (_, _) => _Remove();
@@ -90,6 +96,7 @@ public sealed class ManagedCliConfigSection
         {
             _host.ShowToast($"{_displayName} {result.Version} installed.", PluginToastSeverity.Success);
             _Refresh();
+            _onStateChanged?.Invoke();
         }
         else
         {
@@ -107,5 +114,6 @@ public sealed class ManagedCliConfigSection
         }
 
         _Refresh();
+        _onStateChanged?.Invoke();
     }
 }
