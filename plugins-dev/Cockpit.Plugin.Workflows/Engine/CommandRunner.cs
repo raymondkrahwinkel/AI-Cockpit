@@ -14,6 +14,15 @@ internal sealed class CommandRunner : IStepRunner
 
     public string TypeId => "cockpit.command";
 
+    public ConsentRisk? RequiredConsent => ConsentRisk.Dangerous;
+
+    public string ConsentAction(StepContext context)
+    {
+        var command = context.Resolve(context.Node.Parameters.GetValueOrDefault("Command")).Text;
+        var directory = context.Resolve(context.Node.Parameters.GetValueOrDefault("Working directory")).Text;
+        return string.IsNullOrWhiteSpace(directory) ? command : $"{command}\nin {directory}";
+    }
+
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
         var node = context.Node;

@@ -275,7 +275,7 @@ internal sealed class WorkflowEditorControl : UserControl
 
         try
         {
-            var run = await _engine.RunAsync(_workflow, trigger.Id);
+            var run = await _engine.RunAsync(_workflow, trigger.Id, RunOrigin.Operator);
 
             _lastRun = run;
             _runs.Add(run);

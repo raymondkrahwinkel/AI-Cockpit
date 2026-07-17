@@ -12,6 +12,15 @@ internal sealed class StartSessionRunner(ICockpitHost host) : IStepRunner
 {
     public string TypeId => "cockpit.start-session";
 
+    public ConsentRisk? RequiredConsent => ConsentRisk.Dangerous;
+
+    public string ConsentAction(StepContext context)
+    {
+        var profile = context.Resolve(context.Node.Parameters.GetValueOrDefault("Profile")).Text.Trim();
+        var prompt = context.Resolve(context.Node.Parameters.GetValueOrDefault("Prompt")).Text.Trim();
+        return prompt.Length == 0 ? $"Start a session on {profile}" : $"Start a session on {profile}:\n{prompt}";
+    }
+
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
         var profile = context.Resolve(context.Node.Parameters.GetValueOrDefault("Profile")).Text.Trim();
