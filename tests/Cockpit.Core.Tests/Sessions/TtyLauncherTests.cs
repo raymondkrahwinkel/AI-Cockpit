@@ -5,6 +5,7 @@ using NSubstitute;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
 
 namespace Cockpit.Core.Tests.Sessions;
@@ -29,11 +30,18 @@ public class TtyLauncherTests
 
     private static (TtyLauncher Launcher, IPtyHostFactory PtyHostFactory) CreateLauncher(ILogger<TtyLauncher>? logger = null)
     {
+        var (launcher, ptyHostFactory, _) = CreateLauncherWithKey(logger);
+        return (launcher, ptyHostFactory);
+    }
+
+    private static (TtyLauncher Launcher, IPtyHostFactory PtyHostFactory, McpAuthKey AuthKey) CreateLauncherWithKey(ILogger<TtyLauncher>? logger = null)
+    {
         var ptyHostFactory = Substitute.For<IPtyHostFactory>();
         ptyHostFactory
             .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
             .Returns(Substitute.For<IConPtyProcess>());
-        return (new TtyLauncher(ptyHostFactory, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory);
+        var authKey = new McpAuthKey();
+        return (new TtyLauncher(ptyHostFactory, authKey, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey);
     }
 
     [Fact]
@@ -127,6 +135,77 @@ public class TtyLauncherTests
             Arg.Any<string>(),
             Arg.Is<IReadOnlyDictionary<string, string>>(env =>
                 env["TERM"] == "xterm-256color" && env["PROVIDER_ONLY_VAR"] == "from-the-provider"),
+            80,
+            24);
+    }
+
+    // AC-40 regression: the cockpit-hosted MCP endpoints (cockpit-session/-orchestrator/-workflows) 401 without
+    // this run's key, and a TTY child (Claude's Bearer ${COCKPIT_MCP_KEY}, Codex's bearer_token_env_var) only ever
+    // presents it if the host sets the env var on the child. The host owns it on the base — reaching both the
+    // provider's view and the spawned child — rather than an overlay the scrub would drop.
+    [Fact]
+    public void Launch_TheEnvironmentPassedToThePtyHost_CarriesThisRunsMcpAuthKey()
+    {
+        var (launcher, ptyHostFactory, authKey) = CreateLauncherWithKey();
+        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
+        var provider = Provider(spec);
+
+        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+
+        provider.Received(1).BuildLaunch(Arg.Is<TtyLaunchContext>(context =>
+            context.BaseEnvironment["COCKPIT_MCP_KEY"] == authKey.Value));
+        ptyHostFactory.Received(1).Start(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["COCKPIT_MCP_KEY"] == authKey.Value),
+            80,
+            24);
+    }
+
+    // A profile or provider that set COCKPIT_MCP_KEY to a value of its own would present the wrong key and lock the
+    // session out with a self-inflicted 401 — so the key is host-controlled and the host's own value must win.
+    [Fact]
+    public void Launch_AProviderOverlayThatTriesToOverrideTheMcpAuthKey_CannotChangeIt()
+    {
+        var (launcher, ptyHostFactory, authKey) = CreateLauncherWithKey();
+        var spec = new TtyLaunchSpec(
+            "/usr/bin/cli",
+            [],
+            new Dictionary<string, string?> { ["COCKPIT_MCP_KEY"] = "forged-by-the-provider" },
+            "/wd",
+            []);
+        var provider = Provider(spec);
+
+        launcher.Launch(provider, profile: null, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+
+        ptyHostFactory.Received(1).Start(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["COCKPIT_MCP_KEY"] == authKey.Value),
+            80,
+            24);
+    }
+
+    [Fact]
+    public void Launch_AProfileVariableOnTheMcpAuthKey_CannotOverrideIt()
+    {
+        var (launcher, ptyHostFactory, authKey) = CreateLauncherWithKey();
+        var spec = new TtyLaunchSpec("/usr/bin/cli", [], new Dictionary<string, string?>(), "/wd", []);
+        var provider = Provider(spec);
+        var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
+        {
+            EnvironmentVariables = [new ProfileEnvironmentVariable("COCKPIT_MCP_KEY", "forged-by-the-operator")],
+        };
+
+        launcher.Launch(provider, profile, options: new Dictionary<string, string>(), columns: 80, rows: 24);
+
+        ptyHostFactory.Received(1).Start(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyDictionary<string, string>>(env => env["COCKPIT_MCP_KEY"] == authKey.Value),
             80,
             24);
     }
