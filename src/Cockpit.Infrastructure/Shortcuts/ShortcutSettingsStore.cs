@@ -31,19 +31,47 @@ internal sealed class ShortcutSettingsStore : IShortcutSettingsStore, ISingleton
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
         var settings = configFile?.Shortcuts?.ToDomain() ?? ShortcutSettings.Default;
 
-        if (configFile?.SessionSwitching is not { } legacySessionSwitch)
+        if (configFile?.SessionSwitching is { } legacySessionSwitch)
         {
-            return settings;
+            // Whether the operator has since bound the session switch themselves is a question about what is
+            // *saved*, not about the in-memory settings: ShortcutSettings.Default seeds a gesture for every
+            // action, so asking the merged object would always answer "already set" and the legacy value would
+            // never carry over.
+            var alreadyRebound = configFile.Shortcuts?.ToDomain() is { } saved &&
+                                 (saved.Gestures.ContainsKey(ShortcutAction.PreviousSession) ||
+                                  saved.Gestures.ContainsKey(ShortcutAction.NextSession));
+
+            if (!alreadyRebound)
+            {
+                settings = _CarryOverLegacySessionSwitch(settings, legacySessionSwitch);
+            }
         }
 
-        // Whether the operator has since bound the session switch themselves is a question about what is *saved*,
-        // not about the in-memory settings: ShortcutSettings.Default seeds a gesture for every action, so asking
-        // the merged object would always answer "already set" and the legacy value would never carry over.
-        var alreadyRebound = configFile.Shortcuts?.ToDomain() is { } saved &&
-                             (saved.Gestures.ContainsKey(ShortcutAction.PreviousSession) ||
-                              saved.Gestures.ContainsKey(ShortcutAction.NextSession));
+        return _MigrateSessionSwitchOffArrowKeys(settings);
+    }
 
-        return alreadyRebound ? settings : _CarryOverLegacySessionSwitch(settings, legacySessionSwitch);
+    /// <summary>
+    /// The session switch used to default to Ctrl+Up / Ctrl+Down; those are now the spatial pane-focus gestures
+    /// and the session switch has moved to Ctrl+Shift+Up/Down (AC-31). A config that saved the old defaults
+    /// explicitly would otherwise double-bind Ctrl+Up/Down with the new "focus pane up/down", so migrate exactly
+    /// those two values to the new gesture. A gesture the operator changed to anything else is left alone, and a
+    /// config that never saved them keeps taking the (now Shift+) catalog default. Idempotent: after the operator
+    /// next saves, the shortcuts section holds the new gesture and this matches nothing.
+    /// </summary>
+    private static ShortcutSettings _MigrateSessionSwitchOffArrowKeys(ShortcutSettings settings)
+    {
+        var migrated = settings;
+        if (settings.Gestures.TryGetValue(ShortcutAction.PreviousSession, out var previous) && previous == "Ctrl+Up")
+        {
+            migrated = migrated.With(ShortcutAction.PreviousSession, "Ctrl+Shift+Up");
+        }
+
+        if (settings.Gestures.TryGetValue(ShortcutAction.NextSession, out var next) && next == "Ctrl+Down")
+        {
+            migrated = migrated.With(ShortcutAction.NextSession, "Ctrl+Shift+Down");
+        }
+
+        return migrated;
     }
 
     /// <summary>

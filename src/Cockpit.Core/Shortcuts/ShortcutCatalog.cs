@@ -9,8 +9,11 @@ public sealed record ShortcutDescriptor(ShortcutAction Action, string Label, str
 /// the action starts unbound. Gestures are stored as strings (e.g. "Ctrl+N", "Ctrl+Shift+P") and parsed to an
 /// Avalonia <c>KeyGesture</c> at the view layer, keeping this Core type UI-framework-free.
 /// <para>
-/// The arrow defaults split by axis, matching what they move through on screen: Ctrl+Up/Down steps the
-/// session list (a vertical sidebar), Ctrl+Shift+Left/Right steps the workspace tabs (a horizontal strip).
+/// Bare Ctrl+arrow moves spatially between panes in the session grid — the focus goes to the pane in that
+/// geometric direction. Shift lifts it to the list/meta level: Ctrl+Shift+Up/Down steps the session list,
+/// Ctrl+Shift+Left/Right steps the workspace tabs. The bare-Ctrl arrows are deliberately kept out of a
+/// focused terminal (see <see cref="StaysActiveInTerminal"/>) so a shell keeps its word-wise Ctrl+Left/Right,
+/// while the two-modifier gestures fire even while typing.
 /// </para>
 /// </summary>
 public static class ShortcutCatalog
@@ -26,8 +29,12 @@ public static class ShortcutCatalog
         new(ShortcutAction.About, "About", ""),
         new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+B"),
         new(ShortcutAction.CommandPalette, "Command palette", "Ctrl+K"),
-        new(ShortcutAction.PreviousSession, "Previous session", "Ctrl+Up"),
-        new(ShortcutAction.NextSession, "Next session", "Ctrl+Down"),
+        new(ShortcutAction.FocusPaneLeft, "Focus pane left", "Ctrl+Left"),
+        new(ShortcutAction.FocusPaneRight, "Focus pane right", "Ctrl+Right"),
+        new(ShortcutAction.FocusPaneUp, "Focus pane up", "Ctrl+Up"),
+        new(ShortcutAction.FocusPaneDown, "Focus pane down", "Ctrl+Down"),
+        new(ShortcutAction.PreviousSession, "Previous session", "Ctrl+Shift+Up"),
+        new(ShortcutAction.NextSession, "Next session", "Ctrl+Shift+Down"),
         new(ShortcutAction.PreviousWorkspace, "Previous workspace", "Ctrl+Shift+Left"),
         new(ShortcutAction.NextWorkspace, "Next workspace", "Ctrl+Shift+Right"),
         // Unbound on purpose. These are things you do to a workspace once and then live with, so they earn a

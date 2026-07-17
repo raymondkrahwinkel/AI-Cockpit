@@ -79,8 +79,8 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Ctrl+Up");
-        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Ctrl+Down");
+        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Ctrl+Shift+Up");
+        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
     }
 
     public void Dispose()
