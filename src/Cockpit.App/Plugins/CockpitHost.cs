@@ -230,6 +230,11 @@ internal sealed class CockpitHost(
     public bool RemoveManagedCli(string cliName) =>
         services.GetService<IManagedCliService>()?.RemoveInstalled(cliName) ?? false;
 
+    public Task<ManagedCliStatus> GetManagedCliStatusAsync(string cliName, CancellationToken cancellationToken = default) =>
+        services.GetService<IManagedCliService>() is { } managedCli
+            ? managedCli.GetStatusAsync(cliName, cancellationToken)
+            : Task.FromResult(new ManagedCliStatus(null, null));
+
     public Task SetSessionStatusline(string paneId, string statusline) =>
         _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);
 
