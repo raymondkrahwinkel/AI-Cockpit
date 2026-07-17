@@ -95,6 +95,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
 | Keyboard shortcut | `host.AddShortcut(shortcut)` | A gesture and a command-palette entry, listed in Options → Shortcuts alongside the app's own. |
 | Toast | `host.ShowToast(message, severity, actionLabel, onAction)` | A transient in-app notification with an optional single action button — how you tell the operator something happened while they were looking elsewhere. |
+| Consent gate | `host.RequestConsentAsync(request)` | Ask the operator to **approve one action** (a shell command, a session hand-off, egress) before you run it — shown verbatim as an Approve/Deny banner on the session, denied if unanswered. See [`RequestConsentAsync`](API-REFERENCE.md#taskconsentdecision-requestconsentasyncconsentrequest-request). |
 | Persist settings | `host.Storage` | Per-plugin key/value storage in `cockpit.json`. |
 | Live-apply settings | `host.OnSettingsSaved(callback)` | Re-run a callback after your settings are saved, without needing an app restart. |
 | Register services | `plugin.ConfigureServices(services)` | Add your own services to the host DI container (phase 1). |
@@ -127,6 +128,7 @@ public interface ICockpitHost
     void AddShortcut(PluginShortcut shortcut);                  // a gesture + command-palette entry
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
                    string? actionLabel = null, Action? onAction = null);      // an in-app notification
+    Task<ConsentDecision> RequestConsentAsync(ConsentRequest request);  // operator Approve/Deny before a risky action
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
     void AddWidget(WidgetRegistration registration);            // a widget type for Dashboard workspaces
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)

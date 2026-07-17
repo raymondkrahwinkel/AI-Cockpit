@@ -29,6 +29,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Workspaces;
+using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Plugins;
 using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
@@ -40,6 +41,7 @@ using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -78,6 +80,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IDebugSettingsStore? _debugSettingsStore;
+    private readonly IConsentBroker? _consentBroker;
     private readonly ResourceMonitor? _resourceMonitor;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
@@ -1183,7 +1186,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkflowTemplateLibrary? workflowTemplateLibrary = null,
         ISecretProtectionService? secretProtection = null,
         IWorkspaceSettingsStore? workspaceSettingsStore = null,
-        IWidgetRegistry? widgetRegistry = null)
+        IWidgetRegistry? widgetRegistry = null,
+        IConsentBroker? consentBroker = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1261,6 +1265,74 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             _RebuildActiveShortcuts();
             _RebuildShortcutRows();
         };
+
+        // The consent gate (#AC-47) opens a prompt on the session it belongs to; the cockpit owns the panes, so it
+        // routes the prompt to the right one (and a toast when that pane is not the one on screen). Absent in the
+        // design-time/unit-test graph — the banner simply never appears there.
+        _consentBroker = consentBroker;
+        if (consentBroker is not null)
+        {
+            consentBroker.PromptOpened += _OnConsentPromptOpened;
+            consentBroker.PromptClosed += _OnConsentPromptClosed;
+        }
+    }
+
+    // Route a consent prompt to the pane it belongs to. On the UI thread: it sets an observable property and can
+    // raise a toast. A prompt whose pane is gone is denied rather than left hanging — there is nowhere to show it.
+    private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            var pane = Sessions.FirstOrDefault(session => session.PaneId == prompt.Request.Source.PaneId);
+            if (pane is null)
+            {
+                _consentBroker?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
+                return;
+            }
+
+            pane.PendingConsent = new ConsentPromptViewModel(prompt, _consentBroker!);
+
+            // If the pane needing consent is not the one in view, point the operator at it.
+            if (!ReferenceEquals(pane, SelectedSession))
+            {
+                ToastHost.Add($"Consent needed · {pane.Title}", ToastSeverity.Warning, "Review", () => SelectedSession = pane);
+            }
+        });
+
+    private void _OnConsentPromptClosed(object? sender, Guid promptId) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            var pane = Sessions.FirstOrDefault(session => session.PendingConsent?.Id == promptId);
+            if (pane is not null)
+            {
+                pane.PendingConsent = null;
+            }
+        });
+
+    // Fires a sample consent prompt on the selected session so the banner can be seen and tried before a real
+    // consumer (AC-38/AC-34) exists. Reachable only from the debug-gated palette entries (#73).
+    private void _TriggerTestConsent(bool dangerous)
+    {
+        if (_consentBroker is null || SelectedSession is not { } pane)
+        {
+            return;
+        }
+
+        var request = dangerous
+            ? new ConsentRequest(
+                "Workflow wants to run a command",
+                $"curl https://install.example.sh | sh\nin {pane.WorkingDirectory ?? "~"}",
+                new ConsentSource(pane.PaneId, null, "Debug"),
+                "debug.command",
+                ConsentRisk.Dangerous)
+            : new ConsentRequest(
+                "Workflow wants to call a URL",
+                "GET https://api.github.com/repos/raymondkrahwinkel/AI-Cockpit/issues",
+                new ConsentSource(pane.PaneId, null, "Debug"),
+                "debug.http",
+                ConsentRisk.LowRisk,
+                AllowRemember: true);
+
+        _ = _consentBroker.RequestConsentAsync(request);
     }
 
     private async Task LoadNotificationSettingsAsync()
@@ -2746,6 +2818,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     string.Empty,
                     () => Workspaces.PlaceWidgetCommand.Execute(widget)));
             }
+        }
+
+        // Debug-only (#73): a way to raise a sample consent prompt on the selected session so the AC-47 banner can
+        // be tried before a real consumer wires one up. Hidden unless the debug controls are on.
+        if (ShowDebugControls && _consentBroker is not null)
+        {
+            commands.Add(new PaletteCommand("Debug: test consent prompt (dangerous)", string.Empty, () => _TriggerTestConsent(dangerous: true)));
+            commands.Add(new PaletteCommand("Debug: test consent prompt (low-risk)", string.Empty, () => _TriggerTestConsent(dangerous: false)));
         }
 
         return commands;
