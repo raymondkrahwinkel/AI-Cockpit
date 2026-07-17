@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Material.Icons;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
 
@@ -21,7 +22,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "github-pull-requests",
         DisplayName: "GitHub Pull Requests",
-        Version: "2.1.0",
+        Version: "2.1.1",
         Author: "Cockpit",
         Description: "Shows your open GitHub pull requests inline under the session list (how many is configurable, and you can limit it to specific repositories), refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP — plus a dialog with an \"Assigned to me\" filter, and a Dashboard widget showing the same list as a resizable pane with its own item count. Left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). Pull requests waiting for your review are listed separately under \"Review requested\", each with an Open button, and a new one raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.");
 
@@ -52,7 +53,7 @@ public sealed class GitHubPullRequestsPlugin : ICockpitPlugin
         // orphan widgets on dashboards people have already arranged.
         host.AddWidget(new WidgetRegistration("widgets.github-pull-requests", "GitHub Pull Requests", context => new GitHubPullRequestsWidget(settings, host, context))
         {
-            Icon = "🔀",
+            IconKind = MaterialIconKind.SourcePull,
             Description = "Your open pull requests, with a configurable count.",
             DefaultColumnSpan = 6,
             DefaultRowSpan = 8,

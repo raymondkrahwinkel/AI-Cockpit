@@ -1,9 +1,12 @@
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus;
@@ -31,13 +34,13 @@ internal sealed class GitStatusDialogControl : UserControl
         _settings = settings;
         _actions = actions;
 
-        var refresh = new Button { Content = "↻ Refresh" };
+        var refresh = new Button { Content = _IconLabel(MaterialIconKind.Refresh, "Refresh") };
         refresh.Click += async (_, _) => await _LoadAsync();
 
         _inject = new Button { Content = "Inject status into session", Classes = { "Accent" } };
         _inject.Click += async (_, _) => await _InjectAsync();
 
-        var copy = new Button { Content = "⧉ Copy" };
+        var copy = new Button { Content = _IconLabel(MaterialIconKind.ContentCopy, "Copy") };
         copy.Click += async (_, _) => await _CopyAsync();
 
         _status = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
@@ -51,7 +54,12 @@ internal sealed class GitStatusDialogControl : UserControl
             SelectionMode = DataGridSelectionMode.Single,
             GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
         };
-        _grid.Columns.Add(new DataGridTextColumn { Header = "State", Binding = new Binding(nameof(GitRepoStatus.StateText)), Width = new DataGridLength(90) });
+        _grid.Columns.Add(new DataGridTemplateColumn
+        {
+            Header = "State",
+            Width = new DataGridLength(90),
+            CellTemplate = new FuncDataTemplate<GitRepoStatus>((status, _) => _BuildStateCell(status)),
+        });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Repository", Binding = new Binding(nameof(GitRepoStatus.Name)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Branch", Binding = new Binding(nameof(GitRepoStatus.Branch)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.Columns.Add(new DataGridTextColumn { Header = "Changes", Binding = new Binding(nameof(GitRepoStatus.Uncommitted)), Width = new DataGridLength(80) });
@@ -85,7 +93,7 @@ internal sealed class GitStatusDialogControl : UserControl
         {
             _rows.Clear();
             _inject.IsEnabled = false;
-            _status.Text = "No repositories configured — add some via the ⚙ Settings gear next to this plugin (in the Plugin store → Installed).";
+            _status.Text = "No repositories configured — add some via the Settings gear next to this plugin (in the Plugin store → Installed).";
             return;
         }
 
@@ -149,4 +157,47 @@ internal sealed class GitStatusDialogControl : UserControl
         await _actions.SetClipboardTextAsync(GitStatusSummary.Render([.. _rows]));
         _status.Text = "Copied the git status summary to the clipboard.";
     }
+
+    // The state column reads the icon/colour from the row directly (not from StateText) so the colour stays in
+    // step with what IsClean/Error actually mean, rather than being re-derived from a word.
+    private static Control _BuildStateCell(GitRepoStatus? status)
+    {
+        if (status is null)
+        {
+            return new TextBlock();
+        }
+
+        var (icon, brush) = status.Error is not null
+            ? (MaterialIconKind.AlertOutline, _Brush("CockpitStatusErrorBrush"))
+            : status.IsClean
+                ? (MaterialIconKind.Check, _Brush("CockpitStatusDoneBrush"))
+                : (MaterialIconKind.Circle, _Brush("CockpitStatusWaitingBrush"));
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            Margin = new Thickness(4, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                new MaterialIcon { Kind = icon, Width = 12, Height = 12, Foreground = brush, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = status.StateText, VerticalAlignment = VerticalAlignment.Center },
+            },
+        };
+    }
+
+    private static Control _IconLabel(MaterialIconKind icon, string text) => new StackPanel
+    {
+        Orientation = Orientation.Horizontal,
+        Spacing = 4,
+        Children =
+        {
+            new MaterialIcon { Kind = icon, Width = 13, Height = 13 },
+            new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center },
+        },
+    };
+
+    private static IBrush? _Brush(string key) =>
+        Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
 }

@@ -5,6 +5,8 @@ using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitStatus;
@@ -54,7 +56,7 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
                 };
                 var remove = new Button
                 {
-                    Content = "✕",
+                    Content = new MaterialIcon { Kind = MaterialIconKind.Close, Width = 12, Height = 12 },
                     Classes = { "Compact", "Subtle" },
                     Foreground = _Brush("CockpitTextFaintBrush"),
                 };

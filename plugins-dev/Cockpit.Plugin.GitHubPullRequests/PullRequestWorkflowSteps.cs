@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Material.Icons;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
@@ -36,7 +37,9 @@ internal static class PullRequestWorkflowSteps
 
         public string Description => "Fires when one of your pull requests goes from not-merged to merged. GitHub cannot tell a desktop app, so it is asked every few minutes; the first look after the cockpit starts fires nothing, or every merge you have ever made would fire at once.";
 
-        public string Icon => "⇵";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.SwapVertical;
 
         public string Category => "GitHub";
 
@@ -65,7 +68,9 @@ internal static class PullRequestWorkflowSteps
 
         public string Description => "Open a pull request for the branch a repository is on. Draft unless you say otherwise, because a flow that asks four people to review something you have not looked at yet is not a favour.";
 
-        public string Icon => "⇵";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.SwapVertical;
 
         public string Category => "GitHub";
 
