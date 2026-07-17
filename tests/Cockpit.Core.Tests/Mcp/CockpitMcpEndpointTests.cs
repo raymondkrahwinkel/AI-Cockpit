@@ -1,7 +1,5 @@
 using System.Text.Json;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Mcp;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using FluentAssertions;
 using NSubstitute;
@@ -9,26 +7,11 @@ using NSubstitute;
 namespace Cockpit.Core.Tests.Mcp;
 
 /// <summary>
-/// The generic cockpit MCP endpoint mechanism (#AC-13, #AC-12): an endpoint's on-by-default publish rule, and the
-/// cockpit-session <c>set_status</c> tool routing to the statusline sink. The Kestrel hosting itself needs a real
-/// server, so it is out of unit-test reach here — these cover the two decisions that carry the behaviour.
+/// The cockpit-session <c>set_status</c> tool routing to the statusline sink (#AC-13). The Kestrel hosting itself
+/// needs a real server, so it is out of unit-test reach here.
 /// </summary>
 public class CockpitMcpEndpointTests
 {
-    [Fact]
-    public void ShouldBeEnabled_ADefaultOnEndpoint_IsAlwaysReasserted_EvenIfPreviouslyDisabled()
-    {
-        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: true, existingEntry: null).Should().BeTrue();
-        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: true, new McpServerConfig { Name = "cockpit-session", Enabled = false }).Should().BeTrue();
-    }
-
-    [Fact]
-    public void ShouldBeEnabled_ADefaultOffEndpoint_KeepsTheOperatorsChoice_DefaultingOff()
-    {
-        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: false, existingEntry: null).Should().BeFalse();
-        CockpitMcpEndpointHost.ShouldBeEnabled(enabledByDefault: false, new McpServerConfig { Name = "cockpit-extra", Enabled = true }).Should().BeTrue();
-    }
-
     [Fact]
     public async Task SetStatus_RoutesToTheSink_AndReportsWhetherASessionMatched()
     {
