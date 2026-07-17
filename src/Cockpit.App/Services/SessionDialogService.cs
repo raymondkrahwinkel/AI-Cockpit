@@ -297,4 +297,15 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var dialog = new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(title, message, confirmLabel) };
         return await dialog.ShowDialog<bool>(owner);
     }
+
+    public async Task<string?> ShowSetStatusDialogAsync(string currentStatusline)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var dialog = new SetStatusDialog { DataContext = new SetStatusDialogViewModel(currentStatusline) };
+        return await dialog.ShowDialog<string?>(owner);
+    }
 }

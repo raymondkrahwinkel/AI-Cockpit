@@ -97,6 +97,69 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task SetSessionStatus_WhenTheDialogReturnsAValue_WritesItToTheSession()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Sdk));
+        dialogService.ShowSetStatusDialogAsync(Arg.Any<string>()).Returns("AC-32");
+        var vm = NewVm(dialogService);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+
+        await vm.SetSessionStatusCommand.ExecuteAsync(session);
+
+        session.Statusline.Should().Be("AC-32");
+    }
+
+    [Fact]
+    public async Task SetSessionStatus_WhenTheDialogClears_EmptiesTheStatusline()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Sdk));
+        // The dialog's own Clear button returns an empty string (distinct from cancelling, which returns null).
+        dialogService.ShowSetStatusDialogAsync(Arg.Any<string>()).Returns(string.Empty);
+        var vm = NewVm(dialogService);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+        session.Statusline = "AC-13";
+
+        await vm.SetSessionStatusCommand.ExecuteAsync(session);
+
+        session.Statusline.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SetSessionStatus_WhenCancelled_LeavesTheStatuslineUnchanged()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Sdk));
+        dialogService.ShowSetStatusDialogAsync(Arg.Any<string>()).Returns((string?)null);
+        var vm = NewVm(dialogService);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+        session.Statusline = "AC-13";
+
+        await vm.SetSessionStatusCommand.ExecuteAsync(session);
+
+        // Cancel seeds the dialog with the current status and returns null → the line stays as it was.
+        await dialogService.Received().ShowSetStatusDialogAsync("AC-13");
+        session.Statusline.Should().Be("AC-13");
+    }
+
+    [Fact]
+    public async Task ClearSessionStatus_EmptiesTheStatusline()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+        session.Statusline = "AC-13";
+
+        vm.ClearSessionStatusCommand.Execute(session);
+
+        session.Statusline.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SetSessionName_ByPaneId_RenamesThatSession_AndIgnoresABlankName()
     {
         var vm = NewVm();
