@@ -62,8 +62,8 @@ public class ShortcutSettingsStoreArrowMigrationTests : IDisposable
 
         settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Ctrl+Shift+Up");
         settings.GestureFor(ShortcutAction.NextSession).Should().Be("Ctrl+Shift+Down");
-        settings.GestureFor(ShortcutAction.FocusPaneUp).Should().Be("Ctrl+Up");
-        settings.GestureFor(ShortcutAction.FocusPaneDown).Should().Be("Ctrl+Down");
+        settings.GestureFor(ShortcutAction.FocusPaneUp).Should().Be("Ctrl+Alt+Up");
+        settings.GestureFor(ShortcutAction.FocusPaneDown).Should().Be("Ctrl+Alt+Down");
     }
 
     public void Dispose()
