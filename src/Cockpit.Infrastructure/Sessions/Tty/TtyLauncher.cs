@@ -4,6 +4,8 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Tty;
+using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
 
@@ -17,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 /// specific (executable, flags, config directory, status relay) moved into <see cref="ITtySessionProvider"/>,
 /// and what is left is the part every TUI needs identically.
 /// </remarks>
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ILogger<TtyLauncher> logger) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey authKey, ILogger<TtyLauncher> logger) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -58,6 +60,20 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ILogger<TtyLau
                 ["COCKPIT_PANE_ID"] = paneId,
             };
         }
+
+        // AC-40: this run's MCP auth key, so a cockpit-hosted server's --mcp-config can reference COCKPIT_MCP_KEY
+        // (Claude's Bearer ${COCKPIT_MCP_KEY}, Codex's bearer_token_env_var) instead of embedding a literal, and the
+        // child presents it to the 401 gate. It has to go on the base, not a provider overlay: an overlay value is
+        // scrubbed as host-controlled (a profile/provider must not override the key and lock the session out with a
+        // self-inflicted 401), and a base value the host sets itself is what survives Compose down to the child. The
+        // host owns it here for the same reason it owns the pane id above — set after the profile's variables, which
+        // Compose has already laid down, so no profile can shadow it. Without this the env reference expands to empty
+        // and every cockpit-hosted MCP endpoint answers 401 (unlike the in-process local-model loop and the SDK
+        // spawn, which hand the key straight to the client and so were never affected).
+        baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
+        {
+            [WellKnownSessionEnvironment.CockpitMcpKey] = authKey.Value,
+        };
 
         var context = new TtyLaunchContext(
             profile,
