@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -47,7 +49,7 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
                 Spacing = 5,
                 Children =
                 {
-                    new TextBlock { Text = "🎫", FontSize = 10, VerticalAlignment = VerticalAlignment.Center },
+                    new MaterialIcon { Kind = MaterialIconKind.TicketOutline, Width = 10, Height = 10, VerticalAlignment = VerticalAlignment.Center },
                     _label,
                 },
             },

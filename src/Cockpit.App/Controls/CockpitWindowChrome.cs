@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
@@ -83,28 +84,28 @@ internal static class CockpitWindowChrome
 
         if (includeMinimize)
         {
-            var minimize = _CaptionButton("—");
+            var minimize = _CaptionButton(CockpitIcons.Icon(MaterialIconKind.WindowMinimize));
             minimize.Click += (_, _) => window.WindowState = WindowState.Minimized;
             captionButtons.Children.Add(minimize);
         }
 
         if (includeMaximize)
         {
-            var maximize = _CaptionButton(_MaximizeGlyph(window.WindowState));
+            var maximize = _CaptionButton(_MaximizeIcon(window.WindowState));
             maximize.Click += (_, _) => _ToggleMaximize(window);
             captionButtons.Children.Add(maximize);
 
-            // Keep the glyph in sync with the state (maximize ▢ vs restore ❐), whichever way it changed.
+            // Keep the icon in sync with the state (maximize vs restore), whichever way it changed.
             window.PropertyChanged += (_, e) =>
             {
                 if (e.Property == Window.WindowStateProperty)
                 {
-                    maximize.Content = _MaximizeGlyph(window.WindowState);
+                    maximize.Content = _MaximizeIcon(window.WindowState);
                 }
             };
         }
 
-        var close = _CaptionButton("✕");
+        var close = _CaptionButton(CockpitIcons.Icon(MaterialIconKind.WindowClose));
         close.Click += (_, _) => window.Close();
         captionButtons.Children.Add(close);
 
@@ -145,7 +146,8 @@ internal static class CockpitWindowChrome
     private static void _ToggleMaximize(Window window) =>
         window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
-    private static string _MaximizeGlyph(WindowState state) => state == WindowState.Maximized ? "❐" : "▢";
+    private static Control _MaximizeIcon(WindowState state) =>
+        CockpitIcons.Icon(state == WindowState.Maximized ? MaterialIconKind.WindowRestore : MaterialIconKind.WindowMaximize);
 
     // A uniform caption button: same width, font size and centred glyph so the buttons line up regardless
     // of each glyph's own metrics.

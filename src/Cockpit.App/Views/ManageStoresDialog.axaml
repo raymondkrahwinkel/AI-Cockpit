@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -71,11 +72,14 @@
                                             Background="{StaticResource CockpitPanelBgBrush}" VerticalAlignment="Center">
                                         <Panel>
                                             <!-- The store's real logo when its index.json advertised one; otherwise
-                                                 its emoji, otherwise the default storefront glyph. -->
+                                                 its own icon glyph, otherwise the default storefront icon. -->
                                             <Image Source="{Binding Logo}" IsVisible="{Binding HasLogo}"
                                                    Width="40" Height="40" Stretch="UniformToFill"/>
-                                            <TextBlock Text="{Binding IconOrDefault}" FontSize="20"
-                                                       IsVisible="{Binding !HasLogo}"
+                                            <TextBlock Text="{Binding Icon}" FontSize="20"
+                                                       IsVisible="{Binding ShowIconGlyph}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <materialIcons:MaterialIcon Kind="StoreOutline" Width="20" Height="20"
+                                                       IsVisible="{Binding ShowDefaultIcon}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Panel>
                                     </Border>

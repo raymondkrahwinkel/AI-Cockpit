@@ -14,7 +14,7 @@ public sealed class GitStatusPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "git-status",
         DisplayName: "Git status",
-        Version: "1.4.1",
+        Version: "1.4.2",
         Author: "Cockpit",
         Description: "An inline panel that follows the active session — the branch / uncommitted / unpushed status of the repo it is working in, refreshing when the session switches or runs a git command — plus a button/dialog for the same across all your configured repositories. Click to drop a status summary into the session.");
 

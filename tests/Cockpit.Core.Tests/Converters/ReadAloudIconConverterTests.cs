@@ -1,6 +1,7 @@
 using System.Globalization;
 using Cockpit.App.Converters;
 using FluentAssertions;
+using Material.Icons;
 
 namespace Cockpit.Core.Tests.Converters;
 
@@ -13,27 +14,30 @@ public class ReadAloudIconConverterTests
     [Fact]
     public void Icon_DiffersBetweenOnAndOff()
     {
-        var on = _Convert(ReadAloudIconConverter.Icon, true);
-        var off = _Convert(ReadAloudIconConverter.Icon, false);
+        var on = _ConvertIcon(true);
+        var off = _ConvertIcon(false);
 
         on.Should().NotBe(off);
-        on.Should().NotBeEmpty();
-        off.Should().NotBeEmpty();
+        on.Should().Be(MaterialIconKind.VolumeHigh);
+        off.Should().Be(MaterialIconKind.VolumeOff);
     }
 
     [Fact]
     public void Tip_SaysWhatTheStateIsAndWhatAClickDoes()
     {
-        _Convert(ReadAloudIconConverter.Tip, true).Should().Contain("Click to stop");
-        _Convert(ReadAloudIconConverter.Tip, false).Should().Contain("Click to start");
+        _ConvertTip(true).Should().Contain("Click to stop");
+        _ConvertTip(false).Should().Contain("Click to start");
     }
 
     [Fact]
     public void Icon_WithNoBoundValueYet_FallsBackToTheOffFace()
     {
-        _Convert(ReadAloudIconConverter.Icon, null).Should().Be(_Convert(ReadAloudIconConverter.Icon, false));
+        _ConvertIcon(null).Should().Be(_ConvertIcon(false));
     }
 
-    private static string _Convert(ReadAloudIconConverter converter, bool? value) =>
-        (string)converter.Convert(value, typeof(string), null, CultureInfo.InvariantCulture);
+    private static MaterialIconKind _ConvertIcon(bool? value) =>
+        (MaterialIconKind)ReadAloudIconConverter.Icon.Convert(value, typeof(MaterialIconKind), null, CultureInfo.InvariantCulture);
+
+    private static string _ConvertTip(bool? value) =>
+        (string)ReadAloudIconConverter.Tip.Convert(value, typeof(string), null, CultureInfo.InvariantCulture);
 }

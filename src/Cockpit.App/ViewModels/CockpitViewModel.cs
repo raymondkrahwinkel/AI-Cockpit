@@ -742,7 +742,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var choice = RenderBackendFromLabel(RenderBackendSelection);
         await _renderingSettingsStore.SaveAsync(new RenderingSettings { Backend = choice });
         RenderBackendNeedsRestart = choice != _startupRenderBackend;
-        RenderingSettingsStatus = "✓ Saved";
+        RenderingSettingsStatus = "Saved";
     }
     // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1776,7 +1776,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         };
 
         await _notificationSettingsStore.SaveAsync(settings);
-        NotificationSettingsStatus = "✓ Saved";
+        NotificationSettingsStatus = "Saved";
     }
 
     private async Task LoadShortcutSettingsAsync()
@@ -1814,7 +1814,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await _shortcutSettingsStore.SaveAsync(settings);
         }
 
-        ShortcutSettingsStatus = "✓ Saved";
+        ShortcutSettingsStatus = "Saved";
     }
 
     // The Options list: one editable row per app action (label + configured gesture), then a read-only row per
@@ -1976,7 +1976,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _transcriptDisplaySettingsStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = ShowTimestamps });
-        TranscriptDisplaySettingsStatus = "✓ Saved";
+        TranscriptDisplaySettingsStatus = "Saved";
     }
 
     private async Task LoadSessionBehaviorSettingsAsync()
@@ -2000,7 +2000,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = AutoCloseOnExit });
-        SessionBehaviorSettingsStatus = "✓ Saved";
+        SessionBehaviorSettingsStatus = "Saved";
     }
 
     /// <summary>What the cockpit and its sessions are using, for the status bar (#78) — e.g. "CPU 12% · RAM 1.9 GB".</summary>
@@ -2531,7 +2531,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _debugSettingsStore.SaveAsync(new DebugSettings { ShowDebugControls = ShowDebugControls });
-        DebugSettingsStatus = "✓ Saved";
+        DebugSettingsStatus = "Saved";
     }
 
     private async Task LoadLayoutSettingsAsync()
@@ -2566,7 +2566,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             SidebarWidth = SidebarWidth,
             SidebarCollapsed = SidebarCollapsed,
         });
-        LayoutSettingsStatus = "✓ Saved";
+        LayoutSettingsStatus = "Saved";
     }
 
     /// <summary>
@@ -2700,7 +2700,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _terminalSettingsStore.SaveAsync(new TerminalSettings { FontFamily = fontFamily, FontSize = fontSize, Shell = shell });
         TerminalFontFamily = fontFamily;
         TerminalFontSize = fontSize;
-        TerminalSettingsStatus = "✓ Saved";
+        TerminalSettingsStatus = "Saved";
     }
 
     private async Task LoadVoiceSettingsAsync()
@@ -2844,7 +2844,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             session.DutchTtsVoiceId = SelectedDutchTtsVoice.VoiceId;
         }
 
-        VoiceSettingsStatus = "✓ Saved";
+        VoiceSettingsStatus = "Saved";
 
         // On Linux the global hotkey is a desktop-portal binding the compositor only takes at startup, so a change
         // to it there needs a restart — unlike Windows, where the re-arm below applies it live.
@@ -3278,7 +3278,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
         await SaveDebugSettingsCommand.ExecuteAsync(null);
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
-        AllSettingsStatus = "✓ Saved";
+        AllSettingsStatus = "Saved";
     }
 
     private void AddSession(SessionPanelViewModel session, string? name, string profileLabel)

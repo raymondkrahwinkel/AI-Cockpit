@@ -5,6 +5,8 @@ using Avalonia.Controls.Templates;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.PromptLibrary;
 
@@ -56,7 +58,20 @@ internal sealed class PromptLibraryDialogControl : UserControl
         _list.SelectionChanged += (_, _) => _LoadSelected();
         PromptListSelectionStyle.Apply(_list);
 
-        var newButton = new Button { Content = "＋ New", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var newButton = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new MaterialIcon { Kind = MaterialIconKind.Plus, Width = 14, Height = 14 },
+                    new TextBlock { Text = "New", VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
         newButton.Click += (_, _) => _NewTemplate();
         var deleteButton = new Button { Content = "Delete", HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(6, 0, 0, 0) };
         deleteButton.Click += async (_, _) => await _DeleteSelectedAsync();
@@ -97,7 +112,20 @@ internal sealed class PromptLibraryDialogControl : UserControl
 
         _insert = new Button { Content = "Insert into session", Classes = { "Accent" } };
         _insert.Click += async (_, _) => await _InsertAsync();
-        var copyButton = new Button { Content = "⧉ Copy", Margin = new Thickness(6, 0, 0, 0) };
+        var copyButton = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new MaterialIcon { Kind = MaterialIconKind.ContentCopy, Width = 14, Height = 14 },
+                    new TextBlock { Text = "Copy", VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+            Margin = new Thickness(6, 0, 0, 0),
+        };
         copyButton.Click += async (_, _) => await _CopyAsync();
         _status = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0), Opacity = 0.8, TextWrapping = TextWrapping.Wrap };
         var actionRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };

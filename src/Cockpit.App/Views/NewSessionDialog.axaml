@@ -3,6 +3,7 @@
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:profiles="using:Cockpit.Core.Profiles"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -84,7 +85,7 @@
             </Grid>
 
             <!-- Optional per-session working directory: launch this session in a project folder instead of the
-                 app directory. Browse picks one; the ★ pins the current one; the picker offers previously-used
+                 app directory. Browse picks one; the star pins the current one; the picker offers previously-used
                  folders (favorites first). Blank keeps the global default. -->
             <Grid ColumnDefinitions="72,*" VerticalAlignment="Top">
                 <TextBlock Grid.Column="0" Text="Folder" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
@@ -93,18 +94,28 @@
                     <Grid ColumnDefinitions="*,Auto,Auto">
                         <TextBox Grid.Column="0" Text="{Binding WorkingDirectory}"
                                  PlaceholderText="Optional — defaults to the app directory"/>
-                        <Button Grid.Column="1" Content="{Binding FavoriteToggleGlyph}" Margin="4,0,0,0"
+                        <Button Grid.Column="1" Margin="4,0,0,0"
                                 Command="{Binding ToggleWorkingDirectoryFavoriteCommand}"
                                 IsEnabled="{Binding CanFavoriteWorkingDirectory}"
                                 Foreground="{StaticResource CockpitAccentBrush}"
-                                ToolTip.Tip="Pin this folder as a favorite"/>
+                                ToolTip.Tip="Pin this folder as a favorite">
+                            <materialIcons:MaterialIcon Kind="{Binding FavoriteToggleGlyph}" Width="14" Height="14"/>
+                        </Button>
                         <Button Grid.Column="2" Content="Browse…" Margin="4,0,0,0" Click="OnBrowseWorkingDirectory"/>
                     </Grid>
                     <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RememberedPaths}"
                               SelectedItem="{Binding SelectedRememberedPath}"
                               PlaceholderText="Recent / favorite folders…"
-                              IsVisible="{Binding HasRememberedPaths}"
-                              DisplayMemberBinding="{Binding Display}"/>
+                              IsVisible="{Binding HasRememberedPaths}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RememberedPathOption">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <materialIcons:MaterialIcon Kind="Star" Width="11" Height="11" IsVisible="{Binding IsFavorite}"/>
+                                    <TextBlock Text="{Binding Path}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                 </StackPanel>
             </Grid>
 

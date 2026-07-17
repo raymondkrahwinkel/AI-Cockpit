@@ -30,9 +30,10 @@ public class NodeCatalogTests
     [Fact]
     public void EveryStep_HasAnIconAndSaysWhatItDoes()
     {
-        // The picker is only usable if a step can be recognised without knowing its id.
+        // The picker is only usable if a step can be recognised without knowing its id — by its vector icon now,
+        // or by the glyph string for a plugin's step that has not set one.
         NodeCatalog.All.Should().OnlyContain(type =>
-            type.Icon.Length > 0 && type.Name.Length > 0 && type.Description.Length > 0);
+            (type.IconKind.HasValue || type.Icon.Length > 0) && type.Name.Length > 0 && type.Description.Length > 0);
     }
 
     [Fact]

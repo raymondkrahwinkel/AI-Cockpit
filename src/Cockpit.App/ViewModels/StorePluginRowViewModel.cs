@@ -1,3 +1,4 @@
+using Material.Icons;
 using Cockpit.Core.Plugins;
 
 namespace Cockpit.App.ViewModels;
@@ -17,8 +18,8 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
     /// <summary>Whether the installed plugin registered a settings view — gates the card's ⚙ gear.</summary>
     public bool HasSettings => hasSettings;
 
-    /// <summary>Power symbol for the card's enable/disable toggle — colour (via <see cref="ToggleBrushKey"/>) carries the on/off state.</summary>
-    public string ToggleGlyph => "⏻";
+    /// <summary>Power icon for the card's enable/disable toggle — colour (via <see cref="ToggleBrushKey"/>) carries the on/off state.</summary>
+    public MaterialIconKind ToggleGlyph => MaterialIconKind.Power;
 
     /// <summary>Theme brush key for the toggle glyph: green when enabled, faint when disabled — resolved in the view by the status-brush converter.</summary>
     public string ToggleBrushKey => isEnabled ? "CockpitStatusDoneBrush" : "CockpitTextFaintBrush";
@@ -97,7 +98,7 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
     public DateOnly? PublishedDate => DateOnly.TryParse(entry.Published, out var parsed) ? parsed : null;
 
     /// <summary>The store dialog card/detail's primary action button label — "Install", "Update", or a disabled "Installed" badge once up to date.</summary>
-    public string PrimaryActionLabel => !IsInstalled ? "Install" : UpdateAvailable ? "Update" : "Installed ✓";
+    public string PrimaryActionLabel => !IsInstalled ? "Install" : UpdateAvailable ? "Update" : "Installed";
 
     /// <summary>Whether the primary action button does anything — false once installed and up to date, when it becomes a disabled badge instead.</summary>
     public bool CanTakePrimaryAction => CanInstall || CanUpdate;

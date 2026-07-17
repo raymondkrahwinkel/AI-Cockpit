@@ -45,8 +45,15 @@
          ConversationPickerRegistration.PickWithLocationAsync, the init-only richer picker a folder-scoped provider
          sets so a resumed session starts where it ran. The positional PickAsync (id-only) is unchanged, so an
          existing plugin's constructor call still binds — additions only; the major and abstractionsVersion stay 1. -->
-    <Version>1.7.0</Version>
-    <AssemblyVersion>1.7.0.0</AssemblyVersion>
+    <!-- 1.8.0 (#AC-33): added an optional MaterialIconKind? IconKind alongside the existing string Icon on
+         PluginSessionAction and WidgetRegistration (init-only properties) and IWorkflowStep (a default-implemented
+         member returning null), so a contributed action/step/widget can name a bundled vector icon instead of an
+         emoji glyph the host renders font-dependently. The string Icon stays and is the fallback when IconKind is
+         null, so existing plugins keep compiling and running unchanged. Additive API — still a minor; the major and
+         abstractionsVersion stay 1. A plugin that sets IconKind needs a host that ships the icon set (Material.Icons),
+         which its minHostVersion must state. -->
+    <Version>1.8.0</Version>
+    <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>
@@ -61,6 +68,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
     <PackageReference Include="Avalonia" Version="12.0.5" />
+    <!-- The MaterialIconKind enum only (no Avalonia control), so a contribution point can name a bundled vector
+         icon (AC-33). The host ships the runtime copy via Material.Icons.Avalonia; plugins get the enum through
+         this reference compile-only, like Avalonia above. -->
+    <PackageReference Include="Material.Icons" Version="3.0.2" />
   </ItemGroup>
 
 </Project>

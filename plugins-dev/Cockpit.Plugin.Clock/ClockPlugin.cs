@@ -1,3 +1,4 @@
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
@@ -21,7 +22,7 @@ public sealed class ClockPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "clock",
         DisplayName: "Clock",
-        Version: "1.0.0",
+        Version: "1.0.1",
         Author: "Cockpit",
         Description: "The time and date, for a Dashboard workspace.");
 
@@ -40,7 +41,7 @@ public sealed class ClockPlugin : ICockpitPlugin
         // operator has to resize before they can read it.
         host.AddWidget(new WidgetRegistration("widgets.clock", "Clock", context => new ClockWidget(context))
         {
-            Icon = "🕐",
+            IconKind = MaterialIconKind.ClockOutline,
             Description = "The time and date.",
             DefaultColumnSpan = 6,
             DefaultRowSpan = 4,
