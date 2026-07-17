@@ -8,9 +8,12 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// </summary>
 /// <remarks>
 /// One of <see cref="Url"/> (an HTTP server) or <see cref="Command"/> (a stdio server) is set; the other is
-/// <see langword="null"/>. <see cref="BearerToken"/> is the server's own credential, never the host's — it is a
-/// secret, so it must never be written where another local account can read it (a process argument, a
-/// world-readable file); see the driver that consumes it for how it is kept off the command line.
+/// <see langword="null"/>. <see cref="BearerToken"/> is a user API-key server's <em>own</em> credential — a secret,
+/// so it must never be written where another local account can read it (a process argument, a world-readable file);
+/// see the driver that consumes it for how it is kept off the command line. A cockpit-hosted loopback endpoint
+/// (<see cref="CockpitHosted"/>) carries no literal token here: its auth is the app-lifetime key, which the host
+/// puts in the <c>COCKPIT_MCP_KEY</c> environment variable and each driver references from there (AC-40), so that
+/// key never lands in a config file at all.
 /// </remarks>
 public sealed record PluginMcpServer
 {
@@ -27,10 +30,19 @@ public sealed record PluginMcpServer
     public IReadOnlyList<string> Args { get; init; } = [];
 
     /// <summary>
-    /// A static bearer token for an HTTP server, or <see langword="null"/> when the server needs none (a
-    /// localhost server) or negotiates its own auth (OAuth). Sent as <c>Authorization: Bearer</c>.
+    /// A user API-key server's own static bearer token, or <see langword="null"/> when the server needs none (a
+    /// localhost server), negotiates its own auth (OAuth), or is a cockpit-hosted endpoint (<see cref="CockpitHosted"/>).
+    /// Sent as <c>Authorization: Bearer</c>.
     /// </summary>
     public string? BearerToken { get; init; }
+
+    /// <summary>
+    /// Whether this is a loopback MCP endpoint the cockpit itself hosts (AC-40). Its auth is not a literal token but
+    /// the app-lifetime key in the <c>COCKPIT_MCP_KEY</c> environment variable: a driver writing a config references
+    /// that variable in the server's <c>Authorization</c> header (e.g. <c>Bearer ${COCKPIT_MCP_KEY}</c>) rather than
+    /// embedding a secret, so nothing sensitive is written to disk. Never set for a user-added server.
+    /// </summary>
+    public bool CockpitHosted { get; init; }
 
     /// <summary>
     /// Overrides the record's auto-generated <c>ToString()</c>, which would otherwise print <see cref="BearerToken"/>

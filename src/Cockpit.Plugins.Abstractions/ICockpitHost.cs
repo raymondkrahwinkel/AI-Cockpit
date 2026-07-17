@@ -233,13 +233,14 @@ public interface ICockpitHost
     /// <summary>
     /// Adds an in-process MCP server to the cockpit (#AC-12): the host mounts <paramref name="tools"/> — an already-
     /// built class whose <c>[McpServerTool]</c> methods are the tools, constructed by the plugin with its own
-    /// dependencies — on a loopback address and auto-publishes it to the registry under <paramref name="serverName"/>
-    /// as its own MCP server, tickable per session. This is how a plugin gives agents its own tools (workflows,
-    /// say) without any Kestrel or registry code. Idempotent per name. <paramref name="enabledByDefault"/> follows
-    /// the same on-by-default rule as a built-in cockpit MCP. Call it fire-and-forget from
+    /// dependencies — on a loopback address under <paramref name="serverName"/>. This is how a plugin gives agents
+    /// its own tools (workflows, say) without any Kestrel code. The endpoint is the cockpit's own and is not written
+    /// to the operator's MCP-servers registry (AC-40); the session fan-out sees it live. Idempotent per name.
+    /// <paramref name="isEnabled"/> gates it on the plugin's own setting — read each time servers are gathered, so a
+    /// toggle takes effect live; <see langword="null"/> means always on. Call it fire-and-forget from
     /// <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host implementations keep compiling.
     /// </summary>
-    Task AddMcpEndpoint(string serverName, object tools, bool enabledByDefault = true) => Task.CompletedTask;
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) => Task.CompletedTask;
 
     /// <summary>
     /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):

@@ -28,6 +28,17 @@ public class CodexMcpConfigTests
     }
 
     [Fact]
+    public void Build_ForACockpitHostedServer_ReferencesTheSharedAuthKeyEnvVar_AddingNothingToTheEnvironment()
+    {
+        // AC-40: a cockpit-hosted endpoint's auth is the host-set COCKPIT_MCP_KEY env var, so Codex points straight
+        // at it and this builder emits no per-server env var of its own.
+        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "cockpit-session", Url = "http://127.0.0.1:8765/mcp", CockpitHosted = true }]);
+
+        launch.ConfigArgs.Should().Equal("-c", """mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""");
+        launch.EnvironmentVariables.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Build_ForAnHttpServerWithAToken_PutsTheTokenInTheEnvironment_NeverInTheArg()
     {
         const string token = "yt-pat-value";

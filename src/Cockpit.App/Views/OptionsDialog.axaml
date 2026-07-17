@@ -127,6 +127,13 @@
 
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
+                        <TextBlock Text="Delegation" FontWeight="SemiBold"/>
+                        <CheckBox Content="Let sessions delegate work to other profiles (orchestrator MCP)"
+                                  IsChecked="{Binding OrchestratorMcpEnabled}"
+                                  ToolTip.Tip="Offers the cockpit-orchestrator tools (delegate_task, add_profile, …) to sessions. Turn it off to keep delegation out of every session; a session still won't get them unless it was started with delegation enabled."/>
+
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
                         <!-- TTY-only (#40): the SDK transcript renders its own chat UI, not a terminal
                              grid, so a font setting has nothing to apply to there. One global setting for
                              every TTY session — not per-profile or per-session. -->
