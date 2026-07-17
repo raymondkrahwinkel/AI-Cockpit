@@ -397,6 +397,73 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
+    <!-- Options sub-navigation (AC-69): the left rail inside each Options tab. It splits a tab into
+         sub-pages so a tab scales by gaining a rail item instead of growing into one long scroll — the
+         top tab-bar stays short while a full tab (Voice) fans out below it. The rail is a recessed
+         secondary surface with a hairline against the detail column; the active sub-page carries a coral
+         accent bar, the same accent the top tabs use as their selected fill. A ListBox drives it so a
+         single-page tab can show a one-item rail today and grow items later without a structural change. -->
+    <Style Selector="Border.subnavRail">
+        <Setter Property="Width" Value="184"/>
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        <Setter Property="Padding" Value="10,12"/>
+    </Style>
+    <Style Selector="TextBlock.subnavGroup">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="8,2,8,6"/>
+    </Style>
+    <Style Selector="ListBox.subnav">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Padding" Value="0"/>
+    </Style>
+    <Style Selector="ListBox.subnav ListBoxItem">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Padding" Value="11,8"/>
+        <Setter Property="Margin" Value="0,1"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Panel>
+                    <Border Name="ItemBg" Background="{TemplateBinding Background}" CornerRadius="7"/>
+                    <Border Name="Accent" Width="3" HorizontalAlignment="Left" Margin="0,7"
+                            CornerRadius="0,2,2,0" Background="{StaticResource CockpitAccentBrush}" IsVisible="False"/>
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      Margin="{TemplateBinding Padding}"
+                                      VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                </Panel>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="ListBox.subnav ListBoxItem:pointerover /template/ Border#ItemBg">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <!-- Neutralise the default ListBoxItem fills (they paint the inner ContentPresenter); the rail's own
+         ItemBg border is the surface, so the coral accent bar reads as the state signal, not a box fill. -->
+    <Style Selector="ListBox.subnav ListBoxItem:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ListBox.subnav ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ListBox.subnav ListBoxItem:selected">
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="ListBox.subnav ListBoxItem:selected /template/ Border#ItemBg">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+    <Style Selector="ListBox.subnav ListBoxItem:selected /template/ Border#Accent">
+        <Setter Property="IsVisible" Value="True"/>
+    </Style>
+
     <!-- Plugin store (#62) catalogue rows. The store's middle column is a list of full-width rows
          (categories | plugins | details), not a card grid — each row is a quiet secondary surface that
          lifts on hover (a lighter panel fill + an accent-tinted border) so the catalogue reads as a list
