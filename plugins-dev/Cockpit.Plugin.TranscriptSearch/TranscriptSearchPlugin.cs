@@ -15,7 +15,7 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "transcript-search",
         DisplayName: "Claude Transcript Search",
-        Version: "1.2.0",
+        Version: "1.2.1",
         Author: "Cockpit",
         Description: "Search everything you and the agent ever wrote in a Claude CLI session, across every Claude profile you have configured.");
 
@@ -37,16 +37,28 @@ public sealed class TranscriptSearchPlugin : ICockpitPlugin
         // The New-session dialog can resume a conversation by id, and typing one by hand is a poor way to find
         // it. The cockpit knows nothing about claude's transcripts — this plugin does — so it offers the search
         // as the picker behind that dialog's Search button.
-        host.AddConversationPicker(new ConversationPickerRegistration("Search transcripts", async () =>
+        async Task<PickedConversation?> SearchForConversationAsync()
         {
-            string? picked = null;
+            PickedConversation? picked = null;
             await host.ShowDialogAsync(
                 "Search transcripts",
-                () => new TranscriptSearchDialogControl(new TranscriptSearchService(host), host.Actions, sessionId => picked = sessionId),
+                () => new TranscriptSearchDialogControl(
+                    new TranscriptSearchService(host),
+                    host.Actions,
+                    hit => picked = new PickedConversation(hit.SessionId, hit.WorkingDirectory)),
                 820,
                 600);
             return picked;
-        }));
+        }
+
+        host.AddConversationPicker(new ConversationPickerRegistration(
+            "Search transcripts",
+            async () => (await SearchForConversationAsync())?.SessionId)
+        {
+            // The transcript records each session's cwd, so hand the directory back with the id — the dialog
+            // starts the resumed session there, where claude keeps that session's transcript.
+            PickWithLocationAsync = SearchForConversationAsync,
+        });
     }
 
     public void Dispose()
