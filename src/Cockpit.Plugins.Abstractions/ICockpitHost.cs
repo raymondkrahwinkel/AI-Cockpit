@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
@@ -316,4 +317,45 @@ public interface ICockpitHost
     void AddShortcut(PluginShortcut shortcut)
     {
     }
+
+    /// <summary>
+    /// Registers a managed-CLI install recipe (#AC-20): the host can then download the provider's CLI into its own
+    /// location (<c>&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/</c>), verify it, keep it up to date, and hand
+    /// its path back through <see cref="ResolveManagedCliPath"/> — so a profile need not rely on the CLI being on
+    /// PATH. The <paramref name="descriptor"/> is the only place provider-specific download knowledge lives; the
+    /// installer itself is generic. A convenience, never a dependency: a pinned absolute path still wins, and a
+    /// machine with no managed copy (offline, or the operator removed it) falls back to PATH untouched. Default
+    /// no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host installs anything.
+    /// </summary>
+    void AddManagedCli(ManagedCliDescriptor descriptor)
+    {
+    }
+
+    /// <summary>
+    /// The path to the newest managed copy of <paramref name="cliName"/> the host has installed, or
+    /// <see langword="null"/> when none is installed (#AC-20) — what a provider's executable resolver consults
+    /// <em>after</em> a pinned absolute path but <em>before</em> PATH, so a managed install is preferred yet a
+    /// download failure or a removed copy simply leaves it null and resolution falls through to PATH. Default
+    /// <see langword="null"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </summary>
+    string? ResolveManagedCliPath(string cliName) => null;
+
+    /// <summary>
+    /// Downloads and installs the latest version of a registered managed CLI (#AC-20), returning where it landed or
+    /// why it could not — what a config view's "Install / Update" button calls. Never throws: a checksum mismatch,
+    /// an offline machine or an unregistered name comes back as an unsuccessful <see cref="ManagedCliInstallResult"/>
+    /// the caller can show, because installing a CLI is a convenience that must not crash the app. Default returns a
+    /// failure so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host installs anything.
+    /// </summary>
+    Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ManagedCliInstallResult.Fail("This host does not install managed CLIs."));
+
+    /// <summary>
+    /// Removes the cockpit-managed copy of a CLI (#AC-20 "uitzetbaar") — what a config view's "Remove" button calls,
+    /// so resolution falls back to a pinned path or PATH. Returns whether anything was removed. Default
+    /// <see langword="false"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </summary>
+    bool RemoveManagedCli(string cliName) => false;
 }

@@ -21,17 +21,30 @@ internal static class ClaudeExecutableLocator
     private static readonly string[] _WindowsExecutableExtensions = [".cmd", ".exe", ".bat"];
 
     /// <summary>
-    /// Resolves <paramref name="command"/> to a spawnable path. Rooted paths pass through unchanged; a bare command
-    /// name is looked up on PATH (Windows: trying <c>.cmd</c>/<c>.exe</c>/<c>.bat</c> per directory) and then, on
-    /// Windows, against the native installer's <c>%APPDATA%\Claude\claude-code</c> location. If nothing is found,
-    /// the command is returned unchanged so <see cref="System.Diagnostics.Process.Start()"/> still gets a real
-    /// attempt (and a diagnosable "file not found" if it truly is not installed).
+    /// Resolves <paramref name="command"/> to a spawnable path. Rooted paths pass through unchanged; then, if a
+    /// <paramref name="managedResolver"/> is given, a cockpit-managed install of the command (AC-20) wins over PATH;
+    /// otherwise a bare command name is looked up on PATH (Windows: trying <c>.cmd</c>/<c>.exe</c>/<c>.bat</c> per
+    /// directory) and then, on Windows, against the native installer's <c>%APPDATA%\Claude\claude-code</c> location.
+    /// If nothing is found, the command is returned unchanged so <see cref="System.Diagnostics.Process.Start()"/>
+    /// still gets a real attempt (and a diagnosable "file not found" if it truly is not installed).
     /// </summary>
-    public static string Resolve(string command)
+    /// <param name="command">The configured command — an absolute pin, or a bare name like <c>claude</c>.</param>
+    /// <param name="managedResolver">
+    /// Optional lookup for a cockpit-managed copy of the command (typically <c>name =&gt; host.ResolveManagedCliPath(name)</c>).
+    /// Consulted only for a bare name, after a rooted pin and before PATH — so a pin always wins and a null result
+    /// (nothing installed, offline, or the operator removed it) simply falls through to PATH.
+    /// </param>
+    public static string Resolve(string command, Func<string, string?>? managedResolver = null)
     {
         if (string.IsNullOrWhiteSpace(command) || Path.IsPathRooted(command))
         {
             return command;
+        }
+
+        // A managed install sits between the pin and PATH: preferred when present, invisible when absent.
+        if (managedResolver?.Invoke(command) is { Length: > 0 } managed)
+        {
+            return managed;
         }
 
         var pathVariable = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;

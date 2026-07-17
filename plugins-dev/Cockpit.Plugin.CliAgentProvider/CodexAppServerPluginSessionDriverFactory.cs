@@ -10,14 +10,15 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// backed by the real <see cref="ProcessCliSubprocess"/>. Replaces <see cref="CliSubprocessPluginSessionDriverFactory"/>
 /// as the registered Codex driver — the app-server route supports live approvals the headless exec route cannot.
 /// </summary>
-internal sealed class CodexAppServerPluginSessionDriverFactory : IPluginSessionDriverFactory
+internal sealed class CodexAppServerPluginSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)
     {
         var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions)
             ?? throw new InvalidOperationException("The CLI agent provider config JSON did not deserialize.");
 
-        var executablePath = CliExecutableLocator.Resolve(config.Command);
+        // A cockpit-managed install (AC-20), if present, is preferred over PATH.
+        var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
         return new CodexAppServerSessionDriver(() => new ProcessCliSubprocess(), config, executablePath);
     }
 }

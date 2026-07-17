@@ -29,7 +29,7 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// doc for approval-policy as a follow-up rather than something invented in this pass.</item>
 /// </list>
 /// </remarks>
-internal sealed class CodexTtyProvider : IPluginTtyProvider
+internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider
 {
     /// <summary>
     /// The option key the New-session dialog stores Codex's chosen sandbox policy under — Codex's own word
@@ -45,7 +45,8 @@ internal sealed class CodexTtyProvider : IPluginTtyProvider
     public PluginTtyLaunchSpec BuildLaunch(PluginTtyLaunchContext context)
     {
         var config = _DeserializeConfig(context.ConfigJson);
-        var executablePath = CliExecutableLocator.Resolve(string.IsNullOrWhiteSpace(config.Command) ? "codex" : config.Command);
+        // A cockpit-managed install (AC-20), if present, is preferred over PATH.
+        var executablePath = CliExecutableLocator.Resolve(string.IsNullOrWhiteSpace(config.Command) ? "codex" : config.Command, managedResolver);
 
         return new PluginTtyLaunchSpec(
             executablePath,
