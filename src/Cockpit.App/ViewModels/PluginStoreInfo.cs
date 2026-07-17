@@ -34,7 +34,7 @@ public sealed partial class PluginStoreInfo : ObservableObject
     [ObservableProperty]
     private bool _isBrowsed;
 
-    /// <summary>The store's real logo image once fetched from its <c>index.json</c> <c>iconUrl</c>, or null — the row then falls back to <see cref="IconOrDefault"/>.</summary>
+    /// <summary>The store's real logo image once fetched from its <c>index.json</c> <c>iconUrl</c>, or null — the row then falls back to the store's own glyph (<see cref="ShowIconGlyph"/>) or a default icon (<see cref="ShowDefaultIcon"/>).</summary>
     [ObservableProperty]
     private Bitmap? _logo;
 
