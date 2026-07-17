@@ -9,14 +9,15 @@ namespace Cockpit.Plugin.CliAgentProvider;
 /// to a spawnable path via <see cref="CliExecutableLocator"/>, and builds a <see cref="CliSubprocessPluginSessionDriver"/>
 /// backed by the real <see cref="ProcessCliSubprocess"/>.
 /// </summary>
-internal sealed class CliSubprocessPluginSessionDriverFactory : IPluginSessionDriverFactory
+internal sealed class CliSubprocessPluginSessionDriverFactory(Func<string, string?>? managedResolver = null) : IPluginSessionDriverFactory
 {
     public IPluginSessionDriver Create(string configJson)
     {
         var config = JsonSerializer.Deserialize<CliAgentConfig>(configJson, CliAgentConfig.JsonOptions)
             ?? throw new InvalidOperationException("The CLI agent provider config JSON did not deserialize.");
 
-        var executablePath = CliExecutableLocator.Resolve(config.Command);
+        // A cockpit-managed install (AC-20), if present, is preferred over PATH.
+        var executablePath = CliExecutableLocator.Resolve(config.Command, managedResolver);
         return new CliSubprocessPluginSessionDriver(() => new ProcessCliSubprocess(), config, executablePath);
     }
 }

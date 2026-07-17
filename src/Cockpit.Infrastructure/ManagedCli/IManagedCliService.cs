@@ -27,4 +27,11 @@ public interface IManagedCliService
     /// thrown — the caller (a config view, an update check) reports it; the app is never taken down by a managed CLI.
     /// </summary>
     Task<ManagedCliInstallResult> EnsureInstalledAsync(string cliName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes every installed version of <paramref name="cliName"/> (AC-20 "uitzetbaar"): the managed copy is a
+    /// convenience, so deleting it simply lets resolution fall back to a pin or PATH. Returns whether anything was
+    /// removed. Never throws — a locked file is reported as "not fully removed" rather than crashing a settings action.
+    /// </summary>
+    bool RemoveInstalled(string cliName);
 }

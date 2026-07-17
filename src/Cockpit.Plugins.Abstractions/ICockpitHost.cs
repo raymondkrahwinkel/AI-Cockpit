@@ -340,4 +340,22 @@ public interface ICockpitHost
     /// <see langword="null"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
     /// </summary>
     string? ResolveManagedCliPath(string cliName) => null;
+
+    /// <summary>
+    /// Downloads and installs the latest version of a registered managed CLI (#AC-20), returning where it landed or
+    /// why it could not — what a config view's "Install / Update" button calls. Never throws: a checksum mismatch,
+    /// an offline machine or an unregistered name comes back as an unsuccessful <see cref="ManagedCliInstallResult"/>
+    /// the caller can show, because installing a CLI is a convenience that must not crash the app. Default returns a
+    /// failure so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host installs anything.
+    /// </summary>
+    Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(ManagedCliInstallResult.Fail("This host does not install managed CLIs."));
+
+    /// <summary>
+    /// Removes the cockpit-managed copy of a CLI (#AC-20 "uitzetbaar") — what a config view's "Remove" button calls,
+    /// so resolution falls back to a pinned path or PATH. Returns whether anything was removed. Default
+    /// <see langword="false"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </summary>
+    bool RemoveManagedCli(string cliName) => false;
 }

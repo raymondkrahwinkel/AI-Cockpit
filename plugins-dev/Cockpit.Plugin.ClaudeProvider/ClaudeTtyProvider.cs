@@ -9,7 +9,7 @@ namespace Cockpit.Plugin.ClaudeProvider;
 /// composes the launch-only flags. Never adds <c>-p</c>/stream-json — this is the genuine interactive TUI, which
 /// owns its own live switching (<c>/model</c>, Shift+Tab) since TTY mode has no control channel.
 /// </summary>
-internal sealed class ClaudeTtyProvider : IPluginTtyProvider
+internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver = null) : IPluginTtyProvider
 {
     public const string PermissionModeKey = "permission-mode";
     public const string ModelKey = "model";
@@ -59,7 +59,8 @@ internal sealed class ClaudeTtyProvider : IPluginTtyProvider
             // Resolve against PATH like the SDK route does: a bare "claude" is not spawnable directly on Windows
             // (Process does no PATHEXT lookup), so the locator finds the .cmd/.exe/.bat npm shim. A pinned absolute
             // path passes through unchanged. Without this a default (blank-executable) Windows profile fails to start.
-            ClaudeExecutableLocator.Resolve(config.ExecutablePath is { Length: > 0 } executable ? executable : "claude"),
+            // A cockpit-managed install (AC-20), if present, is preferred over PATH.
+            ClaudeExecutableLocator.Resolve(config.ExecutablePath is { Length: > 0 } executable ? executable : "claude", managedResolver),
             arguments,
             environmentOverlay,
             workingDirectory,

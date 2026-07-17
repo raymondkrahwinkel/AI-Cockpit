@@ -222,6 +222,14 @@ internal sealed class CockpitHost(
     public string? ResolveManagedCliPath(string cliName) =>
         services.GetService<IManagedCliService>()?.ResolveInstalledPath(cliName);
 
+    public Task<ManagedCliInstallResult> InstallManagedCliAsync(string cliName, CancellationToken cancellationToken = default) =>
+        services.GetService<IManagedCliService>() is { } managedCli
+            ? managedCli.EnsureInstalledAsync(cliName, cancellationToken)
+            : Task.FromResult(ManagedCliInstallResult.Fail("Managed CLIs are not available in this host."));
+
+    public bool RemoveManagedCli(string cliName) =>
+        services.GetService<IManagedCliService>()?.RemoveInstalled(cliName) ?? false;
+
     public Task SetSessionStatusline(string paneId, string statusline) =>
         _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);
 

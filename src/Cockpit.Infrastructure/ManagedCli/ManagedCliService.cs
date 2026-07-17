@@ -68,6 +68,31 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         return newestVersionDirectory is null ? null : _ExecutableIn(newestVersionDirectory, cliName);
     }
 
+    public bool RemoveInstalled(string cliName)
+    {
+        if (string.IsNullOrWhiteSpace(cliName))
+        {
+            return false;
+        }
+
+        var cliDirectory = Path.Combine(_cliRoot, cliName);
+        if (!Directory.Exists(cliDirectory))
+        {
+            return false;
+        }
+
+        try
+        {
+            Directory.Delete(cliDirectory, recursive: true);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger?.LogWarning(exception, "Could not remove managed CLI '{CliName}'", cliName);
+            return false;
+        }
+    }
+
     public async Task<ManagedCliInstallResult> EnsureInstalledAsync(string cliName, CancellationToken cancellationToken = default)
     {
         if (!_descriptors.TryGetValue(cliName, out var descriptor))
