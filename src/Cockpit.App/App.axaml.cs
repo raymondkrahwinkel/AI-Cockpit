@@ -132,9 +132,17 @@ public partial class App : Application
         _ = cockpitViewModel.InitialiseUpdatesAsync();
 
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
+        // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,
+        // toasting once when an installed managed CLI (claude/codex) has a newer version available.
+        var managedCliUpdateChecker = Program.Services.GetRequiredService<Services.ManagedCliUpdateChecker>();
         _ = pluginUpdateChecker.CheckNowAsync();
+        _ = managedCliUpdateChecker.CheckNowAsync();
         _pluginUpdateTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(15) };
-        _pluginUpdateTimer.Tick += (_, _) => _ = pluginUpdateChecker.CheckNowAsync();
+        _pluginUpdateTimer.Tick += (_, _) =>
+        {
+            _ = pluginUpdateChecker.CheckNowAsync();
+            _ = managedCliUpdateChecker.CheckNowAsync();
+        };
         _pluginUpdateTimer.Start();
     }
 

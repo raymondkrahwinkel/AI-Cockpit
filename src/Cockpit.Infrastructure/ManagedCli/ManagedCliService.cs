@@ -49,6 +49,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         _logger = logger;
     }
 
+    public IReadOnlyCollection<string> RegisteredCliNames => [.. _descriptors.Keys];
+
     public void Register(ManagedCliDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -70,6 +72,54 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
         var newestVersionDirectory = _NewestVersionDirectory(cliDirectory);
         return newestVersionDirectory is null ? null : _ExecutableIn(newestVersionDirectory, cliName);
+    }
+
+    public async Task<ManagedCliStatus> GetStatusAsync(string cliName, CancellationToken cancellationToken = default)
+    {
+        var installed = _InstalledVersion(cliName);
+
+        string? latest = null;
+        if (_descriptors.TryGetValue(cliName, out var descriptor))
+        {
+            try
+            {
+                var resolved = (await descriptor.ResolveLatestVersionAsync(_http, cancellationToken).ConfigureAwait(false)).Trim();
+                // Only report a latest version that passes the same gate an install would — a garbage/edge response
+                // must not present itself as an available update.
+                if (Version.TryParse(resolved, out _))
+                {
+                    latest = resolved;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                // Offline or a channel hiccup — "can't tell", not a failure the caller has to handle.
+                _logger?.LogDebug(exception, "Managed CLI '{CliName}' latest-version check failed", cliName);
+            }
+        }
+
+        return new ManagedCliStatus(installed, latest);
+    }
+
+    private string? _InstalledVersion(string cliName)
+    {
+        if (string.IsNullOrWhiteSpace(cliName))
+        {
+            return null;
+        }
+
+        var cliDirectory = Path.Combine(_cliRoot, cliName);
+        if (!Directory.Exists(cliDirectory))
+        {
+            return null;
+        }
+
+        var newest = _NewestVersionDirectory(cliDirectory);
+        return newest is null ? null : Path.GetFileName(newest);
     }
 
     public bool RemoveInstalled(string cliName)

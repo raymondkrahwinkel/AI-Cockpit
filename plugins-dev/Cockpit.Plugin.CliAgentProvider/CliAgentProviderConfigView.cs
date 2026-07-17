@@ -65,6 +65,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 _Label("Codex command / path"),
                 SettingsHelpRow.Build(_command, "Bare \"codex\" is resolved against PATH (including a Windows .cmd npm shim); or paste an absolute path to the executable."),
                 _commandStatus,
+                _managedCli.View,
                 _Label("Working directory (optional — SDK sessions only)"),
                 SettingsHelpRow.Build(_workingDirectory, "A TTY session runs where the New-session dialog says, so it ignores this. An SDK session cannot be told where it runs — the plugin contract carries no working directory — so it uses this, and falls back to the cockpit's own directory when it is empty."),
                 _workingDirectoryStatus,
@@ -74,7 +75,6 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 _model,
                 _Label("API key (optional)"),
                 SettingsHelpRow.Build(_apiKey, "Only needed if this machine is not already logged in via \"codex login\". Set via CODEX_API_KEY for this spawn only — never passed as a CLI argument, never logged."),
-                _managedCli.View,
             },
         };
 
