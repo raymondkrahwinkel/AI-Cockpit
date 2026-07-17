@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.ClaudeProvider;
@@ -18,11 +20,14 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _configDirStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _executableStatus = ProviderConfigStatus.CreateLine();
 
+    private readonly ManagedCliConfigSection _managedCli;
+
     public Control View { get; }
 
-    public ClaudeProviderConfigView(string? existingConfigJson)
+    public ClaudeProviderConfigView(string? existingConfigJson, ICockpitHost host)
     {
         var existing = ClaudeProviderConfig.Parse(existingConfigJson);
+        _managedCli = new ManagedCliConfigSection(host, ClaudeManagedCli.CliName, "Claude CLI");
 
         _configDir = new TextBox
         {
@@ -46,6 +51,7 @@ internal sealed class ClaudeProviderConfigView : IPluginProviderConfigView
                 _Label("Claude executable / path (optional)"),
                 _executablePath,
                 _executableStatus,
+                _managedCli.View,
             },
         };
 

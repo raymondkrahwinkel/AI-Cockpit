@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.CliAgentProvider;
@@ -20,13 +22,16 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _workingDirectoryStatus = ProviderConfigStatus.CreateLine();
 
+    private readonly ManagedCliConfigSection _managedCli;
+
     public Control View { get; }
 
-    public CliAgentProviderConfigView(string? existingConfigJson)
+    public CliAgentProviderConfigView(string? existingConfigJson, ICockpitHost host)
     {
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
             : JsonSerializer.Deserialize<CliAgentConfig>(existingConfigJson, CliAgentConfig.JsonOptions);
+        _managedCli = new ManagedCliConfigSection(host, CodexManagedCli.CliName, "Codex CLI");
 
         _command = new TextBox { Text = existing?.Command ?? "codex" };
         _workingDirectory = new TextBox { Text = existing?.WorkingDirectory ?? string.Empty, PlaceholderText = "Directory codex may read (and, in workspace-write, edit)" };
@@ -66,6 +71,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
                 _model,
                 _Label("API key (optional)"),
                 SettingsHelpRow.Build(_apiKey, "Only needed if this machine is not already logged in via \"codex login\". Set via CODEX_API_KEY for this spawn only — never passed as a CLI argument, never logged."),
+                _managedCli.View,
             },
         };
 
