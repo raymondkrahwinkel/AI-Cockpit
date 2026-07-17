@@ -41,6 +41,10 @@ VersionInfoVersion={#AppVersionNumeric}
 AppPublisher=Raymond Krahwinkel
 DefaultDirName={autopf}\AI-Cockpit
 DefaultGroupName=AI-Cockpit
+; Show the license acceptance page in the wizard. Path is relative to this .iss (scripts/), so it points at the
+; repo-root LICENSE — the same Commons Clause + Apache 2.0 the app ships under. Inno detects RTF vs plain text
+; from the file's header, so the extensionless LICENSE loads correctly as plain text.
+LicenseFile=..\LICENSE
 UninstallDisplayName=AI-Cockpit
 UninstallDisplayIcon={app}\Cockpit.App.exe
 DisableProgramGroupPage=yes
