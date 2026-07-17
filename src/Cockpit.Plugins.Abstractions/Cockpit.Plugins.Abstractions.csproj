@@ -52,7 +52,7 @@
          null, so existing plugins keep compiling and running unchanged. Additive API — still a minor; the major and
          abstractionsVersion stay 1. A plugin that sets IconKind needs a host that ships the icon set (Material.Icons),
          which its minHostVersion must state. -->
-    <Version>1.8.0</Version>
+    <Version>1.9.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
