@@ -159,16 +159,37 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     [RelayCommand]
     private async Task PickConversationAsync()
     {
+        if (await _PickConversationAsync() is { SessionId.Length: > 0 } picked)
+        {
+            ResumeSessionId = picked.SessionId;
+            ResumeMode = SessionResumeMode.BySessionId;
+
+            // A session's transcript lives under the folder it ran in, so resuming it anywhere else would not
+            // find it — start the resumed session in that folder rather than in whatever the operator last used.
+            if (!string.IsNullOrWhiteSpace(picked.WorkingDirectory))
+            {
+                WorkingDirectory = picked.WorkingDirectory.Trim();
+            }
+        }
+    }
+
+    // Prefer the location-aware picker so a resumed session can start where it ran; fall back to the id-only form
+    // for a picker that does not know the directory. Null when there is no picker or the operator cancelled.
+    private async Task<PickedConversation?> _PickConversationAsync()
+    {
         if (_conversationPicker is null)
         {
-            return;
+            return null;
         }
 
-        if (await _conversationPicker.PickAsync() is { Length: > 0 } sessionId)
+        if (_conversationPicker.PickWithLocationAsync is { } pickWithLocation)
         {
-            ResumeSessionId = sessionId;
-            ResumeMode = SessionResumeMode.BySessionId;
+            return await pickWithLocation();
         }
+
+        return await _conversationPicker.PickAsync() is { Length: > 0 } sessionId
+            ? new PickedConversation(sessionId)
+            : null;
     }
 
     /// <summary>The choice as the session layer consumes it; a blank id falls back to a fresh conversation rather than a broken resume.</summary>

@@ -12,4 +12,14 @@ namespace Cockpit.Plugins.Abstractions.Sessions;
 /// Runs when the operator asks to pick one — typically opening the plugin's own search dialog. Returns the
 /// chosen conversation's id, or <see langword="null"/> when they cancelled without choosing.
 /// </param>
-public sealed record ConversationPickerRegistration(string Title, Func<Task<string?>> PickAsync);
+public sealed record ConversationPickerRegistration(string Title, Func<Task<string?>> PickAsync)
+{
+    /// <summary>
+    /// The richer form of <see cref="PickAsync"/> for a provider whose history is scoped to a folder: it hands
+    /// back the chosen conversation's id <em>and</em> the directory it ran in, so the resumed session can start
+    /// there rather than wherever the operator last was — <c>claude</c> keeps a session's transcript under its
+    /// launch folder and resuming by id elsewhere would not find it. When set, the dialog prefers this over
+    /// <see cref="PickAsync"/>; a picker that cannot tell the directory leaves this null and only the id is used.
+    /// </summary>
+    public Func<Task<PickedConversation?>>? PickWithLocationAsync { get; init; }
+}
