@@ -24,4 +24,9 @@ internal static class WhisperModelCatalog
     /// <summary>Falls back to <see cref="GgmlType.Base"/> for an unrecognized name rather than throwing — a typo'd model name in <c>cockpit.json</c> should not brick voice input.</summary>
     public static GgmlType Resolve(string modelName) =>
         ByName.GetValueOrDefault(modelName, GgmlType.Base);
+
+    /// <summary>Whether this name maps to a real curated model rather than the <see cref="GgmlType.Base"/> fallback.
+    /// The calibration ladder only times known models, since a custom/quantized name would otherwise be measured as
+    /// Base but shown under its own label.</summary>
+    public static bool IsKnown(string modelName) => ByName.ContainsKey(modelName);
 }

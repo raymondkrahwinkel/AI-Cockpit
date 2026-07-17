@@ -112,4 +112,17 @@ public class TranscriptionCalibrationReportTests
 
         TranscriptionCalibrationReport.RecommendModel(ladder).Model.Should().Be("tiny");
     }
+
+    [Fact]
+    public void RecommendModel_NeverPrefersAnUnknownModelOverAMeasuredKnownOne()
+    {
+        // A custom/quantized name ranks below every curated model, so it cannot be recommended just for being fast.
+        var ladder = new[]
+        {
+            new ModelMeasurement("large-v3-turbo", 500),
+            new ModelMeasurement("my-custom-q5", 100),
+        };
+
+        TranscriptionCalibrationReport.RecommendModel(ladder).Model.Should().Be("large-v3-turbo");
+    }
 }

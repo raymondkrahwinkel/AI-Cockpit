@@ -123,39 +123,53 @@ internal static class TranscriptionCalibrationProbe
             foreach (var model in models)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
-                var modelType = WhisperModelCatalog.Resolve(model);
-                var modelPath = await WhisperModelCache
-                    .EnsureDownloadedAsync(modelType, cancellationToken, logger: null, runtimeProgress)
-                    .ConfigureAwait(false);
-
-                _Emit(new(CalibrationChildMessage.KindProgress, $"Loading {model}…"));
-                using var factory = WhisperFactory.FromPath(modelPath);
-                loadedBackend ??= RuntimeOptions.LoadedLibrary is { } native ? WhisperRuntimeBackendMapping.FromNative(native) : null;
-                await using var processor = factory.CreateBuilder().WithLanguage("auto").Build();
-
-                // Warm up (untimed): the first pass primes caches and any lazy native init, so the measured runs
-                // time steady-state transcription rather than one-off setup.
-                _Emit(new(CalibrationChildMessage.KindProgress, $"Warming up {model}…"));
-                await _DrainAsync(processor, clip, cancellationToken).ConfigureAwait(false);
-
-                var latencies = new List<double>(MeasuredRuns);
-                for (var run = 1; run <= MeasuredRuns; run++)
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    _Emit(new(CalibrationChildMessage.KindProgress, $"Measuring {model}… ({run}/{MeasuredRuns})"));
-                    var stopwatch = Stopwatch.StartNew();
-                    await _DrainAsync(processor, clip, cancellationToken).ConfigureAwait(false);
-                    stopwatch.Stop();
-                    latencies.Add(stopwatch.Elapsed.TotalMilliseconds);
-                }
+                    var modelType = WhisperModelCatalog.Resolve(model);
+                    var modelPath = await WhisperModelCache
+                        .EnsureDownloadedAsync(modelType, cancellationToken, logger: null, runtimeProgress)
+                        .ConfigureAwait(false);
 
-                latencies.Sort();
-                _Emit(new(
-                    CalibrationChildMessage.KindResult,
-                    Backend: loadedBackend is { } actual ? _ToPreference(actual) : backend,
-                    Model: model,
-                    LatencyMs: latencies[latencies.Count / 2]));
+                    _Emit(new(CalibrationChildMessage.KindProgress, $"Loading {model}…"));
+                    using var factory = WhisperFactory.FromPath(modelPath);
+                    await using var processor = factory.CreateBuilder().WithLanguage("auto").Build();
+
+                    // Warm up (untimed): the first pass primes caches — and forces the native runtime to actually
+                    // load, so the backend it settled on is known before we read it. Reading right after FromPath
+                    // can see LoadedLibrary before the first inference has resolved it, which on a GPU that quietly
+                    // fell back to the CPU tail would mislabel a CPU result as the requested GPU.
+                    _Emit(new(CalibrationChildMessage.KindProgress, $"Warming up {model}…"));
+                    await _DrainAsync(processor, clip, cancellationToken).ConfigureAwait(false);
+                    loadedBackend ??= RuntimeOptions.LoadedLibrary is { } native ? WhisperRuntimeBackendMapping.FromNative(native) : null;
+
+                    var latencies = new List<double>(MeasuredRuns);
+                    for (var run = 1; run <= MeasuredRuns; run++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        _Emit(new(CalibrationChildMessage.KindProgress, $"Measuring {model}… ({run}/{MeasuredRuns})"));
+                        var stopwatch = Stopwatch.StartNew();
+                        await _DrainAsync(processor, clip, cancellationToken).ConfigureAwait(false);
+                        stopwatch.Stop();
+                        latencies.Add(stopwatch.Elapsed.TotalMilliseconds);
+                    }
+
+                    latencies.Sort();
+                    _Emit(new(
+                        CalibrationChildMessage.KindResult,
+                        Backend: loadedBackend is { } actual ? _ToPreference(actual) : backend,
+                        Model: model,
+                        LatencyMs: latencies[latencies.Count / 2]));
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    // One model failing — an interrupted download, an unavailable size — must not sink the rest of
+                    // the ladder; the models already cached on disk can still be timed. Report it and carry on.
+                    _Emit(new(CalibrationChildMessage.KindError, $"{model}: {exception.Message}"));
+                }
             }
 
             return 0;

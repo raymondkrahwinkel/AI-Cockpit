@@ -877,6 +877,7 @@
                          Foreground="{StaticResource CockpitAccentBrush}"/>
             <TextBlock Text="Measuring each backend in its own process — this can take a few minutes, especially the CPU run and the first-time model or runtime download." HorizontalAlignment="Center" TextAlignment="Center"
                        FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}" TextWrapping="Wrap"/>
+            <Button Content="Cancel" Command="{Binding CancelCalibrationCommand}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
         </StackPanel>
     </Border>
   </Panel>
