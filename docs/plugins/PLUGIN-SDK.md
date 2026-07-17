@@ -367,6 +367,11 @@ host.AddConversationPicker(new ConversationPickerRegistration("Search transcript
 }));
 ```
 
+If your provider scopes its history to a folder (as the Claude CLI does — a session's transcript lives under the
+directory it ran in), also set the registration's init-only `PickWithLocationAsync` to hand back a
+`PickedConversation(sessionId, workingDirectory)`; the dialog then resumes the session in that folder rather than
+wherever the operator last was. See the API reference for the full shape.
+
 No plugin registers one → no button, and the id can still be typed. The core stays ignorant of transcripts and
 of Claude; it only knows that *someone* offers a picker. The transcript-search plugin is the worked example.
 
