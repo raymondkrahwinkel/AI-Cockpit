@@ -168,12 +168,27 @@ internal sealed class WorkflowEditorControl : UserControl
             _Touched();
         };
 
+        // #AC-38: let the operator exempt a flow they built from the consent prompt when a trigger fires it while
+        // they are away. Off by default; an agent cannot reach this, because it cannot arm a flow with a dangerous step.
+        var unattended = new ToggleButton
+        {
+            Content = "Unattended",
+            IsChecked = _workflow.RunUnattended,
+            Classes = { "Compact" },
+        };
+        ToolTip.SetTip(unattended, "When a trigger fires this flow while you are away, let its steps that would ask for consent — a command, a session hand-off, egress — run without asking. Off (the default): each such step asks you to Approve it first. Only you can turn this on, and only on a flow you built.");
+        unattended.IsCheckedChanged += (_, _) =>
+        {
+            _workflow.RunUnattended = unattended.IsChecked == true;
+            _Touched();
+        };
+
         var right = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 10,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { _saved, active },
+            Children = { _saved, unattended, active },
         };
 
         var bar = new DockPanel();
