@@ -17,6 +17,20 @@ public interface IStepRunner
     /// records why and stops that branch.
     /// </summary>
     Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Whether running this step needs the operator's consent, and at what risk — null (the default) means it does
+    /// not. A step that acts with the operator's rights (a shell command, a session hand-off, egress) overrides this;
+    /// the engine gates it through the host consent facility before running it, unless the operator started the run
+    /// themselves. Declared per step type in code, so a workflow's JSON cannot turn it off.
+    /// </summary>
+    ConsentRisk? RequiredConsent => null;
+
+    /// <summary>
+    /// The literal action shown to the operator when consent is asked — the resolved command + directory, the URL, the
+    /// message and its destination: the ground truth, never a summary. Read only when <see cref="RequiredConsent"/> is set.
+    /// </summary>
+    string ConsentAction(StepContext context) => string.Empty;
 }
 
 /// <summary>What a step produced: the items the next step gets, and a line for the run log saying what happened.</summary>

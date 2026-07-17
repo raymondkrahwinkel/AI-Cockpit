@@ -18,6 +18,20 @@ internal sealed class HttpRunner : IStepRunner
 
     public string TypeId => "cockpit.http";
 
+    // Arbitrary egress: an http step can POST any data to any URL, so it is dangerous (asked every time, never
+    // remembered), like the chat steps that also send data out.
+    public ConsentRisk? RequiredConsent => ConsentRisk.Dangerous;
+
+    public string ConsentAction(StepContext context)
+    {
+        var method = context.Node.Parameters.GetValueOrDefault("Method")?.Trim();
+        var url = context.Resolve(context.Node.Parameters.GetValueOrDefault("URL")).Text.Trim();
+        var body = context.Resolve(context.Node.Parameters.GetValueOrDefault("Body")).Text;
+        var line = $"{(string.IsNullOrWhiteSpace(method) ? "GET" : method.ToUpperInvariant())} {url}";
+        // The body is what actually goes out, so the operator must see it — a URL alone hides the data being sent.
+        return body.Length == 0 ? line : $"{line}\n{body}";
+    }
+
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
         var url = context.Resolve(context.Node.Parameters.GetValueOrDefault("URL")).Text.Trim();

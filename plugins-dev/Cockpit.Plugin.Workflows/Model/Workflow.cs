@@ -24,6 +24,14 @@ public sealed class Workflow
     /// </summary>
     public bool IsActive { get; set; }
 
+    /// <summary>
+    /// Whether the operator has allowed this flow to run its consent-gated (dangerous) steps unattended when a trigger
+    /// fires (#AC-38). Off by default: an armed flow with a dangerous step still asks for consent on every auto-fire.
+    /// Only the operator sets this in the editor — an MCP caller cannot create or arm a flow with a dangerous step at
+    /// all, so it can never reach this flag.
+    /// </summary>
+    public bool RunUnattended { get; set; }
+
     /// <summary>When it was last changed — what the manager sorts and shows, so "which one was I working on" has an answer.</summary>
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 

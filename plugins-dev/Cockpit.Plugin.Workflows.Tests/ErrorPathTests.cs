@@ -1,6 +1,8 @@
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
+using Cockpit.Plugins.Abstractions;
 using FluentAssertions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -25,7 +27,7 @@ public class ErrorPathTests
         _Wire(workflow, trigger, 0, failing);
         _Wire(workflow, failing, failing.ErrorOutput, handler);
 
-        var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id);
+        var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         // The handler ran, and it was handed the failure as data — {error} in a Slack message says more than "a step
         // failed" ever will.
@@ -43,7 +45,7 @@ public class ErrorPathTests
         _Wire(workflow, trigger, 0, failing);
         _Wire(workflow, failing, failing.ErrorOutput, handler);
 
-        var run = await _Engine(new RecordingRunner("cockpit.notify"), failing.TypeId).RunAsync(workflow, trigger.Id);
+        var run = await _Engine(new RecordingRunner("cockpit.notify"), failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Status.Should().Be(RunStatus.Succeeded);
         run.Steps.Single(step => step.NodeId == failing.Id).Status.Should().Be(RunStatus.Failed, "what failed is still in the run");
@@ -59,7 +61,7 @@ public class ErrorPathTests
         _Wire(workflow, trigger, 0, failing);
         _Wire(workflow, failing, 0, after);
 
-        var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id);
+        var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Steps.Should().Contain(step => step.NodeId == after.Id);
         run.Status.Should().Be(RunStatus.Succeeded);
@@ -75,7 +77,7 @@ public class ErrorPathTests
         _Wire(workflow, trigger, 0, failing);
         _Wire(workflow, failing, failing.ErrorOutput, handler);
 
-        await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id);
+        await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         recorder.Inputs[^1][0].Json["error"].Should().NotBeNull("the failure went down the wire, not past it");
     }
@@ -88,7 +90,7 @@ public class ErrorPathTests
         _Wire(workflow, trigger, 0, failing);
         _Wire(workflow, failing, 0, after);
 
-        var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id);
+        var run = await _Engine(recorder, failing.TypeId).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Status.Should().Be(RunStatus.Failed);
         run.Steps.Should().NotContain(step => step.NodeId == after.Id, "a flow that walked past a step that did not work would be worse than one that stopped");
@@ -102,13 +104,13 @@ public class ErrorPathTests
         _Wire(workflow, trigger, 0, working);
         _Wire(workflow, working, working.ErrorOutput, handler);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder]).RunAsync(workflow, trigger.Id);
+        var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Steps.Should().NotContain(step => step.NodeId == handler.Id);
     }
 
     private static WorkflowEngine _Engine(RecordingRunner recorder, string failingTypeId) =>
-        new([new ManualTriggerRunner(), new ThrowingRunner(failingTypeId), recorder]);
+        new([new ManualTriggerRunner(), new ThrowingRunner(failingTypeId), recorder], Substitute.For<ICockpitHost>());
 
     private static Workflow _Flow(out WorkflowNode trigger, out WorkflowNode second, out WorkflowNode third)
     {

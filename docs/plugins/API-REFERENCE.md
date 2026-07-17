@@ -318,6 +318,10 @@ internal sealed class StartIssueStep(YouTrackSettings settings) : IWorkflowStep
     public string Category => "YouTrack";          // the picker's heading: your plugin's own name reads best
     public IReadOnlyList<string> Parameters => ["Ticket", "Instance"];
 
+    // #AC-38: it moves a real ticket with the operator's token, so it acts with their rights → Dangerous. A
+    // non-trigger step MUST declare this; leaving it null leaves the step OUT of the editor rather than run ungated.
+    public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
+
     // Shown before a flow has ever run, so the next step can be configured against your output rather than a guess.
     public IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>
     {
@@ -352,6 +356,22 @@ Three things the host does for you, so you never write workflow code:
 Throwing fails the step, and your message is what the operator reads in the run — write it as a sentence they can act
 on ("EVE-14 cannot go to 'Done'. Its board allows: Review, Reopened."). Returning success without having done the work
 is invisible to the run, so don't.
+
+**Declare `RequiredConsent` (#AC-38).** A non-trigger step **must** say whether running it needs the operator's
+consent, in its own code — the workflows plugin cannot override it, and an agent building a flow over the MCP cannot
+either:
+
+- `WorkflowStepConsent.None` — genuinely safe (a read, a pure computation, a decision). Runs without asking.
+- `WorkflowStepConsent.Dangerous` — acts with the operator's rights: runs a command, hands off a session, or sends
+  data out (a comment, a push, a webhook). Put to the operator for **Approve/Deny before every run** (never
+  remembered), and an agent may not create or arm a flow containing it — only the operator can, in the editor.
+- `WorkflowStepConsent.LowRisk` — needs consent but is idempotent enough to be **remembered** once approved, and stays
+  agent-buildable (gated at run time instead).
+- **Leaving it `null` (the default) is not "safe" — it is undeclared**, and the editor **leaves the step out** and
+  names it, so a step that acts with the operator's rights cannot slip through ungated. Declare `None` explicitly for
+  a safe step.
+
+Triggers (`IsTrigger => true`) are fired, never run, so their value is ignored — leave it at the default.
 
 `TypeId` must be unique across all plugins — prefix it with your plugin's id. Registering a duplicate throws at
 startup rather than letting load order decide which of two steps a stored flow means.

@@ -1,6 +1,8 @@
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
+using Cockpit.Plugins.Abstractions;
 using FluentAssertions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.Workflows.Tests;
 
@@ -19,7 +21,7 @@ public class WorkflowEngineTests
         workflow.Connect(trigger.Id, 0, first.Id);
         workflow.Connect(first.Id, 0, second.Id);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder]).RunAsync(workflow, trigger.Id);
+        var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Status.Should().Be(RunStatus.Succeeded);
         run.Steps.Select(step => step.NodeName).Should().Equal("Start", "First", "Second");
@@ -37,7 +39,7 @@ public class WorkflowEngineTests
         workflow.Connections.Add(new WorkflowConnection { FromNodeId = trigger.Id, FromOutput = 0, ToNodeId = first.Id });
         workflow.Connections.Add(new WorkflowConnection { FromNodeId = first.Id, FromOutput = 0, ToNodeId = second.Id });
 
-        await new WorkflowEngine([new ManualTriggerRunner(), recorder]).RunAsync(workflow, trigger.Id);
+        await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         // The last step sees both the trigger and the step before it — not only its own input.
         recorder.Reachable[^1].Keys.Should().Contain(["Start", "First"]);
@@ -51,8 +53,8 @@ public class WorkflowEngineTests
         workflow.Connect(trigger.Id, 0, left.Id);
         workflow.Connect(trigger.Id, 0, right.Id);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner(), new RecordingRunner("cockpit.notify")])
-            .RunAsync(workflow, trigger.Id);
+        var run = await new WorkflowEngine([new ManualTriggerRunner(), new RecordingRunner("cockpit.notify")], Substitute.For<ICockpitHost>())
+            .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Steps.Select(step => step.NodeName).Should().BeEquivalentTo(["Start", "First", "Second"]);
         run.Status.Should().Be(RunStatus.Succeeded);
@@ -65,7 +67,7 @@ public class WorkflowEngineTests
         var workflow = _Flow(out var trigger, out var unknown, out _);
         workflow.Connect(trigger.Id, 0, unknown.Id);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner()]).RunAsync(workflow, trigger.Id);
+        var run = await new WorkflowEngine([new ManualTriggerRunner()], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         var step = run.Steps.Single(step => step.NodeId == unknown.Id);
         step.Status.Should().Be(RunStatus.Skipped);
@@ -81,7 +83,7 @@ public class WorkflowEngineTests
         workflow.Connect(trigger.Id, 0, skipped.Id);
         workflow.Connect(skipped.Id, 0, after.Id);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder]).RunAsync(workflow, trigger.Id);
+        var run = await new WorkflowEngine([new ManualTriggerRunner(), recorder], Substitute.For<ICockpitHost>()).RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Steps.Single(step => step.NodeId == skipped.Id).Status.Should().Be(RunStatus.Skipped);
 
@@ -97,8 +99,8 @@ public class WorkflowEngineTests
         workflow.Connect(trigger.Id, 0, failing.Id);
         workflow.Connect(failing.Id, 0, after.Id);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner(), new ThrowingRunner("cockpit.notify")])
-            .RunAsync(workflow, trigger.Id);
+        var run = await new WorkflowEngine([new ManualTriggerRunner(), new ThrowingRunner("cockpit.notify")], Substitute.For<ICockpitHost>())
+            .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Status.Should().Be(RunStatus.Failed);
         run.Error.Should().Contain("no message");
@@ -114,8 +116,8 @@ public class WorkflowEngineTests
         workflow.Connect(first.Id, 0, second.Id);
         workflow.Connect(second.Id, 0, first.Id);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner(), new RecordingRunner("cockpit.notify")])
-            .RunAsync(workflow, trigger.Id);
+        var run = await new WorkflowEngine([new ManualTriggerRunner(), new RecordingRunner("cockpit.notify")], Substitute.For<ICockpitHost>())
+            .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Status.Should().Be(RunStatus.Failed);
         run.Error.Should().Contain("loop");
@@ -140,8 +142,8 @@ public class WorkflowEngineTests
                 new ManualTriggerRunner(),
                 new BranchingRunner("cockpit.if", "false"),
                 new RecordingRunner("cockpit.notify"),
-            ])
-            .RunAsync(workflow, trigger.Id);
+            ], Substitute.For<ICockpitHost>())
+            .RunAsync(workflow, trigger.Id, RunOrigin.Operator);
 
         run.Steps.Select(step => step.NodeName).Should().Equal("Start", "If", "No");
     }
@@ -155,7 +157,7 @@ public class WorkflowEngineTests
         var trigger = new WorkflowNode { Id = "t", TypeId = "cockpit.manual", Name = "Run manually" };
         workflow.Nodes.Add(trigger);
 
-        var run = await new WorkflowEngine([new ManualTriggerRunner()]).RunAsync(workflow, "t");
+        var run = await new WorkflowEngine([new ManualTriggerRunner()], Substitute.For<ICockpitHost>()).RunAsync(workflow, "t", RunOrigin.Operator);
 
         run.Status.Should().Be(RunStatus.Failed);
         run.Error.Should().Contain("wired to nothing");
@@ -164,7 +166,7 @@ public class WorkflowEngineTests
     [Fact]
     public async Task RunningFromAStepThatIsNotInTheFlow_FailsRatherThanDoingNothingQuietly()
     {
-        var run = await new WorkflowEngine([]).RunAsync(_Flow(out _, out _, out _), "nope");
+        var run = await new WorkflowEngine([], Substitute.For<ICockpitHost>()).RunAsync(_Flow(out _, out _, out _), "nope", RunOrigin.Operator);
 
         run.Status.Should().Be(RunStatus.Failed);
         run.Error.Should().NotBeNullOrEmpty();

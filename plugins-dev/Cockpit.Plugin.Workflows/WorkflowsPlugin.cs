@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 
 namespace Cockpit.Plugin.Workflows;
 
@@ -20,7 +21,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "workflows",
         DisplayName: "Workflows",
-        Version: "0.22.0",
+        Version: "0.23.0",
         Author: "Cockpit",
         Description: "Draw a flow and run it: a manual trigger, a shell command, a decision (If, or a Switch with a way out per case), a notification — wired together on a canvas and saved as you draw. A step uses what the steps before it produced ({output}, or {Run a command.output} to reach further back), and a decision's condition is an expression over that same data. Double-click a step to open it: what comes in on the left, its settings in the middle, what it produced on the right. Other plugins can contribute their own steps, so a flow can do whatever they know how to do.");
 
@@ -51,9 +52,21 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
             // Read now, not at startup: plugins initialise in an order nobody controls, and a step registered after
             // this plugin would otherwise not exist until the app is restarted.
             var contributed = host.WorkflowSteps;
-            Model.NodeCatalog.Contribute([.. contributed.Select(Engine.ContributedStep.Describe)]);
 
-            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store, host, runs, contributed), 1600, 1000);
+            // A non-trigger step that did not declare whether it needs consent (#AC-38) is left out rather than run
+            // ungated — and named, so the plugin that shipped it can be fixed.
+            var undeclared = contributed.Where(Engine.ContributedStep.IsUndeclared).ToList();
+            if (undeclared.Count > 0)
+            {
+                host.ShowToast(
+                    $"Left out {undeclared.Count} workflow step(s) that do not declare RequiredConsent: {string.Join(", ", undeclared.Select(step => step.TypeId))}. Their plugin must set it — None for a safe step, Dangerous for one that acts with your rights.",
+                    PluginToastSeverity.Warning);
+            }
+
+            var usable = contributed.Where(step => !Engine.ContributedStep.IsUndeclared(step)).ToList();
+            Model.NodeCatalog.Contribute([.. usable.Select(Engine.ContributedStep.Describe)]);
+
+            _ = host.ShowDialogAsync("Workflows", () => new WorkflowsDialogControl(store, host, runs, usable), 1600, 1000);
         }
 
         host.AddSideMenuButton("Workflows", OpenEditor);
