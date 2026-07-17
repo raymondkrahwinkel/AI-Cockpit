@@ -4,6 +4,8 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Model;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
@@ -141,12 +143,27 @@ internal sealed class NodePicker : Border
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, 8, 0, 2),
-                Content = new TextBlock
+                Content = new StackPanel
                 {
-                    Text = $"{(open ? "▾" : "▸")}  {group.Key}",
-                    FontSize = 10,
-                    FontWeight = FontWeight.SemiBold,
-                    Opacity = 0.45,
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 4,
+                    Children =
+                    {
+                        new MaterialIcon
+                        {
+                            Kind = open ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight,
+                            Width = 10,
+                            Height = 10,
+                            Opacity = 0.45,
+                        },
+                        new TextBlock
+                        {
+                            Text = group.Key,
+                            FontSize = 10,
+                            FontWeight = FontWeight.SemiBold,
+                            Opacity = 0.45,
+                        },
+                    },
                 },
             };
 
@@ -184,7 +201,7 @@ internal sealed class NodePicker : Border
                 Spacing = 10,
                 Children =
                 {
-                    new TextBlock { Text = type.Icon, FontSize = 18, VerticalAlignment = VerticalAlignment.Center },
+                    _Icon(type),
                     new StackPanel
                     {
                         Children =
@@ -232,6 +249,11 @@ internal sealed class NodePicker : Border
         DockPanel.SetDock(control, dock);
         return control;
     }
+
+    // The vector icon when the type has one; the plain glyph otherwise — a plugin's step may still be on the string.
+    private static Control _Icon(NodeTypeDescriptor type) => type.IconKind is { } kind
+        ? new MaterialIcon { Kind = kind, Width = 18, Height = 18, VerticalAlignment = VerticalAlignment.Center }
+        : new TextBlock { Text = type.Icon, FontSize = 18, VerticalAlignment = VerticalAlignment.Center };
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

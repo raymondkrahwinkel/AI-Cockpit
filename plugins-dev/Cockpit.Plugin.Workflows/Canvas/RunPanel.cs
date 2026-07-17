@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Engine;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
@@ -30,7 +32,7 @@ internal sealed class RunPanel : Border
         _summary = new TextBlock { FontSize = 11, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
         _steps = new StackPanel { Spacing = 3, Margin = new Thickness(12, 6, 12, 12) };
 
-        var close = new Button { Content = "✕", Classes = { "Subtle", "Compact" } };
+        var close = new Button { Content = new MaterialIcon { Kind = MaterialIconKind.Close, Width = 11, Height = 11 }, Classes = { "Subtle", "Compact" } };
         ToolTip.SetTip(close, "Hide the run");
         close.Click += (_, _) => IsVisible = false;
 
@@ -137,13 +139,7 @@ internal sealed class RunPanel : Border
             Spacing = 8,
             Children =
             {
-                new TextBlock
-                {
-                    Text = _Glyph(step.Status),
-                    FontSize = 11,
-                    Foreground = _StatusBrush(step.Status),
-                    VerticalAlignment = VerticalAlignment.Top,
-                },
+                _Glyph(step.Status),
                 lines,
             },
         });
@@ -151,13 +147,18 @@ internal sealed class RunPanel : Border
         return row;
     }
 
-    private static string _Glyph(RunStatus status) => status switch
+    private static Control _Glyph(RunStatus status)
     {
-        RunStatus.Succeeded => "✓",
-        RunStatus.Failed => "✕",
-        RunStatus.Skipped => "–",
-        _ => "…",
-    };
+        var brush = _StatusBrush(status);
+
+        return status switch
+        {
+            RunStatus.Succeeded => new MaterialIcon { Kind = MaterialIconKind.Check, Width = 11, Height = 11, Foreground = brush, VerticalAlignment = VerticalAlignment.Top },
+            RunStatus.Failed => new MaterialIcon { Kind = MaterialIconKind.Close, Width = 11, Height = 11, Foreground = brush, VerticalAlignment = VerticalAlignment.Top },
+            RunStatus.Skipped => new TextBlock { Text = "–", FontSize = 11, Foreground = brush, VerticalAlignment = VerticalAlignment.Top },
+            _ => new TextBlock { Text = "…", FontSize = 11, Foreground = brush, VerticalAlignment = VerticalAlignment.Top },
+        };
+    }
 
     private static IBrush? _StatusBrush(RunStatus status) => status switch
     {

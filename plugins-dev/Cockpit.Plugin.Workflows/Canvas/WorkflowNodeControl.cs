@@ -5,6 +5,8 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Model;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
@@ -42,13 +44,22 @@ internal sealed class WorkflowNodeControl : Border
             CornerRadius = isTrigger ? new CornerRadius(8, 0, 0, 8) : new CornerRadius(3, 0, 0, 3),
         };
 
-        var icon = new TextBlock
-        {
-            Text = node.Type?.Icon ?? "?",
-            FontSize = 17,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 8, 0),
-        };
+        var icon = node.Type?.IconKind is { } kind
+            ? new MaterialIcon
+            {
+                Kind = kind,
+                Width = 17,
+                Height = 17,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 8, 0),
+            }
+            : (Control)new TextBlock
+            {
+                Text = node.Type?.Icon ?? "?",
+                FontSize = 17,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(10, 0, 8, 0),
+            };
 
         var text = new StackPanel
         {
@@ -78,9 +89,8 @@ internal sealed class WorkflowNodeControl : Border
         // thing a hand goes to anyway.
         var gear = new Button
         {
-            Content = "⚙",
+            Content = new MaterialIcon { Kind = MaterialIconKind.Cog, Width = 11, Height = 11 },
             Classes = { "Subtle", "Compact" },
-            FontSize = 11,
             Padding = new Thickness(4, 0),
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
