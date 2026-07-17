@@ -47,7 +47,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // hence SupportsPermissions: true, where the exec route reported false.
             CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath),
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
-            CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson))
+            CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson, host))
         {
             Options = [sdkSandbox, sdkModelFallback],
             ResolveOptionsAsync = async (configJson, cancellationToken) =>
