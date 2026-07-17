@@ -35,6 +35,9 @@ internal sealed class GitStatusHeaderControl : UserControl
     private GitRepoStatus? _current;
     private int _loadToken;
 
+    private FileSystemWatcher? _headWatcher;
+    private string? _watchedHeadDirectory;
+
     public GitStatusHeaderControl(ICockpitHost host, IPluginSessionContext session)
     {
         _host = host;
@@ -72,6 +75,7 @@ internal sealed class GitStatusHeaderControl : UserControl
         _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
         _session.OutputProduced += _OnSessionOutput;
         _ = _LoadAsync();
+        _ = _EnsureHeadWatcherAsync();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -80,18 +84,91 @@ internal sealed class GitStatusHeaderControl : UserControl
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
         _session.OutputProduced -= _OnSessionOutput;
         _signalRefresh.Stop();
+        _DisposeHeadWatcher();
     }
 
-    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e) => _ = _LoadAsync();
+    private void _OnWorkingDirectoryChanged(object? sender, EventArgs e)
+    {
+        _ = _LoadAsync();
+        _ = _EnsureHeadWatcherAsync();
+    }
 
     private void _OnSessionOutput(object? sender, SessionOutputText output)
     {
         // Only a git-mutating command is worth a re-read; ordinary prose about git is not.
         if (GitSignalDetector.ContainsSignal(output.Text))
         {
-            _signalRefresh.Stop();
-            _signalRefresh.Start();
+            _ScheduleReload();
         }
+    }
+
+    // A checkout writes .git/HEAD, which the session produces no output about when it happens in another terminal
+    // or the IDE — so watch HEAD directly and let the badge follow it. git updates HEAD atomically (write
+    // HEAD.lock, rename onto HEAD), hence the rename subscription alongside the write one.
+    private async Task _EnsureHeadWatcherAsync()
+    {
+        var path = _session.WorkingDirectory;
+        var headFile = string.IsNullOrWhiteSpace(path)
+            ? null
+            : await GitHeadLocator.ResolveHeadFileAsync(path, CancellationToken.None);
+        var directory = headFile is null ? null : System.IO.Path.GetDirectoryName(headFile);
+
+        if (directory is null)
+        {
+            _DisposeHeadWatcher();
+            return;
+        }
+
+        // The working directory changed but still resolves to the same repo — keep the watcher we have.
+        if (_headWatcher is not null && string.Equals(directory, _watchedHeadDirectory, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _DisposeHeadWatcher();
+        try
+        {
+            var watcher = new FileSystemWatcher(directory, "HEAD")
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+            };
+            watcher.Changed += _OnHeadChanged;
+            watcher.Created += _OnHeadChanged;
+            watcher.Renamed += _OnHeadChanged;
+            watcher.EnableRaisingEvents = true;
+            _headWatcher = watcher;
+            _watchedHeadDirectory = directory;
+        }
+        catch (Exception exception) when (exception is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            // The OS can refuse the watch (an inotify limit, a directory that just vanished): the badge keeps its
+            // other refresh triggers, only following an external checkout is lost.
+            _watchedHeadDirectory = null;
+        }
+    }
+
+    private void _OnHeadChanged(object? sender, FileSystemEventArgs e) => Dispatcher.UIThread.Post(_ScheduleReload);
+
+    private void _ScheduleReload()
+    {
+        _signalRefresh.Stop();
+        _signalRefresh.Start();
+    }
+
+    private void _DisposeHeadWatcher()
+    {
+        if (_headWatcher is null)
+        {
+            return;
+        }
+
+        _headWatcher.EnableRaisingEvents = false;
+        _headWatcher.Changed -= _OnHeadChanged;
+        _headWatcher.Created -= _OnHeadChanged;
+        _headWatcher.Renamed -= _OnHeadChanged;
+        _headWatcher.Dispose();
+        _headWatcher = null;
+        _watchedHeadDirectory = null;
     }
 
     private async Task _LoadAsync()
