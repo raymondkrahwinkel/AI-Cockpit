@@ -12,6 +12,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
+using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Toasts;
 using Cockpit.Core.Abstractions.Updates;
 using Cockpit.Core.Diagnostics;
@@ -80,6 +81,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IDebugSettingsStore? _debugSettingsStore;
+    private readonly IDelegationMcpToggle? _delegationMcpToggle;
     private readonly IConsentBroker? _consentBroker;
     private readonly ResourceMonitor? _resourceMonitor;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
@@ -568,6 +570,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     [ObservableProperty]
     private bool _showDebugControls;
+
+    /// <summary>
+    /// Whether the orchestrator (delegation) MCP is offered to sessions (AC-40). It is a cockpit-hosted server, no
+    /// longer listed in the MCP-servers manager, so this Options toggle is where it is turned on or off. On by
+    /// default; the change is persisted and takes effect on the next session's servers.
+    /// </summary>
+    [ObservableProperty]
+    private bool _orchestratorMcpEnabled = true;
 
     [ObservableProperty]
     private string _debugSettingsStatus = string.Empty;
@@ -1183,6 +1193,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IShortcutSettingsStore? shortcutSettingsStore = null,
         DelegatedTasksViewModel? delegatedTasks = null,
         IDebugSettingsStore? debugSettingsStore = null,
+        IDelegationMcpToggle? delegationMcpToggle = null,
         ResourceMonitor? resourceMonitor = null,
         DiagnosticsCollector? diagnosticsCollector = null,
         IBackupService? backupService = null,
@@ -1242,6 +1253,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _voiceSettingsStore = voiceSettingsStore;
         _terminalSettingsStore = terminalSettingsStore;
         _debugSettingsStore = debugSettingsStore;
+        // The orchestrator loads its own setting on startup (before the UI), so its live value seeds the toggle here.
+        _delegationMcpToggle = delegationMcpToggle;
+        _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
         _resourceMonitor = resourceMonitor;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
@@ -2115,6 +2129,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             session.ShowDebugControls = value;
         }
     }
+
+    // Flips the orchestrator MCP on or off (AC-40) and persists it; it takes effect on the next session's servers.
+    partial void OnOrchestratorMcpEnabledChanged(bool value) => _ = _delegationMcpToggle?.SetMcpEnabledAsync(value);
 
     // The saved left-menu order/visibility per plugin (#72). Plugins register their contributions during phase-2
     // init, which can beat this read; the rebuild below covers that, since the sidebar re-sorts on the event.

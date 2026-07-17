@@ -21,7 +21,7 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "workflows",
         DisplayName: "Workflows",
-        Version: "0.23.0",
+        Version: "0.24.0",
         Author: "Cockpit",
         Description: "Draw a flow and run it: a manual trigger, a shell command, a decision (If, or a Switch with a way out per case), a notification — wired together on a canvas and saved as you draw. A step uses what the steps before it produced ({output}, or {Run a command.output} to reach further back), and a decision's condition is an expression over that same data. Double-click a step to open it: what comes in on the left, its settings in the middle, what it produced on the right. Other plugins can contribute their own steps, so a flow can do whatever they know how to do.");
 
@@ -41,9 +41,12 @@ public sealed class WorkflowsPlugin : ICockpitPlugin
         _watcher = new Engine.FlowWatcher(store, runs, host);
 
         // AC-12: the plugin's own MCP server, so agents can list, read, run and create/edit workflows. Contributed
-        // through the host's endpoint mechanism (#AC-13) — it appears as the cockpit-workflows MCP, tickable per
-        // session. Fire-and-forget, as the host asks.
-        _ = host.AddMcpEndpoint("cockpit-workflows", new WorkflowMcpTools(store, runs, host));
+        // through the host's endpoint mechanism (#AC-13) — it appears as the cockpit-workflows MCP. Fire-and-forget,
+        // as the host asks. AC-40: gated on the plugin's own setting, read live each time a session's servers are
+        // gathered, so the Workflows-settings toggle takes effect without a restart; the settings view below edits it.
+        var settings = new WorkflowsSettings(host.Storage);
+        _ = host.AddMcpEndpoint("cockpit-workflows", new WorkflowMcpTools(store, runs, host), isEnabled: () => settings.McpEnabled);
+        host.AddSettings(() => new WorkflowsSettingsControl(settings));
 
         // Ask big: a canvas is the one thing that is never too large, and the host clamps the request to the
         // cockpit window anyway.
