@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
@@ -316,4 +317,27 @@ public interface ICockpitHost
     void AddShortcut(PluginShortcut shortcut)
     {
     }
+
+    /// <summary>
+    /// Registers a managed-CLI install recipe (#AC-20): the host can then download the provider's CLI into its own
+    /// location (<c>&lt;StateRoot&gt;/cli/&lt;name&gt;/&lt;version&gt;/</c>), verify it, keep it up to date, and hand
+    /// its path back through <see cref="ResolveManagedCliPath"/> — so a profile need not rely on the CLI being on
+    /// PATH. The <paramref name="descriptor"/> is the only place provider-specific download knowledge lives; the
+    /// installer itself is generic. A convenience, never a dependency: a pinned absolute path still wins, and a
+    /// machine with no managed copy (offline, or the operator removed it) falls back to PATH untouched. Default
+    /// no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling
+    /// untouched — only the app's own host installs anything.
+    /// </summary>
+    void AddManagedCli(ManagedCliDescriptor descriptor)
+    {
+    }
+
+    /// <summary>
+    /// The path to the newest managed copy of <paramref name="cliName"/> the host has installed, or
+    /// <see langword="null"/> when none is installed (#AC-20) — what a provider's executable resolver consults
+    /// <em>after</em> a pinned absolute path but <em>before</em> PATH, so a managed install is preferred yet a
+    /// download failure or a removed copy simply leaves it null and resolution falls through to PATH. Default
+    /// <see langword="null"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
+    /// </summary>
+    string? ResolveManagedCliPath(string cliName) => null;
 }

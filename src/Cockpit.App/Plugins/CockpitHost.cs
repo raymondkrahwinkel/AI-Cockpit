@@ -7,7 +7,9 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Sessions;
@@ -213,6 +215,12 @@ internal sealed class CockpitHost(
         services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
             ? endpointHost.MountAsync(serverName, tools, isEnabled)
             : Task.CompletedTask;
+
+    public void AddManagedCli(ManagedCliDescriptor descriptor) =>
+        services.GetRequiredService<IManagedCliService>().Register(descriptor);
+
+    public string? ResolveManagedCliPath(string cliName) =>
+        services.GetService<IManagedCliService>()?.ResolveInstalledPath(cliName);
 
     public Task SetSessionStatusline(string paneId, string statusline) =>
         _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);
