@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Cockpit.Plugin.Workflows.Engine;
 using Cockpit.Plugin.Workflows.Model;
 using FluentAssertions;
@@ -65,6 +66,37 @@ public class CommandRunnerTests
         outcome.Output.Should().Contain("tmp");
     }
 
+    [Fact]
+    public async Task AnUpstreamValueThatLooksLikeAnInjection_IsRunAsText_NotAsASecondCommand()
+    {
+        // The classic shell-injection: a prior step's value carries "; echo PWNED". It must reach echo as one
+        // argument and be printed, never chain a second command (AC-39). Without the fix this printed "hi\nPWNED".
+        var context = _Context(_Command("echo {output}"), _Items(("output", "hi; echo PWNED")));
+
+        var outcome = await new CommandRunner().RunAsync(context, CancellationToken.None);
+
+        outcome.Output.Should().Be("hi; echo PWNED");
+    }
+
+    [Fact]
+    public async Task ABacktickInAnUpstreamValue_IsNotExecuted_AsACommandSubstitution()
+    {
+        var context = _Context(_Command("echo {output}"), _Items(("output", "a`whoami`b")));
+
+        var outcome = await new CommandRunner().RunAsync(context, CancellationToken.None);
+
+        outcome.Output.Should().Be("a`whoami`b");
+    }
+
+    [Fact]
+    public async Task TheOperatorsOwnShellFeatures_InTheTemplate_StillWork()
+    {
+        // Only substituted values are quoted; the operator's template keeps its shell — the && chains as written.
+        var outcome = await new CommandRunner().RunAsync(_Context(_Command("echo one && echo two")), CancellationToken.None);
+
+        outcome.Output.Should().Contain("one").And.Contain("two");
+    }
+
     private static WorkflowNode _Command(string command) => new()
     {
         Id = "c",
@@ -74,4 +106,18 @@ public class CommandRunnerTests
     };
 
     private static StepContext _Context(WorkflowNode node) => new(node, [], new Dictionary<string, IReadOnlyList<WorkflowItem>>());
+
+    private static StepContext _Context(WorkflowNode node, IReadOnlyList<WorkflowItem> input) =>
+        new(node, input, new Dictionary<string, IReadOnlyList<WorkflowItem>>());
+
+    private static IReadOnlyList<WorkflowItem> _Items(params (string Field, string Value)[] fields)
+    {
+        var json = new JsonObject();
+        foreach (var (field, value) in fields)
+        {
+            json[field] = value;
+        }
+
+        return [new WorkflowItem(json)];
+    }
 }
