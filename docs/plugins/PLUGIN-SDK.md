@@ -425,6 +425,11 @@ Three rules keep the gate honest:
 It fails closed: with no consent surface, or a cancelled request, the answer is `Denied` — never a silent
 approval. Full type list in the [API reference](API-REFERENCE.md#taskconsentdecision-requestconsentasyncconsentrequest-request).
 
+**Writing a workflow step? Don't call this by hand.** A contributed `IWorkflowStep` declares its risk once with
+`RequiredConsent` (#AC-38) and the engine runs the gate for you — with the run's origin in mind, so a step the
+operator started themselves is not made to approve their own action. See
+[`AddWorkflowStep`](API-REFERENCE.md#void-addworkflowstepiworkflowstep-step).
+
 ## Credentials — say what holds one
 
 The operator can encrypt the credentials in `cockpit.json` with a password (Options → Security). The host does

@@ -58,6 +58,9 @@ internal static class PullRequestWorkflowSteps
     {
         public string TypeId => "github.pr.open";
 
+        // Opens a real pull request on GitHub under your account — egress, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
+
         public string Name => "Open a pull request";
 
         public string Description => "Open a pull request for the branch a repository is on. Draft unless you say otherwise, because a flow that asks four people to review something you have not looked at yet is not a favour.";

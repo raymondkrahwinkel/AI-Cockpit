@@ -29,6 +29,8 @@ internal static class EngineFactory
             new ApproveRunner(host),
             // A contributed trigger is fired, not run: it seeds the flow and the engine hands its data straight on.
             .. contributed.Where(step => step.IsTrigger).Select(step => new TriggerRunner(step.TypeId)),
-            .. contributed.Where(step => !step.IsTrigger).Select(step => new ContributedStep(step)),
-        ]);
+            // A non-trigger step that did not declare its consent (#AC-38) is left out — it must not run ungated. Same
+            // ContributedStep.IsUndeclared rule the editor filters the picker by, so the runner set and the canvas never disagree.
+            .. contributed.Where(step => !step.IsTrigger && !ContributedStep.IsUndeclared(step)).Select(step => new ContributedStep(step)),
+        ], host);
 }

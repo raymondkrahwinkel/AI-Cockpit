@@ -69,6 +69,15 @@ public interface IWorkflowStep
     IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>();
 
     /// <summary>
+    /// Whether running this step needs the operator's consent, and at what risk (#AC-38). A non-trigger step MUST
+    /// declare this: leaving it null (undeclared) refuses the step at load rather than silently treating it as safe, so
+    /// a step that acts with the operator's rights cannot slip through ungated. Declare <see cref="WorkflowStepConsent.None"/>
+    /// for a genuinely safe step, or <see cref="WorkflowStepConsent.Dangerous"/> for one that runs a command, hands off
+    /// a session, or sends data out. Triggers are never run, so their value is ignored.
+    /// </summary>
+    WorkflowStepConsent? RequiredConsent => null;
+
+    /// <summary>
     /// Runs the step. Throwing fails it, and the message is what the operator reads in the run — so write it as a
     /// sentence they can act on. Returning without doing the work is not a failure the run can see, so do not.
     /// <para>

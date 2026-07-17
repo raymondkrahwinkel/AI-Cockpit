@@ -1,4 +1,5 @@
 using Cockpit.Plugin.Workflows.Model;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.Workflows.Engine;
 
@@ -13,7 +14,7 @@ namespace Cockpit.Plugin.Workflows.Engine;
 /// one run may take: a flow that never ends must fail loudly rather than hang the cockpit.
 /// </para>
 /// </summary>
-public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
+public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitHost host)
 {
     /// <summary>How many steps one run may take. A loop with a decision as its stop condition is normal; a loop without one is a bug, and this is where it surfaces.</summary>
     public const int MaxSteps = 200;
@@ -21,10 +22,25 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
     private readonly Dictionary<string, IStepRunner> _runners =
         runners.ToDictionary(runner => runner.TypeId, StringComparer.Ordinal);
 
+    // Computed once from the runner registry (fixed per engine): the types the runtime gate asks consent for (any
+    // risk), and the subset an MCP caller may not create or arm (only Dangerous). Derived from the runners so there is
+    // one source of truth with the runtime gate.
+    private HashSet<string>? _consentRequired;
+    private HashSet<string>? _agentForbidden;
+
+    /// <summary>The step types the runtime gate asks consent for — anything with a risk (LowRisk or Dangerous), #AC-38.</summary>
+    public IReadOnlySet<string> ConsentRequiredTypeIds =>
+        _consentRequired ??= _runners.Values.Where(runner => runner.RequiredConsent is not null).Select(runner => runner.TypeId).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>The step types an MCP caller may not create or arm (#AC-38): only the Dangerous ones. A LowRisk step stays agent-buildable and is gated at runtime instead.</summary>
+    public IReadOnlySet<string> AgentForbiddenTypeIds =>
+        _agentForbidden ??= _runners.Values.Where(runner => runner.RequiredConsent is ConsentRisk.Dangerous).Select(runner => runner.TypeId).ToHashSet(StringComparer.Ordinal);
+
     /// <summary>Runs the flow from <paramref name="startNodeId"/> — a trigger. Never throws: what went wrong is written into the run, which is the point of keeping one.</summary>
     public async Task<WorkflowRun> RunAsync(
         Workflow workflow,
         string startNodeId,
+        RunOrigin origin,
         IReadOnlyList<WorkflowItem>? seed = null,
         CancellationToken cancellationToken = default)
     {
@@ -91,7 +107,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
             };
             run.Steps.Add(step);
 
-            var outcome = await _RunStepAsync(new StepContext(node, input, produced), step, cancellationToken);
+            var outcome = await _RunStepAsync(new StepContext(node, input, produced), step, origin, workflow.RunUnattended, cancellationToken);
             step.FinishedAt = DateTimeOffset.UtcNow;
             produced[node.Name] = outcome.Items;
 
@@ -122,7 +138,7 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
         return run;
     }
 
-    private async Task<StepOutcome> _RunStepAsync(StepContext context, StepRun step, CancellationToken cancellationToken)
+    private async Task<StepOutcome> _RunStepAsync(StepContext context, StepRun step, RunOrigin origin, bool unattended, CancellationToken cancellationToken)
     {
         var (node, input, _) = context;
 
@@ -142,6 +158,28 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
             step.Note = $"This cockpit cannot run '{node.TypeId}' yet — the step was passed by, not performed.";
             step.Items = RunItems.Keep(input);
             return StepOutcome.Passing(input, string.Empty);
+        }
+
+        // A step that acts with the operator's rights is gated: unless the operator started this run themselves, the
+        // literal action is put to them for Approve/Deny before it happens. Denied ends this branch as Skipped, not
+        // Failed — a step you refused is not a step that broke.
+        if (runner.RequiredConsent is { } risk && _ConsentNeeded(origin, unattended))
+        {
+            var decision = await host.RequestConsentAsync(new ConsentRequest(
+                $"Workflow wants to run: {node.Name}",
+                runner.ConsentAction(context),
+                new ConsentSource(null, null, "Workflows"),
+                $"workflow.{node.TypeId}",
+                risk,
+                AllowRemember: risk == ConsentRisk.LowRisk));
+
+            if (!decision.IsApproved)
+            {
+                // Also the message when nobody was there to ask (a trigger fired it while you were away): the gate
+                // fails closed, so the step is refused rather than run silently. Marking the flow Run unattended is
+                // how you allow that.
+                return StepOutcome.Stop("This step needs your consent to run and it was not given, so the flow stopped here. If this flow should run its consent-gated steps unattended, mark it Run unattended.");
+            }
         }
 
         try
@@ -165,6 +203,16 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners)
             return StepOutcome.Passing([], string.Empty);
         }
     }
+
+    // The operator running a flow themselves is the consent; a trigger or an agent running it is not. An operator can
+    // exempt a flow they armed from the trigger prompt by marking it run-unattended — which an agent cannot do, because
+    // it cannot arm a dangerous flow in the first place.
+    private static bool _ConsentNeeded(RunOrigin origin, bool unattended) => origin switch
+    {
+        RunOrigin.Operator => false,
+        RunOrigin.Trigger => !unattended,
+        _ => true,
+    };
 
     /// <summary>
     /// What happens when a step fails. Three answers, in the order the operator meant them.

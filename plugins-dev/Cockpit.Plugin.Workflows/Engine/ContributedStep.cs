@@ -16,6 +16,28 @@ internal sealed class ContributedStep(IWorkflowStep step) : IStepRunner
 {
     public string TypeId => step.TypeId;
 
+    public ConsentRisk? RequiredConsent => step.RequiredConsent switch
+    {
+        WorkflowStepConsent.None => null,
+        WorkflowStepConsent.LowRisk => ConsentRisk.LowRisk,
+        // Dangerous, and — fail closed — anything unexpected: a future tier, an out-of-range cast, or an undeclared
+        // (null) step that somehow reached a runner (EngineFactory leaves those out first). A consent gate never
+        // fails open, so the safe default when the risk is not plainly None/LowRisk is to ask.
+        _ => ConsentRisk.Dangerous,
+    };
+
+    /// <summary>A non-trigger contributed step that did not declare its consent (#AC-38) — refused rather than run ungated.</summary>
+    public static bool IsUndeclared(IWorkflowStep step) => !step.IsTrigger && step.RequiredConsent is null;
+
+    public string ConsentAction(StepContext context)
+    {
+        var settings = step.Parameters
+            .Select(name => (name, value: context.Resolve(context.Node.Parameters.GetValueOrDefault(name)).Text))
+            .Where(entry => entry.value.Length > 0)
+            .Select(entry => $"{entry.name}: {entry.value}");
+        return string.Join("\n", new[] { step.Name }.Concat(settings));
+    }
+
     /// <summary>How the picker and the canvas see it.</summary>
     public static NodeTypeDescriptor Describe(IWorkflowStep step) => new(
         step.TypeId,

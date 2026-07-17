@@ -29,6 +29,9 @@ internal static class GitWorkflowSteps
     {
         public string TypeId => "git.branch";
 
+        // Switches/creates branches with your git rights — a mutation of a real repo, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
+
         public string Name => "Switch to a branch";
 
         public string Description => "Switch to a branch, creating it from the current one when it does not exist yet. Refuses when the working tree is dirty rather than dragging your changes onto another branch.";
@@ -105,6 +108,9 @@ internal static class GitWorkflowSteps
     {
         public string TypeId => "git.commit";
 
+        // Writes a commit into a real repo with your git rights, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
+
         public string Name => "Commit";
 
         public string Description => "Commit the changes in a repository. Stages everything unless you say otherwise. Says so and does nothing when there is nothing to commit — an empty commit is noise in a history someone has to read.";
@@ -167,6 +173,9 @@ internal static class GitWorkflowSteps
     private sealed class PushStep : IWorkflowStep
     {
         public string TypeId => "git.push";
+
+        // Pushes to a remote — egress that changes what other people see, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
 
         public string Name => "Push";
 

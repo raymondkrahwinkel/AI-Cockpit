@@ -27,8 +27,14 @@
     <!-- 1.4.0 (#AC-47): added ICockpitHost.RequestConsentAsync and the Consent types (ConsentRequest/Decision/
          Source/Risk/Outcome) — the shared host-side consent gate. Default-implemented (fails closed → Denied), so
          existing plugins keep compiling. Additions only — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.4.0</Version>
-    <AssemblyVersion>1.4.0.0</AssemblyVersion>
+    <!-- 1.5.0 (#AC-38): added IWorkflowStep.RequiredConsent — a contributed workflow step declares whether running it
+         needs consent (a WorkflowStepConsent: None/LowRisk/Dangerous), so the workflows engine gates it and an MCP
+         caller cannot create/arm a flow with a Dangerous one. Existing plugins keep compiling (the member is
+         default-implemented), but a non-trigger step that leaves it null is treated as undeclared and left out of the
+         editor until it declares None or Dangerous — a step that acts with the operator's rights cannot slip through
+         ungated. Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.5.0</Version>
+    <AssemblyVersion>1.5.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>
