@@ -128,6 +128,42 @@ public class TranscriptSearchServiceTests : IDisposable
         recent[0].Snippet.Should().Be("add the export button");
     }
 
+    // The whole point of #AC-1: a hit carries the folder the session ran in (its cwd), so resuming it can start
+    // in the right place rather than wherever the operator last was.
+    [Fact]
+    public async Task SearchAsync_CapturesTheWorkingDirectoryFromTheTranscriptCwd()
+    {
+        _WriteSession("encoded-dir-name", "sess1",
+            """{"type":"user","cwd":"/home/me/RiderProjects/App","message":{"role":"user","content":"fix the login bug"}}""");
+
+        var hits = await new TranscriptSearchService([_root]).SearchAsync("login");
+
+        hits.Should().ContainSingle()
+            .Which.WorkingDirectory.Should().Be("/home/me/RiderProjects/App");
+    }
+
+    [Fact]
+    public async Task RecentAsync_CarriesTheWorkingDirectory()
+    {
+        _WriteSession("encoded-dir-name", "sess1",
+            """{"type":"user","cwd":"/home/me/RiderProjects/App","message":{"role":"user","content":"fix the login bug"}}""");
+
+        var recent = await new TranscriptSearchService([_root]).RecentAsync();
+
+        recent.Should().ContainSingle()
+            .Which.WorkingDirectory.Should().Be("/home/me/RiderProjects/App");
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithoutACwd_LeavesTheWorkingDirectoryNull()
+    {
+        _WriteSession("proj", "sess1", """{"type":"user","message":{"role":"user","content":"fix the login bug"}}""");
+
+        var hits = await new TranscriptSearchService([_root]).SearchAsync("login");
+
+        hits.Should().ContainSingle().Which.WorkingDirectory.Should().BeNull();
+    }
+
     [Fact]
     public async Task RecentAsync_ReturnsAtMostTheRequestedNumber()
     {

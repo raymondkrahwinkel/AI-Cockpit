@@ -1,9 +1,11 @@
+using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -639,6 +641,53 @@ public class NewSessionDialogViewModelTests
 
         invocations[0].Should().Be(1);
         vm.SdkLaunchOptions.Single(option => option.Key == "model").Choices.Should().Equal("m");
+    }
+
+    [Fact]
+    public async Task PickingAConversation_SetsBothTheSessionIdAndTheFolderItRanIn()
+    {
+        var pickers = new ConversationPickerRegistry();
+        pickers.Register(new ConversationPickerRegistration("Search transcripts", () => Task.FromResult<string?>("sess-42"))
+        {
+            PickWithLocationAsync = () => Task.FromResult<PickedConversation?>(new PickedConversation("sess-42", "/home/me/RiderProjects/App")),
+        });
+
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<SessionProfile> { new("personal", new ClaudeConfig("/home/r/.claude-personal")) });
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
+        loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
+        var vm = new NewSessionDialogViewModel(
+            store, loginChecker, mcpServerCatalog: null, workingPathStore: null, conversationPickers: pickers,
+            ttyProviderResolver: null, ttyProviderRegistry: null);
+
+        await vm.PickConversationCommand.ExecuteAsync(null);
+
+        vm.ResumeSessionId.Should().Be("sess-42");
+        vm.ResumeMode.Should().Be(SessionResumeMode.BySessionId);
+        vm.WorkingDirectory.Should().Be("/home/me/RiderProjects/App");
+    }
+
+    [Fact]
+    public async Task PickingFromAnIdOnlyPicker_ResumesTheSessionButLeavesTheWorkingDirectoryUntouched()
+    {
+        var pickers = new ConversationPickerRegistry();
+        pickers.Register(new ConversationPickerRegistration("Search transcripts", () => Task.FromResult<string?>("sess-42")));
+
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<SessionProfile> { new("personal", new ClaudeConfig("/home/r/.claude-personal")) });
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
+        loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
+        var vm = new NewSessionDialogViewModel(
+            store, loginChecker, mcpServerCatalog: null, workingPathStore: null, conversationPickers: pickers,
+            ttyProviderResolver: null, ttyProviderRegistry: null)
+        {
+            WorkingDirectory = "/somewhere/else",
+        };
+
+        await vm.PickConversationCommand.ExecuteAsync(null);
+
+        vm.ResumeSessionId.Should().Be("sess-42");
+        vm.WorkingDirectory.Should().Be("/somewhere/else");
     }
 
     private static SessionProviderRegistration _SessionRegistration(

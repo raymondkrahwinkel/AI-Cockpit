@@ -38,6 +38,26 @@ public class ConversationPickerTests
         picked.Should().Be("abc-123");
     }
 
+    // A provider whose history is folder-scoped hands back where the conversation ran as well as its id, through
+    // the optional richer picker, so the dialog can resume it in the right place.
+    [Fact]
+    public async Task ThePicker_CanAlsoHandBackWhereTheConversationRan()
+    {
+        var registry = new ConversationPickerRegistry();
+        var host = NewHost(registry);
+        host.AddConversationPicker(new ConversationPickerRegistration("Search transcripts", () => Task.FromResult<string?>("abc-123"))
+        {
+            PickWithLocationAsync = () => Task.FromResult<PickedConversation?>(new PickedConversation("abc-123", "/home/me/project")),
+        });
+
+        var pickWithLocation = registry.Pickers[0].PickWithLocationAsync;
+        pickWithLocation.Should().NotBeNull();
+
+        var picked = pickWithLocation is null ? null : await pickWithLocation();
+
+        picked.Should().Be(new PickedConversation("abc-123", "/home/me/project"));
+    }
+
     // No plugin that browses a provider's history installed is the normal case: the dialog then simply shows no
     // search button, and the id can still be typed by hand.
     [Fact]
