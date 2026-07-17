@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Cockpit.App.Controls;
@@ -22,8 +23,16 @@ public partial class OptionsDialog : Window
         CockpitWindowChrome.Apply(this);
 
         // The plugin list is built when the dialog opens rather than when the app started: a plugin installed since
-        // then should not be missing from its own backup.
-        Opened += (_, _) => (DataContext as CockpitViewModel)?.RefreshBackupPlugins();
+        // then should not be missing from its own backup. The diagnostics panel is read the same way — once, on
+        // open — so the Debug tab shows current figures without a timer running behind a page nobody is looking at.
+        Opened += (_, _) =>
+        {
+            if (DataContext is CockpitViewModel cockpit)
+            {
+                cockpit.RefreshBackupPlugins();
+                cockpit.Diagnostics.Refresh();
+            }
+        };
     }
 
     /// <summary>Opens straight to the Plugins tab. Looked up by header text rather than a hardcoded index, so a future tab reorder can't silently select the wrong one.</summary>
@@ -40,6 +49,22 @@ public partial class OptionsDialog : Window
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
+
+    private void OnRefreshDiagnostics(object? sender, RoutedEventArgs e) =>
+        (DataContext as CockpitViewModel)?.Diagnostics.Refresh();
+
+    // Copying is a view's job (the clipboard is the window's), the same split as the file pickers below: the view
+    // model builds the text, this hands it to the OS and lets the panel say it was copied.
+    private async void OnCopyDiagnostics(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit || Clipboard is not { } clipboard)
+        {
+            return;
+        }
+
+        await clipboard.SetTextAsync(cockpit.Diagnostics.Report);
+        cockpit.Diagnostics.MarkCopied();
+    }
 
     // Turning encryption on or off rewrites every credential the operator has, and turning it off puts them all
     // back in the clear. Neither happens on a single click, and both say what they are about to do.
