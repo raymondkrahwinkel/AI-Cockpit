@@ -112,6 +112,23 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task SetSessionStatus_WhenTheDialogClears_EmptiesTheStatusline()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync().Returns(NewSessionResultFor(SessionKind.Sdk));
+        // The dialog's own Clear button returns an empty string (distinct from cancelling, which returns null).
+        dialogService.ShowSetStatusDialogAsync(Arg.Any<string>()).Returns(string.Empty);
+        var vm = NewVm(dialogService);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+        session.Statusline = "AC-13";
+
+        await vm.SetSessionStatusCommand.ExecuteAsync(session);
+
+        session.Statusline.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SetSessionStatus_WhenCancelled_LeavesTheStatuslineUnchanged()
     {
         var dialogService = Substitute.For<ISessionDialogService>();

@@ -41,9 +41,12 @@ public partial class SetStatusDialog : Window
         {
             case Key.Enter:
                 OnSet(sender, e);
+                e.Handled = true;
                 break;
             case Key.Escape:
+                // Handle it here so the window chrome's own bubbling Escape-to-close doesn't fire a second Close.
                 OnCancel(sender, e);
+                e.Handled = true;
                 break;
         }
     }
