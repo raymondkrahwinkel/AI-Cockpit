@@ -32,8 +32,11 @@ internal sealed class CommandRunner : IStepRunner
             throw new InvalidOperationException("This step has no command to run. Open it and write one.");
         }
 
-        // A command can use what an earlier step produced: "grep -c error {output}", or "{Fetch log.path}".
-        command = context.Resolve(command).Text;
+        // A command can use what an earlier step produced: "grep -c error {output}", or "{Fetch log.path}". The
+        // template is the operator's and keeps its shell features; the substituted values are untrusted step data, so
+        // each is shell-quoted as it goes in and cannot break out of its argument (AC-39) — "echo {output}" where an
+        // upstream value is "; rm -rf ~" runs echo with that text, it does not run rm.
+        command = context.Resolve(command, ShellQuoting.ForCurrentShell()).Text;
 
         var workingDirectory = context.Resolve(node.Parameters.GetValueOrDefault("Working directory")).Text;
         if (!string.IsNullOrWhiteSpace(workingDirectory) && !Directory.Exists(workingDirectory))

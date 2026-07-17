@@ -29,10 +29,55 @@ public sealed record ProcessMemoryInfo(
 
         return new ProcessMemoryInfo(
             process.WorkingSet64,
-            process.PeakWorkingSet64,
+            _PeakResidentBytes(process),
             process.VirtualMemorySize64,
             process.PrivateMemorySize64,
             _SwapBytes());
+    }
+
+    // .NET does not populate Process.PeakWorkingSet64 on macOS — it returns 0 there. In the diagnostics panel that
+    // read as a false "0 B" and hid the one figure AC-57 needs: whether resident ever spiked this run, even after
+    // it settled back (Rick's trace showed 272 MB resident but "Peak resident: 0 B", so a mid-run explosion would
+    // leave no trace). macOS exposes the peak cheaply through getrusage's ru_maxrss — in bytes on Darwin, unlike
+    // Linux where it is kilobytes — so read it natively there. Any failure falls back to the framework value: a
+    // missing or wrong peak must never take the panel down.
+    private static long _PeakResidentBytes(Process process)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            try
+            {
+                if (getrusage(_RusageSelf, out var usage) == 0 && usage.MaxResidentSetBytes > 0)
+                {
+                    return usage.MaxResidentSetBytes;
+                }
+            }
+            catch (DllNotFoundException)
+            {
+                // No libc to call (should not happen on macOS): fall through to the framework value.
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // getrusage absent: same fallback.
+            }
+        }
+
+        return process.PeakWorkingSet64;
+    }
+
+    private const int _RusageSelf = 0;
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int getrusage(int who, out RUsage usage);
+
+    // macOS layout of struct rusage. Only ru_maxrss is read; the two leading timevals — 16 bytes each on 64-bit
+    // Darwin (an 8-byte tv_sec and a 4-byte tv_usec, padded to 8) — put it at offset 32. Size spans the whole
+    // struct (2 timevals + 14 longs = 144) so the marshaller copies a valid amount for the kernel to fill.
+    [StructLayout(LayoutKind.Explicit, Size = 144)]
+    private struct RUsage
+    {
+        [FieldOffset(32)]
+        public long MaxResidentSetBytes;
     }
 
     // Only Linux exposes a process's own swapped-out size cheaply, via VmSwap in /proc/self/status (kB). Windows
