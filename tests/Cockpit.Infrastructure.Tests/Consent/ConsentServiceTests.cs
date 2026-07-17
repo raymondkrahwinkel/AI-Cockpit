@@ -215,6 +215,25 @@ public sealed class ConsentServiceTests
         entries[0].Scope.Should().Be("workflow.command");
     }
 
+    /// <summary>
+    /// The decision resolves only once the audit line is flushed, not before — so a caller cannot act on an
+    /// approval the append-only trail has not yet recorded (code review, C4).
+    /// </summary>
+    [Fact]
+    public async Task RequestConsentAsync_Approve_ResolvesOnlyAfterTheAuditIsWritten()
+    {
+        var auditGate = new TaskCompletionSource();
+        _audit.RecordAsync(Arg.Any<ConsentAuditEntry>()).Returns(auditGate.Task);
+        var broker = CreateBroker();
+        broker.PromptOpened += (_, prompt) => broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: false);
+
+        var decision = broker.RequestConsentAsync(Request(ConsentRisk.Dangerous));
+
+        decision.IsCompleted.Should().BeFalse("the decision must wait for the audit line to be flushed");
+        auditGate.SetResult();
+        (await decision).IsApproved.Should().BeTrue();
+    }
+
     /// <summary>A fail-closed denial is logged too — the "nobody asked but it was refused" line you want afterwards.</summary>
     [Fact]
     public async Task RequestConsentAsync_FailClosed_WritesADeniedAuditEntry()

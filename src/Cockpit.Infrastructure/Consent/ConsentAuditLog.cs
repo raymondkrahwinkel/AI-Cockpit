@@ -106,9 +106,18 @@ internal sealed class ConsentAuditLog : IConsentAuditLog, ISingletonService
         }
     }
 
-    private static string _Trim(string actionText) => actionText is { Length: > MaxActionLength }
-        ? actionText[..MaxActionLength] + "…"
-        : actionText;
+    private static string _Trim(string actionText)
+    {
+        if (actionText.Length <= MaxActionLength)
+        {
+            return actionText;
+        }
+
+        // Don't cut through a surrogate pair: an astral character (an emoji in a command, say) straddling the limit
+        // would otherwise be left as a lone surrogate and persisted as U+FFFD.
+        var cut = char.IsHighSurrogate(actionText[MaxActionLength - 1]) ? MaxActionLength - 1 : MaxActionLength;
+        return actionText[..cut] + "…";
+    }
 
     private static string _DefaultPath() =>
         Path.Combine(Path.GetDirectoryName(CockpitConfigPath.Default) ?? string.Empty, "consent-audit.jsonl");

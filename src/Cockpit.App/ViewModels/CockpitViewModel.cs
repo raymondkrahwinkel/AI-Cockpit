@@ -1282,8 +1282,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _OnConsentPromptOpened(object? sender, ConsentPrompt prompt) =>
         Dispatcher.UIThread.Post(() =>
         {
-            var pane = Sessions.FirstOrDefault(session => session.PaneId == prompt.Request.Source.PaneId);
+            // A request that names a pane goes to that pane; a host-internal caller with no pane of its own (a null
+            // PaneId) surfaces on the active session. Either way, if there is nowhere to show it, deny — never hang.
+            var pane = prompt.Request.Source.PaneId is { } paneId
+                ? Sessions.FirstOrDefault(session => session.PaneId == paneId)
+                : SelectedSession;
             if (pane is null)
+            {
+                _consentBroker?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
+                return;
+            }
+
+            // One banner per pane: a second request while one is still open would replace — and orphan — the first,
+            // hanging its caller forever (RequestConsentAsync has no timeout of its own). Deny the newcomer rather
+            // than lose the prompt already on screen.
+            if (pane.PendingConsent is not null)
             {
                 _consentBroker?.Respond(prompt.Id, ConsentOutcome.Denied, remember: false);
                 return;

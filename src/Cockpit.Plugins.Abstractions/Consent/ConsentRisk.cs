@@ -9,7 +9,9 @@ namespace Cockpit.Plugins.Abstractions.Consent;
 /// </summary>
 public enum ConsentRisk
 {
+    /// <summary>An idempotent, low-consequence action. May offer "remember for this session" — for the exact action, from the same source.</summary>
     LowRisk,
 
+    /// <summary>A shell command, a session hand-off with the operator's rights, arbitrary egress. Asked afresh every time; never remembered.</summary>
     Dangerous,
 }
