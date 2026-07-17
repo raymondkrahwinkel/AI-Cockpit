@@ -131,6 +131,33 @@
                              grid, so a font setting has nothing to apply to there. One global setting for
                              every TTY session — not per-profile or per-session. -->
                         <TextBlock Text="Terminal (TTY sessions)" FontWeight="SemiBold"/>
+                        <!-- Which shell a New terminal opens (#AC-25). "OS default" (blank) uses the machine's
+                             preferred shell; the list is what was detected on this machine. Applies to terminal
+                             panes only — an AI session runs its provider's CLI, not a shell. -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Default shell"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding TerminalShellChoices}"
+                                      SelectedItem="{Binding SelectedTerminalShell}"
+                                      Width="260"
+                                      ToolTip.Tip="Which shell a new terminal opens; OS default uses your system's preferred shell">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TerminalShellChoice">
+                                        <TextBlock Text="{Binding Label}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                    IsVisible="{Binding IsTerminalShellCustom}">
+                            <TextBlock Text="Custom shell"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                       VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding TerminalCustomShell}" Width="260"
+                                     PlaceholderText="e.g. /usr/bin/fish or nu"
+                                     ToolTip.Tip="Full path or command of any shell — a third-party shell (fish, nushell, …) not in the list works too"/>
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="Font family"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"

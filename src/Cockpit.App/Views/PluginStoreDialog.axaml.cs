@@ -29,6 +29,16 @@ public partial class PluginStoreDialog : Window
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 
+    // Opens the Manage-stores dialog as an owned modal over this one, on the same shared manager — so adding
+    // or removing a store there refreshes this dialog's catalogue and sidebar from the one instance.
+    private async void OnManageStores(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is PluginStoreDialogViewModel viewModel)
+        {
+            await new ManageStoresDialog { DataContext = viewModel.Manager }.ShowDialog(this);
+        }
+    }
+
     private void OnOpenHomepage(object? sender, RoutedEventArgs e)
     {
         if (DataContext is PluginStoreDialogViewModel { SelectedPlugin.Homepage: { } url })

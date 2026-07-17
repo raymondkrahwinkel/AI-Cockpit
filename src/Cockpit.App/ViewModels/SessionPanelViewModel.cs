@@ -27,6 +27,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string _title = "Session";
 
     /// <summary>
+    /// A short free-text line the agent or a plugin sets to say what this session is doing right now — a ticket it
+    /// picked up ("AC-13"), a phase, whatever (#AC-13). Shown under the title in the header and the sidebar; blank
+    /// hides it. Distinct from <see cref="SessionStatusLabel"/> (the derived Idle/Busy/Needs-attention state) and
+    /// from the provider's own status bar: this one is set from outside — the agent via MCP, or a workflow.
+    /// </summary>
+    [ObservableProperty]
+    private string _statusline = string.Empty;
+
+    /// <summary>
     /// Mirrors <see cref="Cockpit.Core.Debugging.DebugSettings.ShowDebugControls"/> (#73): whether this
     /// session's header shows the controls that exist to investigate the cockpit (the TTY's Redraw) rather than
     /// to do the work. Seeded by <see cref="CockpitViewModel"/> and kept live from Options.

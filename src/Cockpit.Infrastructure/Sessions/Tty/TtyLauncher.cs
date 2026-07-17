@@ -26,7 +26,8 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ILogger<TtyLau
         short columns,
         short rows,
         string? workingDirectory = null,
-        SessionResume? resume = null)
+        SessionResume? resume = null,
+        string? paneId = null)
     {
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
@@ -45,6 +46,17 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, ILogger<TtyLau
             }
 
             baseEnvironment = TtyEnvironment.Compose(baseEnvironment, profileOverlay);
+        }
+
+        // AC-13: hand the session its own pane id so the agent can name itself to the cockpit-session MCP's
+        // set_status tool. Set after the profile's variables (a host-owned identity a profile must not shadow) and
+        // before the provider's overlay, which still keeps the last word.
+        if (!string.IsNullOrEmpty(paneId))
+        {
+            baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
+            {
+                ["COCKPIT_PANE_ID"] = paneId,
+            };
         }
 
         var context = new TtyLaunchContext(

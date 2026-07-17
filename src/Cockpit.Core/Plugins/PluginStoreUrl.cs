@@ -58,4 +58,29 @@ public static class PluginStoreUrl
     /// <summary>Resolves a version's repo-relative zip path against the index URL into an absolute download URL.</summary>
     public static string ResolveZipUrl(string indexUrl, string relativePath) =>
         new Uri(new Uri(indexUrl), relativePath).ToString();
+
+    /// <summary>
+    /// A short, human-readable name for a store URL, for showing it before — or when — its <c>index.json</c>
+    /// advertises no <see cref="PluginStoreIndex.Name"/>: <c>owner/repo</c> for a GitHub repo URL or its raw
+    /// <c>index.json</c>, otherwise the host. Never throws: an unparseable value falls back to itself.
+    /// </summary>
+    public static string DeriveDisplayName(string storeUrl)
+    {
+        if (string.IsNullOrWhiteSpace(storeUrl))
+        {
+            return "Unknown store";
+        }
+
+        var trimmed = storeUrl.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return trimmed;
+        }
+
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var isGitHub = uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase);
+
+        return isGitHub && segments.Length >= 2 ? $"{segments[0]}/{segments[1]}" : uri.Host;
+    }
 }

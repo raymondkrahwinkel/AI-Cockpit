@@ -3,7 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Diagnostics;
+using Cockpit.Infrastructure.Sessions;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -19,6 +21,11 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
         services.AddSingleton<AudioEngine, MiniAudioEngine>();
+
+        // Built-in cockpit MCP endpoints (#AC-13): CockpitMcpEndpointHost hosts each and auto-publishes it to the
+        // registry as its own MCP server. cockpit-session carries set_status, on by default and available to every
+        // session (including delegated sub-agents, unlike the orchestrator). A plugin adds its own the same way (#AC-12).
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-session", typeof(SessionStatusTools)));
 
         AddDiagnostics(services);
         AddNotifications(services);

@@ -7,6 +7,7 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Terminal;
 
 namespace Cockpit.App.ViewModels;
 
@@ -39,6 +40,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private bool _isLaunchConfigured;
     private SessionResume? _configuredResume;
     private bool _launched;
+
+    /// <summary>
+    /// A shell provider handed in directly for a terminal pane (#AC-25), bypassing
+    /// <see cref="_providerResolver"/>: a terminal has no profile to resolve through, it just runs a shell. Null for
+    /// a normal agent-CLI session, which still resolves its provider from the profile.
+    /// </summary>
+    private ITtySessionProvider? _configuredProviderOverride;
 
     /// <summary>
     /// The transcript files that already existed when this session launched, snapshotted once in
@@ -106,6 +114,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     [ObservableProperty]
     private bool _isVerticalLayout;
+
+    /// <summary>
+    /// This pane runs a plain shell, not an agent CLI (#AC-25). Bound in <c>TtyView.axaml</c> to gate off the
+    /// Claude-only header chrome — the limits bars, the working-path-as-Claude line and the plugin header items —
+    /// which are meaningless for a shell. The terminal grid itself is provider-neutral and rendered unchanged.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isTerminal;
 
     /// <summary>
     /// What this session is spending, each drawn as a small bar in the header: how full the context window is, and
@@ -221,6 +237,32 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
+    /// Configures this panel as a plain terminal running <paramref name="shell"/> (#AC-25), reusing the whole TTY
+    /// launch path — the same pty, renderer and view — with a <see cref="ShellTtySessionProvider"/> handed in
+    /// directly instead of resolved from a profile. No permission mode, model, MCP or transcript: a shell has none
+    /// of that, so the Claude machinery (and the header chrome that shows it) is simply never configured.
+    /// </summary>
+    public void LaunchTerminal(ShellDescriptor shell, string? workingDirectory = null)
+    {
+        _configuredProviderOverride = new ShellTtySessionProvider(shell);
+        IsTerminal = true;
+        _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
+        if (_configuredWorkingDirectory is not null)
+        {
+            WorkingPath = _configuredWorkingDirectory;
+            WorkingDirectory = _configuredWorkingDirectory;
+        }
+
+        // Deliberately no transcript baseline: a shell writes no .jsonl, so the read-aloud/status tailers have
+        // nothing to follow and must not run for it.
+        _isLaunchConfigured = true;
+        ActiveProfileLabel = shell.DisplayName;
+        Status = $"Launching {shell.DisplayName}...";
+        SessionStatus = SessionStatus.Busy;
+        TryRaiseLaunch();
+    }
+
+    /// <summary>
     /// Raises <see cref="LaunchRequested"/> once both the profile is configured and the view is
     /// subscribed. Called from both sides — the dialog result and the view's subscription — so whichever
     /// happens second fires it; the guard makes it launch exactly once.
@@ -230,15 +272,22 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // Only commit the launch once there is a subscriber to receive it: if the profile is configured
         // before the view exists, LaunchRequested is still null, so we must not mark it launched yet —
         // the view calls this again once subscribed.
-        if (_launched || !_isLaunchConfigured || _launcher is null || _providerResolver is null || LaunchRequested is null)
+        if (_launched || !_isLaunchConfigured || _launcher is null || LaunchRequested is null)
         {
             return;
         }
 
-        // Which TUI this profile runs — Claude's, a plugin's, or none. "None" is a real answer (a local HTTP model
-        // is not a program you can put in a terminal) and it is said out loud rather than launched over: the pane
-        // reports it instead of quietly starting somebody else's CLI, which is what it used to do.
-        if (_providerResolver.Resolve(_configuredProfile) is not { } provider)
+        // A terminal hands its shell provider in directly; an agent session resolves one from its profile. With
+        // neither the panel is unconfigured (a bare VM in a test/DI probe) — do nothing rather than claim anything.
+        if (_configuredProviderOverride is null && _providerResolver is null)
+        {
+            return;
+        }
+
+        // Which TUI this profile runs — the terminal's own shell, Claude's, a plugin's, or none. "None" is a real
+        // answer (a local HTTP model is not a program you can put in a terminal) and it is said out loud rather than
+        // launched over: the pane reports it instead of quietly starting somebody else's CLI.
+        if ((_configuredProviderOverride ?? _providerResolver!.Resolve(_configuredProfile)) is not { } provider)
         {
             _launched = true;
             Status = _configuredProfile is null

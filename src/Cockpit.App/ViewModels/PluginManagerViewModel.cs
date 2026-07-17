@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
@@ -34,6 +35,13 @@ public partial class PluginManagerViewModel : ViewModelBase
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
     public ObservableCollection<string> Stores { get; } = [];
+
+    /// <summary>
+    /// The configured stores as display rows for the Manage-stores dialog (#62): the same URLs as
+    /// <see cref="Stores"/>, each wrapped with a name/icon/plugin-count. Rebuilt from <see cref="Stores"/> on
+    /// load, then enriched from each store's <c>index.json</c> on <see cref="BrowseStoresAsync"/>.
+    /// </summary>
+    public ObservableCollection<PluginStoreInfo> StoreInfos { get; } = [];
 
     public ObservableCollection<StorePluginRowViewModel> AvailablePlugins { get; } = [];
 
@@ -178,9 +186,13 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         Stores.Clear();
+        StoreInfos.Clear();
         foreach (var store in await _storeConfigStore.LoadAsync())
         {
             Stores.Add(store);
+            // Name/icon/count start URL-derived and fill in on the next browse; keeping the same URL as the
+            // key means the browse can find and enrich this exact row.
+            StoreInfos.Add(new PluginStoreInfo(store));
         }
     }
 
@@ -403,13 +415,40 @@ public partial class PluginManagerViewModel : ViewModelBase
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var seenTemplates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var problems = new List<string>();
+            // Store logos are fetched after the catalogue is in — plugins show at once, the logos pop in when
+            // they arrive, and a slow or broken image never delays the list.
+            var logoLoads = new List<Task>();
             foreach (var storeUrl in Stores)
             {
+                var info = StoreInfos.FirstOrDefault(candidate => string.Equals(candidate.Url, storeUrl, StringComparison.OrdinalIgnoreCase));
+
                 var fetch = await _storeClient.FetchIndexAsync(storeUrl);
                 if (!fetch.IsSuccess || fetch.Index is null || fetch.IndexUrl is null)
                 {
                     problems.Add(fetch.Error ?? "unreachable store");
+                    if (info is not null)
+                    {
+                        info.IsReachable = false;
+                        info.IsBrowsed = true;
+                    }
+
                     continue;
+                }
+
+                if (info is not null)
+                {
+                    // The store's own advertised name/icon/count for the Manage-stores dialog; the name falls
+                    // back to the URL-derived one when the index sets none.
+                    info.Name = string.IsNullOrWhiteSpace(fetch.Index.Name) ? info.Name : fetch.Index.Name!;
+                    info.Icon = fetch.Index.Icon;
+                    info.PluginCount = fetch.Index.Plugins.Count;
+                    info.IsReachable = true;
+                    info.IsBrowsed = true;
+
+                    if (!string.IsNullOrWhiteSpace(fetch.Index.IconUrl))
+                    {
+                        logoLoads.Add(_LoadStoreLogoAsync(info, fetch.IndexUrl, fetch.Index.IconUrl!));
+                    }
                 }
 
                 foreach (var entry in fetch.Index.Plugins)
@@ -449,6 +488,8 @@ public partial class PluginManagerViewModel : ViewModelBase
                 }
             }
 
+            await Task.WhenAll(logoLoads);
+
             OnPropertyChanged(nameof(HasAvailableTemplates));
 
             StatusMessage = AvailablePlugins.Count == 0
@@ -458,6 +499,31 @@ public partial class PluginManagerViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    // Fetches a store's logo image and hands it to its row as a Bitmap. Best-effort: an http error, an oversize
+    // image or an undecodable one leaves Logo null, and the row keeps its emoji/default glyph — a store's logo is
+    // never allowed to break browsing.
+    private async Task _LoadStoreLogoAsync(PluginStoreInfo info, string indexUrl, string iconUrl)
+    {
+        if (_storeClient is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var image = await _storeClient.DownloadImageAsync(indexUrl, iconUrl);
+            if (image.IsSuccess && image.Bytes is { Length: > 0 } bytes)
+            {
+                using var stream = new MemoryStream(bytes);
+                info.Logo = new Bitmap(stream);
+            }
+        }
+        catch
+        {
+            // Decoding failed (a non-image, a corrupt file) — fall back to the glyph, silently.
         }
     }
 

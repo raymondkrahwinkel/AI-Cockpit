@@ -25,4 +25,12 @@ public sealed record TerminalSettings
 
     /// <summary>Upper bound enforced when saving <see cref="FontSize"/> — above this a typical terminal grid no longer fits a useful column count.</summary>
     public const int MaxFontSize = 32;
+
+    /// <summary>
+    /// The shell a new terminal pane opens (#AC-25), as a <see cref="ShellDescriptor.Id"/> ("pwsh", "bash", …) or an
+    /// absolute path. Blank — the default — means "the OS default": the first shell <see cref="ShellCatalog"/> detects,
+    /// so a fresh install opens a sensible shell without any configuration. A value that no longer resolves on this
+    /// machine falls back to that same OS default rather than failing to open.
+    /// </summary>
+    public string Shell { get; init; } = string.Empty;
 }
