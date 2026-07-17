@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Material.Icons;
 
 namespace Cockpit.Plugins.Abstractions.Widgets;
 
@@ -24,8 +25,15 @@ namespace Cockpit.Plugins.Abstractions.Widgets;
 /// </param>
 public sealed record WidgetRegistration(string Id, string Title, Func<IWidgetContext, Control> CreateView)
 {
-    /// <summary>A short glyph/emoji shown on the gallery card and the pane header. Defaults to a neutral widget mark.</summary>
+    /// <summary>A short glyph/emoji shown on the gallery card and the pane header. Defaults to a neutral widget mark. Used when <see cref="IconKind"/> is null.</summary>
     public string Icon { get; init; } = "🧩";
+
+    /// <summary>
+    /// A bundled vector icon for the gallery card and pane header, preferred over <see cref="Icon"/> when set, so the
+    /// widget reads as part of the theme instead of an emoji the host renders in the machine's own font. Null keeps
+    /// the <see cref="Icon"/> string.
+    /// </summary>
+    public MaterialIconKind? IconKind { get; init; }
 
     /// <summary>One line describing the widget for the gallery card. Empty by default.</summary>
     public string Description { get; init; } = string.Empty;

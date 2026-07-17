@@ -77,10 +77,15 @@ internal sealed class PluginSessionHeaderHost : StackPanel
             var items = cockpit.PluginSessionHeaderActions
                 .Select(action =>
                 {
-                    var item = new MenuItem
+                    var item = new MenuItem { Header = action.Title };
+                    if (action.IconKind is { } kind)
                     {
-                        Header = action.Icon is { Length: > 0 } icon ? $"{icon}  {action.Title}" : action.Title,
-                    };
+                        item.Icon = CockpitIcons.Icon(kind);
+                    }
+                    else if (action.Icon is { Length: > 0 } icon)
+                    {
+                        item.Header = $"{icon}  {action.Title}";
+                    }
 
                     item.Click += (_, _) => action.Invoke(context);
 
