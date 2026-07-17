@@ -537,6 +537,35 @@
                         <CheckBox Content="Show debug controls" IsChecked="{Binding ShowDebugControls}"
                                   ToolTip.Tip="Adds the Redraw button to every TTY session's header — it forces the terminal to repaint when a resize or focus change left the TUI misaligned"/>
 
+                        <!-- Render backend (AC-67). Only meaningful on macOS, so shown there — plus in any dev build,
+                             so it can be verified off-Mac. The backend is fixed at startup, so a saved change offers
+                             a restart, the same affordance the Voice tab uses for the Linux global hotkey. -->
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"
+                                IsVisible="{Binding ShowRenderBackendSetting}"/>
+                        <StackPanel Spacing="6" IsVisible="{Binding ShowRenderBackendSetting}">
+                            <TextBlock Text="Render backend (macOS)" FontWeight="SemiBold"/>
+                            <TextBlock Text="Which graphics backend AI-Cockpit draws with. Auto lets macOS pick (Metal); switch to OpenGL or Software to test whether the Metal path is behind runaway memory growth (AC-57). No effect on Windows/Linux."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Backend" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding RenderBackendChoices}"
+                                          SelectedItem="{Binding RenderBackendSelection}"
+                                          Width="180"/>
+                                <TextBlock Text="{Binding RenderingSettingsStatus}"
+                                           IsVisible="{Binding RenderingSettingsStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                        IsVisible="{Binding RenderBackendNeedsRestart}">
+                                <TextBlock Text="Saved — restart to apply the new render backend."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                           VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <Button Content="Restart Cockpit" Classes="Accent"
+                                        Command="{Binding RestartAppCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
+
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"/>
 
                         <TextBlock Text="System diagnostics" FontWeight="SemiBold"/>

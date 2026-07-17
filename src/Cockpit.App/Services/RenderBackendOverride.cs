@@ -1,4 +1,5 @@
 using Avalonia;
+using Cockpit.Core.Rendering;
 
 namespace Cockpit.App.Services;
 
@@ -26,6 +27,32 @@ public static class RenderBackendOverride
     /// <summary>The override configured in the environment, or null when none is set (the default).</summary>
     public static Selection? FromEnvironment() =>
         Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
+
+    /// <summary>The override the operator picked in Options (AC-67), or null for <see cref="RenderBackendChoice.Auto"/>.</summary>
+    public static Selection? FromChoice(RenderBackendChoice choice) => choice switch
+    {
+        RenderBackendChoice.Metal => Parse("metal"),
+        RenderBackendChoice.OpenGl => Parse("opengl"),
+        RenderBackendChoice.Software => Parse("software"),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The override that startup actually applied, for the diagnostics panel to report — so a tester can confirm
+    /// the backend took effect regardless of whether it came from the env var or the saved setting. Null until
+    /// <see cref="Resolve"/> runs, and null when no override is active (platform default).
+    /// </summary>
+    public static Selection? Applied { get; private set; }
+
+    /// <summary>
+    /// The effective override at startup: the environment variable wins (a per-launch escape hatch), otherwise the
+    /// saved <paramref name="configChoice"/>. Records the result in <see cref="Applied"/> and returns it.
+    /// </summary>
+    public static Selection? Resolve(RenderBackendChoice configChoice)
+    {
+        Applied = FromEnvironment() ?? FromChoice(configChoice);
+        return Applied;
+    }
 
     /// <summary>
     /// Maps a backend name to its render-mode priority list. Case- and whitespace-insensitive; an unknown, empty

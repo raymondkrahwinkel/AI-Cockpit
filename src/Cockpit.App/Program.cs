@@ -368,11 +368,12 @@ sealed class Program
             .With(CockpitFontOptions())
             .LogToTrace();
 
-        // AC-57 diagnostic probe: force a non-default macOS render backend when COCKPIT_RENDER_BACKEND asks for
-        // it, otherwise leave UsePlatformDetect()'s Metal auto-selection alone. AvaloniaNativePlatformOptions is
-        // read only by the macOS backend, so applying it is inert on Windows/Linux — it just lets a tester run
-        // this same build on OpenGL/Software to isolate whether Metal drives the runaway native-memory growth.
-        if (RenderBackendOverride.FromEnvironment() is { } selection)
+        // AC-57/AC-67: force a non-default macOS render backend when the operator picked one in Options (or set
+        // COCKPIT_RENDER_BACKEND, which wins), otherwise leave UsePlatformDetect()'s Metal auto-selection alone.
+        // The config is read directly here because this runs before the DI host; AvaloniaNativePlatformOptions is
+        // read only by the macOS backend, so applying it is inert on Windows/Linux. This is what lets a tester run
+        // the same build on OpenGL/Software to isolate whether Metal drives the runaway native-memory growth.
+        if (RenderBackendOverride.Resolve(RenderBackendConfig.Read()) is { } selection)
         {
             builder = builder.With(new AvaloniaNativePlatformOptions { RenderingMode = [.. selection.Modes] });
         }
