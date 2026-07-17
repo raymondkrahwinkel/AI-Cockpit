@@ -5,9 +5,10 @@ using FluentAssertions;
 namespace Cockpit.Core.Tests.Voice;
 
 /// <summary>
-/// AC-68 slice 2: the hardware-aware rule table. The governing insight is that a single GPU which also draws the
-/// screen should transcribe on the CPU so a long dictation does not stutter the desktop — these pin that and the
-/// other rows (NVIDIA fast path, second-GPU acceleration, Apple/Metal, no-GPU fallback).
+/// AC-68: the hardware-aware rule table — now only the <em>first-run guess</em> before a calibration exists, so it
+/// leans to the fast path: any usable GPU is used, because the CPU alternative can be unusably slow, and the
+/// measured calibration is what moves Auto to the CPU if the GPU really stutters the desktop. These pin that plus
+/// the NVIDIA fast-path reason, Apple/Metal, and the no-GPU fallback.
 /// </summary>
 public class TranscriptionRecommenderTests
 {
@@ -15,15 +16,17 @@ public class TranscriptionRecommenderTests
     private static readonly TranscriptionCapabilities VulkanCaps = new(CudaUsable: false, VulkanUsable: true);
 
     [Fact]
-    public void AnAmdGpuThatDrivesTheDisplay_IsSteeredToTheCpu_ToKeepTheDesktopSmooth()
+    public void AnAmdGpuThatDrivesTheDisplay_NowUsesTheGpu_AndPointsToCalibration()
     {
+        // The regression this whole change fixes: steering a capable Vulkan GPU to the CPU made a sentence take
+        // tens of seconds. The guess now uses the GPU and asks the operator to calibrate to confirm smoothness.
         var gpu = new GpuHardware(GpuVendor.Amd, "AMD Radeon RX 6700 XT", DrivesDisplay: true, VideoMemoryBytes: 12L * 1024 * 1024 * 1024);
 
         var recommendation = TranscriptionRecommender.Recommend(VulkanCaps, gpu, WhisperHostPlatform.Windows);
 
-        recommendation.Backend.Should().Be(VoiceBackendPreference.Cpu);
+        recommendation.Backend.Should().Be(VoiceBackendPreference.Vulkan);
         recommendation.Model.Should().Be("large-v3-turbo");
-        recommendation.Reason.Should().ContainAll("screen", "stutter");
+        recommendation.Reason.Should().ContainAll("screen", "calibration");
         recommendation.Badges.Should().Contain("drives display").And.Contain("no CUDA");
     }
 
@@ -74,12 +77,13 @@ public class TranscriptionRecommenderTests
     }
 
     [Fact]
-    public void ASmallNvidiaThatDrivesTheDisplay_PrefersTheCpu_OverAStarvedFastPath()
+    public void ASmallNvidiaBelowTheVramBar_StillGuessesTheGpu_AndLetsCalibrationCorrect()
     {
-        // Below the VRAM bar and it is the display adapter: keep the desktop smooth rather than force the GPU.
+        // Below the fast-path VRAM bar, so it does not get the "fastest path" wording — but a usable CUDA device
+        // is still the guess (the runtime falls to the CPU tail if it cannot load, and calibration measures reality).
         var gpu = new GpuHardware(GpuVendor.Nvidia, "NVIDIA GeForce MX150", DrivesDisplay: true, VideoMemoryBytes: 2L * 1024 * 1024 * 1024);
 
         TranscriptionRecommender.Recommend(CudaCaps, gpu, WhisperHostPlatform.Windows)
-            .Backend.Should().Be(VoiceBackendPreference.Cpu);
+            .Backend.Should().Be(VoiceBackendPreference.Cuda);
     }
 }

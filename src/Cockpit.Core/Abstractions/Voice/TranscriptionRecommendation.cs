@@ -76,22 +76,20 @@ public static class TranscriptionRecommender
                 badges);
         }
 
-        // A GPU that can load but also draws the screen (typical AMD/Intel single-GPU desktop): keep it off the
-        // GPU so a long dictation does not stutter the desktop; the CPU still runs the full model.
-        if (capabilities.GpuUsable && gpu.DrivesDisplay)
-        {
-            var brand = _BrandWord(gpu.Vendor);
-            return new(FullModel, VoiceBackendPreference.Cpu,
-                $"Your {brand} also draws your screen, so transcribing on it can make the desktop stutter. On the CPU the desktop stays smooth and still runs the full {FullModel}.",
-                badges);
-        }
-
-        // A usable GPU that is not the display adapter (a second card, a headless box): let it accelerate.
+        // Any usable GPU: use it. This is only the first-run guess before a calibration exists, and the CPU
+        // alternative can be unusably slow (a full model can take tens of seconds on the CPU), so defaulting to the
+        // fast path is far safer than defaulting to a slow one. If the GPU also draws the screen and a long
+        // dictation stutters the desktop, the first-use calibration measures exactly that and moves Auto to the
+        // CPU — a real number, not this guess. Vulkan preferred where present (the AMD/Intel path), else CUDA.
         if (capabilities.GpuUsable)
         {
             var backend = capabilities.VulkanUsable ? VoiceBackendPreference.Vulkan : VoiceBackendPreference.Cuda;
+            var displayNote = gpu.DrivesDisplay
+                ? " It also draws your screen, so run the first-use calibration to confirm dictation does not make the desktop stutter."
+                : string.Empty;
+
             return new(FullModel, backend,
-                "A GPU is available and it is not the one driving your screen, so it can transcribe without stuttering the desktop.",
+                $"A GPU is available, so Auto uses it for speed.{displayNote}",
                 badges);
         }
 

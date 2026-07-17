@@ -2,87 +2,201 @@ using System.Diagnostics;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Voice;
+using Microsoft.Extensions.Logging;
 
 namespace Cockpit.Infrastructure.Voice;
 
 /// <summary>
-/// Runs the first-use calibration (AC-68 slice 3): transcribes a fixed synthetic clip on the configured backend a
-/// few times, timing it, while a UI-thread hitch probe samples how much the desktop stutters. The clip's content
-/// is irrelevant — only the time it takes and the hitch it causes matter — so nothing has to be bundled. The
-/// result is stored for this machine and returned so the Options page can show it and, if the GPU hitched, steer
-/// to the CPU.
+/// Runs the first-use calibration (AC-68) in two phases. Phase one times the configured model on every backend this
+/// machine can use — the CPU always, plus the GPU when a runtime loads — each in its own child process (Whisper.net
+/// loads its native runtime once per process), while this parent samples desktop hitch (GPU contention is
+/// system-wide, so a child on the GPU stutters this desktop as a real dictation would). A CPU-preferring verdict
+/// picks the backend. Phase two then times a ladder of models on that winning backend — one child, one factory per
+/// model — so the accuracy-vs-speed advice rests on real numbers too. The whole result is remembered per machine.
 /// </summary>
 internal sealed class TranscriptionCalibrator(
-    ISpeechToTextService speechToText,
+    ITranscriptionAdvisor advisor,
     IUiHitchProbe hitchProbe,
     ITranscriptionCalibrationStore store,
-    IVoiceSettingsStore settingsStore) : ITranscriptionCalibrator, ISingletonService
+    IVoiceSettingsStore settingsStore,
+    ILogger<TranscriptionCalibrator> logger) : ITranscriptionCalibrator, ISingletonService
 {
-    private const int SampleRate = 16000;
-    private const int ClipSeconds = 4;
-    private const int MeasuredRuns = 3;
+    /// <summary>The models the phase-two ladder spans, most to least accurate. The configured model is added if it
+    /// is not already here, so the table always includes what the operator actually runs.</summary>
+    private static readonly string[] CuratedModelLadder = ["large-v3-turbo", "small", "base", "tiny"];
 
-    public async Task<TranscriptionCalibration> MeasureAsync(IProgress<string>? status = null, CancellationToken cancellationToken = default)
+    public async Task<TranscriptionCalibration> MeasureAsync(
+        IProgress<CalibrationProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var clip = _CalibrationClip();
+        var model = string.IsNullOrWhiteSpace(settings.ModelName) ? "large-v3-turbo" : settings.ModelName.Trim();
 
-        // Warm up first: the first transcription loads the runtime and model (and may download it) — timing that
-        // would measure the download, not the machine.
-        status?.Report("Preparing model…");
-        await speechToText.TranscribeAsync(clip, cancellationToken).ConfigureAwait(false);
-
-        status?.Report("Measuring…");
-        var latencies = new List<double>(MeasuredRuns);
-        double hitchMs;
-        using (var session = hitchProbe.Start())
+        // Phase one: the configured model on every usable backend, to choose the backend.
+        var measurements = new List<BackendMeasurement>();
+        foreach (var (backend, label) in _BackendsToMeasure())
         {
-            for (var run = 0; run < MeasuredRuns; run++)
+            var measurement = await _MeasureBackendAsync(backend, label, model, progress, cancellationToken).ConfigureAwait(false);
+            if (measurement is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var stopwatch = Stopwatch.StartNew();
-                await speechToText.TranscribeAsync(clip, cancellationToken).ConfigureAwait(false);
-                stopwatch.Stop();
-                latencies.Add(stopwatch.Elapsed.TotalMilliseconds);
+                measurements.Add(measurement);
             }
-
-            hitchMs = session.MaxHitchMs;
         }
 
-        latencies.Sort();
-        var medianLatency = latencies[latencies.Count / 2];
-        var backend = _ResolveBackend(speechToText.ActiveBackend, settings.BackendPreference);
+        if (measurements.Count == 0)
+        {
+            throw new InvalidOperationException("No backend could be measured on this machine.");
+        }
 
-        var calibration = new TranscriptionCalibration(medianLatency, hitchMs, backend, settings.ModelName);
+        var (chosen, rationale) = TranscriptionCalibrationReport.Decide(measurements);
+        logger.LogInformation("Calibration measured {Count} backend(s); Auto will use {Backend} — {Rationale}", measurements.Count, chosen, rationale);
+
+        // Phase two: a ladder of models on the winning backend, to advise which model to run.
+        var ladder = await _MeasureModelLadderAsync(chosen, model, progress, cancellationToken).ConfigureAwait(false);
+        var recommendedModel = ladder.Count > 0 ? TranscriptionCalibrationReport.RecommendModel(ladder).Model : model;
+        logger.LogInformation("Calibration model advice on {Backend}: {Model}", chosen, recommendedModel);
+
+        var calibration = new TranscriptionCalibration(measurements, chosen, ladder, recommendedModel, model);
         await store.SaveAsync(calibration, cancellationToken).ConfigureAwait(false);
+
         return calibration;
     }
 
-    // The native runtime that actually loaded, mapped to the user-facing three-way. Falls back to the preference
-    // (Auto → CPU) when the loader has not recorded one yet.
-    private static VoiceBackendPreference _ResolveBackend(WhisperRuntimeBackend? active, VoiceBackendPreference preference) => active switch
+    /// <summary>The CPU always, plus the fastest-family GPU the probe says will actually load here.</summary>
+    private IReadOnlyList<(VoiceBackendPreference Backend, string Label)> _BackendsToMeasure()
     {
-        WhisperRuntimeBackend.Cuda or WhisperRuntimeBackend.Cuda12 => VoiceBackendPreference.Cuda,
-        WhisperRuntimeBackend.Vulkan => VoiceBackendPreference.Vulkan,
-        WhisperRuntimeBackend.Cpu or WhisperRuntimeBackend.CpuNoAvx => VoiceBackendPreference.Cpu,
-        _ => preference is VoiceBackendPreference.Auto ? VoiceBackendPreference.Cpu : preference,
-    };
+        var backends = new List<(VoiceBackendPreference, string)> { (VoiceBackendPreference.Cpu, "CPU") };
 
-    // A few gliding tones under a syllable-rate amplitude envelope: enough to make the encoder and decoder do real
-    // work (so the timing is representative), without bundling an audio asset. 16 kHz mono float32, the STT input.
-    private static float[] _CalibrationClip()
-    {
-        var samples = new float[SampleRate * ClipSeconds];
-        for (var i = 0; i < samples.Length; i++)
+        var capabilities = advisor.DetectCapabilities();
+        if (capabilities.GpuUsable)
         {
-            var t = (double)i / SampleRate;
-            var envelope = 0.5 * (1 - Math.Cos(2 * Math.PI * (t * 4 % 1)));
-            var tone = Math.Sin(2 * Math.PI * 140 * t)
-                       + 0.5 * Math.Sin(2 * Math.PI * 400 * t)
-                       + 0.3 * Math.Sin(2 * Math.PI * 900 * t);
-            samples[i] = (float)(0.2 * envelope * tone);
+            backends.Add((capabilities.CudaUsable ? VoiceBackendPreference.Cuda : VoiceBackendPreference.Vulkan, "GPU"));
         }
 
-        return samples;
+        return backends;
+    }
+
+    private async Task<BackendMeasurement?> _MeasureBackendAsync(
+        VoiceBackendPreference backend,
+        string label,
+        string model,
+        IProgress<CalibrationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        progress?.Report(new CalibrationProgress($"{label}: preparing…"));
+
+        // The hitch probe runs here, in the desktop process, for the whole of the child's run. A CPU measurement
+        // should register no hitch; a GPU one registers whatever the desktop actually suffered while the GPU was busy.
+        using var hitchSession = hitchProbe.Start();
+        var results = await _RunChildAsync(backend, [model], label, progress, cancellationToken).ConfigureAwait(false);
+
+        var result = results.FirstOrDefault();
+        if (result?.LatencyMs is not { } latencyMs)
+        {
+            logger.LogWarning("Calibration of the {Label} backend produced no result", label);
+
+            return null;
+        }
+
+        return new BackendMeasurement(result.Backend ?? backend, latencyMs, hitchSession.MaxHitchMs);
+    }
+
+    private async Task<IReadOnlyList<ModelMeasurement>> _MeasureModelLadderAsync(
+        VoiceBackendPreference backend,
+        string configuredModel,
+        IProgress<CalibrationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var ladderModels = _ModelLadderFor(configuredModel);
+        var results = await _RunChildAsync(backend, ladderModels, "Model ladder", progress, cancellationToken).ConfigureAwait(false);
+
+        return results
+            .Where(result => result.Model is not null && result.LatencyMs is not null)
+            .Select(result => new ModelMeasurement(result.Model!, result.LatencyMs!.Value))
+            .ToList();
+    }
+
+    private static IReadOnlyList<string> _ModelLadderFor(string configuredModel)
+    {
+        var ladder = new List<string>(CuratedModelLadder);
+        if (!ladder.Any(model => string.Equals(model, configuredModel, StringComparison.OrdinalIgnoreCase)))
+        {
+            ladder.Add(configuredModel);
+        }
+
+        return ladder;
+    }
+
+    /// <summary>
+    /// Spawns this same executable in its headless calibration mode for one backend and a set of models, relaying
+    /// its protocol lines and collecting one result per model. A child that outlives a cancellation is killed with
+    /// its tree so a wedged native load cannot linger.
+    /// </summary>
+    private async Task<IReadOnlyList<CalibrationChildMessage>> _RunChildAsync(
+        VoiceBackendPreference backend,
+        IReadOnlyList<string> models,
+        string label,
+        IProgress<CalibrationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var executable = Environment.ProcessPath
+                         ?? throw new InvalidOperationException("The current process has no executable path to relaunch for calibration.");
+
+        var startInfo = new ProcessStartInfo(executable)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add(CalibrationChildProtocol.BackendArgument);
+        startInfo.ArgumentList.Add(backend.ToString());
+        startInfo.ArgumentList.Add(CalibrationChildProtocol.ModelsArgument);
+        startInfo.ArgumentList.Add(string.Join(',', models));
+
+        var results = new List<CalibrationChildMessage>();
+        using var process = new Process { StartInfo = startInfo };
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (args.Data is not { } line || CalibrationChildProtocol.Decode(line) is not { } message)
+            {
+                return;
+            }
+
+            switch (message.Kind)
+            {
+                case CalibrationChildMessage.KindProgress:
+                    progress?.Report(new CalibrationProgress($"{label}: {message.Message}", message.Fraction));
+                    break;
+                case CalibrationChildMessage.KindResult:
+                    results.Add(message);
+                    break;
+                case CalibrationChildMessage.KindError:
+                    logger.LogWarning("Calibration child ({Label}) reported an error: {Error}", label, message.Message);
+                    break;
+            }
+        };
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        await using var kill = cancellationToken.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // The child raced us to exit; nothing to kill.
+            }
+        });
+
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+        return results;
     }
 }

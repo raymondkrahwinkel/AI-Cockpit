@@ -1150,54 +1150,84 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    // ── AC-68 slice 3: first-use calibration ─────────────────────────────────────────────────────────────────
+    // ── AC-68: first-use calibration — measures every usable backend, one child process each ─────────────────
     private readonly ITranscriptionCalibrator? _transcriptionCalibrator;
     private readonly ITranscriptionCalibrationStore? _transcriptionCalibrationStore;
     private TranscriptionCalibration? _transcriptionCalibration;
 
-    /// <summary>True while a calibration measurement runs — disables Run and shows progress (AC-68 slice 3).</summary>
+    /// <summary>True while a calibration runs — shows the overlay and disables Run (AC-68).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRunCalibration))]
     private bool _isCalibrating;
 
-    /// <summary>Progress/status text for the calibration (AC-68 slice 3): "Preparing model…", "Measuring…", or a result note.</summary>
+    /// <summary>The current step's text ("CPU: measuring… (2/3)", a result note, or an error) (AC-68).</summary>
     [ObservableProperty]
     private string _calibrationStatus = string.Empty;
 
-    /// <summary>Whether a measured calibration exists to show its bars and rationale (AC-68 slice 3).</summary>
+    /// <summary>0..100 for the overlay bar while a step reports a real fraction (a model download); else indeterminate.</summary>
+    [ObservableProperty]
+    private double _calibrationProgressValue;
+
+    /// <summary>True when the current step has no honest percentage (loading, warming up, measuring) — the bar spins.</summary>
+    [ObservableProperty]
+    private bool _calibrationProgressIndeterminate = true;
+
+    /// <summary>Whether measured results exist to show the comparison bars and verdict (AC-68).</summary>
     [ObservableProperty]
     private bool _hasCalibration;
 
-    /// <summary>Measured transcription latency in milliseconds (AC-68 slice 3) — the speed bar's value.</summary>
-    [ObservableProperty]
-    private double _calibrationLatencyMs;
+    /// <summary>One row per measured backend (CPU, GPU), fastest first — the comparison bars.</summary>
+    public ObservableCollection<CalibrationResultRow> CalibrationResults { get; } = [];
 
-    /// <summary>Measured desktop hitch in milliseconds (AC-68 slice 3) — the hitch bar's value.</summary>
+    /// <summary>Full-scale (ms) for the speed bars: the slowest backend, so the bars read relative to each other.</summary>
     [ObservableProperty]
-    private double _calibrationHitchMs;
+    private double _calibrationSpeedMaxMs = 1;
 
+    /// <summary>Full-scale (ms) for the hitch bars, floored so a smooth result still shows a short bar.</summary>
     [ObservableProperty]
-    private string _calibrationSpeedText = string.Empty;
+    private double _calibrationHitchMaxMs = 32;
 
+    /// <summary>Which backend Auto runs on, in words ("Auto runs on GPU (Vulkan)") — so the resolved choice is visible (AC-68).</summary>
     [ObservableProperty]
-    private string _calibrationHitchText = string.Empty;
+    private string _calibrationChosenText = string.Empty;
 
+    /// <summary>The model the backend comparison was timed with, so those numbers are read against a known model (AC-68).</summary>
+    [ObservableProperty]
+    private string _calibrationModelText = string.Empty;
+
+    /// <summary>Per-model measured rows on the chosen backend (AC-68) — the accuracy-vs-speed table.</summary>
+    public ObservableCollection<CalibrationModelRow> CalibrationModelResults { get; } = [];
+
+    /// <summary>Full-scale (ms) for the model bars: the slowest measured model.</summary>
+    [ObservableProperty]
+    private double _calibrationModelMaxMs = 1;
+
+    /// <summary>The model the verdict suggests, in words ("Suggested model: small") (AC-68).</summary>
+    [ObservableProperty]
+    private string _calibrationModelRecommendation = string.Empty;
+
+    /// <summary>Why that model is suggested (AC-68).</summary>
+    [ObservableProperty]
+    private string _calibrationModelAdvice = string.Empty;
+
+    /// <summary>Whether a measured model ladder exists to show its table (AC-68).</summary>
+    [ObservableProperty]
+    private bool _hasModelLadder;
+
+    /// <summary>The verdict's one-line reasoning (AC-68).</summary>
     [ObservableProperty]
     private string _calibrationRationale = string.Empty;
 
-    /// <summary>True when the measured hitch reads as smooth (AC-68 slice 3) — colours the hitch bar/rationale.</summary>
-    [ObservableProperty]
-    private bool _calibrationDesktopSmooth;
-
-    /// <summary>Calibration needs the model, so it can run only when voice is on and a calibrator is present (AC-68 slice 3).</summary>
+    /// <summary>Calibration needs the model, so it can run only when voice is on and a calibrator is present (AC-68).</summary>
     public bool CanRunCalibration => _transcriptionCalibrator is not null && VoiceEnabled && !IsCalibrating;
 
     /// <summary>Whether the "Run calibration" affordance is offered at all — only in a graph that has a calibrator.</summary>
     public bool ShowCalibration => _transcriptionCalibrator is not null;
 
     /// <summary>
-    /// Measures transcription latency and desktop hitch on this machine's configured backend (AC-68 slice 3) and
-    /// remembers it. A failed measurement is reported on the status line, never thrown into the dialog.
+    /// Measures every backend this machine can use — the CPU and, if a GPU runtime loads, the GPU — each in its own
+    /// child process, then picks one with a CPU preference and remembers it (AC-68). A failed measurement is reported
+    /// on the status line, never thrown into the dialog.
     /// </summary>
     [RelayCommand]
     private async Task RunCalibrationAsync()
@@ -1209,9 +1239,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         IsCalibrating = true;
         CalibrationStatus = "Starting…";
+        CalibrationProgressIndeterminate = true;
         try
         {
-            var progress = new Progress<string>(text => CalibrationStatus = text);
+            var progress = new Progress<CalibrationProgress>(step =>
+            {
+                CalibrationStatus = step.Message;
+                if (step.Fraction is { } fraction)
+                {
+                    CalibrationProgressIndeterminate = false;
+                    CalibrationProgressValue = Math.Clamp(fraction * 100, 0, 100);
+                }
+                else
+                {
+                    CalibrationProgressIndeterminate = true;
+                }
+            });
             _ApplyCalibration(await _transcriptionCalibrator.MeasureAsync(progress));
             CalibrationStatus = "Measured";
         }
@@ -1229,14 +1272,72 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _ApplyCalibration(TranscriptionCalibration calibration)
     {
         _transcriptionCalibration = calibration;
-        HasCalibration = true;
-        CalibrationLatencyMs = calibration.LatencyMs;
-        CalibrationHitchMs = calibration.HitchMs;
-        CalibrationSpeedText = $"{(calibration.LatencyMs / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} s";
-        CalibrationHitchText = $"{calibration.HitchMs.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} ms";
+        CalibrationResults.Clear();
+
+        if (calibration.Measurements.Count == 0)
+        {
+            HasCalibration = false;
+
+            return;
+        }
+
+        CalibrationSpeedMaxMs = Math.Max(1, calibration.Measurements.Max(measurement => measurement.LatencyMs));
+        CalibrationHitchMaxMs = Math.Max(32, calibration.Measurements.Max(measurement => measurement.HitchMs));
+
+        foreach (var measurement in calibration.Measurements.OrderBy(measurement => measurement.LatencyMs))
+        {
+            CalibrationResults.Add(new CalibrationResultRow(
+                _BackendLabel(measurement.Backend),
+                measurement.LatencyMs,
+                measurement.HitchMs,
+                $"{(measurement.LatencyMs / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} s",
+                $"{measurement.HitchMs.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} ms",
+                measurement.Backend == calibration.ChosenBackend,
+                TranscriptionCalibrationReport.IsSmooth(measurement)));
+        }
+
+        CalibrationChosenText = $"Auto runs on {_BackendLabel(calibration.ChosenBackend)}";
+        CalibrationModelText = $"Backend timings measured with model: {calibration.Model}";
         CalibrationRationale = TranscriptionCalibrationReport.Rationale(calibration);
-        CalibrationDesktopSmooth = TranscriptionCalibrationReport.IsDesktopSmooth(calibration);
+        _ApplyModelLadder(calibration);
+        HasCalibration = true;
     }
+
+    private void _ApplyModelLadder(TranscriptionCalibration calibration)
+    {
+        CalibrationModelResults.Clear();
+
+        if (calibration.ModelLadder.Count == 0)
+        {
+            HasModelLadder = false;
+
+            return;
+        }
+
+        CalibrationModelMaxMs = Math.Max(1, calibration.ModelLadder.Max(measurement => measurement.LatencyMs));
+
+        foreach (var measurement in calibration.ModelLadder.OrderBy(measurement => measurement.LatencyMs))
+        {
+            CalibrationModelResults.Add(new CalibrationModelRow(
+                measurement.Model,
+                measurement.LatencyMs,
+                $"{(measurement.LatencyMs / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} s",
+                string.Equals(measurement.Model, calibration.RecommendedModel, StringComparison.OrdinalIgnoreCase),
+                string.Equals(measurement.Model, calibration.Model, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        CalibrationModelRecommendation = $"Suggested model on {_BackendLabel(calibration.ChosenBackend)}: {calibration.RecommendedModel}";
+        CalibrationModelAdvice = TranscriptionCalibrationReport.RecommendModel(calibration.ModelLadder).Rationale;
+        HasModelLadder = true;
+    }
+
+    private static string _BackendLabel(VoiceBackendPreference backend) => backend switch
+    {
+        VoiceBackendPreference.Vulkan => "GPU (Vulkan)",
+        VoiceBackendPreference.Cuda => "GPU (CUDA)",
+        VoiceBackendPreference.Cpu => "CPU",
+        _ => backend.ToString(),
+    };
 
     /// <summary>Selectable dictation languages for speech-to-text — "Auto-detect" plus common fixed languages. A fixed language beats detection when you always dictate in one tongue (Options flyout combo).</summary>
     public IReadOnlyList<SttLanguageOption> SttLanguages { get; } =
