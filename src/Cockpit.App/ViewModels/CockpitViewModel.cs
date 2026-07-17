@@ -1154,6 +1154,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITranscriptionCalibrator? _transcriptionCalibrator;
     private readonly ITranscriptionCalibrationStore? _transcriptionCalibrationStore;
     private TranscriptionCalibration? _transcriptionCalibration;
+    private CancellationTokenSource? _calibrationCts;
 
     /// <summary>True while a calibration runs — shows the overlay and disables Run (AC-68).</summary>
     [ObservableProperty]
@@ -1240,6 +1241,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IsCalibrating = true;
         CalibrationStatus = "Starting…";
         CalibrationProgressIndeterminate = true;
+        _calibrationCts = new CancellationTokenSource();
         try
         {
             var progress = new Progress<CalibrationProgress>(step =>
@@ -1255,19 +1257,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     CalibrationProgressIndeterminate = true;
                 }
             });
-            _ApplyCalibration(await _transcriptionCalibrator.MeasureAsync(progress));
+            _ApplyCalibration(await _transcriptionCalibrator.MeasureAsync(progress, _calibrationCts.Token));
             CalibrationStatus = "Measured";
+        }
+        catch (OperationCanceledException)
+        {
+            CalibrationStatus = "Calibration cancelled.";
         }
         catch (Exception)
         {
-            // A calibration is a nice-to-have; a model that would not load or a cancelled run must not crash Options.
+            // A calibration is a nice-to-have; a model that would not load must not crash Options.
             CalibrationStatus = "Calibration could not run — check that voice works first.";
         }
         finally
         {
+            _calibrationCts.Dispose();
+            _calibrationCts = null;
             IsCalibrating = false;
         }
     }
+
+    /// <summary>Cancels a running calibration — the blocking overlay's escape hatch, so a wedged child (a stalled
+    /// download, a native load that hangs) can never trap the operator behind it (AC-68).</summary>
+    [RelayCommand]
+    private void CancelCalibration() => _calibrationCts?.Cancel();
 
     private void _ApplyCalibration(TranscriptionCalibration calibration)
     {

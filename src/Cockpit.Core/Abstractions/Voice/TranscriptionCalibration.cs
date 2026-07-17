@@ -136,20 +136,17 @@ public static class TranscriptionCalibrationReport
     /// <summary>A sentence should transcribe within this on the chosen backend to feel responsive for dictation.</summary>
     public const double ResponsiveModelBudgetMs = 3000.0;
 
-    /// <summary>Curated models from least to most accurate. Drives the "most accurate model that is still responsive"
-    /// pick; a name not on the list (a custom/quantized ggml) ranks as most accurate so a deliberate choice is kept.</summary>
+    /// <summary>Curated models from least to most accurate. Drives the "most accurate model that is still
+    /// responsive" pick; a name not on the list ranks lowest so an unmeasurable custom name can never be
+    /// recommended over a real measured model.</summary>
     private static readonly string[] ModelAccuracyOrder =
     [
         "tiny", "tiny.en", "base", "base.en", "small", "small.en",
         "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large-v3-turbo",
     ];
 
-    public static int ModelAccuracyRank(string model)
-    {
-        var index = Array.FindIndex(ModelAccuracyOrder, name => string.Equals(name, model, StringComparison.OrdinalIgnoreCase));
-
-        return index < 0 ? int.MaxValue : index;
-    }
+    public static int ModelAccuracyRank(string model) =>
+        Array.FindIndex(ModelAccuracyOrder, name => string.Equals(name, model, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Picks the model to advise from the ladder measured on the chosen backend: the most accurate model that still

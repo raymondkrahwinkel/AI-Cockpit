@@ -100,9 +100,26 @@ internal sealed class WhisperRuntimeProvisioner(
         var calibration = await calibrationStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         if (calibration is { ChosenBackend: var chosen } && chosen is not VoiceBackendPreference.Auto)
         {
-            logger.LogInformation("Transcription Auto resolved to {Backend} from this machine's calibration", chosen);
+            // Trust the measured verdict — unless it points at a GPU this machine can no longer load (the card or
+            // its driver went away since calibration). Then fall through to a fresh recommendation rather than
+            // pinning Auto to a backend that would silently fall back to the CPU tail anyway.
+            var capabilities = advisor.DetectCapabilities();
+            var stillUsable = chosen switch
+            {
+                VoiceBackendPreference.Cuda => capabilities.CudaUsable,
+                VoiceBackendPreference.Vulkan => capabilities.VulkanUsable,
+                _ => true,
+            };
 
-            return chosen;
+            if (stillUsable)
+            {
+                logger.LogInformation("Transcription Auto resolved to {Backend} from this machine's calibration", chosen);
+
+                return chosen;
+            }
+
+            logger.LogInformation(
+                "This machine's calibration chose {Backend}, but it no longer loads here; falling back to the recommendation", chosen);
         }
 
         var recommendation = advisor.Recommend();
