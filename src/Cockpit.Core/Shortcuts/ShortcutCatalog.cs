@@ -9,11 +9,11 @@ public sealed record ShortcutDescriptor(ShortcutAction Action, string Label, str
 /// the action starts unbound. Gestures are stored as strings (e.g. "Ctrl+N", "Ctrl+Shift+P") and parsed to an
 /// Avalonia <c>KeyGesture</c> at the view layer, keeping this Core type UI-framework-free.
 /// <para>
-/// Bare Ctrl+arrow moves spatially between panes in the session grid — the focus goes to the pane in that
-/// geometric direction. Shift lifts it to the list/meta level: Ctrl+Shift+Up/Down steps the session list,
-/// Ctrl+Shift+Left/Right steps the workspace tabs. The bare-Ctrl arrows are deliberately kept out of a
-/// focused terminal (see <see cref="StaysActiveInTerminal"/>) so a shell keeps its word-wise Ctrl+Left/Right,
-/// while the two-modifier gestures fire even while typing.
+/// Ctrl+Alt+arrow moves spatially between panes in the session grid — the focus goes to the pane in that
+/// geometric direction. Ctrl+Shift+Up/Down steps the session list, Ctrl+Shift+Left/Right steps the workspace
+/// tabs. All three navigation gestures use two modifiers on purpose: a two-modifier gesture fires even while
+/// the operator is typing in the embedded terminal, so the plain Ctrl+Left/Right is left to the shell for its
+/// word-wise movement.
 /// </para>
 /// </summary>
 public static class ShortcutCatalog
@@ -29,10 +29,10 @@ public static class ShortcutCatalog
         new(ShortcutAction.About, "About", ""),
         new(ShortcutAction.ToggleZoom, "Toggle zoom", "Ctrl+B"),
         new(ShortcutAction.CommandPalette, "Command palette", "Ctrl+K"),
-        new(ShortcutAction.FocusPaneLeft, "Focus pane left", "Ctrl+Left"),
-        new(ShortcutAction.FocusPaneRight, "Focus pane right", "Ctrl+Right"),
-        new(ShortcutAction.FocusPaneUp, "Focus pane up", "Ctrl+Up"),
-        new(ShortcutAction.FocusPaneDown, "Focus pane down", "Ctrl+Down"),
+        new(ShortcutAction.FocusPaneLeft, "Focus pane left", "Ctrl+Alt+Left"),
+        new(ShortcutAction.FocusPaneRight, "Focus pane right", "Ctrl+Alt+Right"),
+        new(ShortcutAction.FocusPaneUp, "Focus pane up", "Ctrl+Alt+Up"),
+        new(ShortcutAction.FocusPaneDown, "Focus pane down", "Ctrl+Alt+Down"),
         new(ShortcutAction.PreviousSession, "Previous session", "Ctrl+Shift+Up"),
         new(ShortcutAction.NextSession, "Next session", "Ctrl+Shift+Down"),
         new(ShortcutAction.PreviousWorkspace, "Previous workspace", "Ctrl+Shift+Left"),
