@@ -62,6 +62,9 @@ internal static class GitHubWorkflowSteps
     {
         public string TypeId => "github.start";
 
+        // Assigns and labels a real GitHub issue with your account, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
+
         public string Name => "Pick up an issue";
 
         public string Description => "Assign a GitHub issue to yourself and, when you have named an in-progress label in the plugin's settings, put it on. Issues have no status field, so this is what starting one means.";
@@ -114,6 +117,9 @@ internal static class GitHubWorkflowSteps
     {
         public string TypeId => "github.comment";
 
+        // Posts a public comment to a real GitHub issue under your account — egress, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
+
         public string Name => "Comment on an issue";
 
         public string Description => "Leave a comment on a GitHub issue — what a flow did, what it found, what it is waiting for.";
@@ -142,6 +148,9 @@ internal static class GitHubWorkflowSteps
     private sealed class CloseIssueStep : IWorkflowStep
     {
         public string TypeId => "github.close";
+
+        // Closes a real GitHub issue under your account, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
 
         public string Name => "Close an issue";
 
