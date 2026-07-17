@@ -1,4 +1,5 @@
 using Cockpit.App.Controls;
+using Cockpit.Core.Shortcuts;
 using FluentAssertions;
 
 namespace Cockpit.Core.Tests.Controls;
@@ -82,5 +83,79 @@ public class SessionTilePanelTests
 
         SessionTilePanel.PlaceInCells(cells, "a", 0).Should().BeFalse();
         cells.Should().Equal("a", "b");
+    }
+
+    // Spatial pane navigation (AC-31): NeighbourCell walks the grid from a cell in a direction and returns the
+    // first occupied cell, or null at the edge. Layout of a full 2×2 (row-major):
+    //   0 1
+    //   2 3
+    [Fact]
+    public void NeighbourCell_InAFull2x2_MovesToTheAdjacentPane()
+    {
+        var full = new[] { true, true, true, true };
+
+        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Right, stackVertically: false).Should().Be(1);
+        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Down, stackVertically: false).Should().Be(2);
+        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Left, stackVertically: false).Should().Be(2);
+        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Up, stackVertically: false).Should().Be(1);
+    }
+
+    [Fact]
+    public void NeighbourCell_AtAGridEdge_HasNoNeighbour()
+    {
+        var full = new[] { true, true, true, true };
+
+        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Left, stackVertically: false).Should().BeNull();
+        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Up, stackVertically: false).Should().BeNull();
+        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Right, stackVertically: false).Should().BeNull();
+        SessionTilePanel.NeighbourCell(full, 3, PaneDirection.Down, stackVertically: false).Should().BeNull();
+    }
+
+    [Fact]
+    public void NeighbourCell_WithThreePanes_TreatsTheEmptyFourthCellAsNoNeighbour()
+    {
+        // Three panes fill a 2×2's first three cells; the fourth (1,1) is empty.
+        //   0 1
+        //   2 .
+        var three = new[] { true, true, true };
+
+        SessionTilePanel.NeighbourCell(three, 2, PaneDirection.Right, stackVertically: false).Should().BeNull();
+        SessionTilePanel.NeighbourCell(three, 1, PaneDirection.Down, stackVertically: false).Should().BeNull();
+        SessionTilePanel.NeighbourCell(three, 0, PaneDirection.Down, stackVertically: false).Should().Be(2);
+    }
+
+    [Fact]
+    public void NeighbourCell_SkipsAHoleAndLandsOnTheNextPane()
+    {
+        // A three-row column pair with the (0,1) cell emptied — moving down from (0,0) skips the hole to (0,2).
+        //   0 1
+        //   . 3
+        //   4 5
+        var withHole = new[] { true, true, false, true, true, true };
+
+        SessionTilePanel.NeighbourCell(withHole, 0, PaneDirection.Down, stackVertically: false).Should().Be(4);
+    }
+
+    [Fact]
+    public void NeighbourCell_WhenStackingVertically_FollowsTheTransposedAxes()
+    {
+        // Column-major fill: 0 and 1 share the first column, 2 and 3 the next.
+        //   0 2
+        //   1 3
+        var full = new[] { true, true, true, true };
+
+        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Down, stackVertically: true).Should().Be(1);
+        SessionTilePanel.NeighbourCell(full, 0, PaneDirection.Right, stackVertically: true).Should().Be(2);
+    }
+
+    [Fact]
+    public void NeighbourCell_WithASinglePane_HasNoNeighbourInAnyDirection()
+    {
+        var one = new[] { true };
+
+        foreach (var direction in Enum.GetValues<PaneDirection>())
+        {
+            SessionTilePanel.NeighbourCell(one, 0, direction, stackVertically: false).Should().BeNull();
+        }
     }
 }

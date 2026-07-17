@@ -1438,6 +1438,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 }
 
                 return;
+
+            // Spatial pane focus needs the grid geometry, which lives in the view — raise for the view to answer.
+            case ShortcutAction.FocusPaneLeft:
+                SpatialNavigationRequested?.Invoke(this, PaneDirection.Left);
+                return;
+
+            case ShortcutAction.FocusPaneRight:
+                SpatialNavigationRequested?.Invoke(this, PaneDirection.Right);
+                return;
+
+            case ShortcutAction.FocusPaneUp:
+                SpatialNavigationRequested?.Invoke(this, PaneDirection.Up);
+                return;
+
+            case ShortcutAction.FocusPaneDown:
+                SpatialNavigationRequested?.Invoke(this, PaneDirection.Down);
+                return;
         }
 
         System.Windows.Input.ICommand? command = action switch
@@ -1462,6 +1479,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             command.Execute(null);
         }
     }
+
+    /// <summary>
+    /// Raised when a pane-focus shortcut (Ctrl+arrow) asks to move the selection to the pane in that direction.
+    /// The grid geometry that answers "which pane is to the left" lives in the view (the session tile panel),
+    /// which the view-model does not reach — so the view handles this and sets <see cref="SelectedSession"/>,
+    /// the same one-way arrangement the drag-reorder and scroll-to-selected already use.
+    /// </summary>
+    public event EventHandler<PaneDirection>? SpatialNavigationRequested;
 
     private async Task LoadTranscriptDisplaySettingsAsync()
     {

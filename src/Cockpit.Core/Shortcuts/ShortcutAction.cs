@@ -22,4 +22,8 @@ public enum ShortcutAction
     NewSessionsWorkspace,
     NewDashboardWorkspace,
     CloseWorkspace,
+    FocusPaneLeft,
+    FocusPaneRight,
+    FocusPaneUp,
+    FocusPaneDown,
 }

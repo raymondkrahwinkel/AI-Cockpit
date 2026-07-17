@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Cockpit.App.Controls;
+using Cockpit.Core.Shortcuts;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Workspaces;
@@ -66,6 +67,7 @@ public partial class CockpitView : UserControl
         if (DataContext is CockpitViewModel cockpit)
         {
             cockpit.PropertyChanged += OnCockpitPropertyChanged;
+            cockpit.SpatialNavigationRequested += OnSpatialNavigationRequested;
 
             // The idle sweep lives here rather than in the view model so the view model stays free of timers
             // (and testable by calling the sweep with a time of the test's choosing).
@@ -115,6 +117,7 @@ public partial class CockpitView : UserControl
         if (DataContext is CockpitViewModel cockpit)
         {
             cockpit.PropertyChanged -= OnCockpitPropertyChanged;
+            cockpit.SpatialNavigationRequested -= OnSpatialNavigationRequested;
         }
 
         base.OnDetachedFromVisualTree(e);
@@ -134,6 +137,26 @@ public partial class CockpitView : UserControl
             // Any selection change — the sidebar-switch shortcut, a sidebar click, or a pane click — moves
             // keyboard focus onto the newly active session's terminal so typing lands there straight away.
             _FocusSelectedSessionTerminal();
+        }
+    }
+
+    // Ctrl+arrow pane focus: the view answers "which pane is in that direction" from the grid geometry the view
+    // model cannot reach, then moves the selection there. A no-op in zoom (no grid on screen — Raymond's call)
+    // and when there is no pane that way.
+    private void OnSpatialNavigationRequested(object? sender, PaneDirection direction)
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || cockpit.ShowSinglePane
+            || cockpit.SelectedSession is not { } active)
+        {
+            return;
+        }
+
+        var panel = SessionGrid?.GetVisualDescendants().OfType<SessionTilePanel>().FirstOrDefault();
+        if (panel?.NeighbourInDirection(active, direction) is SessionPanelViewModel neighbour
+            && cockpit.SelectSessionCommand.CanExecute(neighbour))
+        {
+            cockpit.SelectSessionCommand.Execute(neighbour);
         }
     }
 
