@@ -5,6 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Model;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
 
@@ -52,7 +54,7 @@ internal sealed class NodeDialog : Border
         _incoming = new StackPanel { Spacing = 8 };
         _outgoing = new StackPanel { Spacing = 8 };
 
-        var close = new Button { Content = "✕", Classes = { "Subtle" } };
+        var close = new Button { Content = new MaterialIcon { Kind = MaterialIconKind.Close, Width = 14, Height = 14 }, Classes = { "Subtle" } };
         ToolTip.SetTip(close, "Back to the canvas");
         close.Click += (_, _) => CloseRequested?.Invoke(this, EventArgs.Empty);
 

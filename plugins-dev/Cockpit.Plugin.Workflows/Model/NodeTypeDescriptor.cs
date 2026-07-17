@@ -1,3 +1,5 @@
+using Material.Icons;
+
 namespace Cockpit.Plugin.Workflows.Model;
 
 /// <summary>
@@ -8,7 +10,7 @@ namespace Cockpit.Plugin.Workflows.Model;
 /// <param name="Id">The key the engine resolves to an implementation ("cockpit.notify").</param>
 /// <param name="Name">What the picker and the node show.</param>
 /// <param name="Description">One line, shown in the picker — what this does, in the operator's words.</param>
-/// <param name="Icon">A single glyph. The cockpit has no icon set, and a letter in a box reads worse than a symbol everyone already knows.</param>
+/// <param name="Icon">A single glyph, or empty. Used when <see cref="IconKind"/> is null.</param>
 /// <param name="Category">Where the picker files it.</param>
 /// <param name="Kind">Trigger, action or decision — all the canvas and the engine need to know structurally.</param>
 /// <param name="Outputs">What the ways out are called. One unnamed way out for most; "true"/"false" for a decision.</param>
@@ -26,6 +28,9 @@ public sealed record NodeTypeDescriptor(
     string? Group = null,
     Func<string, CancellationToken, Task<IReadOnlyList<string>>>? Suggest = null)
 {
+    /// <summary>The vector icon the picker and the canvas draw. Falls back to <see cref="Icon"/> when null.</summary>
+    public MaterialIconKind? IconKind { get; init; }
+
     /// <summary>
     /// The heading the picker files this under. A cockpit type belongs to one of the fixed categories; a step a
     /// plugin contributed belongs under that plugin's own name ("YOUTRACK"), because <see cref="NodeCategory"/> is a

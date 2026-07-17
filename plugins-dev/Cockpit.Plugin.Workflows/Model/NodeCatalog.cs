@@ -1,3 +1,5 @@
+using Material.Icons;
+
 namespace Cockpit.Plugin.Workflows.Model;
 
 /// <summary>
@@ -26,155 +28,200 @@ public static class NodeCatalog
             "cockpit.text-match",
             "Text appears",
             "A session's output contains something you are watching for. Best effort: a model's wording is not a contract.",
-            "👁",
+            "",
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
             ["Pattern"],
-            new Dictionary<string, string> { ["match"] = "All tests passed", ["session"] = "Eveworkbench" }),
+            new Dictionary<string, string> { ["match"] = "All tests passed", ["session"] = "Eveworkbench" })
+        {
+            IconKind = MaterialIconKind.Eye,
+        },
         new(
             "cockpit.schedule",
             "Schedule",
             "Every day at a time you pick, or on an interval.",
-            "🕐",
+            "",
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
             ["When"],
-            new Dictionary<string, string> { ["at"] = "2026-07-13T09:00:00+02:00" }),
+            new Dictionary<string, string> { ["at"] = "2026-07-13T09:00:00+02:00" })
+        {
+            IconKind = MaterialIconKind.ClockOutline,
+        },
         new(
             "cockpit.manual",
             "Run manually",
             "You start it, from here or from a shortcut.",
-            "▶",
+            "",
             NodeCategory.Trigger,
             WorkflowNodeKind.Trigger,
             [""],
             [],
-            new Dictionary<string, string> { ["startedBy"] = "you" }),
+            new Dictionary<string, string> { ["startedBy"] = "you" })
+        {
+            IconKind = MaterialIconKind.Play,
+        },
 
         new(
             "cockpit.notify",
             "Notify",
             "A toast in the cockpit.",
-            "🔔",
+            "",
             NodeCategory.Notify,
             WorkflowNodeKind.Action,
             [""],
-            ["Message"]),
+            ["Message"])
+        {
+            IconKind = MaterialIconKind.Bell,
+        },
 
         new(
             "cockpit.slack",
             "Send to Slack",
             "Post a message to a Slack channel through its incoming webhook. Notify tells you; this tells everyone else.",
-            "💬",
+            "",
             NodeCategory.Notify,
             WorkflowNodeKind.Action,
             [""],
             ["Message", "Webhook URL"],
-            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" }),
+            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" })
+        {
+            IconKind = MaterialIconKind.ChatOutline,
+        },
         new(
             "cockpit.discord",
             "Send to Discord",
             "Post a message to a Discord channel through its webhook. Anything past 2000 characters is cut, because Discord refuses the rest outright.",
-            "🎮",
+            "",
             NodeCategory.Notify,
             WorkflowNodeKind.Action,
             [""],
             ["Message", "Webhook URL"],
-            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" }),
+            new Dictionary<string, string> { ["message"] = "Deployed EVE-14 to staging" })
+        {
+            IconKind = MaterialIconKind.Gamepad,
+        },
 
         new(
             "cockpit.inject",
             "Send to session",
             "Put text into a session's prompt — the agent picks it up as if you typed it.",
-            "⌨",
+            "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Text"]),
+            ["Text"])
+        {
+            IconKind = MaterialIconKind.Keyboard,
+        },
         new(
             "cockpit.start-session",
             "Start session",
             "Open a session on a profile and hand it a prompt.",
-            "🚀",
+            "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
             ["Profile", "Prompt", "Working directory"],
-            new Dictionary<string, string> { ["session"] = "Eveworkbench" }),
+            new Dictionary<string, string> { ["session"] = "Eveworkbench" })
+        {
+            IconKind = MaterialIconKind.Rocket,
+        },
 
         new(
             "cockpit.set-status",
             "Set session status",
             "Set the statusline under the active session's name — what it is working on, like a ticket number — and optionally rename it. Pair it with Start session to label a session after the ticket it just picked up; an empty status clears the line.",
-            "🏷",
+            "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
-            ["Status", "Name"]),
+            ["Status", "Name"])
+        {
+            IconKind = MaterialIconKind.Tag,
+        },
 
         new(
             "cockpit.delegate",
             "Delegate",
             "Hand the work to another profile as a background task, and wait for what it produces. It runs where you can see it, in the delegated tasks view.",
-            "🤝",
+            "",
             NodeCategory.Sessions,
             WorkflowNodeKind.Action,
             [""],
             ["Profile", "Prompt", "Working directory"],
-            new Dictionary<string, string> { ["result"] = "Done — 3 files changed", ["profile"] = "reviewer" }),
+            new Dictionary<string, string> { ["result"] = "Done — 3 files changed", ["profile"] = "reviewer" })
+        {
+            IconKind = MaterialIconKind.HandshakeOutline,
+        },
 
         new(
             "cockpit.command",
             "Run a command",
             "A shell command in a working directory. What it prints becomes the data the next step gets.",
-            "⌘",
+            "",
             NodeCategory.External,
             WorkflowNodeKind.Action,
             [""],
             ["Command", "Working directory"],
-            new Dictionary<string, string> { ["output"] = "M src/Program.cs", ["exitCode"] = "0" }),
+            new Dictionary<string, string> { ["output"] = "M src/Program.cs", ["exitCode"] = "0" })
+        {
+            IconKind = MaterialIconKind.AppleKeyboardCommand,
+        },
         new(
             "cockpit.http",
             "HTTP request",
             "Call something and carry the answer on.",
-            "🌐",
+            "",
             NodeCategory.External,
             WorkflowNodeKind.Action,
             [""],
             ["Method", "URL", "Body"],
-            new Dictionary<string, string> { ["status"] = "200", ["body"] = "{\"id\": 42}" }),
+            new Dictionary<string, string> { ["status"] = "200", ["body"] = "{\"id\": 42}" })
+        {
+            IconKind = MaterialIconKind.Web,
+        },
 
         new(
             "cockpit.if",
             "If",
             "Two ways on: one when the condition holds, one when it does not.",
-            "⑂",
+            "",
             NodeCategory.Flow,
             WorkflowNodeKind.Decision,
             ["true", "false"],
-            ["Condition"]),
+            ["Condition"])
+        {
+            IconKind = MaterialIconKind.SourceBranch,
+        },
         // Its ways out are written into it, not fixed here — see WorkflowNode.Outputs. What stands here is what a
         // switch has before anyone has named a case: the way out for a value it does not recognise.
         new(
             SwitchCases.TypeId,
             "Switch",
             "One value, a way out per case. Anything it does not recognise leaves by \"otherwise\".",
-            "⋔",
+            "",
             NodeCategory.Flow,
             WorkflowNodeKind.Decision,
             [SwitchCases.Otherwise],
-            [SwitchCases.ValueParameter, SwitchCases.CasesParameter]),
+            [SwitchCases.ValueParameter, SwitchCases.CasesParameter])
+        {
+            IconKind = MaterialIconKind.SourceFork,
+        },
         new(
             "cockpit.approve",
             "Ask me first",
             "Stops and waits for you. For the steps that are not free to undo.",
-            "✋",
+            "",
             NodeCategory.Flow,
             WorkflowNodeKind.Action,
             [""],
-            ["Question"]),
+            ["Question"])
+        {
+            IconKind = MaterialIconKind.HandBackLeftOutline,
+        },
     ];
 
     public static NodeTypeDescriptor? Find(string typeId) =>

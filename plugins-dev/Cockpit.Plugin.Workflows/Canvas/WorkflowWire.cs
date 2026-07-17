@@ -4,6 +4,8 @@ using Avalonia.Layout;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Cockpit.Plugin.Workflows.Model;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Path = Avalonia.Controls.Shapes.Path;
 
 namespace Cockpit.Plugin.Workflows.Canvas;
@@ -54,10 +56,11 @@ internal sealed class WorkflowWire
             Height = 20,
             IsVisible = false,
             Cursor = new Cursor(StandardCursorType.Hand),
-            Child = new TextBlock
+            Child = new MaterialIcon
             {
-                Text = "✕",
-                FontSize = 9,
+                Kind = MaterialIconKind.Close,
+                Width = 9,
+                Height = 9,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 IsHitTestVisible = false,
@@ -67,7 +70,7 @@ internal sealed class WorkflowWire
         ToolTip.SetTip(Remove, "Remove this connection");
 
         // Shown while the pointer is on the wire or on the button itself. The re-check is deferred by one pass on
-        // purpose: moving the pointer onto the ✕ *leaves* the wire, and answering "is it still hovered?" in that same
+        // purpose: moving the pointer onto the close icon *leaves* the wire, and answering "is it still hovered?" in that same
         // moment answers "no" — the button then vanishes from under your hand and can never be clicked.
         Hit.PointerEntered += (_, _) => Remove.IsVisible = true;
         Hit.PointerExited += (_, _) => _ReconsiderLater();
