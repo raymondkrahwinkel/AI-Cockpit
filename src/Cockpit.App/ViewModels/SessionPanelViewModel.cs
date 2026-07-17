@@ -44,6 +44,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private bool _showDebugControls;
 
     /// <summary>
+    /// The consent request waiting on this session, if any (#AC-47) — set by <see cref="CockpitViewModel"/> when the
+    /// broker opens a prompt for this pane, cleared when it resolves. Drives the inline consent banner in the pane
+    /// chrome (null hides it). On the shared base so both session kinds (SDK chat, TTY) show it the same way.
+    /// </summary>
+    [ObservableProperty]
+    private ConsentPromptViewModel? _pendingConsent;
+
+    /// <summary>
     /// The process this session runs in, once it has one (#78) — what the resource meter weighs, together with
     /// everything that process spawns. Null for a session that is an HTTP call rather than a process (Ollama,
     /// LM Studio), and null before launch.

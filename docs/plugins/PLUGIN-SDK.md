@@ -95,6 +95,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
 | Keyboard shortcut | `host.AddShortcut(shortcut)` | A gesture and a command-palette entry, listed in Options → Shortcuts alongside the app's own. |
 | Toast | `host.ShowToast(message, severity, actionLabel, onAction)` | A transient in-app notification with an optional single action button — how you tell the operator something happened while they were looking elsewhere. |
+| Consent gate | `host.RequestConsentAsync(request)` | Ask the operator to **approve one action** (a shell command, a session hand-off, egress) before you run it — shown verbatim as an Approve/Deny banner on the session, denied if unanswered. See [`RequestConsentAsync`](API-REFERENCE.md#taskconsentdecision-requestconsentasyncconsentrequest-request). |
 | Persist settings | `host.Storage` | Per-plugin key/value storage in `cockpit.json`. |
 | Live-apply settings | `host.OnSettingsSaved(callback)` | Re-run a callback after your settings are saved, without needing an app restart. |
 | Register services | `plugin.ConfigureServices(services)` | Add your own services to the host DI container (phase 1). |
@@ -127,6 +128,7 @@ public interface ICockpitHost
     void AddShortcut(PluginShortcut shortcut);                  // a gesture + command-palette entry
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
                    string? actionLabel = null, Action? onAction = null);      // an in-app notification
+    Task<ConsentDecision> RequestConsentAsync(ConsentRequest request);  // operator Approve/Deny before a risky action
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
     void AddWidget(WidgetRegistration registration);            // a widget type for Dashboard workspaces
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
@@ -388,6 +390,40 @@ the underlying URL/token can change — see the YouTrack plugin's `YouTrackMcpRe
 pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-namespace--mcp-server-registration).
 It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
 already changed by hand (enabled/disabled, rescoped, or deleted).
+
+## Consent — gate a risky action
+
+Before your plugin (or a workflow step) does something that acts with the operator's rights — a shell command, a
+session hand-off, egress to an arbitrary URL — ask first:
+
+```csharp
+var decision = await host.RequestConsentAsync(new ConsentRequest(
+    Title: "Deploy plugin wants to run a command",
+    Action: $"{command}\nin {workingDirectory}",   // the literal action, shown verbatim
+    Source: new ConsentSource(session.PaneId, PluginId: null, Label: "Deploy"),
+    Scope: "deploy.command",
+    Risk: ConsentRisk.Dangerous));
+
+if (!decision.IsApproved)
+{
+    return;   // the operator said no
+}
+// approved — go ahead
+```
+
+The host shows an Approve/Deny banner on the session and returns the operator's choice; act only on `IsApproved`.
+Three rules keep the gate honest:
+
+- **Put the truth in `Action`.** It is shown verbatim — the real command and directory, the real URL — never a
+  summary you compose. A prompt-injected caller controls the words it feeds you, so a friendly description of a
+  hostile command is a gate that approves the command.
+- **Pick the right `Risk`.** `Dangerous` (shell / session hand-off / arbitrary egress) is asked every time.
+  `LowRisk` may offer "remember for this session" via `AllowRemember` — but a remembered approval is bound to that
+  exact action, so a different one re-prompts.
+- **Leave `PluginId` null.** The host stamps your plugin's identity, so you cannot ask under another's name.
+
+It fails closed: with no consent surface, or a cancelled request, the answer is `Denied` — never a silent
+approval. Full type list in the [API reference](API-REFERENCE.md#taskconsentdecision-requestconsentasyncconsentrequest-request).
 
 ## Credentials — say what holds one
 

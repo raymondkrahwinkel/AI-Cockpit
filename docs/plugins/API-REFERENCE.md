@@ -429,6 +429,63 @@ host.ShowToast(
     () => OpenInBrowser(pullRequest.Url));
 ```
 
+### `Task<ConsentDecision> RequestConsentAsync(ConsentRequest request)`
+Ask the operator to **approve a single action before you perform it** — the shared consent gate for anything
+your plugin does with the operator's rights on an agent's say-so: a workflow's shell or egress step, taking over
+a terminal pane. The host shows an Approve/Deny banner on the session it belongs to and returns what the operator
+chose; act only on `decision.IsApproved`. *(Added in SDK 1.4.0; default implementation denies — see below.)*
+
+- **Show ground truth, not a summary.** Put the literal action in `ConsentRequest.Action` — the actual command
+  and working directory, the actual URL, the pane. It is rendered **verbatim**. A prompt-injected agent controls
+  the words it feeds you, so a friendly description of a hostile command is a gate that approves the command. The
+  gate belongs to the host, not the plugin: you supply the truth, the host shows it.
+- **Risk drives "remember".** A `ConsentRisk.Dangerous` action (shell, starting/steering a session, arbitrary
+  egress) is asked **every time** — never remembered. A `ConsentRisk.LowRisk` action may set `AllowRemember` to
+  offer the operator "remember for this session". The host **enforces** this — you cannot make a dangerous action
+  rememberable by setting the flag. A remembered approval is bound to the **exact action** from your plugin: a
+  request with a different `Action` (or from a different plugin) re-prompts, so the operator always sees the new
+  ground truth — "remember" skips a repeat of the same approved action, never a new one riding under the same scope.
+- **Fails closed.** A host that does not implement consent, or a request that cannot be shown (no pane, cancelled),
+  returns `Denied` — never a silent approval. The default interface implementation returns `Denied`.
+- Set `Source.PaneId` to the session the request belongs to (from `IPluginSessionContext.PaneId`) so the banner
+  appears on that pane. Leave `Source.PluginId` null — the host stamps your plugin's identity itself.
+- Every decision is written to an append-only audit trail (`consent-audit.jsonl`) the operator can review.
+
+```csharp
+var decision = await host.RequestConsentAsync(new ConsentRequest(
+    Title: "Workflow wants to run a command",
+    Action: $"{command}\nin {workingDirectory}",          // ground truth — shown verbatim
+    Source: new ConsentSource(session.PaneId, PluginId: null, Label: "Workflows"),
+    Scope: "workflow.command",
+    Risk: ConsentRisk.Dangerous));
+
+if (!decision.IsApproved)
+{
+    return StepOutcome.Stop("You did not approve the command.");
+}
+// approved — run it
+```
+
+The consent types (namespace `Cockpit.Plugins.Abstractions.Consent`):
+
+```csharp
+public sealed record ConsentRequest(
+    string Title,            // host-framed line, e.g. "Workflow wants to run a command"
+    string Action,           // GROUND TRUTH — the literal command+cwd / URL / pane, shown verbatim
+    ConsentSource Source,    // who is asking (pane + label)
+    string Scope,            // stable key for "remember", e.g. "workflow.http:GET"
+    ConsentRisk Risk,        // LowRisk (rememberable) | Dangerous (asked every time)
+    bool AllowRemember = false);
+
+public sealed record ConsentSource(string? PaneId, string? PluginId, string Label);
+public enum ConsentRisk { LowRisk, Dangerous }
+public enum ConsentOutcome { Approved, Denied }
+public sealed record ConsentDecision(ConsentOutcome Outcome, bool Remembered = false)
+{
+    public bool IsApproved { get; }   // Outcome == Approved
+}
+```
+
 ---
 
 ## `ICockpitActions`
