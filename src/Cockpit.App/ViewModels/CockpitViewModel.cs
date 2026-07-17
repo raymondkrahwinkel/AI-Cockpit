@@ -955,21 +955,141 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _voiceEnabled;
 
-    /// <summary>Ggml model name, e.g. "large-v3-turbo", "base", "tiny" — smaller models download faster and transcribe faster on CPU-only hardware.</summary>
+    private readonly ITranscriptionAdvisor? _transcriptionAdvisor;
+
+    /// <summary>Effective ggml model name fed to the speech-to-text service, e.g. "large-v3-turbo", "small", "tiny".
+    /// Driven by the Options dropdown (<see cref="SelectedTranscriptionModel"/>): a curated model sets it directly,
+    /// the "Custom…" choice mirrors <see cref="VoiceCustomModelName"/>. Smaller models download and transcribe faster.</summary>
     [ObservableProperty]
     private string _voiceModelName = "large-v3-turbo";
 
-    /// <summary>Selectable Whisper backend preferences offered by the Options flyout combo box.</summary>
-    public IReadOnlyList<VoiceBackendPreferenceOption> VoiceBackendPreferences { get; } =
+    /// <summary>Sentinel item in the transcription-model dropdown (AC-68) that reveals a free-text box for any ggml
+    /// name not in the curated list — quantized variants like <c>large-v3-turbo-q5_0</c>, or a model added later.</summary>
+    public const string CustomModelChoice = "Custom…";
+
+    /// <summary>Curated Whisper models offered by the Options → Voice → Transcribe dropdown (AC-68), each with a short
+    /// accuracy-vs-load hint; any other ggml name is reachable via <see cref="CustomModelChoice"/>.</summary>
+    public IReadOnlyList<TranscriptionModelOption> TranscriptionModelChoices { get; } =
     [
-        new("Auto (best available)", VoiceBackendPreference.Auto),
-        new("CUDA (NVIDIA)", VoiceBackendPreference.Cuda),
-        new("Vulkan (Windows only)", VoiceBackendPreference.Vulkan),
-        new("CPU", VoiceBackendPreference.Cpu),
+        new("large-v3-turbo", "most accurate · heaviest"),
+        new("medium", "≈1pt less accurate on NL · lighter"),
+        new("small", "fast · light"),
+        new("base", "faster · less accurate"),
+        new("tiny", "fastest · least accurate"),
+        new(CustomModelChoice, "enter any ggml name", IsCustom: true),
     ];
 
+    /// <summary>Selected item in the transcription-model dropdown (AC-68) — a curated model or the "Custom…" sentinel.
+    /// Drives <see cref="VoiceModelName"/> and toggles <see cref="IsTranscriptionModelCustom"/>.</summary>
     [ObservableProperty]
-    private VoiceBackendPreferenceOption _selectedVoiceBackendPreference = new("Auto (best available)", VoiceBackendPreference.Auto);
+    private TranscriptionModelOption? _selectedTranscriptionModel;
+
+    /// <summary>True when the model dropdown is on "Custom…" (AC-68), revealing the free-text box bound to <see cref="VoiceCustomModelName"/>.</summary>
+    [ObservableProperty]
+    private bool _isTranscriptionModelCustom;
+
+    /// <summary>Free-text ggml model entered when the dropdown is on "Custom…" (AC-68); mirrored into <see cref="VoiceModelName"/> while custom is active.</summary>
+    [ObservableProperty]
+    private string _voiceCustomModelName = string.Empty;
+
+    /// <summary>Host-aware Whisper backend choices offered by the Options → Voice → Transcribe combo box (AC-68).
+    /// Built from <see cref="ITranscriptionAdvisor"/>: always Auto and CPU, plus a single GPU option only when a GPU
+    /// runtime actually loads here — so a non-NVIDIA machine is never offered CUDA.</summary>
+    public ObservableCollection<VoiceBackendPreferenceOption> VoiceBackendPreferences { get; } = new();
+
+    [ObservableProperty]
+    private VoiceBackendPreferenceOption _selectedVoiceBackendPreference = new("Auto (recommended)", VoiceBackendPreference.Auto);
+
+    /// <summary>One-line explanation of what the chosen transcription backend does on this machine (AC-68); recomputed
+    /// when the selection changes. Slice 2 makes the Auto recommendation hardware-aware and richer.</summary>
+    [ObservableProperty]
+    private string _transcriptionAdvice = string.Empty;
+
+    /// <summary>A short badge line describing the detected transcription hardware (AC-68), e.g. "Vulkan GPU available"
+    /// or "No GPU acceleration detected — CPU only". Slice 2 adds GPU brand and display-adapter facts.</summary>
+    [ObservableProperty]
+    private string _transcriptionHardware = string.Empty;
+
+    /// <summary>Builds the host-aware backend list and the initial model/advice state (AC-68). Called from both
+    /// constructors; without an advisor (design-time/tests) it offers Auto + CPU only.</summary>
+    private void _InitVoiceTranscriptionOptions()
+    {
+        var capabilities = _transcriptionAdvisor?.DetectCapabilities() ?? TranscriptionCapabilities.CpuOnly;
+
+        VoiceBackendPreferences.Clear();
+        foreach (var choice in TranscriptionOptions.BackendChoices(capabilities))
+        {
+            VoiceBackendPreferences.Add(choice);
+        }
+
+        SelectedVoiceBackendPreference = VoiceBackendPreferences[0];
+        SelectedTranscriptionModel = TranscriptionModelChoices.FirstOrDefault(model => model.Name == VoiceModelName)
+                                     ?? TranscriptionModelChoices[0];
+
+        TranscriptionHardware = TranscriptionOptions.HardwareBadge(capabilities);
+        _UpdateTranscriptionAdvice();
+    }
+
+    /// <summary>Recomputes the one-line backend advice from the current selection and detected capabilities (AC-68).</summary>
+    private void _UpdateTranscriptionAdvice()
+    {
+        var capabilities = _transcriptionAdvisor?.DetectCapabilities() ?? TranscriptionCapabilities.CpuOnly;
+        TranscriptionAdvice = TranscriptionOptions.Advice(SelectedVoiceBackendPreference.Value, capabilities);
+    }
+
+    partial void OnSelectedVoiceBackendPreferenceChanged(VoiceBackendPreferenceOption value) => _UpdateTranscriptionAdvice();
+
+    /// <summary>Maps the dropdown selection to the effective model (AC-68): "Custom…" reveals the free-text box and
+    /// uses its value, any curated model is used directly.</summary>
+    partial void OnSelectedTranscriptionModelChanged(TranscriptionModelOption? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        if (value.IsCustom)
+        {
+            IsTranscriptionModelCustom = true;
+            if (!string.IsNullOrWhiteSpace(VoiceCustomModelName))
+            {
+                VoiceModelName = VoiceCustomModelName.Trim();
+            }
+        }
+        else
+        {
+            IsTranscriptionModelCustom = false;
+            VoiceModelName = value.Name;
+        }
+    }
+
+    /// <summary>While the model dropdown is on "Custom…" (AC-68), keeps the effective model in sync with the box.</summary>
+    partial void OnVoiceCustomModelNameChanged(string value)
+    {
+        if (IsTranscriptionModelCustom && !string.IsNullOrWhiteSpace(value))
+        {
+            VoiceModelName = value.Trim();
+        }
+    }
+
+    /// <summary>Aligns the model dropdown/custom-box with the effective <see cref="VoiceModelName"/> (AC-68) — used
+    /// after loading so a saved custom model reopens in the "Custom…" state, and a preset reopens selected.</summary>
+    private void _SyncTranscriptionModelFromName()
+    {
+        var preset = TranscriptionModelChoices.FirstOrDefault(model => !model.IsCustom && model.Name == VoiceModelName);
+        if (preset is not null)
+        {
+            IsTranscriptionModelCustom = false;
+            VoiceCustomModelName = string.Empty;
+            SelectedTranscriptionModel = preset;
+        }
+        else
+        {
+            VoiceCustomModelName = VoiceModelName;
+            IsTranscriptionModelCustom = true;
+            SelectedTranscriptionModel = TranscriptionModelChoices.First(model => model.IsCustom);
+        }
+    }
 
     /// <summary>Selectable dictation languages for speech-to-text — "Auto-detect" plus common fixed languages. A fixed language beats detection when you always dictate in one tongue (Options flyout combo).</summary>
     public IReadOnlyList<SttLanguageOption> SttLanguages { get; } =
@@ -1237,6 +1357,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
         // that normally builds them never runs, and the tab would render empty in the previewer/screenshotter.
         _RebuildShortcutRows();
+
+        // No advisor in the design-time/previewer graph: the Transcribe page then offers Auto + CPU only.
+        _InitVoiceTranscriptionOptions();
     }
 
     /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
@@ -1281,7 +1404,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISecretProtectionService? secretProtection = null,
         IWorkspaceSettingsStore? workspaceSettingsStore = null,
         IWidgetRegistry? widgetRegistry = null,
-        IConsentBroker? consentBroker = null)
+        IConsentBroker? consentBroker = null,
+        ITranscriptionAdvisor? transcriptionAdvisor = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1335,6 +1459,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _delegationMcpToggle = delegationMcpToggle;
         _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
         _renderingSettingsStore = renderingSettingsStore;
+        _transcriptionAdvisor = transcriptionAdvisor;
+        // Build the host-aware backend list before the fire-and-forget voice load below reselects the saved
+        // preference against it (AC-68).
+        _InitVoiceTranscriptionOptions();
         _resourceMonitor = resourceMonitor;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
@@ -2434,8 +2562,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _voiceSettingsStore.LoadAsync();
         VoiceEnabled = settings.IsEnabled;
         VoiceModelName = settings.ModelName;
+        // Reopen a saved custom model in the "Custom…" state, a preset selected (AC-68). Done after ModelName is set,
+        // mirroring how the terminal-font dropdown is synced from its effective family.
+        _SyncTranscriptionModelFromName();
+        // A GPU preference saved on a machine that can no longer load it (config moved, driver gone) has no matching
+        // host-aware option and falls back to Auto rather than showing a dead entry.
         SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == settings.BackendPreference)
                                          ?? VoiceBackendPreferences[0];
+        _UpdateTranscriptionAdvice();
         VoiceCleanupEnabled = settings.CleanupEnabled;
         VoiceAutoDetectLocalLlm = settings.AutoDetectLocalLlm;
         SelectedLocalLlmPreference = LocalLlmPreferences.FirstOrDefault(option => option.Value == settings.LocalLlmPreference)
