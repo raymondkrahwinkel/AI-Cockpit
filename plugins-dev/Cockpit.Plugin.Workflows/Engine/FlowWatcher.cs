@@ -161,7 +161,7 @@ internal sealed class FlowWatcher : IDisposable
         WorkflowRun run;
         try
         {
-            run = await _engine.RunAsync(workflow, trigger.Id, seed);
+            run = await _engine.RunAsync(workflow, trigger.Id, RunOrigin.Trigger, seed);
         }
         finally
         {

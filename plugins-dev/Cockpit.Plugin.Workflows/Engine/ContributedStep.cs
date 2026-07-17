@@ -16,6 +16,17 @@ internal sealed class ContributedStep(IWorkflowStep step) : IStepRunner
 {
     public string TypeId => step.TypeId;
 
+    public ConsentRisk? RequiredConsent => step.RequiredConsent;
+
+    public string ConsentAction(StepContext context)
+    {
+        var settings = step.Parameters
+            .Select(name => (name, value: context.Resolve(context.Node.Parameters.GetValueOrDefault(name)).Text))
+            .Where(entry => entry.value.Length > 0)
+            .Select(entry => $"{entry.name}: {entry.value}");
+        return string.Join("\n", new[] { step.Name }.Concat(settings));
+    }
+
     /// <summary>How the picker and the canvas see it.</summary>
     public static NodeTypeDescriptor Describe(IWorkflowStep step) => new(
         step.TypeId,

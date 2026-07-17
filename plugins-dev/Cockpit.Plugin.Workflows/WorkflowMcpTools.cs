@@ -120,7 +120,7 @@ internal sealed class WorkflowMcpTools
         }
 
         var engine = EngineFactory.Create(_host, _host.WorkflowSteps);
-        var run = await engine.RunAsync(workflow, manual.Id);
+        var run = await engine.RunAsync(workflow, manual.Id, RunOrigin.McpAgent);
         _runs.Add(run);
 
         return JsonSerializer.Serialize(
@@ -138,6 +138,12 @@ internal sealed class WorkflowMcpTools
         if (flows.FirstOrDefault(flow => flow.Id == id) is not { } workflow)
         {
             return _Fail($"No workflow with id '{id}'.");
+        }
+
+        // Arming a flow that could auto-fire a dangerous step is the operator's to do; disarming is always allowed.
+        if (active && _DangerousNode(workflow) is { } dangerous)
+        {
+            return _RefuseDangerous(dangerous);
         }
 
         workflow.IsActive = active;
@@ -171,6 +177,11 @@ internal sealed class WorkflowMcpTools
         try
         {
             var workflow = _BuildWorkflow(Guid.NewGuid().ToString("n"), name, steps_json, connections_json);
+            if (_DangerousNode(workflow) is { } dangerous)
+            {
+                return _RefuseDangerous(dangerous);
+            }
+
             var flows = _store.Load().ToList();
             flows.Add(workflow);
             _store.Save(flows);
@@ -200,6 +211,11 @@ internal sealed class WorkflowMcpTools
         try
         {
             var replacement = _BuildWorkflow(id, name ?? flows[existingIndex].Name, steps_json, connections_json);
+            if (_DangerousNode(replacement) is { } dangerous)
+            {
+                return _RefuseDangerous(dangerous);
+            }
+
             replacement.IsActive = flows[existingIndex].IsActive;
             flows[existingIndex] = replacement;
             _store.Save(flows);
@@ -210,6 +226,18 @@ internal sealed class WorkflowMcpTools
             return _Fail(ex.Message);
         }
     }
+
+    // The step types an MCP caller may not create or arm (#AC-38): they run with the operator's rights, so a flow
+    // containing one is the operator's to build and arm in the editor. Derived from the engine's runners — one source
+    // of truth with the runtime gate. Returns the first offending typeId, or null when the flow is clean.
+    private string? _DangerousNode(Workflow workflow)
+    {
+        var gated = EngineFactory.Create(_host, _host.WorkflowSteps).ConsentRequiredTypeIds;
+        return workflow.Nodes.FirstOrDefault(node => gated.Contains(node.TypeId))?.TypeId;
+    }
+
+    private string _RefuseDangerous(string typeId) => _Fail(
+        $"'{typeId}' runs with your rights, so a workflow that contains it can only be created or armed by the operator in the editor — not over the MCP. Ask them to add or arm it. (An agent can still run a flow the operator built; it asks the operator to Approve each dangerous step.)");
 
     // Turns the agent's steps/connections spec into a saved-shape Workflow, validating every typeId and connection.
     private static Workflow _BuildWorkflow(string id, string name, string stepsJson, string? connectionsJson)

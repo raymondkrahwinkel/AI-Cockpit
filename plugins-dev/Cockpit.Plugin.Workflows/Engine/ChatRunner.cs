@@ -29,6 +29,16 @@ internal sealed class ChatRunner(string typeId, bool discord) : IStepRunner
 
     public string TypeId => typeId;
 
+    public ConsentRisk? RequiredConsent => ConsentRisk.Dangerous;
+
+    public string ConsentAction(StepContext context)
+    {
+        var message = context.Resolve(context.Node.Parameters.GetValueOrDefault("Message")).Text.Trim();
+        var webhook = context.Resolve(context.Node.Parameters.GetValueOrDefault("Webhook URL")).Text.Trim();
+        var where = Uri.TryCreate(webhook, UriKind.Absolute, out var url) ? url.Host : webhook;
+        return $"Post to {(discord ? "Discord" : "Slack")} ({where}):\n{message}";
+    }
+
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
         var message = context.Resolve(context.Node.Parameters.GetValueOrDefault("Message")).Text.Trim();

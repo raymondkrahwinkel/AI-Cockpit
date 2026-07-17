@@ -18,6 +18,15 @@ internal sealed class HttpRunner : IStepRunner
 
     public string TypeId => "cockpit.http";
 
+    public ConsentRisk? RequiredConsent => ConsentRisk.LowRisk;
+
+    public string ConsentAction(StepContext context)
+    {
+        var method = context.Node.Parameters.GetValueOrDefault("Method")?.Trim();
+        var url = context.Resolve(context.Node.Parameters.GetValueOrDefault("URL")).Text.Trim();
+        return $"{(string.IsNullOrWhiteSpace(method) ? "GET" : method.ToUpperInvariant())} {url}";
+    }
+
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)
     {
         var url = context.Resolve(context.Node.Parameters.GetValueOrDefault("URL")).Text.Trim();

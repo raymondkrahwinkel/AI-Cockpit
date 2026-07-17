@@ -1,3 +1,5 @@
+using Cockpit.Plugins.Abstractions.Consent;
+
 namespace Cockpit.Plugins.Abstractions.Workflows;
 
 /// <summary>
@@ -67,6 +69,14 @@ public interface IWorkflowStep
 
     /// <summary>What it typically hands on, with an example value — shown before a flow has ever run, so a step can be configured against its input rather than against a guess. Optional.</summary>
     IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>();
+
+    /// <summary>
+    /// Whether running this step needs the operator's consent, and at what risk — null (the default) means it does not
+    /// (#AC-38). A step that acts with the operator's rights (a shell command, a session hand-off, arbitrary egress)
+    /// declares it, so the workflows engine gates it: the operator Approves/Denies the literal action before it runs
+    /// (unless they started the run), and an MCP caller cannot create or arm a flow that contains it.
+    /// </summary>
+    ConsentRisk? RequiredConsent => null;
 
     /// <summary>
     /// Runs the step. Throwing fails it, and the message is what the operator reads in the run — so write it as a
