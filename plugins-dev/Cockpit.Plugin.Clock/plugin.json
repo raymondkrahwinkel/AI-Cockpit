@@ -1,7 +1,7 @@
 {
   "id": "clock",
   "name": "Clock",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "entryAssembly": "Cockpit.Plugin.Clock.dll",
   "entryType": "Cockpit.Plugin.Clock.ClockPlugin",
   "abstractionsVersion": 1,

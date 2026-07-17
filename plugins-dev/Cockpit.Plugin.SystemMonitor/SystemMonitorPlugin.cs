@@ -1,3 +1,4 @@
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Widgets;
@@ -20,7 +21,7 @@ public sealed class SystemMonitorPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "system-monitor",
         DisplayName: "System Monitor",
-        Version: "1.0.0",
+        Version: "1.0.1",
         Author: "Cockpit",
         Description: "CPU, memory and disk usage for a Dashboard workspace. You pick which of the three in its settings.");
 
@@ -35,7 +36,7 @@ public sealed class SystemMonitorPlugin : ICockpitPlugin
         // surface; which plugin delivers it was never part of that promise.
         host.AddWidget(new WidgetRegistration("widgets.system-monitor", "System Monitor", context => new SystemMonitorWidget(context))
         {
-            Icon = "📈",
+            IconKind = MaterialIconKind.ChartLine,
             Description = "CPU, memory and disk usage.",
             DefaultColumnSpan = 6,
             DefaultRowSpan = 6,
