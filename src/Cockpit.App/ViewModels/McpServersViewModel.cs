@@ -54,8 +54,7 @@ public partial class McpServersViewModel : ViewModelBase
         // the owning plugin's settings, and are matched by name so an entry an older build left in the store is
         // hidden too — and dropped from the store on the next Save.
         var internalNames = _internalProviders
-            .SelectMany(provider => provider.GetServers())
-            .Select(server => server.Name)
+            .SelectMany(_NamesOf)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var servers = await _store.LoadAsync();
@@ -66,6 +65,20 @@ public partial class McpServersViewModel : ViewModelBase
         }
 
         SelectedServer = Servers.FirstOrDefault();
+    }
+
+    // A provider that throws while listing its servers must not break the manager dialog — it just means its names
+    // are not filtered out this time (matching the catalog's own defensive guard on the same call).
+    private static IEnumerable<string> _NamesOf(ICockpitInternalMcpProvider provider)
+    {
+        try
+        {
+            return provider.GetServers().Select(server => server.Name);
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     [RelayCommand]

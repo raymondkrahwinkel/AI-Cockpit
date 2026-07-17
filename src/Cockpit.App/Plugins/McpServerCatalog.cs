@@ -40,13 +40,17 @@ internal sealed class McpServerCatalog(
     /// <summary>
     /// The registry with the cockpit-hosted and plugin-owned servers merged in: registry entries first, then the
     /// provided ones. A provider owns its own names, so its live answer wins over a registry entry of the same name
-    /// — the case that arises for one start after upgrade, before the older push entries are reconciled away. Pulled
-    /// out so the merge is unit-testable without standing up a PluginManager.
+    /// — the case that arises for one start after upgrade, before the older push entries are reconciled away. Two
+    /// providers claiming the same name is not expected (the cockpit's own endpoint names are disjoint from the
+    /// plugins'), but if it ever happens the first one caller order gives — a cockpit-hosted endpoint ahead of a
+    /// plugin's — wins, rather than a session seeing the same server twice. Pulled out so the merge is unit-testable
+    /// without standing up a PluginManager.
     /// </summary>
     internal static IReadOnlyList<McpServerConfig> Merge(IReadOnlyList<McpServerConfig> registry, IReadOnlyList<McpServerConfig> providedServers)
     {
-        var providedNames = providedServers.Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return [.. registry.Where(server => !providedNames.Contains(server.Name)), .. providedServers];
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var provided = providedServers.Where(server => seen.Add(server.Name)).ToList();
+        return [.. registry.Where(server => !seen.Contains(server.Name)), .. provided];
     }
 
     // A plugin that throws while listing its servers must not break session start for everyone else — its servers

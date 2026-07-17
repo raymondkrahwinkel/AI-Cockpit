@@ -128,7 +128,8 @@ public static class TtyEnvironment
     public static bool IsHostControlled(string key) =>
         IsNestedClaudeCodeMarker(key)
         || IsHostTerminalIdentityMarker(key)
-        || IsAnthropicCredentialMarker(key);
+        || IsAnthropicCredentialMarker(key)
+        || IsCockpitMcpKeyMarker(key);
 
     /// <summary>
     /// True when the effective ctype locale is UTF-8. The C library resolves the ctype category as
@@ -196,4 +197,15 @@ public static class TtyEnvironment
     /// </summary>
     public static bool IsAnthropicCredentialMarker(string key) =>
         key.StartsWith("ANTHROPIC_", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True for <c>COCKPIT_MCP_KEY</c>, this run's bearer for the cockpit's own loopback MCP endpoints (AC-40). The
+    /// host sets it fresh on every spawn, so a session profile must not get to override it — otherwise that session
+    /// would present the wrong key and lock itself out of the internal endpoints (a self-inflicted 401). Stripping it
+    /// from the inherited environment too means a cockpit launched from another cockpit session never carries the
+    /// parent's key down; the child gets its own. The literal name mirrors
+    /// <c>WellKnownSessionEnvironment.CockpitMcpKey</c>, which Core does not reference.
+    /// </summary>
+    public static bool IsCockpitMcpKeyMarker(string key) =>
+        key.Equals("COCKPIT_MCP_KEY", StringComparison.OrdinalIgnoreCase);
 }
