@@ -61,6 +61,12 @@ public partial class CockpitView : UserControl
         // Tunnelling so the selection lands before a focused terminal or the reorder grip consumes the press.
         SessionGrid?.AddHandler(PointerPressedEvent, OnSessionPanePressed, RoutingStrategies.Tunnel);
 
+        // Keyboard or programmatic focus landing in a pane selects it too — not just a pointer press (AC-65).
+        // GotFocus only bubbles, so we listen on the way up; handledEventsToo so a control that marks its own
+        // focus handled (as some do) cannot hide the pane change from us. Without this a terminal can hold
+        // keyboard focus while the selection sits on another pane or on nothing.
+        SessionGrid?.AddHandler(GotFocusEvent, OnSessionPaneGotFocus, RoutingStrategies.Bubble, handledEventsToo: true);
+
         _AttachPluginSections();
         _ApplySidebarWidth();
 
@@ -101,6 +107,7 @@ public partial class CockpitView : UserControl
         }
 
         SessionGrid?.RemoveHandler(PointerPressedEvent, OnSessionPanePressed);
+        SessionGrid?.RemoveHandler(GotFocusEvent, OnSessionPaneGotFocus);
 
         if (_observedSideSections is not null)
         {
@@ -1033,6 +1040,23 @@ public partial class CockpitView : UserControl
         }
     }
 
+    // The other half of the click path: focus that lands in a pane by any route — the keyboard, a restored
+    // window, a plugin moving it — makes that session the selected one, so the accent border, InjectText and
+    // the F9 voice hold all follow the pane the operator is actually in (AC-65). Guarded on the current
+    // selection so the focus a selection-change itself moves (see _FocusSelectedSessionTerminal) is a no-op
+    // and cannot loop.
+    private void OnSessionPaneGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit
+            || _PaneContainerFromSource(e.Source) is not { DataContext: SessionPanelViewModel session }
+            || ReferenceEquals(cockpit.SelectedSession, session))
+        {
+            return;
+        }
+
+        cockpit.SelectSessionCommand.Execute(session);
+    }
+
     // Puts keyboard focus on the currently selected session's terminal, once layout has settled (a newly
     // revealed pane in single/zoom mode isn't realised until then).
     private void _FocusSelectedSessionTerminal()
@@ -1060,8 +1084,9 @@ public partial class CockpitView : UserControl
         });
     }
 
-    // Walks up from the clicked element to the pane container — the child sitting directly in the tile panel.
-    private static Control? _PaneContainerFromSource(object? source)
+    // Walks up from the clicked or focused element to the pane container — the child sitting directly in the
+    // tile panel. Internal so a view test can pin the visual-tree walk that both the click and focus paths rely on.
+    internal static Control? _PaneContainerFromSource(object? source)
     {
         for (var visual = source as Visual; visual is not null; visual = visual.GetVisualParent())
         {
