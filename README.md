@@ -218,6 +218,11 @@ Your API keys, MCP bearer tokens and the plugins' tokens live in `cockpit.json`.
   credentials are in memory and are handed to the sessions and tool servers that need them, and a plugin you
   installed runs **inside** the app with your rights and can read them. Plugin isolation is a type boundary, not a
   security one. The boundary is the install — which is why the store asks for consent and pins a checksum.
+- **Consent for risky actions.** Beyond the install boundary, a shell command, a session hand-off with your
+  rights, or arbitrary egress that a plugin or workflow step takes can be gated behind an explicit Approve/Deny
+  prompt that shows the **literal action** — and a remembered approval is bound to that exact action from that
+  exact source, so it never silently carries to a different action, a different plugin, or a dangerous action. A
+  shared host-side facility the workflow and terminal integrations build on.
 
 ## Install / run
 

@@ -391,6 +391,40 @@ pattern, referenced in full in the [API reference](API-REFERENCE.md#the-mcp-name
 It's a fire-and-forget `Task` (the upsert persists to disk); the registration never overrides a state the user
 already changed by hand (enabled/disabled, rescoped, or deleted).
 
+## Consent — gate a risky action
+
+Before your plugin (or a workflow step) does something that acts with the operator's rights — a shell command, a
+session hand-off, egress to an arbitrary URL — ask first:
+
+```csharp
+var decision = await host.RequestConsentAsync(new ConsentRequest(
+    Title: "Deploy plugin wants to run a command",
+    Action: $"{command}\nin {workingDirectory}",   // the literal action, shown verbatim
+    Source: new ConsentSource(session.PaneId, PluginId: null, Label: "Deploy"),
+    Scope: "deploy.command",
+    Risk: ConsentRisk.Dangerous));
+
+if (!decision.IsApproved)
+{
+    return;   // the operator said no
+}
+// approved — go ahead
+```
+
+The host shows an Approve/Deny banner on the session and returns the operator's choice; act only on `IsApproved`.
+Three rules keep the gate honest:
+
+- **Put the truth in `Action`.** It is shown verbatim — the real command and directory, the real URL — never a
+  summary you compose. A prompt-injected caller controls the words it feeds you, so a friendly description of a
+  hostile command is a gate that approves the command.
+- **Pick the right `Risk`.** `Dangerous` (shell / session hand-off / arbitrary egress) is asked every time.
+  `LowRisk` may offer "remember for this session" via `AllowRemember` — but a remembered approval is bound to that
+  exact action, so a different one re-prompts.
+- **Leave `PluginId` null.** The host stamps your plugin's identity, so you cannot ask under another's name.
+
+It fails closed: with no consent surface, or a cancelled request, the answer is `Denied` — never a silent
+approval. Full type list in the [API reference](API-REFERENCE.md#taskconsentdecision-requestconsentasyncconsentrequest-request).
+
 ## Credentials — say what holds one
 
 The operator can encrypt the credentials in `cockpit.json` with a password (Options → Security). The host does

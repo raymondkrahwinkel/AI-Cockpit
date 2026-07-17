@@ -442,7 +442,9 @@ chose; act only on `decision.IsApproved`. *(Added in SDK 1.4.0; default implemen
 - **Risk drives "remember".** A `ConsentRisk.Dangerous` action (shell, starting/steering a session, arbitrary
   egress) is asked **every time** — never remembered. A `ConsentRisk.LowRisk` action may set `AllowRemember` to
   offer the operator "remember for this session". The host **enforces** this — you cannot make a dangerous action
-  rememberable by setting the flag.
+  rememberable by setting the flag. A remembered approval is bound to the **exact action** from your plugin: a
+  request with a different `Action` (or from a different plugin) re-prompts, so the operator always sees the new
+  ground truth — "remember" skips a repeat of the same approved action, never a new one riding under the same scope.
 - **Fails closed.** A host that does not implement consent, or a request that cannot be shown (no pane, cancelled),
   returns `Denied` — never a silent approval. The default interface implementation returns `Denied`.
 - Set `Source.PaneId` to the session the request belongs to (from `IPluginSessionContext.PaneId`) so the banner

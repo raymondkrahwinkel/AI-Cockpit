@@ -19,7 +19,7 @@ Please allow reasonable time to ship a fix before disclosing the issue publicly 
 disclosure).
 
 When reporting, please include:
-- the affected component (session driver, permission gating/MCP server, profiles, TTY mode, notifications),
+- the affected component (session driver, permission gating/MCP server, the operator consent gate, profiles, TTY mode, notifications),
 - steps to reproduce,
 - the impact you foresee.
 
@@ -33,6 +33,12 @@ Things this project considers security-sensitive:
 - **Permission gating** — the in-process MCP permission-prompt server and the always-allow rule
   store. A path that lets a tool call bypass an expected prompt (outside the explicitly chosen
   bypass mode) is a vulnerability.
+- **Operator consent gate** — the host-side Approve/Deny facility a plugin or workflow step goes
+  through before a risky action (a shell command, a session hand-off with your rights, arbitrary
+  egress). The prompt shows the literal action, and a remembered approval is bound to that exact
+  action from that exact source. A path that gets such an action approved without the operator
+  seeing the literal action — or that lets a remembered approval carry to a different action, a
+  different plugin, or the dangerous class — is a vulnerability.
 - **Local configuration** — `cockpit.json` contents (profiles, permission rules, webhook URL) and
   how they are written.
 - **Notification egress** — the Discord webhook notifier posts to a user-configured URL; content
