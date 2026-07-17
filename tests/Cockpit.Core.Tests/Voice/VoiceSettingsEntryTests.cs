@@ -45,4 +45,28 @@ public class VoiceSettingsEntryTests
         entry.OllamaBaseUrl.Should().BeNull();
         entry.CleanupBaseUrl.Should().Be("http://x:1");
     }
+
+    [Fact]
+    public void ToDomain_TreatsAMissingModelAutoKey_AsAnExplicitChoice()
+    {
+        // AC-68 slice 2: a config saved before the key existed had a hand-picked model under the old free-text box,
+        // so a missing key must not flip the model to the recommendation behind the operator's back.
+        var entry = new VoiceSettingsEntry { ModelName = "small", ModelAutoSelected = null };
+
+        entry.ToDomain().ModelAutoSelected.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ModelAutoSelected_RoundTrips_WhenSetExplicitly()
+    {
+        new VoiceSettingsEntry { ModelAutoSelected = true }.ToDomain().ModelAutoSelected.Should().BeTrue();
+        VoiceSettingsEntry.FromDomain(new VoiceSettings { ModelAutoSelected = true }).ModelAutoSelected.Should().Be(true);
+    }
+
+    [Fact]
+    public void AFreshInstall_DefaultsToTheAutoModel()
+    {
+        // The domain default is Auto, so a brand-new config (no voice section on disk) starts on the recommendation.
+        new VoiceSettings().ModelAutoSelected.Should().BeTrue();
+    }
 }
