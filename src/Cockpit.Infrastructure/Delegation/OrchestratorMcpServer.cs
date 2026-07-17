@@ -58,8 +58,19 @@ internal sealed class OrchestratorMcpServer
 
     public async Task SetMcpEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
+        // Flip the live flag first so the next session's servers reflect the choice even if the write below fails.
         _mcpEnabled = enabled;
-        await _settingsStore.SaveAsync(new DelegationSettings { McpEnabled = enabled }, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _settingsStore.SaveAsync(new DelegationSettings { McpEnabled = enabled }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // The Options toggle fires this and forgets it (it has no logger of its own), so a failed write would
+            // otherwise be an unobserved exception. Log it here, at the layer that owns the persistence: the choice
+            // still holds for this run, it just may not survive a restart.
+            _logger.LogWarning(ex, "Could not persist the orchestrator MCP toggle; it holds for this run only.");
+        }
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)

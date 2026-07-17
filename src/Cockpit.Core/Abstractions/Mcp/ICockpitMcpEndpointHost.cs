@@ -3,8 +3,10 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// <summary>
 /// Hosts cockpit MCP endpoints (#AC-13, #AC-12). Besides the endpoints registered up front (see
 /// <see cref="CockpitMcpEndpoint"/>), a plugin can mount one at runtime — it loads after the host has started, so
-/// <see cref="MountAsync"/> is how its <c>ICockpitHost.AddMcpEndpoint</c> gets a working, auto-published MCP server
-/// for its tools. The host reference is what lets the App's <c>ICockpitHost</c> reach the Infrastructure host.
+/// <see cref="MountAsync"/> is how its <c>ICockpitHost.AddMcpEndpoint</c> gets a working, key-guarded loopback MCP
+/// server for its tools — the cockpit's own, answered live to the session fan-out rather than written to the
+/// operator's registry (AC-40). The host reference is what lets the App's <c>ICockpitHost</c> reach the
+/// Infrastructure host.
 /// </summary>
 public interface ICockpitMcpEndpointHost
 {
