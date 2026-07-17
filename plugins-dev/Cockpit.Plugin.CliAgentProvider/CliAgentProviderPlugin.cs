@@ -28,6 +28,10 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
 
     public void Initialize(ICockpitHost host)
     {
+        // The cockpit can install and manage the codex binary itself (AC-20). Registering the descriptor lets the host
+        // resolve a managed copy; the driver factory and TTY provider prefer it over PATH via host.ResolveManagedCliPath.
+        host.AddManagedCli(CodexManagedCli.Descriptor);
+
         // The per-session start defaults the New-session dialog asks about — the same two whichever kind of
         // session a profile opens, so it means the same thing either way. Sandbox is a fixed set; Model is
         // declared as free text (the fallback) but the dialog upgrades it to the live model/list at open
@@ -41,7 +45,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // The app-server driver replaces the headless exec driver as the interactive Codex provider (#45
             // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals —
             // hence SupportsPermissions: true, where the exec route reported false.
-            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(),
+            CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath),
             Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson))
         {
@@ -66,7 +70,7 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
         host.AddTtyProvider(new TtyProviderRegistration(
             ProviderId: "cli-agent-provider.codex",
             DisplayName: "Codex (CLI)",
-            CreateProvider: _ => new CodexTtyProvider(),
+            CreateProvider: _ => new CodexTtyProvider(host.ResolveManagedCliPath),
             Options: [ttySandbox, ttyModelFallback])
         {
             ResolveOptionsAsync = async (configJson, cancellationToken) =>

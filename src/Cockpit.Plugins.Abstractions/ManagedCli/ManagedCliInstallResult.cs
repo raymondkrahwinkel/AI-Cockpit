@@ -1,9 +1,9 @@
-namespace Cockpit.Infrastructure.ManagedCli;
+namespace Cockpit.Plugins.Abstractions.ManagedCli;
 
 /// <summary>
-/// The outcome of <see cref="IManagedCliService.EnsureInstalledAsync"/> (AC-20): the installed executable's path on
-/// success, or a human-readable reason on failure. A failure is a value here, not an exception — installing a CLI is
-/// a convenience that must never crash the cockpit.
+/// The outcome of a managed-CLI install (AC-20): the installed executable's path on success, or a human-readable
+/// reason on failure. A failure is a value here, not an exception — installing a CLI is a convenience that must never
+/// crash the cockpit. In the plugin SDK so <see cref="ICockpitHost.InstallManagedCliAsync"/> can return it.
 /// </summary>
 /// <param name="Success">Whether a usable executable is now on disk.</param>
 /// <param name="Version">The version that was installed or already present, when known.</param>
