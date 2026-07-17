@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
+using Material.Icons;
 using Cockpit.Core.Toasts;
 
 namespace Cockpit.App.ViewModels;
@@ -32,14 +33,14 @@ public sealed partial class ToastViewModel(string message, ToastSeverity severit
         _ => "CockpitTextFaintBrush",
     };
 
-    /// <summary>Small glyph shown next to the message, mirroring the sidebar's plain-text status glyphs (e.g. the "⚠" needs-attention marker).</summary>
-    public string Glyph => Severity switch
+    /// <summary>Small icon shown next to the message, mirroring the sidebar's status markers (e.g. the needs-attention warning).</summary>
+    public MaterialIconKind Glyph => Severity switch
     {
-        ToastSeverity.Success => "✓",
-        ToastSeverity.Warning => "⚠",
-        ToastSeverity.Information => "ℹ",
-        ToastSeverity.Error => "✕",
-        _ => "•",
+        ToastSeverity.Success => MaterialIconKind.Check,
+        ToastSeverity.Warning => MaterialIconKind.AlertOutline,
+        ToastSeverity.Information => MaterialIconKind.InformationOutline,
+        ToastSeverity.Error => MaterialIconKind.Close,
+        _ => MaterialIconKind.Circle,
     };
 
     /// <summary>Raised once, however dismissal happened (close button, action button, or auto-dismiss elapsing).</summary>

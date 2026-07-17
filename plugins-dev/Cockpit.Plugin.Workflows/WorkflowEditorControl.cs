@@ -9,6 +9,8 @@ using Cockpit.Plugin.Workflows.Model;
 using System.Text.Json.Nodes;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Workflows;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows;
 
@@ -217,8 +219,8 @@ internal sealed class WorkflowEditorControl : UserControl
     private Control _ViewControls()
     {
         var zoomIn = _IconButton("+", "Zoom in", () => _canvas.ZoomBy(1.2));
-        var zoomOut = _IconButton("−", "Zoom out", () => _canvas.ZoomBy(1 / 1.2));
-        var reset = _IconButton("⟲", "Reset the view", _canvas.ResetView);
+        var zoomOut = _IconButton(MaterialIconKind.Minus, "Zoom out", () => _canvas.ZoomBy(1 / 1.2));
+        var reset = _IconButton(MaterialIconKind.Refresh, "Reset the view", _canvas.ResetView);
 
         return new StackPanel
         {
@@ -238,7 +240,7 @@ internal sealed class WorkflowEditorControl : UserControl
     {
         var execute = new Button
         {
-            Content = "▶  Execute workflow",
+            Content = _ExecuteLabel(),
             Classes = { "Accent" },
             Margin = new Thickness(12),
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -250,6 +252,17 @@ internal sealed class WorkflowEditorControl : UserControl
 
         return execute;
     }
+
+    private static Control _ExecuteLabel() => new StackPanel
+    {
+        Orientation = Orientation.Horizontal,
+        Spacing = 6,
+        Children =
+        {
+            new MaterialIcon { Kind = MaterialIconKind.Play, Width = 13, Height = 13 },
+            new TextBlock { Text = "Execute workflow" },
+        },
+    };
 
     // Which "Run manually" the button starts from. A flow may hold several — one being built next to one that
     // works — and picking the first in the list means pressing Execute on a step that leads nowhere and calling the
@@ -299,7 +312,7 @@ internal sealed class WorkflowEditorControl : UserControl
         }
         finally
         {
-            _execute.Content = "▶  Execute workflow";
+            _execute.Content = _ExecuteLabel();
             _RefreshExecutable();
         }
     }
@@ -317,6 +330,20 @@ internal sealed class WorkflowEditorControl : UserControl
     private static Button _IconButton(string glyph, string tip, Action onClick)
     {
         var button = new Button { Content = glyph, Classes = { "Compact" }, Width = 28 };
+        ToolTip.SetTip(button, tip);
+        button.Click += (_, _) => onClick();
+
+        return button;
+    }
+
+    private static Button _IconButton(MaterialIconKind kind, string tip, Action onClick)
+    {
+        var button = new Button
+        {
+            Content = new MaterialIcon { Kind = kind, Width = 14, Height = 14 },
+            Classes = { "Compact" },
+            Width = 28,
+        };
         ToolTip.SetTip(button, tip);
         button.Click += (_, _) => onClick();
 

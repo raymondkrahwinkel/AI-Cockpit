@@ -1,3 +1,4 @@
+using Material.Icons;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.YouTrack;
@@ -39,7 +40,9 @@ internal static class YouTrackWorkflowSteps
 
         public string Description => "Fires when you pick a YouTrack issue to track in a session — the moment work on it actually starts.";
 
-        public string Icon => "🎫";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.TicketOutline;
 
         public string Category => "YouTrack";
 
@@ -70,7 +73,9 @@ internal static class YouTrackWorkflowSteps
 
         public string Description => "Fires when you move a YouTrack ticket to another status from the cockpit. Produces the status it moved to and the one it came from, so a flow can act on the move that matters (a ticket reaching Review, say) rather than on every move. A status set by the \"Set ticket status\" step does not fire it — a flow does not trigger itself.";
 
-        public string Icon => "↻";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.Refresh;
 
         public string Category => "YouTrack";
 
@@ -101,7 +106,9 @@ internal static class YouTrackWorkflowSteps
 
         public string Description => "Move a ticket to a status its own board allows. Write \"forward\" or \"back\" to follow the board's own order, a status by name, or leave it empty for whatever that board calls in progress. Optionally assigns it to you.";
 
-        public string Icon => "↦";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.ArrowRightThick;
 
         public string Category => "YouTrack";
 

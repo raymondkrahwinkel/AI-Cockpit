@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -351,9 +352,11 @@
                                                  PasswordChar="•" IsVisible="{Binding IsSecret}"/>
                                         <CheckBox Grid.Column="2" IsChecked="{Binding IsSecret}" Content="Secret"
                                                   FontSize="11" VerticalAlignment="Center"/>
-                                        <Button Grid.Column="3" Content="✕" Classes="Subtle" VerticalAlignment="Center"
+                                        <Button Grid.Column="3" Classes="Subtle" VerticalAlignment="Center"
                                                 Command="{Binding $parent[ItemsControl].((vm:EditableProfileViewModel)DataContext).RemoveEnvironmentVariableCommand}"
-                                                CommandParameter="{Binding}"/>
+                                                CommandParameter="{Binding}">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                        </Button>
                                         <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,2,0,0"
                                                    Text="Not a valid variable name — letters, digits and underscores, not starting with a digit."
                                                    FontSize="11" TextWrapping="Wrap"

@@ -6,6 +6,8 @@
              xmlns:layout="using:Cockpit.Core.Layout"
              xmlns:ws="using:Cockpit.Core.Workspaces"
              xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:avconv="using:Avalonia.Data.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
@@ -143,14 +145,23 @@
                             Background="{StaticResource CockpitAccentBrush}"
                             BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1">
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Classes="Subtle" Content="▾" Padding="11,6"
+                            <Button DockPanel.Dock="Right" Classes="Subtle" Padding="11,6"
                                     VerticalAlignment="Stretch" ToolTip.Tip="New session or terminal">
+                                <materialIcons:MaterialIcon Kind="ChevronDown" Width="12" Height="12"/>
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                        <MenuItem Header="💬  New session" Command="{Binding NewSessionCommand}"
-                                                  ToolTip.Tip="An AI session — SDK or TTY, chosen in the dialog"/>
-                                        <MenuItem Header="🖥  New terminal" Command="{Binding NewTerminalCommand}"
-                                                  ToolTip.Tip="A plain shell (your default, else the OS default) in a terminal pane"/>
+                                        <MenuItem Header="New session" Command="{Binding NewSessionCommand}"
+                                                  ToolTip.Tip="An AI session — SDK or TTY, chosen in the dialog">
+                                            <MenuItem.Icon>
+                                                <materialIcons:MaterialIcon Kind="ChatOutline" Width="14" Height="14"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="New terminal" Command="{Binding NewTerminalCommand}"
+                                                  ToolTip.Tip="A plain shell (your default, else the OS default) in a terminal pane">
+                                            <MenuItem.Icon>
+                                                <materialIcons:MaterialIcon Kind="Console" Width="14" Height="14"/>
+                                            </MenuItem.Icon>
+                                        </MenuItem>
                                     </MenuFlyout>
                                 </Button.Flyout>
                             </Button>
@@ -251,13 +262,15 @@
                                                              Classes="Compact" MinWidth="110" FontWeight="SemiBold"
                                                              KeyDown="OnRenameBoxKeyDown" LostFocus="OnRenameBoxLostFocus"
                                                              AttachedToVisualTree="OnRenameBoxAttached"/>
-                                                    <TextBlock Text="⚠" Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                    <materialIcons:MaterialIcon Kind="AlertOutline" Width="13" Height="13"
+                                                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
                                                                IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                                                ToolTip.Tip="Needs attention"/>
                                                     <!-- A consent request is waiting on this session (#AC-47): the same
                                                          "Ask me first" hand the cockpit.approve step uses, in the accent
                                                          colour, so the sidebar shows it even when the pane is off screen. -->
-                                                    <TextBlock Text="✋" Foreground="{StaticResource CockpitAccentBrush}"
+                                                    <materialIcons:MaterialIcon Kind="HandBackLeftOutline" Width="13" Height="13"
+                                                               Foreground="{StaticResource CockpitAccentBrush}"
                                                                IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
                                                                ToolTip.Tip="Waiting for your consent"/>
                                                 </StackPanel>
@@ -285,14 +298,16 @@
                                                            IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             </StackPanel>
 
-                                            <!-- Hover-revealed close ✕, hidden while the confirm prompt is up. -->
-                                            <Button Grid.Column="1" Classes="Subtle closeSession" Content="✕"
-                                                    VerticalAlignment="Top" Padding="4,0" FontSize="12"
+                                            <!-- Hover-revealed close, hidden while the confirm prompt is up. -->
+                                            <Button Grid.Column="1" Classes="Subtle closeSession"
+                                                    VerticalAlignment="Top" Padding="4,0"
                                                     Foreground="{StaticResource CockpitTextFaintBrush}"
                                                     IsVisible="{Binding !IsConfirmingClose}"
                                                     Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).RequestCloseSessionCommand}"
                                                     CommandParameter="{Binding}"
-                                                    ToolTip.Tip="Close session"/>
+                                                    ToolTip.Tip="Close session">
+                                                <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                            </Button>
                                         </Grid>
 
                                         <!-- Inline close confirm for a busy session (L11 pattern): Close / Keep. -->
@@ -355,12 +370,20 @@
                             <!-- The type is asked up front and is an invariant afterwards: it decides which
                                  panes the workspace can hold, so it cannot be a toggle after the fact. -->
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <MenuItem Header="💬  Sessions" Command="{Binding Workspaces.AddWorkspaceCommand}"
+                                <MenuItem Header="Sessions" Command="{Binding Workspaces.AddWorkspaceCommand}"
                                           CommandParameter="{x:Static ws:WorkspaceType.Sessions}"
-                                          ToolTip.Tip="AI sessions and terminals"/>
-                                <MenuItem Header="📊  Dashboard" Command="{Binding Workspaces.AddWorkspaceCommand}"
+                                          ToolTip.Tip="AI sessions and terminals">
+                                    <MenuItem.Icon>
+                                        <materialIcons:MaterialIcon Kind="ChatOutline" Width="14" Height="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Dashboard" Command="{Binding Workspaces.AddWorkspaceCommand}"
                                           CommandParameter="{x:Static ws:WorkspaceType.Dashboard}"
-                                          ToolTip.Tip="Widgets"/>
+                                          ToolTip.Tip="Widgets">
+                                    <MenuItem.Icon>
+                                        <materialIcons:MaterialIcon Kind="ViewDashboardOutline" Width="14" Height="14"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
@@ -394,15 +417,17 @@
                                         </ContextMenu>
                                     </Border.ContextMenu>
                                     <DockPanel>
-                                        <!-- Routed through the same handler as the menu's Close, so the ✕ asks
+                                        <!-- Routed through the same handler as the menu's Close, so the close button asks
                                              before discarding a workspace too — it is the easier of the two to
                                              hit by accident. -->
-                                        <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace" Content="✕"
-                                                Padding="4,0" Margin="6,0,0,0" FontSize="10"
+                                        <Button DockPanel.Dock="Right" Classes="Subtle closeWorkspace"
+                                                Padding="4,0" Margin="6,0,0,0"
                                                 IsVisible="{Binding !IsRenaming}"
                                                 Click="OnCloseWorkspaceRequested"
-                                                ToolTip.Tip="Close workspace"/>
-                                        <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                ToolTip.Tip="Close workspace">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="10" Height="10"/>
+                                        </Button>
+                                        <materialIcons:MaterialIcon Kind="{Binding Icon}" Width="14" Height="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                                    IsVisible="{Binding !IsRenaming}"/>
                                         <!-- Sized and aligned to sit in the tab rather than on top of it: a
@@ -453,7 +478,12 @@
                                                     Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.PlaceWidgetCommand}"
                                                     CommandParameter="{Binding}">
                                                 <DockPanel>
-                                                    <TextBlock Text="{Binding Icon}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                    <Panel Margin="0,0,8,0" VerticalAlignment="Center">
+                                                        <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="16" Height="16"
+                                                                                    IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                                                        <TextBlock Text="{Binding Icon}"
+                                                                   IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNull}}"/>
+                                                    </Panel>
                                                     <StackPanel>
                                                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                                                         <TextBlock Text="{Binding Description}" FontSize="11" Opacity="0.7"
@@ -470,7 +500,8 @@
 
                         <!-- The dashboard's grid shape. Its own settings, not the app's — each dashboard is laid
                              out on its own, and this is where §4g's Columns/Rows live. -->
-                        <Button Classes="Subtle" Content="⚙" Padding="7,4" ToolTip.Tip="Dashboard settings">
+                        <Button Classes="Subtle" Padding="7,4" ToolTip.Tip="Dashboard settings">
+                            <materialIcons:MaterialIcon Kind="Cog" Width="14" Height="14"/>
                             <Button.Flyout>
                                 <Flyout Placement="BottomEdgeAlignedRight">
                                     <StackPanel Spacing="10" MinWidth="200" Margin="4">
@@ -557,7 +588,7 @@
                             <Border Margin="4" CornerRadius="8" Background="{StaticResource CockpitPanelBgBrush}"
                                     BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
                                 <DockPanel>
-                                    <!-- Pane chrome. The ⚙ is bound to HasConfig: a widget that declared no
+                                    <!-- Pane chrome. The gear is bound to HasConfig: a widget that declared no
                                          settings form shows no gear at all, rather than one that opens nothing. -->
                                     <!-- The header is the drag handle: dragging the widget's own body would fight
                                          whatever the plugin's control does with a pointer, and a header is where
@@ -565,14 +596,25 @@
                                     <DockPanel DockPanel.Dock="Top" Margin="8,6,6,6" Background="Transparent"
                                                Cursor="Hand" PointerPressed="OnWidgetHeaderPressed">
                                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="2">
-                                            <Button Classes="Subtle" Content="↻" Padding="5,0" Click="OnWidgetRefreshPressed"
-                                                    ToolTip.Tip="Refresh"/>
-                                            <Button Classes="Subtle" Content="⚙" Padding="5,0" Click="OnWidgetConfigPressed"
-                                                    IsVisible="{Binding HasConfig}" ToolTip.Tip="Widget settings"/>
-                                            <Button Classes="Subtle" Content="✕" Padding="5,0" Click="OnWidgetRemovePressed"
-                                                    ToolTip.Tip="Remove widget"/>
+                                            <Button Classes="Subtle" Padding="5,0" Click="OnWidgetRefreshPressed"
+                                                    ToolTip.Tip="Refresh">
+                                                <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12"/>
+                                            </Button>
+                                            <Button Classes="Subtle" Padding="5,0" Click="OnWidgetConfigPressed"
+                                                    IsVisible="{Binding HasConfig}" ToolTip.Tip="Widget settings">
+                                                <materialIcons:MaterialIcon Kind="Cog" Width="12" Height="12"/>
+                                            </Button>
+                                            <Button Classes="Subtle" Padding="5,0" Click="OnWidgetRemovePressed"
+                                                    ToolTip.Tip="Remove widget">
+                                                <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                                            </Button>
                                         </StackPanel>
-                                        <TextBlock Text="{Binding Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <Panel Margin="0,0,6,0" VerticalAlignment="Center">
+                                            <materialIcons:MaterialIcon Kind="{Binding IconKind}" Width="14" Height="14"
+                                                                        IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+                                            <TextBlock Text="{Binding Icon}"
+                                                       IsVisible="{Binding IconKind, Converter={x:Static avconv:ObjectConverters.IsNull}}"/>
+                                        </Panel>
                                         <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"/>
                                     </DockPanel>
@@ -614,7 +656,8 @@
                     <Border Width="56" Height="56" CornerRadius="14"
                             BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                             HorizontalAlignment="Center" Margin="0,0,0,16">
-                        <TextBlock Text="📊" FontSize="24" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <materialIcons:MaterialIcon Kind="ViewDashboardOutline" Width="24" Height="24"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="No widgets yet" FontSize="16" FontWeight="SemiBold"
                                HorizontalAlignment="Center" Margin="0,0,0,6"/>
@@ -659,10 +702,11 @@
                                       ToolTip.Tip="Zoom in on the selected session / back to the grid"/>
                     </StackPanel>
 
-                    <!-- Mirrors the dashboard's ⚙ (its columns/rows/grid lines): each workspace type sets what it
+                    <!-- Mirrors the dashboard's gear (its columns/rows/grid lines): each workspace type sets what it
                          actually has, in the same place. -->
-                    <Button DockPanel.Dock="Right" HorizontalAlignment="Right" Content="⚙" Padding="8,4"
+                    <Button DockPanel.Dock="Right" HorizontalAlignment="Right" Padding="8,4"
                             ToolTip.Tip="How this workspace arranges its sessions">
+                        <materialIcons:MaterialIcon Kind="Cog" Width="14" Height="14"/>
                         <Button.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight">
                                 <StackPanel Spacing="8" MinWidth="300" Margin="4">
@@ -756,9 +800,11 @@
                     Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
                     BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="✕" Classes="Subtle" Padding="6,0"
+                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0"
                             Foreground="{StaticResource CockpitTextFaintBrush}"
-                            Command="{Binding DismissPluginFailuresCommand}"/>
+                            Command="{Binding DismissPluginFailuresCommand}">
+                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                    </Button>
                     <TextBlock Text="{Binding PluginFailureBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
                                Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
                 </DockPanel>
@@ -783,10 +829,11 @@
                 BoxShadow="0 8 24 0 #40000000">
             <StackPanel Margin="14,12" Spacing="10">
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0" FontSize="12"
+                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0"
                             Command="{Binding CloseResourcePanelCommand}"
-                            Content="✕"
-                            ToolTip.Tip="Close"/>
+                            ToolTip.Tip="Close">
+                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                    </Button>
                     <TextBlock Text="Resources" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center"/>
                 </DockPanel>
 
@@ -916,11 +963,11 @@
                                    VerticalAlignment="Center"/>
                         <!-- Points at the panel: up while it is closed (that is where it will come from), down while it
                              is open (that is where it will go). -->
-                        <TextBlock Text="⌃" FontSize="10" Margin="0,2,0,0"
+                        <materialIcons:MaterialIcon Kind="ChevronUp" Width="10" Height="10" Margin="0,2,0,0"
                                    IsVisible="{Binding !IsResourcePanelOpen}"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"
                                    VerticalAlignment="Center"/>
-                        <TextBlock Text="⌄" FontSize="10" Margin="0,-2,0,0"
+                        <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10" Margin="0,-2,0,0"
                                    IsVisible="{Binding IsResourcePanelOpen}"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"
                                    VerticalAlignment="Center"/>

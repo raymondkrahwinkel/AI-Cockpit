@@ -14,7 +14,7 @@ public sealed class PromptLibraryPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "prompt-library",
         DisplayName: "Prompt Library",
-        Version: "1.3.0",
+        Version: "1.3.1",
         Author: "Cockpit",
         Description: "Reusable prompt templates in the left menu — click one to insert it into the active session, filling in any {{variable}} fields first. Plus a spotlight-style quick-insert (the Ctrl+Shift+P shortcut, or the command palette): a search bar over your prompts — type, then click or Enter to drop one into the session.");
 

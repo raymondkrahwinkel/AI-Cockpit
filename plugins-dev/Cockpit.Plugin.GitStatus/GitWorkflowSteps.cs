@@ -1,3 +1,4 @@
+using Material.Icons;
 using Cockpit.Plugins.Abstractions.Workflows;
 
 namespace Cockpit.Plugin.GitStatus;
@@ -36,7 +37,9 @@ internal static class GitWorkflowSteps
 
         public string Description => "Switch to a branch, creating it from the current one when it does not exist yet. Refuses when the working tree is dirty rather than dragging your changes onto another branch.";
 
-        public string Icon => "⑂";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.SourceBranch;
 
         public string Category => "Git";
 
@@ -115,7 +118,9 @@ internal static class GitWorkflowSteps
 
         public string Description => "Commit the changes in a repository. Stages everything unless you say otherwise. Says so and does nothing when there is nothing to commit — an empty commit is noise in a history someone has to read.";
 
-        public string Icon => "✎";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.Pencil;
 
         public string Category => "Git";
 
@@ -181,7 +186,9 @@ internal static class GitWorkflowSteps
 
         public string Description => "Push the current branch, setting its upstream the first time. Never forces: a workflow that can overwrite a colleague's commits is not a convenience.";
 
-        public string Icon => "↑";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.ArrowUp;
 
         public string Category => "Git";
 

@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.YouTrack;
 
@@ -30,7 +32,21 @@ internal sealed class YouTrackInstanceRowControl : UserControl
         _defaultProjectTag = new TextBox { Text = instance.DefaultProjectTag, PlaceholderText = "default project short-name (optional)" };
         _addMcp = new CheckBox { Content = "Add this instance's MCP server to sessions", IsChecked = instance.AddMcpToSessions, FontSize = 11 };
 
-        var remove = new Button { Content = "✕ Remove", FontSize = 11, Padding = new Thickness(8, 2) };
+        var remove = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new MaterialIcon { Kind = MaterialIconKind.Close, Width = 12, Height = 12 },
+                    new TextBlock { Text = "Remove", VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+        };
         remove.Click += (_, _) => RemoveRequested?.Invoke();
 
         var header = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };

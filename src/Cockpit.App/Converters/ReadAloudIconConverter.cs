@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
+using Material.Icons;
 
 namespace Cockpit.App.Converters;
 
@@ -10,7 +11,7 @@ namespace Cockpit.App.Converters;
 /// </summary>
 public sealed class ReadAloudIconConverter : IValueConverter
 {
-    /// <summary>The toggle's face.</summary>
+    /// <summary>The toggle's face — a <see cref="MaterialIconKind"/>, bound by the view to a nested <c>MaterialIcon</c>.</summary>
     public static readonly ReadAloudIconConverter Icon = new();
 
     /// <summary>The toggle's tooltip — a different sentence per state, since an icon on its own does not say which way it is.</summary>
@@ -24,7 +25,7 @@ public sealed class ReadAloudIconConverter : IValueConverter
 
         if (!_isTooltip)
         {
-            return isOn ? "🔊" : "🔇";
+            return isOn ? MaterialIconKind.VolumeHigh : MaterialIconKind.VolumeOff;
         }
 
         return isOn

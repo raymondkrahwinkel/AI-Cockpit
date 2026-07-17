@@ -3,6 +3,7 @@
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:views="using:Cockpit.App.Views"
         xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -26,8 +27,13 @@
         </StackPanel>
 
         <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
-            <Button Grid.Column="0" Content="↻ Refresh" Classes="Subtle Compact"
-                    HorizontalAlignment="Left" Command="{Binding RefreshCommand}"/>
+            <Button Grid.Column="0" Classes="Subtle Compact"
+                    HorizontalAlignment="Left" Command="{Binding RefreshCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12"/>
+                    <TextBlock Text="Refresh"/>
+                </StackPanel>
+            </Button>
             <Button Grid.Column="1" Content="Close" Click="OnClose"/>
         </Grid>
 

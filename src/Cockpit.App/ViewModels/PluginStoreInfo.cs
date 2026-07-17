@@ -47,8 +47,14 @@ public sealed partial class PluginStoreInfo : ObservableObject
     /// <summary>Whether a real logo image has been fetched — the row shows it in place of the glyph.</summary>
     public bool HasLogo => Logo is not null;
 
-    /// <summary>The store's icon glyph, or a default storefront glyph when it advertises none — the fallback when there is no <see cref="Logo"/>.</summary>
-    public string IconOrDefault => string.IsNullOrWhiteSpace(Icon) ? "🏬" : Icon!;
+    /// <summary>Whether the store advertised its own icon glyph — the row shows it instead of the default storefront icon.</summary>
+    public bool HasCustomIcon => !string.IsNullOrWhiteSpace(Icon);
+
+    /// <summary>Shows the store's own icon glyph — true only once no logo has loaded and the store declared its own icon.</summary>
+    public bool ShowIconGlyph => !HasLogo && HasCustomIcon;
+
+    /// <summary>Shows the default storefront icon — true only once neither a logo nor the store's own icon is available.</summary>
+    public bool ShowDefaultIcon => !HasLogo && !HasCustomIcon;
 
     /// <summary>The count line under the name — quiet until browsed, then the plugin count or an unreachable note.</summary>
     public string CountText => !IsBrowsed
@@ -62,9 +68,19 @@ public sealed partial class PluginStoreInfo : ObservableObject
                 _ => $"{PluginCount} plugins",
             };
 
-    partial void OnIconChanged(string? value) => OnPropertyChanged(nameof(IconOrDefault));
+    partial void OnIconChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasCustomIcon));
+        OnPropertyChanged(nameof(ShowIconGlyph));
+        OnPropertyChanged(nameof(ShowDefaultIcon));
+    }
 
-    partial void OnLogoChanged(Bitmap? value) => OnPropertyChanged(nameof(HasLogo));
+    partial void OnLogoChanged(Bitmap? value)
+    {
+        OnPropertyChanged(nameof(HasLogo));
+        OnPropertyChanged(nameof(ShowIconGlyph));
+        OnPropertyChanged(nameof(ShowDefaultIcon));
+    }
 
     partial void OnPluginCountChanged(int value) => OnPropertyChanged(nameof(CountText));
 

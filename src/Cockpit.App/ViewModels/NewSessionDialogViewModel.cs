@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Material.Icons;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
@@ -218,13 +219,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Whether there is anything to offer in the folder quick-pick.</summary>
     public bool HasRememberedPaths => RememberedPaths.Count > 0;
 
-    /// <summary>Whether the currently-typed working directory is pinned — drives the ★/☆ toggle.</summary>
+    /// <summary>Whether the currently-typed working directory is pinned — drives the favorite toggle's icon.</summary>
     public bool IsWorkingDirectoryFavorite => _history.IsFavorite(WorkingDirectory);
 
-    /// <summary>Filled ★ when the current folder is a favorite, outline ☆ otherwise — the toggle button's glyph.</summary>
-    public string FavoriteToggleGlyph => IsWorkingDirectoryFavorite ? "★" : "☆";
+    /// <summary>Filled star when the current folder is a favorite, outline otherwise — the toggle button's icon.</summary>
+    public MaterialIconKind FavoriteToggleGlyph => IsWorkingDirectoryFavorite ? MaterialIconKind.Star : MaterialIconKind.StarOutline;
 
-    /// <summary>Whether the ★ favorite toggle is actionable (there is a path to pin).</summary>
+    /// <summary>Whether the favorite toggle is actionable (there is a path to pin).</summary>
     public bool CanFavoriteWorkingDirectory => !string.IsNullOrWhiteSpace(WorkingDirectory);
 
     [ObservableProperty]
@@ -726,11 +727,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private void ManageProfiles() => ManageProfilesRequested?.Invoke();
 }
 
-/// <summary>One entry in the New-session dialog's working-directory quick-pick: the remembered <see cref="Path"/> and whether it is a pinned favorite (shown with a ★ prefix, and listed first).</summary>
-public sealed record RememberedPathOption(string Path, bool IsFavorite)
-{
-    public string Display => IsFavorite ? $"★ {Path}" : Path;
-}
+/// <summary>One entry in the New-session dialog's working-directory quick-pick: the remembered <see cref="Path"/> and whether it is a pinned favorite (shown with a star icon, and listed first).</summary>
+public sealed record RememberedPathOption(string Path, bool IsFavorite);
 
 /// <summary>
 /// One start default a plugin TTY provider declared (<c>PluginTtyLaunchOption</c>) — <see cref="Key"/>/

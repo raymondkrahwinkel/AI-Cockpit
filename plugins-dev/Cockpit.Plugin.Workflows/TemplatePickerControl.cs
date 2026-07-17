@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Workflows;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.Plugin.Workflows;
 
@@ -45,7 +47,20 @@ internal sealed class TemplatePickerControl : UserControl
             IsVisible = false,
         };
 
-        var import = new Button { Content = "⇩  Import from file…", Classes = { "Subtle" } };
+        var import = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new MaterialIcon { Kind = MaterialIconKind.Import, Width = 13, Height = 13 },
+                    new TextBlock { Text = "Import from file…" },
+                },
+            },
+            Classes = { "Subtle" },
+        };
         ToolTip.SetTip(import, "Open a flow somebody exported — it arrives switched off, for you to read before you arm it");
         import.Click += (_, _) => ImportRequested?.Invoke(this, EventArgs.Empty);
 

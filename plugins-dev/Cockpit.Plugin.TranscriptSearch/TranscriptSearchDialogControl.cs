@@ -138,8 +138,8 @@ internal sealed class TranscriptSearchDialogControl : UserControl
         {
             await _actions.SetClipboardTextAsync(hit.SessionId);
             _status.Text = hit.WorkingDirectory is { Length: > 0 } directory
-                ? $"✓ Session id copied — resume it with 'claude --resume {hit.SessionId}' from {directory}."
-                : $"✓ Session id copied — resume it with 'claude --resume {hit.SessionId}'.";
+                ? $"Session id copied — resume it with 'claude --resume {hit.SessionId}' from {directory}."
+                : $"Session id copied — resume it with 'claude --resume {hit.SessionId}'.";
         };
 
         var reveal = new Button { Content = "Reveal", FontSize = 11, Padding = new Thickness(8, 2) };
