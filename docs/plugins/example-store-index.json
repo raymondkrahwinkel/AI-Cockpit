@@ -1,5 +1,6 @@
 {
   "name": "Example Cockpit plugin store",
+  "iconUrl": "logo.png",
   "plugins": [
     {
       "id": "github-issues",

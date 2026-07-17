@@ -31,6 +31,7 @@ public class TerminalSettingsStoreTests : IDisposable
 
         settings.FontFamily.Should().Be("Cascadia Mono, Consolas, monospace");
         settings.FontSize.Should().Be(13);
+        settings.Shell.Should().BeEmpty("a blank shell means the OS default (#AC-25)");
     }
 
     [Fact]
@@ -38,11 +39,12 @@ public class TerminalSettingsStoreTests : IDisposable
     {
         var store = new TerminalSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new TerminalSettings { FontFamily = "JetBrains Mono", FontSize = 16 });
+        await store.SaveAsync(new TerminalSettings { FontFamily = "JetBrains Mono", FontSize = 16, Shell = "pwsh" });
         var loaded = await store.LoadAsync();
 
         loaded.FontFamily.Should().Be("JetBrains Mono");
         loaded.FontSize.Should().Be(16);
+        loaded.Shell.Should().Be("pwsh");
     }
 
     [Fact]

@@ -78,6 +78,40 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task SetSessionStatusline_ByPaneId_SetsItOnThatSession_AndAnUnknownPaneIdIsANoOp()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+
+        vm.SetSessionStatusline(session.PaneId, "AC-13").Should().BeTrue();
+        session.Statusline.Should().Be("AC-13");
+
+        // An unknown pane id changes nothing and says it did nothing — a plugin/agent targeting a closed session.
+        vm.SetSessionStatusline("no-such-pane", "AC-99").Should().BeFalse();
+        session.Statusline.Should().Be("AC-13");
+
+        // An empty string clears it (hides the line).
+        vm.SetSessionStatusline(session.PaneId, "").Should().BeTrue();
+        session.Statusline.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SetSessionName_ByPaneId_RenamesThatSession_AndIgnoresABlankName()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions.Single();
+
+        vm.SetSessionName(session.PaneId, "  Working on AC-13  ").Should().BeTrue();
+        session.Title.Should().Be("Working on AC-13");
+
+        // A blank name is ignored — the title stays, and it says it did nothing.
+        vm.SetSessionName(session.PaneId, "   ").Should().BeFalse();
+        session.Title.Should().Be("Working on AC-13");
+    }
+
+    [Fact]
     public async Task ShowTimestamps_TogglesEveryOpenSessionLive()
     {
         var vm = NewVm();

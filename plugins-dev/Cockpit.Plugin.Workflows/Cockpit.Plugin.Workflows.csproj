@@ -33,6 +33,11 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- The [McpServerTool] attributes for the workflow MCP (#AC-12). Host-provided (the cockpit already loads
+         ModelContextProtocol), so compile-only — the plugin ships no copy and the attribute types keep one identity. -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

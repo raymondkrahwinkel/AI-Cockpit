@@ -19,6 +19,11 @@ public interface ITtyLauncher
     /// <para>
     /// The returned process owns the files the launch wrote: disposing it deletes them.
     /// </para>
+    /// <para>
+    /// <paramref name="paneId"/> is this session pane's id (#AC-13); when non-blank it is handed to the CLI as the
+    /// <c>COCKPIT_PANE_ID</c> environment variable, so the agent can name its own session to the cockpit-session
+    /// MCP server's <c>set_status</c> tool.
+    /// </para>
     /// </summary>
     IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -27,5 +32,6 @@ public interface ITtyLauncher
         short columns,
         short rows,
         string? workingDirectory = null,
-        SessionResume? resume = null);
+        SessionResume? resume = null,
+        string? paneId = null);
 }

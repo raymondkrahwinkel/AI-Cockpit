@@ -1,7 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
+using Cockpit.Core.Plugins;
 
 namespace Cockpit.App;
 
@@ -28,6 +32,8 @@ internal static class Screenshotter
             "shortcuts" => _OptionsOnTab("Shortcuts"),
             "profiles" => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
             "new-session" => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
+            "plugin-store" => _PluginStore(),
+            "manage-stores" => _ManageStores(),
             "tasks" => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
             "session" => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
@@ -69,6 +75,97 @@ internal static class Screenshotter
             ?? throw new InvalidOperationException($"The Options dialog has no '{header}' tab.");
 
         return dialog;
+    }
+
+    // Renders the plugin store (#62) with a sample catalogue seeded straight into the manager's collections
+    // (no network browse — the dialog only loads on the real app's open), so its layout — the
+    // categories | plugins | details columns, the Installed/Updates group pinned to the sidebar foot, the
+    // list rows and their install-state — can be verified headless.
+    private static PluginStoreDialog _PluginStore()
+    {
+        var manager = new PluginManagerViewModel();
+        manager.Stores.Add("https://store.aicockpit.dev/index.json");
+        foreach (var row in _SampleStorePlugins())
+        {
+            manager.AvailablePlugins.Add(row);
+        }
+
+        var viewModel = new PluginStoreDialogViewModel(manager)
+        {
+            SelectedPlugin = manager.AvailablePlugins.FirstOrDefault(),
+        };
+
+        return new PluginStoreDialog { DataContext = viewModel };
+    }
+
+    // Renders the Manage-stores dialog (#62) with a few sample stores seeded straight into the manager's
+    // StoreInfos — a named/iconed one, one falling back to a URL-derived name and default glyph, and an
+    // unreachable one — so its layout and the icon/name/count rows can be verified headless.
+    private static ManageStoresDialog _ManageStores()
+    {
+        var manager = new PluginManagerViewModel();
+        // A real logo image (the app icon stands in for a store's own), so the screenshot shows the fetched-image
+        // path rather than only the emoji fallback.
+        manager.StoreInfos.Add(new PluginStoreInfo("https://github.com/aicockpit/plugins")
+        {
+            Name = "AI-Cockpit Plugins", PluginCount = 13, IsReachable = true, IsBrowsed = true,
+            Logo = _LoadAssetBitmap("avares://Cockpit.App/Assets/AppIcon.png"),
+        });
+        manager.StoreInfos.Add(new PluginStoreInfo("https://raw.githubusercontent.com/raymond/cockpit-extras/main/index.json")
+        {
+            PluginCount = 4, IsReachable = true, IsBrowsed = true,
+        });
+        manager.StoreInfos.Add(new PluginStoreInfo("https://plugins.example.dev/")
+        {
+            IsReachable = false, IsBrowsed = true,
+        });
+
+        return new ManageStoresDialog { DataContext = manager };
+    }
+
+    private static Bitmap? _LoadAssetBitmap(string uri)
+    {
+        try
+        {
+            using var stream = AssetLoader.Open(new Uri(uri));
+            return new Bitmap(stream);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<StorePluginRowViewModel> _SampleStorePlugins()
+    {
+        static StorePluginRowViewModel Row(
+            string id, string name, string description, string category, string version, string icon,
+            bool featured, bool installed, bool hasSettings = false, bool homepage = false, bool repository = false)
+        {
+            var versions = new[] { new PluginStoreVersion(version, $"plugins/{id}.zip", null, null, null, null) };
+            var entry = new PluginStoreEntry(
+                id, name, description, "Cockpit", version, versions, category, icon,
+                homepage ? $"https://aicockpit.dev/{id}" : null,
+                repository ? $"https://github.com/aicockpit/{id}" : null,
+                featured, "2026-07-10");
+            // installedVersion == latest ⇒ shown as installed and up to date (a green "Installed" pill),
+            // null ⇒ available (the accent "Install" call-to-action).
+            return new StorePluginRowViewModel(entry, "https://store.aicockpit.dev/index.json",
+                installed ? version : null, isEnabled: installed, hasSettings: hasSettings);
+        }
+
+        return
+        [
+            Row("github-issues", "GitHub Issues", "Browse open GitHub issues across your repos (via the gh CLI) or one repo in a dedicated panel.", "Issue trackers", "1.8.0", "🐙", featured: true, installed: false, homepage: true, repository: true),
+            Row("workflows", "Workflows", "A visual editor for cockpit workflows, and an engine that runs them: drop steps onto a canvas and wire them up.", "Automation", "0.22.0", "🔀", featured: true, installed: true, homepage: true, repository: true),
+            Row("claude-bundled", "Claude (bundled)", "Claude as a provider plugin (Fase 4). Runs the real interactive Claude TUI in a session panel.", "AI providers", "0.3.1", "🌸", featured: false, installed: true, homepage: true),
+            Row("clock", "Clock", "The time and date, for a Dashboard workspace. Ships with the cockpit, so it is always there.", "Widgets", "1.0.0", "🕐", featured: false, installed: true),
+            Row("system-monitor", "System Monitor", "CPU, memory and disk usage for a Dashboard workspace. You pick which stats show.", "Widgets", "1.0.0", "🖥", featured: false, installed: true),
+            Row("git-status", "Git status", "A git indicator in every session — a coloured dot and the branch, so you always know the repo state.", "Productivity", "1.4.0", "🌱", featured: false, installed: true, hasSettings: true, repository: true),
+            Row("transcript-search", "Claude Transcript Search", "Search everything you and the agent ever wrote in a Claude CLI session.", "Productivity", "1.2.0", "🔍", featured: false, installed: true, repository: true),
+            Row("codex-provider", "CLI Agent Provider (Codex)", "Adds Codex CLI as a selectable session provider, driven as a subprocess per session.", "AI providers", "0.2.0", "🧩", featured: false, installed: false, homepage: true, repository: true),
+            Row("gemini-openai", "Gemini / OpenAI Provider", "Adds Gemini and OpenAI models as selectable session providers, keyed per profile.", "AI providers", "0.4.0", "✨", featured: false, installed: true, hasSettings: true, homepage: true, repository: true),
+        ];
     }
 
     private static AppBuilder BuildHeadlessAvaloniaApp()

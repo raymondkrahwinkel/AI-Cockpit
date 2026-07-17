@@ -1,11 +1,11 @@
 {
   "id": "github-pull-requests",
   "name": "GitHub Pull Requests",
-  "version": "1.11.1",
+  "version": "1.12.0",
   "entryAssembly": "Cockpit.Plugin.GitHubPullRequests.dll",
   "entryType": "Cockpit.Plugin.GitHubPullRequests.GitHubPullRequestsPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "0.1.0",
-  "description": "Shows your open GitHub pull requests inline under the session list (how many is configurable, and you can limit it to specific repositories), refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP — plus a dialog listing them in a searchable, sortable grid with an \"Assigned to me\" filter; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). Pull requests waiting for your review are listed separately under \"Review requested\", each with an Open button, and a new one raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.",
+  "description": "Shows your open GitHub pull requests inline under the session list (how many is configurable, and you can limit it to specific repositories), refreshing both on a timer and the instant a session opens/merges/closes a PR (it watches session output for a pull url or a merged/closed line), via the gh CLI — the PRs you opened across all your repos, including org repos, or a single repo over HTTP — plus a dialog listing them in a searchable, sortable grid with an \"Assigned to me\" filter, and a Dashboard widget showing the same list as a resizable pane with its own item count; left-click a PR to drop a review prompt, or right-click for a menu (add to prompt / open in browser). Pull requests waiting for your review are listed separately under \"Review requested\", each with an Open button, and a new one raises a toast with an \"Open in browser\" button. The prompt template is editable in settings.",
   "author": "Cockpit"
 }
