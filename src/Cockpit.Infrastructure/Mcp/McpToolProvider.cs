@@ -14,7 +14,7 @@ namespace Cockpit.Infrastructure.Mcp;
 /// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
 /// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
 /// </summary>
-internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, ILogger<McpToolProvider> logger)
+internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, McpAuthKey authKey, ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
     public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, CancellationToken cancellationToken = default)
@@ -108,9 +108,10 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             Name = server.Name,
             Endpoint = new Uri(server.Url ?? string.Empty),
             TransportMode = HttpTransportMode.AutoDetect,
-            // A static API key rides as a bearer header; OAuth is negotiated by the SDK via the authorizer.
-            AdditionalHeaders = server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey)
-                ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {server.ApiKey}" }
+            // A bearer header carries this run's key for a cockpit-hosted endpoint (AC-40) or a user API-key server's
+            // own key; OAuth is negotiated by the SDK via the authorizer.
+            AdditionalHeaders = CockpitMcpBearer.For(server, authKey) is { } bearer
+                ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearer}" }
                 : new Dictionary<string, string>(),
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server) : null,
         }),

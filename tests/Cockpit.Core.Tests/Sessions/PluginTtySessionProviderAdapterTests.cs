@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
@@ -21,7 +22,7 @@ public class PluginTtySessionProviderAdapterTests
         string providerId = "cli-agent-provider.codex", string configJson = """{"Command":"codex"}""")
     {
         var inner = Substitute.For<IPluginTtyProvider>();
-        return (new PluginTtySessionProviderAdapter(providerId, inner, configJson), inner);
+        return (new PluginTtySessionProviderAdapter(providerId, inner, configJson, new McpAuthKey()), inner);
     }
 
     [Fact]
@@ -48,7 +49,8 @@ public class PluginTtySessionProviderAdapterTests
             pluginContext.ConfigJson == """{"Command":"codex","SandboxMode":"read-only"}"""
             && pluginContext.Options == options
             && pluginContext.WorkingDirectory == "/wd"
-            && pluginContext.BaseEnvironment == baseEnvironment
+            && pluginContext.BaseEnvironment!["PATH"] == "/usr/bin"
+            && pluginContext.BaseEnvironment.ContainsKey(WellKnownSessionEnvironment.CockpitMcpKey)
             && pluginContext.Resume == null));
     }
 

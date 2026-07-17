@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -19,7 +20,7 @@ public class TtySessionProviderResolverTests
 {
     private static TtySessionProviderResolver _CreateResolver(IPluginTtyProviderRegistry? ttyProviderRegistry = null)
     {
-        var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var serviceProvider = new ServiceCollection().AddSingleton(new McpAuthKey()).BuildServiceProvider();
         return new TtySessionProviderResolver(serviceProvider, ttyProviderRegistry ?? Substitute.For<IPluginTtyProviderRegistry>());
     }
 

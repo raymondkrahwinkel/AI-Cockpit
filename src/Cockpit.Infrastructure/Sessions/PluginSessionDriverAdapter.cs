@@ -7,6 +7,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Sessions.Tty;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -18,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -95,25 +96,29 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
         // choice is what let a profile's stale default run a write tool ungated.
         var options = _MergePermissionMode(launchOptions, permissionMode);
-        var environment = _ProfileSpawnEnvironment(profile);
+        var environment = _SpawnEnvironment(profile);
         await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// The profile's environment variables (AC-22) as the plugin driver receives them — scrubbed host-side
-    /// before anything crosses the plugin boundary: a variable on a host-controlled key (an
-    /// <c>ANTHROPIC_*</c> credential, a nested-agent marker) is dropped here, the same rule the TTY route
-    /// applies in <c>TtyLauncher</c>, so no plugin has to be trusted to apply it. Dropping is logged by name,
-    /// never by value.
+    /// The environment the plugin driver receives: this run's MCP auth key (AC-40) so a cockpit-hosted server's
+    /// config can reference it instead of embedding a literal, plus the profile's own variables (AC-22) scrubbed
+    /// host-side — a variable on a host-controlled key (an <c>ANTHROPIC_*</c> credential, a nested-agent marker) is
+    /// dropped here, the same rule the TTY route applies, so no plugin has to be trusted to apply it. Dropping is
+    /// logged by name, never by value.
     /// </summary>
-    private IReadOnlyDictionary<string, string>? _ProfileSpawnEnvironment(SessionProfile? profile)
+    private IReadOnlyDictionary<string, string> _SpawnEnvironment(SessionProfile? profile)
     {
+        var environment = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [WellKnownSessionEnvironment.CockpitMcpKey] = authKey.Value,
+        };
+
         if (profile?.EnvironmentVariables is not { Count: > 0 } variables)
         {
-            return null;
+            return environment;
         }
 
-        var environment = new Dictionary<string, string>(StringComparer.Ordinal);
         var rejected = new List<string>();
         foreach (var variable in variables)
         {
@@ -134,7 +139,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
                 string.Join(", ", rejected));
         }
 
-        return environment.Count == 0 ? null : environment;
+        return environment;
     }
 
     private static IReadOnlyDictionary<string, string>? _MergePermissionMode(IReadOnlyDictionary<string, string>? launchOptions, string? permissionMode)
@@ -192,15 +197,17 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         }
     }
 
-    // Mirrors McpConfigFile's Claude mapping: HTTP → url with a static bearer token for an API-key server (the
-    // driver keeps it off the command line), stdio → command/args. A server missing its transport target is dropped.
+    // HTTP → url with the user API-key server's own bearer, plus a CockpitHosted flag for a cockpit loopback endpoint
+    // (whose auth rides the COCKPIT_MCP_KEY env var, not a literal here — AC-40); stdio → command/args. A server
+    // missing its transport target is dropped.
     private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
     {
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
         {
             Name = server.Name,
             Url = server.Url,
-            BearerToken = server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey) ? server.ApiKey : null,
+            BearerToken = CockpitMcpBearer.UserApiKey(server),
+            CockpitHosted = server.CockpitHosted,
         },
         McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
         {

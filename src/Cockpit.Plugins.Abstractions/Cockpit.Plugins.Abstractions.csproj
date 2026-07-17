@@ -33,8 +33,16 @@
          default-implemented), but a non-trigger step that leaves it null is treated as undeclared and left out of the
          editor until it declares None or Dangerous — a step that acts with the operator's rights cannot slip through
          ungated. Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.5.0</Version>
-    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <!-- 1.6.0 (#AC-40): added PluginMcpServer.CockpitHosted so a provider knows which servers are the cockpit's own
+         loopback endpoints and must carry this run's bearer key; added WellKnownSessionEnvironment.CockpitMcpKey, the
+         env-var name the host sets on every spawned session so the key reaches a server generically without landing in
+         a config file — both pure additions. ICockpitHost.AddMcpEndpoint's third parameter changed from a
+         bool enabledByDefault to a Func<bool>? isEnabled callback (a plugin can now gate its own cockpit-hosted MCP on
+         its setting, read live when a session's servers are gathered): source- and binary-compatible for a plugin that
+         called the two-argument form, but a rebuild for one that passed the old bool — in-repo only Workflows called
+         it, and it is updated here. On balance additive; the major and abstractionsVersion stay 1. -->
+    <Version>1.6.0</Version>
+    <AssemblyVersion>1.6.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
     <Description>The contract assembly for building Cockpit plugins: ICockpitPlugin (two-phase lifecycle), ICockpitHost (Options-tab and side-menu contribution points), ICockpitActions (clipboard / inject into the active session) and IPluginStorage.</Description>

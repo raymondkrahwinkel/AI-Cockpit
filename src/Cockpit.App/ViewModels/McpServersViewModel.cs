@@ -15,6 +15,7 @@ namespace Cockpit.App.ViewModels;
 public partial class McpServersViewModel : ViewModelBase
 {
     private readonly IMcpServerStore? _store;
+    private readonly IReadOnlyList<ICockpitInternalMcpProvider> _internalProviders;
 
     public event Action? CloseRequested;
 
@@ -28,15 +29,17 @@ public partial class McpServersViewModel : ViewModelBase
 
     public McpServersViewModel()
     {
+        _internalProviders = [];
         var sample = new EditableMcpServerViewModel(
             new McpServerConfig { Name = "filesystem", Command = "npx", Args = ["-y", "@modelcontextprotocol/server-filesystem", "."] });
         Servers.Add(sample);
         SelectedServer = sample;
     }
 
-    public McpServersViewModel(IMcpServerStore store)
+    public McpServersViewModel(IMcpServerStore store, IEnumerable<ICockpitInternalMcpProvider> internalProviders)
     {
         _store = store;
+        _internalProviders = [.. internalProviders];
     }
 
     public async Task LoadAsync()
@@ -46,14 +49,36 @@ public partial class McpServersViewModel : ViewModelBase
             return;
         }
 
+        // The cockpit's own loopback servers (session-status, orchestrator, a plugin's endpoint) are not the
+        // operator's to edit here (AC-40): they are answered live to the session fan-out, controlled from Options or
+        // the owning plugin's settings, and are matched by name so an entry an older build left in the store is
+        // hidden too — and dropped from the store on the next Save.
+        var internalNames = _internalProviders
+            .SelectMany(_NamesOf)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var servers = await _store.LoadAsync();
         Servers.Clear();
-        foreach (var server in servers)
+        foreach (var server in servers.Where(server => !internalNames.Contains(server.Name)))
         {
             Servers.Add(new EditableMcpServerViewModel(server));
         }
 
         SelectedServer = Servers.FirstOrDefault();
+    }
+
+    // A provider that throws while listing its servers must not break the manager dialog — it just means its names
+    // are not filtered out this time (matching the catalog's own defensive guard on the same call).
+    private static IEnumerable<string> _NamesOf(ICockpitInternalMcpProvider provider)
+    {
+        try
+        {
+            return provider.GetServers().Select(server => server.Name);
+        }
+        catch
+        {
+            return [];
+        }
     }
 
     [RelayCommand]

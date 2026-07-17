@@ -16,7 +16,7 @@ public class McpServersViewModelTests
     [Fact]
     public void AddServer_AppendsANewRowAndSelectsIt()
     {
-        var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>());
+        var vm = new McpServersViewModel(Substitute.For<IMcpServerStore>(), []);
 
         vm.AddServerCommand.Execute(null);
 
@@ -30,18 +30,38 @@ public class McpServersViewModelTests
         var store = Substitute.For<IMcpServerStore>();
         store.LoadAsync(Arg.Any<CancellationToken>())
             .Returns(new[] { new McpServerConfig { Name = "github", Transport = McpTransport.Http, Url = "https://x/mcp" } });
-        var vm = new McpServersViewModel(store);
+        var vm = new McpServersViewModel(store, []);
 
         await vm.LoadAsync();
 
         vm.Servers.Should().ContainSingle().Which.Name.Should().Be("github");
     }
 
+    // AC-40: the cockpit's own loopback servers are answered live, not edited here. They are hidden by name, so even
+    // an entry an older build left in the store (before they stopped being published) is kept out of the manager.
+    [Fact]
+    public async Task LoadAsync_HidesTheCockpitsOwnInternalServers_IncludingAStaleStoreEntryOfTheSameName()
+    {
+        var store = Substitute.For<IMcpServerStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            new McpServerConfig { Name = "youtrack", Transport = McpTransport.Http, Url = "https://x/mcp" },
+            new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp" },
+        });
+        var internalProvider = new FakeInternalMcpProvider(
+            new McpServerConfig { Name = "cockpit-session", Transport = McpTransport.Http, Url = "http://127.0.0.1:2/mcp", CockpitHosted = true });
+        var vm = new McpServersViewModel(store, [internalProvider]);
+
+        await vm.LoadAsync();
+
+        vm.Servers.Select(server => server.Name).Should().Equal("youtrack");
+    }
+
     [Fact]
     public async Task Save_PersistsTheServers_AndCloses()
     {
         var store = Substitute.For<IMcpServerStore>();
-        var vm = new McpServersViewModel(store);
+        var vm = new McpServersViewModel(store, []);
         vm.AddServerCommand.Execute(null);
         var row = vm.SelectedServer!;
         row.Name = "fs";
@@ -63,7 +83,7 @@ public class McpServersViewModelTests
     public async Task Save_WithAStdioServerMissingItsCommand_DoesNotPersist()
     {
         var store = Substitute.For<IMcpServerStore>();
-        var vm = new McpServersViewModel(store);
+        var vm = new McpServersViewModel(store, []);
         vm.AddServerCommand.Execute(null);
         var row = vm.SelectedServer!;
         row.Name = "fs";
@@ -98,5 +118,10 @@ public class McpServersViewModelTests
         config.Url.Should().Be("https://x/mcp");
         config.Auth.Should().Be(McpServerAuth.ApiKey);
         config.ApiKey.Should().Be("k");
+    }
+
+    private sealed class FakeInternalMcpProvider(params McpServerConfig[] servers) : ICockpitInternalMcpProvider
+    {
+        public IReadOnlyList<McpServerConfig> GetServers() => servers;
     }
 }

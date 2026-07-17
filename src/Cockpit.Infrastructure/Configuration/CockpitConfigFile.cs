@@ -48,6 +48,9 @@ internal sealed class CockpitConfigFile
     /// <summary>Whether the diagnostic controls are shown (#73); owned by the debug-settings store.</summary>
     public DebugSettingsEntry? Debug { get; set; }
 
+    /// <summary>Delegation settings — whether the orchestrator MCP is offered (AC-40); owned by the delegation-settings store.</summary>
+    public DelegationSettingsEntry? Delegation { get; set; }
+
     public VoiceSettingsEntry? Voice { get; set; }
 
     /// <summary>Global TTY-only terminal appearance (font family/size, #40); owned by the terminal-settings store.</summary>

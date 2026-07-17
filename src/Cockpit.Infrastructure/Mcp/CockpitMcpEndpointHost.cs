@@ -13,37 +13,39 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Infrastructure.Mcp;
 
 /// <summary>
-/// Hosts every cockpit MCP endpoint (#AC-13, #AC-12): one lightweight loopback MCP server per endpoint, each
-/// auto-published into the shared MCP registry as its own entry so it appears in the New-session picker and is
-/// tickable per session. Endpoints come from two places — the <see cref="CockpitMcpEndpoint"/>s registered up front
-/// (mounted at startup), and ones a plugin mounts at runtime through <see cref="MountAsync"/> (it loads after the
-/// host has started). Either way it is "a tools class and a name" with no Kestrel or registry wiring of its own.
+/// Hosts every cockpit MCP endpoint (#AC-13, #AC-12): one lightweight loopback MCP server per endpoint. Endpoints
+/// come from two places — the <see cref="CockpitMcpEndpoint"/>s registered up front (mounted at startup), and ones a
+/// plugin mounts at runtime through <see cref="MountAsync"/> (it loads after the host has started). Either way it is
+/// "a tools class and a name" with no Kestrel wiring of its own.
 /// </summary>
 /// <remarks>
-/// One HTTP listener per endpoint because the MCP ASP.NET SDK hosts a single tool-set per server; the listeners are
-/// loopback on OS-assigned ports, invisible to the operator, who sees only the registry entries. The orchestrator
-/// keeps its own server for now (delegation-specific state, withheld from sub-agents); new MCPs go through here.
+/// These are the cockpit's own servers, not the operator's, so they are <em>not</em> written into the user-managed
+/// registry (AC-40). The host answers them live as an <see cref="ICockpitInternalMcpProvider"/> — the session
+/// fan-out merges them in, while the MCP-servers manager (which reads only the store) never lists them. One HTTP
+/// listener per endpoint, loopback on an OS-assigned port, guarded by this run's auth key.
 /// </remarks>
-internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpointHost, ISingletonService, IAsyncDisposable
+internal sealed class CockpitMcpEndpointHost
+    : IHostedService, ICockpitMcpEndpointHost, ICockpitInternalMcpProvider, ISingletonService, IAsyncDisposable
 {
     private readonly IReadOnlyList<CockpitMcpEndpoint> _endpoints;
     private readonly IServiceProvider _services;
-    private readonly IMcpServerStore _mcpServerStore;
+    private readonly McpAuthKey _authKey;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
-    private readonly HashSet<string> _mountedNames = new(StringComparer.Ordinal);
+    private readonly List<MountedEndpoint> _mounted = [];
+    private readonly Lock _mountedLock = new();
     private readonly SemaphoreSlim _mountGate = new(1, 1);
 
     public CockpitMcpEndpointHost(
         IEnumerable<CockpitMcpEndpoint> endpoints,
         IServiceProvider services,
-        IMcpServerStore mcpServerStore,
+        McpAuthKey authKey,
         ILoggerFactory loggerFactory)
     {
         _endpoints = [.. endpoints];
         _services = services;
-        _mcpServerStore = mcpServerStore;
+        _authKey = authKey;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<CockpitMcpEndpointHost>();
     }
@@ -55,27 +57,28 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
             try
             {
                 // Built the tools instance from the application's own services, so a tool can depend on any
-                // registered service (the statusline sink, etc.).
+                // registered service (the statusline sink, etc.). A registered endpoint is always enabled — a plugin
+                // that wants an on/off toggle passes its own isEnabled to MountAsync.
                 var tools = ActivatorUtilities.CreateInstance(_services, endpoint.ToolsType);
-                await MountAsync(endpoint.ServerName, tools, endpoint.EnabledByDefault, cancellationToken).ConfigureAwait(false);
+                await MountAsync(endpoint.ServerName, tools, isEnabled: null, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                // One endpoint failing to bind or publish must not take down the others or the app; it just will
-                // not be available this run.
+                // One endpoint failing to bind must not take down the others or the app; it just will not be
+                // available this run.
                 _logger.LogWarning(ex, "Could not start cockpit MCP endpoint {ServerName}.", endpoint.ServerName);
             }
         }
     }
 
-    public async Task MountAsync(string serverName, object tools, bool enabledByDefault = true, CancellationToken cancellationToken = default)
+    public async Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, CancellationToken cancellationToken = default)
     {
         await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // Idempotent per name: a plugin re-initialised, or two racing to mount, must not bind a second listener
             // for the same MCP server.
-            if (!_mountedNames.Add(serverName))
+            if (_IsMounted(serverName))
             {
                 return;
             }
@@ -94,6 +97,8 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
             builder.WebHost.UseUrls("http://127.0.0.1:0");
 
             var app = builder.Build();
+            // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40).
+            McpAuthMiddleware.Require(app, _authKey);
             app.MapMcp("/mcp");
             _apps.Add(app);
 
@@ -105,7 +110,11 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
                 ?? throw new InvalidOperationException($"The {serverName} MCP endpoint bound no address.");
 
             var url = $"{boundUrl.TrimEnd('/')}/mcp";
-            await _PublishToRegistryAsync(serverName, enabledByDefault, url, cancellationToken).ConfigureAwait(false);
+            lock (_mountedLock)
+            {
+                _mounted.Add(new MountedEndpoint(serverName, url, isEnabled ?? (static () => true)));
+            }
+
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
         }
         finally
@@ -115,46 +124,36 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
     }
 
     /// <summary>
-    /// Publishes (or refreshes) an endpoint's registry entry, the same way the orchestrator does: a default-on
-    /// endpoint is (re)asserted enabled on every launch so a stale disabled entry never silently turns it off; a
-    /// default-off one keeps the operator's last choice. Only the URL is refreshed (the port is OS-assigned). Scope
-    /// is All — these are agent tools for any session kind.
+    /// The cockpit-hosted endpoints as the session fan-out sees them (AC-40): each with its live loopback URL, this
+    /// run's auth flag, and its current enabled state (a plugin's toggle, or always on). Never touches the store, so
+    /// the operator's MCP-servers manager never lists them.
     /// </summary>
-    private async Task _PublishToRegistryAsync(string serverName, bool enabledByDefault, string url, CancellationToken cancellationToken)
+    public IReadOnlyList<McpServerConfig> GetServers()
     {
-        var servers = (await _mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false)).ToList();
-        var existing = servers.FindIndex(server => string.Equals(server.Name, serverName, StringComparison.Ordinal));
-
-        var enabled = ShouldBeEnabled(enabledByDefault, existing < 0 ? null : servers[existing]);
-
-        var entry = new McpServerConfig
+        lock (_mountedLock)
         {
-            Name = serverName,
-            Transport = McpTransport.Http,
-            Scope = McpServerScope.All,
-            Url = url,
-            Enabled = enabled,
-        };
-
-        if (existing < 0)
-        {
-            servers.Add(entry);
+            return
+            [
+                .. _mounted.Select(endpoint => new McpServerConfig
+                {
+                    Name = endpoint.Name,
+                    Transport = McpTransport.Http,
+                    Scope = McpServerScope.All,
+                    Url = endpoint.Url,
+                    Enabled = endpoint.IsEnabled(),
+                    CockpitHosted = true,
+                }),
+            ];
         }
-        else
-        {
-            servers[existing] = entry;
-        }
-
-        await _mcpServerStore.SaveAsync(servers, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Whether an endpoint publishes enabled: a default-on one is always (re)asserted enabled, so a stale disabled
-    /// entry never silently turns it off (the orchestrator's rule); a default-off one keeps the operator's last
-    /// choice, defaulting off. Pulled out so it is testable without a host.
-    /// </summary>
-    internal static bool ShouldBeEnabled(bool enabledByDefault, McpServerConfig? existingEntry) =>
-        enabledByDefault || (existingEntry?.Enabled ?? false);
+    private bool _IsMounted(string serverName)
+    {
+        lock (_mountedLock)
+        {
+            return _mounted.Any(endpoint => string.Equals(endpoint.Name, serverName, StringComparison.Ordinal));
+        }
+    }
 
     // The generic WithTools<TToolType>(builder, TToolType target, JsonSerializerOptions?) overload — the one that
     // registers a pre-built instance. Reached by reflection because the tools type is only known at runtime (a
@@ -184,4 +183,6 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
             await app.DisposeAsync().ConfigureAwait(false);
         }
     }
+
+    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled);
 }

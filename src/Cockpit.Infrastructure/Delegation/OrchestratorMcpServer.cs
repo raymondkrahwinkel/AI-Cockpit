@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -23,32 +24,59 @@ namespace Cockpit.Infrastructure.Delegation;
 /// delegation enabled, which is what keeps a delegated sub-agent from being handed the very tools it would need
 /// to delegate on.
 /// </remarks>
-internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServerState, ISingletonService, IAsyncDisposable
+internal sealed class OrchestratorMcpServer
+    : IHostedService, IOrchestratorServerState, ICockpitInternalMcpProvider, IDelegationMcpToggle, ISingletonService, IAsyncDisposable
 {
     /// <summary>The MCP server name, shared with the spawn paths that decide whether a session gets these tools.</summary>
     public const string ServerName = DelegationMcp.ServerName;
 
     private readonly IDelegationService _delegation;
-    private readonly IMcpServerStore _mcpServerStore;
+    private readonly McpAuthKey _authKey;
+    private readonly IDelegationSettingsStore _settingsStore;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OrchestratorMcpServer> _logger;
     private WebApplication? _app;
+    private volatile bool _mcpEnabled = true;
 
     public OrchestratorMcpServer(
         IDelegationService delegation,
-        IMcpServerStore mcpServerStore,
+        McpAuthKey authKey,
+        IDelegationSettingsStore settingsStore,
         ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
-        _mcpServerStore = mcpServerStore;
+        _authKey = authKey;
+        _settingsStore = settingsStore;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<OrchestratorMcpServer>();
     }
 
     public string? OrchestratorMcpUrl { get; private set; }
 
+    /// <summary>Whether the orchestrator MCP is offered to sessions (AC-40) — the Options toggle, loaded on start.</summary>
+    public bool McpEnabled => _mcpEnabled;
+
+    public async Task SetMcpEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        // Flip the live flag first so the next session's servers reflect the choice even if the write below fails.
+        _mcpEnabled = enabled;
+        try
+        {
+            await _settingsStore.SaveAsync(new DelegationSettings { McpEnabled = enabled }, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // The Options toggle fires this and forgets it (it has no logger of its own), so a failed write would
+            // otherwise be an unobserved exception. Log it here, at the layer that owns the persistence: the choice
+            // still holds for this run, it just may not survive a restart.
+            _logger.LogWarning(ex, "Could not persist the orchestrator MCP toggle; it holds for this run only.");
+        }
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        _mcpEnabled = (await _settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false)).McpEnabled;
+
         var builder = WebApplication.CreateSlimBuilder();
         builder.Services.AddSingleton(_loggerFactory);
         builder.Services.AddSingleton(_delegation);
@@ -65,6 +93,8 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
         builder.WebHost.UseUrls("http://127.0.0.1:0");
 
         _app = builder.Build();
+        // Guard the endpoint before its tools: a request without this run's key never reaches delegation (AC-40).
+        McpAuthMiddleware.Require(_app, _authKey);
         _app.MapMcp("/mcp");
 
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -75,74 +105,31 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
             ?? throw new InvalidOperationException("The orchestrator MCP server bound no address.");
 
         OrchestratorMcpUrl = $"{boundUrl.TrimEnd('/')}/mcp";
-        await _PublishToRegistryAsync(OrchestratorMcpUrl, cancellationToken);
         _logger.LogInformation("Orchestrator MCP server listening at {McpUrl}", OrchestratorMcpUrl);
     }
 
     /// <summary>
-    /// Publishes the server into the shared MCP registry, the same way a plugin publishes one. That makes
-    /// delegation an ordinary MCP server you can see in Options and tick per session — which is exactly the
-    /// opt-in the design asks for on the calling side, without a second, parallel mechanism.
+    /// The orchestrator as the session fan-out sees it (AC-40): its live loopback URL, this run's auth flag, and the
+    /// operator's on/off from the Options toggle — answered live rather than published into the registry, so the
+    /// MCP-servers manager never lists it. Empty until the server has bound its port.
     /// </summary>
-    /// <remarks>
-    /// Enabled by default (on first registration): the tools are worth having from the first run — and
-    /// <c>add_profile</c> in particular has to work <em>before</em> any delegation target exists, or the first one
-    /// could never be scaffolded through it. On later starts the operator's own on/off choice is kept, and only
-    /// the URL is refreshed (the port is OS-assigned). It used to be rewritten to "enabled only if a target
-    /// exists" on every start, which reset both the default and any manual toggle — the reason it read as off
-    /// every time. Whether a session actually receives these tools is still gated per session, so "enabled" here
-    /// is availability, not a blanket hand-out.
-    /// </remarks>
-    private async Task _PublishToRegistryAsync(string url, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var servers = (await _mcpServerStore.LoadAsync(cancellationToken).ConfigureAwait(false)).ToList();
-            var existing = servers.FindIndex(server => string.Equals(server.Name, ServerName, StringComparison.Ordinal));
-
-            // Always on: a cockpit-owned system server the operator wants available by default. The app refreshes
-            // the URL each launch and (re)asserts it enabled, so a stale disabled entry never silently turns
-            // delegation off; opting out of a single session is the New-session picker's per-session checkbox.
-            var enabled = ShouldBeEnabled(existing < 0 ? null : servers[existing]);
-
-            var entry = new McpServerConfig
-            {
-                Name = ServerName,
-                Transport = McpTransport.Http,
-                // All sessions, not Claude-only: a local model orchestrating cheap sub-tasks is exactly the
-                // kind of thing this is for, and the tool loop speaks the same HTTP MCP.
-                Scope = McpServerScope.All,
-                Url = url,
-                Enabled = enabled,
-            };
-
-            if (existing < 0)
-            {
-                servers.Add(entry);
-            }
-            else
-            {
-                servers[existing] = entry;
-            }
-
-            await _mcpServerStore.SaveAsync(servers, cancellationToken).ConfigureAwait(false);
-            _logger.LogInformation("Orchestrator MCP server published ({State}) at {Url}.", enabled ? "enabled" : "disabled", url);
-        }
-        catch (Exception ex)
-        {
-            // The cockpit still runs without delegation; a failure here must not stop the app from starting.
-            _logger.LogWarning(ex, "Could not publish the orchestrator MCP server into the registry.");
-        }
-    }
-
-    /// <summary>
-    /// Whether the orchestrator server is enabled on this publish: always on. It is a cockpit-owned system server
-    /// (delegation is a core capability), so it is on by default at every launch — never left off by a stale or
-    /// forgotten registry entry the operator did not mean to keep. Excluding it from a single session is the
-    /// per-session job of the New-session picker's checkbox, not a persistent registry switch. Kept as a method
-    /// with the existing-entry parameter so the contract stays testable without standing up the Kestrel host.
-    /// </summary>
-    internal static bool ShouldBeEnabled(McpServerConfig? existingEntry) => true;
+    public IReadOnlyList<McpServerConfig> GetServers() =>
+        OrchestratorMcpUrl is { } url
+            ?
+            [
+                new McpServerConfig
+                {
+                    Name = ServerName,
+                    Transport = McpTransport.Http,
+                    // All sessions, not Claude-only: a local model orchestrating cheap sub-tasks is exactly the
+                    // kind of thing this is for, and the tool loop speaks the same HTTP MCP.
+                    Scope = McpServerScope.All,
+                    Url = url,
+                    Enabled = _mcpEnabled,
+                    CockpitHosted = true,
+                },
+            ]
+            : [];
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
