@@ -29,6 +29,7 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
     private readonly IReadOnlyList<CockpitMcpEndpoint> _endpoints;
     private readonly IServiceProvider _services;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly McpAuthKey _authKey;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
@@ -39,11 +40,13 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
         IEnumerable<CockpitMcpEndpoint> endpoints,
         IServiceProvider services,
         IMcpServerStore mcpServerStore,
+        McpAuthKey authKey,
         ILoggerFactory loggerFactory)
     {
         _endpoints = [.. endpoints];
         _services = services;
         _mcpServerStore = mcpServerStore;
+        _authKey = authKey;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<CockpitMcpEndpointHost>();
     }
@@ -94,6 +97,8 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
             builder.WebHost.UseUrls("http://127.0.0.1:0");
 
             var app = builder.Build();
+            // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40).
+            McpAuthMiddleware.Require(app, _authKey);
             app.MapMcp("/mcp");
             _apps.Add(app);
 
@@ -134,6 +139,8 @@ internal sealed class CockpitMcpEndpointHost : IHostedService, ICockpitMcpEndpoi
             Scope = McpServerScope.All,
             Url = url,
             Enabled = enabled,
+            // A cockpit-hosted loopback endpoint: the spawn paths hand a session this run's key for it (AC-40).
+            CockpitHosted = true,
         };
 
         if (existing < 0)

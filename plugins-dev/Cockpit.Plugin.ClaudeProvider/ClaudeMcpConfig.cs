@@ -46,7 +46,14 @@ internal static class ClaudeMcpConfig
         if (!string.IsNullOrWhiteSpace(server.Url))
         {
             var entry = new JsonObject { ["type"] = "http", ["url"] = server.Url };
-            if (!string.IsNullOrWhiteSpace(server.BearerToken))
+            if (server.CockpitHosted)
+            {
+                // Reference the env var Claude Code expands at spawn (AC-40): ${COCKPIT_MCP_KEY}. The key never
+                // lands in this file, so the config can stay a plain (world-readable) write.
+                var envReference = "${" + WellKnownSessionEnvironment.CockpitMcpKey + "}";
+                entry["headers"] = new JsonObject { ["Authorization"] = $"Bearer {envReference}" };
+            }
+            else if (!string.IsNullOrWhiteSpace(server.BearerToken))
             {
                 entry["headers"] = new JsonObject { ["Authorization"] = $"Bearer {server.BearerToken}" };
             }

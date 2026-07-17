@@ -10,6 +10,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Mcp;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -30,6 +31,7 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
 
     private readonly IDelegationService _delegation;
     private readonly IMcpServerStore _mcpServerStore;
+    private readonly McpAuthKey _authKey;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OrchestratorMcpServer> _logger;
     private WebApplication? _app;
@@ -37,10 +39,12 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
     public OrchestratorMcpServer(
         IDelegationService delegation,
         IMcpServerStore mcpServerStore,
+        McpAuthKey authKey,
         ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
         _mcpServerStore = mcpServerStore;
+        _authKey = authKey;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<OrchestratorMcpServer>();
     }
@@ -65,6 +69,8 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
         builder.WebHost.UseUrls("http://127.0.0.1:0");
 
         _app = builder.Build();
+        // Guard the endpoint before its tools: a request without this run's key never reaches delegation (AC-40).
+        McpAuthMiddleware.Require(_app, _authKey);
         _app.MapMcp("/mcp");
 
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -114,6 +120,8 @@ internal sealed class OrchestratorMcpServer : IHostedService, IOrchestratorServe
                 Scope = McpServerScope.All,
                 Url = url,
                 Enabled = enabled,
+                // A cockpit-hosted loopback endpoint: a session gets this run's key for it (AC-40).
+                CockpitHosted = true,
             };
 
             if (existing < 0)

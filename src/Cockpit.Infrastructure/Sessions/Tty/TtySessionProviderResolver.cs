@@ -36,6 +36,7 @@ internal sealed class TtySessionProviderResolver(
                 registration.ProviderId,
                 registration.CreateProvider(services),
                 configJson,
+                services.GetRequiredService<Mcp.McpAuthKey>(),
                 services.GetService<IMcpServerCatalog>())
             : null;
 }

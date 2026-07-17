@@ -38,4 +38,12 @@ public sealed record McpServerConfig
 
     /// <summary>Whether this server is active — a disabled server is kept in the registry but not connected.</summary>
     public bool Enabled { get; init; } = true;
+
+    /// <summary>
+    /// Whether the cockpit itself hosts this server on a loopback port (AC-40): the orchestrator and the endpoint-host
+    /// servers set this when they publish. It is what tells the spawn paths to hand the child the app-lifetime auth
+    /// key for this server, and it is never set for a user-added server — the key is only ever handed to an endpoint
+    /// the cockpit runs, never to a third party's.
+    /// </summary>
+    public bool CockpitHosted { get; init; }
 }

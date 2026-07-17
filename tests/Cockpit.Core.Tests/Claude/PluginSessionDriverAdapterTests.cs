@@ -3,6 +3,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
@@ -19,11 +20,13 @@ namespace Cockpit.Core.Tests.Claude;
 /// </summary>
 public class PluginSessionDriverAdapterTests
 {
+    private static readonly McpAuthKey _authKey = new();
+
     [Fact]
     public void Capabilities_MapsSupportsToolsAndSupportsPermissionsFromThePluginCapabilities()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false) };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         adapter.Capabilities.Should().Be(new SessionCapabilities(
             SupportsTools: true, SupportsPermissions: false, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false,
@@ -39,7 +42,7 @@ public class PluginSessionDriverAdapterTests
     public void Capabilities_MapsSupportsVisionFromThePluginCapabilities_WhenFalse()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false, SupportsVision: false) };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         adapter.Capabilities.SupportsVision.Should().BeFalse();
     }
@@ -48,7 +51,7 @@ public class PluginSessionDriverAdapterTests
     public void Capabilities_MapsSupportsVisionFromThePluginCapabilities_WhenTrue()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, false, SupportsVision: true) };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         adapter.Capabilities.SupportsVision.Should().BeTrue();
     }
@@ -57,18 +60,19 @@ public class PluginSessionDriverAdapterTests
     public void Capabilities_MapsSupportsEnvVarsFromThePluginCapabilities()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) { SupportsEnvVars = true } };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         adapter.Capabilities.SupportsEnvVars.Should().BeTrue();
     }
 
     // The profile's environment variables (AC-22) cross the plugin boundary host-scrubbed: a host-controlled
-    // key (an ANTHROPIC_* credential) is dropped here, so no plugin has to be trusted to apply that rule.
+    // key (an ANTHROPIC_* credential) is dropped here, so no plugin has to be trusted to apply that rule. The
+    // MCP auth key (AC-40) always rides along besides them.
     [Fact]
     public async Task StartAsync_PassesTheProfilesEnvironmentVariablesToTheDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
         var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
         {
             EnvironmentVariables = [new ProfileEnvironmentVariable("AI_OS_ROOT", "/home/raymond/AI-OS")],
@@ -76,14 +80,14 @@ public class PluginSessionDriverAdapterTests
 
         await adapter.StartAsync(profile);
 
-        inner.LastEnvironment.Should().Equal(new Dictionary<string, string> { ["AI_OS_ROOT"] = "/home/raymond/AI-OS" });
+        inner.LastEnvironment.Should().Contain("AI_OS_ROOT", "/home/raymond/AI-OS");
     }
 
     [Fact]
     public async Task StartAsync_AProfileVariableOnAHostControlledKey_NeverCrossesThePluginBoundary()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
         var profile = new SessionProfile("work", new ClaudeConfig("/config/dir"))
         {
             EnvironmentVariables = [new ProfileEnvironmentVariable("ANTHROPIC_API_KEY", "smuggled", IsSecret: true)],
@@ -91,25 +95,27 @@ public class PluginSessionDriverAdapterTests
 
         await adapter.StartAsync(profile);
 
-        inner.LastEnvironment.Should().BeNull("the only configured variable is host-controlled, so nothing crosses");
+        inner.LastEnvironment.Should().NotContainKey("ANTHROPIC_API_KEY", "a host-controlled variable never crosses");
     }
 
+    // AC-40: every spawned session carries this run's MCP auth key in its environment, so a cockpit-hosted server's
+    // config can reference COCKPIT_MCP_KEY instead of embedding a literal — even a profile with no variables of its own.
     [Fact]
-    public async Task StartAsync_WithoutProfileEnvironmentVariables_PassesNoEnvironment()
+    public async Task StartAsync_AlwaysPassesTheMcpAuthKeyToTheDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.StartAsync(new SessionProfile("work", new ClaudeConfig("/config/dir")));
 
-        inner.LastEnvironment.Should().BeNull();
+        inner.LastEnvironment.Should().Contain(WellKnownSessionEnvironment.CockpitMcpKey, _authKey.Value);
     }
 
     [Fact]
     public void Capabilities_ReportPermissionModeSwitch_UnsupportedForAPlugin_EvenWhenItDoesApprovals()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // #45 D4 inc2: a plugin (Codex) does tool approvals — SupportsPermissions is true — but has no Claude
         // permission-mode vocabulary, so the header's permission-mode dropdown must stay hidden for it (it switches
@@ -133,7 +139,7 @@ public class PluginSessionDriverAdapterTests
                 SupportsPermissionModeSwitch = true,
             },
         };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         adapter.Capabilities.SupportsLiveModelSwitch.Should().BeTrue();
         adapter.Capabilities.SupportsPermissionModeSwitch.Should().BeTrue();
@@ -149,7 +155,7 @@ public class PluginSessionDriverAdapterTests
     public void CurrentStatus_IsNull_WhenTheDriverReportsNoStatus()
     {
         var inner = new FakePluginSessionDriver { Status = null };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         adapter.CurrentStatus.Should().BeNull();
     }
@@ -174,7 +180,7 @@ public class PluginSessionDriverAdapterTests
                     new PluginRateLimitWindow("wk", 80, resetLong, 10080),
                 ]),
         };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         var status = adapter.CurrentStatus!;
         status.ContextUsedPercent.Should().Be(25);
@@ -192,7 +198,7 @@ public class PluginSessionDriverAdapterTests
     public void Capabilities_AlwaysReportsLiveModelSwitchPlanModeAndThinkingAsUnsupported()
     {
         var inner = new FakePluginSessionDriver { Capabilities = new PluginSessionCapabilities(true, true) };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         adapter.Capabilities.SupportsLiveModelSwitch.Should().BeFalse();
         adapter.Capabilities.SupportsPlanMode.Should().BeFalse();
@@ -203,7 +209,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_ForwardsTheModel_AndRecordsTheProfile()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
         var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", "{}"));
 
         await adapter.StartAsync(profile, model: "gemini-2.5-flash");
@@ -217,7 +223,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_ForwardsTheWorkingDirectory_AndAByIdResume_ToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.StartAsync(workingDirectory: "/work/here", resume: SessionResume.BySessionId("thread-7"));
 
@@ -230,7 +236,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_PassesNoResumeId_ForAFreshOrMostRecentSession()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // Only a BySessionId resume crosses the narrow surface; New and MostRecent become no resume id
         // (MostRecent needs a provider-side "list newest" step — increment 2).
@@ -243,7 +249,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_ForwardsTheLaunchOptions_ToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
         var launchOptions = new Dictionary<string, string> { ["sandbox"] = "workspace-write", ["model"] = "o3" };
 
         // The operator's per-session option answers must reach the plugin driver, not be dropped.
@@ -256,7 +262,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_FoldsTheTypedPermissionMode_IntoTheInnerDriversOptions()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // The host carries the operator's permission-mode selection as a typed parameter; it must reach a plugin that
         // declared a permission-mode option, or a launch-time "bypassPermissions" silently becomes the driver default.
@@ -273,7 +279,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_WhenTheLaunchOptionsAlreadyCarryAPermissionMode_TheOperatorsExplicitChoiceWins_OverTheTypedFold()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // The operator picked "default" (Ask permissions) in the provider's own permission-mode option; a profile's
         // stale typed default (bypass) must not fold over it, or a write tool runs ungated. Proven red before the guard:
@@ -290,7 +296,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_WithNoPermissionMode_LeavesTheLaunchOptionsUntouched()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
         var launchOptions = new Dictionary<string, string> { ["sandbox"] = "read-only" };
 
         await adapter.StartAsync(launchOptions: launchOptions);
@@ -310,7 +316,7 @@ public class PluginSessionDriverAdapterTests
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
             new() { Name = "youtrack", Transport = McpTransport.Http, Url = "http://127.0.0.1:9000/mcp", Auth = McpServerAuth.ApiKey, ApiKey = "yt-pat-value" },
         });
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
 
         await adapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "cockpit-orchestrator", "youtrack" });
 
@@ -339,7 +345,7 @@ public class PluginSessionDriverAdapterTests
             new() { Name = "filesystem", Transport = McpTransport.Http, Url = "http://127.0.0.1:1/mcp", Scope = McpServerScope.LocalOnly },
             new() { Name = McpConfigFile.ServerName, Transport = McpTransport.Http, Url = "http://127.0.0.1:2/mcp" },
         });
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
 
         // No per-session selection — every eligible server, but a local-model-only server and the reserved
         // permission-server key (Codex prompts for approvals itself) must never fan out to the agent.
@@ -358,7 +364,7 @@ public class PluginSessionDriverAdapterTests
             new() { Name = "a", Transport = McpTransport.Http, Url = "http://a/mcp" },
             new() { Name = "b", Transport = McpTransport.Http, Url = "http://b/mcp" },
         });
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
 
         await adapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "a" });
 
@@ -372,7 +378,7 @@ public class PluginSessionDriverAdapterTests
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersAsync(Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromException<IReadOnlyList<McpServerConfig>>(new InvalidOperationException("cockpit.json is locked")));
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, catalog);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
 
         // A transient registry read failure must degrade to no fan-out (matching the Claude path), never take
         // the whole session start down with it.
@@ -387,7 +393,7 @@ public class PluginSessionDriverAdapterTests
     public async Task StartAsync_WithNoRegistryStore_PassesNoMcpServers()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.StartAsync(enabledMcpServerNames: new HashSet<string> { "anything" });
 
@@ -398,7 +404,7 @@ public class PluginSessionDriverAdapterTests
     public async Task SendUserMessageAsync_ForwardsTheText()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.SendUserMessageAsync("hello");
 
@@ -409,7 +415,7 @@ public class PluginSessionDriverAdapterTests
     public async Task InterruptAsync_ForwardsToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.InterruptAsync();
 
@@ -420,7 +426,7 @@ public class PluginSessionDriverAdapterTests
     public async Task RespondToPermissionAsync_ForwardsToolUseIdAndDecision()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.RespondToPermissionAsync("tool_1", allow: true);
 
@@ -431,7 +437,7 @@ public class PluginSessionDriverAdapterTests
     public async Task AllowPermissionAlwaysAsync_ForwardsTheAlwaysAllowIntent_ToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // D4: the adapter forwards the always-allow to the plugin driver (a driver that can persist it for the
         // session does; one that cannot falls back to a one-time allow) rather than always approving once itself.
@@ -445,7 +451,7 @@ public class PluginSessionDriverAdapterTests
     public void ProcessId_ForwardsFromTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver { ProcessId = 5150 };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // D10: the resource meter measures the plugin driver's process (Codex app-server), not nothing.
         adapter.ProcessId.Should().Be(5150);
@@ -455,7 +461,7 @@ public class PluginSessionDriverAdapterTests
     public async Task SetAutoApproveToolsAsync_ForwardsToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.SetAutoApproveToolsAsync(true);
 
@@ -466,7 +472,7 @@ public class PluginSessionDriverAdapterTests
     public async Task ClaudeCliOnlyLiveControls_AreNoOps_AndDoNotThrow()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         var act = async () =>
         {
@@ -489,7 +495,7 @@ public class PluginSessionDriverAdapterTests
                 new PluginSessionLaunchOption("effort", "Effort", ["low", "medium", "high"]),
             ],
         };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // D4: the provider's live controls cross the boundary onto the core form the header renders — each option's
         // key, label and choices carried through, and DefaultValue mapped to CurrentValue (unset for effort).
@@ -518,7 +524,7 @@ public class PluginSessionDriverAdapterTests
                 },
             ],
         };
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         // Fase 4 step 1: the provider owns the friendly labels; the adapter carries them onto the core form so the
         // header can show "Ask permissions" instead of the raw CLI value "default", while the value still round-trips.
@@ -532,7 +538,7 @@ public class PluginSessionDriverAdapterTests
     public async Task SetLiveOptionAsync_ForwardsKeyAndValue_ToTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.SetLiveOptionAsync("model", "gpt-5");
 
@@ -543,7 +549,7 @@ public class PluginSessionDriverAdapterTests
     public async Task DisposeAsync_DisposesTheInnerDriver()
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         await adapter.DisposeAsync();
 
@@ -556,7 +562,7 @@ public class PluginSessionDriverAdapterTests
         PluginSessionEvent pluginEvent, Func<SessionEvent, bool> isExpectedMapping)
     {
         var inner = new FakePluginSessionDriver();
-        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities);
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
 
         inner.Emit(pluginEvent);
         inner.Complete();
