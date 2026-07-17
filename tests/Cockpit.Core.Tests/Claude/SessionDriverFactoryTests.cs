@@ -1,3 +1,4 @@
+using Cockpit.Infrastructure.Mcp;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
@@ -33,7 +34,7 @@ public class SessionDriverFactoryTests
 
         var registry = new PluginProviderRegistry();
         registry.Register(registration);
-        var services = new ServiceCollection().BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(new McpAuthKey()).BuildServiceProvider();
         var factory = new SessionDriverFactory(services, registry);
         var profile = new SessionProfile("gemini", new PluginProviderConfig("gemini-provider.gemini", """{"apiKey":"secret"}"""));
 
@@ -64,7 +65,7 @@ public class SessionDriverFactoryTests
         {
             new() { Name = "cockpit-orchestrator", Transport = McpTransport.Http, Url = "http://127.0.0.1:8765/mcp" },
         });
-        var services = new ServiceCollection().AddSingleton(catalog).BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(new McpAuthKey()).AddSingleton(catalog).BuildServiceProvider();
         var factory = new SessionDriverFactory(services, registry);
         var profile = new SessionProfile("codex", new PluginProviderConfig("cli-agent-provider.codex", "{}"));
 
@@ -93,7 +94,7 @@ public class SessionDriverFactoryTests
             CreateConfigView: _ => Substitute.For<IPluginProviderConfigView>());
         var registry = new PluginProviderRegistry();
         registry.Register(registration);
-        var services = new ServiceCollection().BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(new McpAuthKey()).BuildServiceProvider();
         var factory = new SessionDriverFactory(services, registry);
 
         var driver = factory.Create(profile: null);
@@ -106,7 +107,7 @@ public class SessionDriverFactoryTests
     [Fact]
     public void Create_WithAPluginProfile_WhenNoProviderIsRegisteredUnderThatId_Throws()
     {
-        var services = new ServiceCollection().BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(new McpAuthKey()).BuildServiceProvider();
         var factory = new SessionDriverFactory(services, new PluginProviderRegistry());
         var profile = new SessionProfile("gemini", new PluginProviderConfig("unknown-provider", "{}"));
 
@@ -118,7 +119,7 @@ public class SessionDriverFactoryTests
     [Fact]
     public void Create_WithAPluginProvider_ButNoPluginProviderConfigOnTheProfile_Throws()
     {
-        var services = new ServiceCollection().BuildServiceProvider();
+        var services = new ServiceCollection().AddSingleton(new McpAuthKey()).BuildServiceProvider();
         var factory = new SessionDriverFactory(services, new PluginProviderRegistry());
         // Constructing a profile whose Provider reports Plugin without a matching config record should not
         // normally happen (ProviderConfig.Provider always agrees), but the factory must still fail loudly

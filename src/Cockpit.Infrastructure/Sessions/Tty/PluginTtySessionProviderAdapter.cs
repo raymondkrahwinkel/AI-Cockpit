@@ -4,6 +4,7 @@ using Cockpit.Core.Mcp;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions.Tty;
@@ -24,6 +25,7 @@ internal sealed class PluginTtySessionProviderAdapter(
     string providerId,
     IPluginTtyProvider inner,
     string configJson,
+    McpAuthKey authKey,
     IMcpServerCatalog? mcpServerCatalog = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
@@ -32,12 +34,20 @@ internal sealed class PluginTtySessionProviderAdapter(
     {
         var (mcpServers, canDelegate) = _ResolveRegistry();
 
+        // This run's MCP auth key rides the base environment (AC-40), so a cockpit-hosted server's config can
+        // reference COCKPIT_MCP_KEY rather than embed a literal. It is not host-controlled, so the pty base scrub
+        // passes it through to the child.
+        var baseEnvironment = context.BaseEnvironment is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(context.BaseEnvironment, StringComparer.Ordinal);
+        baseEnvironment[WellKnownSessionEnvironment.CockpitMcpKey] = authKey.Value;
+
         var spec = inner.BuildLaunch(new PluginTtyLaunchContext(
             configJson,
             context.Options,
             context.WorkingDirectory,
             _Resume(context.Resume),
-            context.BaseEnvironment)
+            baseEnvironment)
         {
             McpServers = mcpServers,
             DelegationSystemPrompt = canDelegate ? DelegationSystemPrompt.Default : null,
@@ -83,15 +93,17 @@ internal sealed class PluginTtySessionProviderAdapter(
         }
     }
 
-    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with a static bearer for an API-key server, stdio →
-    // command/args. A server missing its transport target is dropped.
+    // Mirrors PluginSessionDriverAdapter's mapping: HTTP → url with the user API-key server's own bearer, plus a
+    // CockpitHosted flag for a cockpit loopback endpoint (auth via the COCKPIT_MCP_KEY env var, no literal here —
+    // AC-40); stdio → command/args. A server missing its transport target is dropped.
     private static PluginMcpServer? _ToPluginMcpServer(McpServerConfig server) => server.Transport switch
     {
         McpTransport.Http when !string.IsNullOrWhiteSpace(server.Url) => new PluginMcpServer
         {
             Name = server.Name,
             Url = server.Url,
-            BearerToken = server.Auth == McpServerAuth.ApiKey && !string.IsNullOrWhiteSpace(server.ApiKey) ? server.ApiKey : null,
+            BearerToken = CockpitMcpBearer.UserApiKey(server),
+            CockpitHosted = server.CockpitHosted,
         },
         McpTransport.Stdio when !string.IsNullOrWhiteSpace(server.Command) => new PluginMcpServer
         {

@@ -52,7 +52,13 @@ internal static class CodexMcpConfig
         {
             var fields = new List<string> { $"url = {_TomlString(server.Url)}" };
 
-            if (!string.IsNullOrWhiteSpace(server.BearerToken))
+            if (server.CockpitHosted)
+            {
+                // A cockpit-hosted endpoint's auth is the host-set COCKPIT_MCP_KEY env var (AC-40): point Codex
+                // straight at it, so nothing is added to the environment this builder emits and no literal is written.
+                fields.Add($"bearer_token_env_var = {_TomlString(WellKnownSessionEnvironment.CockpitMcpKey)}");
+            }
+            else if (!string.IsNullOrWhiteSpace(server.BearerToken))
             {
                 var tokenEnvVar = $"{TokenEnvVarPrefix}{index}";
                 environmentVariables[tokenEnvVar] = server.BearerToken;
