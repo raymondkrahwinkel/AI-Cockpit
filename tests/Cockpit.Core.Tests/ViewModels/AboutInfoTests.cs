@@ -52,6 +52,18 @@ public class AboutInfoTests
     }
 
     [Fact]
+    public void FromAssembly_BuildText_NamesThePluginContractAndRuntime()
+    {
+        var info = AboutInfo.FromAssembly(Assembly.GetExecutingAssembly());
+
+        // The plugin contract major the host provides — the gate PluginLoadPolicy enforces — and the runtime, the
+        // identifiers a bug report needs. Matches AbstractionsContract.Version so it moves with the actual gate.
+        info.BuildText.Should().Contain($"Plugin API {Cockpit.Plugins.Abstractions.AbstractionsContract.Version}");
+        info.BuildText.Should().Contain("SDK ");
+        info.BuildText.Should().Contain(".NET");
+    }
+
+    [Fact]
     public void FromAssembly_UsesTheInformationalVersion_WithoutItsBuildMetadata()
     {
         var assembly = Assembly.GetExecutingAssembly();

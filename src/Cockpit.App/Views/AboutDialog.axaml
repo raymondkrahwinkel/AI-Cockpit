@@ -13,6 +13,7 @@
 
     <Design.DataContext>
         <vm:AboutInfo AppName="AI-Cockpit" VersionText="0.3.0"
+                      BuildText="Plugin API 1 (SDK 1.4.0) · .NET 10.0.10"
                       Description="Run several AI coding sessions side by side — each in its own profile, with its own provider, permissions and transcript."
                       Providers="Ollama · LM Studio · plus any provider a plugin adds (Claude, Codex, Gemini, OpenAI, GitHub Models)."
                       LicenseText="Apache 2.0 with the Commons Clause · © 2026 Raymond Krahwinkel / Krahwinkel-IT"
@@ -34,6 +35,8 @@
                 <TextBlock Text="{Binding AppName}" FontSize="16" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding VersionText, StringFormat='Version {0}'}"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="12"/>
+                <TextBlock Text="{Binding BuildText}" TextWrapping="Wrap"
+                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"/>
             </StackPanel>
         </StackPanel>
 
