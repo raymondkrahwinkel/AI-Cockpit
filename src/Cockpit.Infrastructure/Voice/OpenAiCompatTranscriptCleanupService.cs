@@ -33,6 +33,17 @@ internal sealed class OpenAiCompatTranscriptCleanupService(HttpClient httpClient
         "switch the marker whenever the language changes, even for a single word or phrase. Begin with the " +
         "marker for the first language. Reply with only the marked spoken text — no preamble, no quotes, no bullet lists.";
 
+    private const string SummaryPrompt =
+        "You summarize assistant text so it can be heard, not read — give the listener the gist in far fewer " +
+        "words. Rewrite it as short, natural spoken sentences. Leave out code, file paths, URLs, command names " +
+        "and markdown; mention them in plain words only when they matter. Never read symbols, brackets or " +
+        "punctuation literally. Keep it shorter than the original, but this is a hard rule: preserve every " +
+        "number, name, decision, warning and action item exactly — never drop, round, soften or invent any of " +
+        "them. When in doubt, keep it. Keep the original language. Mark the language of each part with [[nl]] " +
+        "before Dutch text and [[en]] before English text, switching the marker whenever the language changes, " +
+        "even for a single word or phrase. Begin with the marker for the first language. Reply with only the " +
+        "marked spoken summary — no preamble, no quotes, no bullet lists.";
+
     private static readonly TranscriptCleanupOptions Options = new();
 
     public async Task<string> CleanupAsync(string rawText, CancellationToken cancellationToken = default)
@@ -87,6 +98,29 @@ internal sealed class OpenAiCompatTranscriptCleanupService(HttpClient httpClient
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
         {
             logger.LogWarning(ex, "Read-aloud naturalization unavailable; using the original text");
+            return text;
+        }
+    }
+
+    public async Task<string> SummarizeForSpeechAsync(string text, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            // A little warmth for natural phrasing, but seeded so the same reply summarizes the same way.
+            var spoken = (await _CompleteAsync(settings, SummaryPrompt, $"Text: {text}\nSpoken summary:", temperature: 0.3, cancellationToken)
+                .ConfigureAwait(false)).Trim();
+            return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            logger.LogWarning(ex, "Read-aloud summarization unavailable; using the original text");
             return text;
         }
     }

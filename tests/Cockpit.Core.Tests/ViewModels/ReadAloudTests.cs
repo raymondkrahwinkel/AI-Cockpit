@@ -97,13 +97,13 @@ public class ReadAloudTests
     }
 
     [Fact]
-    public async Task TurnCompleted_NaturalizeOn_SplitsMarkedLanguagesIntoSegments()
+    public async Task TurnCompleted_NaturalizeMode_SplitsMarkedLanguagesIntoSegments()
     {
         var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
         var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings
         {
-            NaturalizeReadAloud = true,
+            ReadAloudMode = ReadAloudMode.Naturalized,
             TtsVoiceSid = 3,
         });
         var cleanupService = Substitute.For<ITranscriptCleanupService>();
@@ -117,7 +117,7 @@ public class ReadAloudTests
         {
             ReadResponsesAloud = true,
         };
-        await _WaitUntilAsync(() => vm.NaturalizeReadAloud);
+        await _WaitUntilAsync(() => vm.ReadAloudMode == ReadAloudMode.Naturalized);
 
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is the answer." });
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
@@ -130,6 +130,41 @@ public class ReadAloudTests
                 segments[0].Language == "en" &&
                 segments[1].Language == "nl"),
             3);
+    }
+
+    [Fact]
+    public async Task TurnCompleted_SummarizeMode_SummarizesTheReplyBeforeSpeaking()
+    {
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings
+        {
+            ReadAloudMode = ReadAloudMode.Summarized,
+            TtsVoiceSid = 1,
+        });
+        var cleanupService = Substitute.For<ITranscriptCleanupService>();
+        cleanupService.SummarizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("[[en]]Short summary.");
+        var vm = new SessionViewModel(
+            new SessionManager(Substitute.For<ISessionDriverFactory>()),
+            voiceSettingsStore: voiceSettingsStore,
+            voicePlaybackQueue: voicePlaybackQueue,
+            cleanupService: cleanupService)
+        {
+            ReadResponsesAloud = true,
+        };
+        await _WaitUntilAsync(() => vm.ReadAloudMode == ReadAloudMode.Summarized);
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "A long reply with lots of detail." });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        await _WaitUntilAsync(() => voicePlaybackQueue.ReceivedCalls().Any());
+
+        await cleanupService.Received(1).SummarizeForSpeechAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await cleanupService.DidNotReceiveWithAnyArgs().NaturalizeForSpeechAsync(default!, default);
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<SpeechSegment>>(segments => segments.Count == 1 && segments[0].Language == "en"),
+            1);
     }
 
     [Fact]

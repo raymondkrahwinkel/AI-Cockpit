@@ -247,9 +247,15 @@
                                 <TextBlock Text="Read aloud" FontWeight="SemiBold"/>
                                 <TextBlock Text="Per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                <CheckBox Content="Rewrite replies into natural speech with the local LLM"
-                                          IsChecked="{Binding VoiceNaturalizeReadAloud}"/>
-                                <TextBlock Text="Uses the same local LLM as transcript cleanup to phrase paths, code and lists naturally before speaking. Adds a short local LLM call per turn."
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Mode"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding ReadAloudModes}"
+                                              SelectedItem="{Binding SelectedReadAloudMode}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="260"/>
+                                </StackPanel>
+                                <TextBlock Text="Verbatim reads the reply as-is. Naturalized and Summarized use the same local LLM as transcript cleanup to phrase (or shorten) it naturally before speaking — Summarized keeps every number, decision, warning and action item. Both add a short local LLM call per turn."
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Voice"

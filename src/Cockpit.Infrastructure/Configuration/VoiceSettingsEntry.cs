@@ -57,7 +57,16 @@ internal sealed class VoiceSettingsEntry
 
     public string OutputDeviceName { get; set; } = "";
 
-    public bool NaturalizeReadAloud { get; set; }
+    /// <summary>How read-aloud renders a reply (#35). Null when neither this nor the legacy naturalize flag was written.</summary>
+    public ReadAloudMode? ReadAloudMode { get; set; }
+
+    /// <summary>
+    /// Legacy on-disk on/off naturalize flag from before read-aloud gained the three-way mode. Read to migrate an
+    /// existing config (<c>true</c> → Naturalized, otherwise Verbatim); never written back (see <see cref="FromDomain"/>),
+    /// so once the file is next saved the <see cref="ReadAloudMode"/> key is what persists.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? NaturalizeReadAloud { get; set; }
 
     public bool OpenMicEnabled { get; set; }
 
@@ -85,11 +94,13 @@ internal sealed class VoiceSettingsEntry
         SttLanguage = settings.SttLanguage,
         InputDeviceName = settings.InputDeviceName,
         OutputDeviceName = settings.OutputDeviceName,
-        NaturalizeReadAloud = settings.NaturalizeReadAloud,
         OpenMicEnabled = settings.OpenMicEnabled,
         OpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = settings.StopReadAloudLevelThreshold,
+        ReadAloudMode = settings.ReadAloudMode,
+        // Legacy naturalize flag is migration-only: never written back, so it stays null and drops out of the file.
+        NaturalizeReadAloud = null,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -113,7 +124,10 @@ internal sealed class VoiceSettingsEntry
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,
-        NaturalizeReadAloud = NaturalizeReadAloud,
+        // Prefer the three-way key; fall back to the legacy on/off naturalize flag so an existing config keeps its
+        // behaviour (naturalize on → Naturalized, otherwise Verbatim) rather than silently resetting to Verbatim.
+        ReadAloudMode = ReadAloudMode
+            ?? (NaturalizeReadAloud == true ? Cockpit.Core.Voice.ReadAloudMode.Naturalized : Cockpit.Core.Voice.ReadAloudMode.Verbatim),
         OpenMicEnabled = OpenMicEnabled,
         OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = StopReadAloudWhenSpeaking,
