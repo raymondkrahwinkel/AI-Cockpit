@@ -30,6 +30,7 @@ internal static class Screenshotter
             "single-instance" => new SingleInstanceNoticeDialog(),
             "options" => new OptionsDialog { DataContext = new ViewModels.CockpitViewModel() },
             "shortcuts" => _OptionsOnTab("Shortcuts"),
+            "debug" => _OptionsOnTab("Debug"),
             "profiles" => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
             "new-session" => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
             "plugin-store" => _PluginStore(),

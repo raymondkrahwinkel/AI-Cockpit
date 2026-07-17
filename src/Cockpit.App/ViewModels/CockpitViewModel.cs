@@ -1142,6 +1142,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
+        Diagnostics = new DiagnosticsViewModel(null, _BuildSessionDescriptors);
 
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
         // that normally builds them never runs, and the tab would render empty in the previewer/screenshotter.
@@ -1150,6 +1151,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
     public SecurityOptionsViewModel Security { get; }
+
+    /// <summary>The Debug tab's diagnostics panel (AC-58): render backend, memory, GC, platform and crash logs, as copyable text.</summary>
+    public DiagnosticsViewModel Diagnostics { get; }
 
     public CockpitViewModel(
         Func<SessionViewModel> sessionFactory,
@@ -1177,6 +1181,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DelegatedTasksViewModel? delegatedTasks = null,
         IDebugSettingsStore? debugSettingsStore = null,
         ResourceMonitor? resourceMonitor = null,
+        DiagnosticsCollector? diagnosticsCollector = null,
         IBackupService? backupService = null,
         IUpdateService? updateService = null,
         IUpdateSettingsStore? updateSettingsStore = null,
@@ -1198,6 +1203,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
         Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets());
         _ = Security.RefreshAsync();
+
+        // The Debug tab's diagnostics panel (AC-58). Absent in the design-time/unit-test graph, where the collector
+        // is not registered; the panel then reports it is unavailable rather than the dialog failing to open.
+        Diagnostics = new DiagnosticsViewModel(diagnosticsCollector, _BuildSessionDescriptors);
 
         _updates = updateService;
         _updateSettingsStore = updateSettingsStore;
@@ -1631,6 +1640,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             actionLabel: null,
             onAction: null);
     }
+
+    // The sessions the diagnostics panel weighs (AC-58): title, kind and process id, built here so the collector
+    // stays free of any view-model type. A terminal session is a TtyViewModel; everything else runs an agent.
+    private IReadOnlyList<SessionDescriptor> _BuildSessionDescriptors() =>
+        Sessions
+            .Select(session => new SessionDescriptor(
+                session.Title,
+                session is TtyViewModel ? "Terminal" : "Agent",
+                session.ProcessId))
+            .ToList();
 
     /// <summary>
     /// Takes one sample and updates the status bar (#78). Driven by a timer in the view, like the idle sweep —
