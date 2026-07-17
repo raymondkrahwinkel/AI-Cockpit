@@ -20,10 +20,21 @@ public static class RenderBackend
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
+            // When AC-57's probe is active, report the forced backend so the tester can confirm the override
+            // actually took effect (the hook this class was built for) rather than guessing from the env var.
+            if (RenderBackendOverride.FromEnvironment() is { } selection)
+            {
+                return new RenderingInfo(
+                    $"{selection.Label} (forced via {RenderBackendOverride.EnvironmentVariable})",
+                    "A render-backend override is active for AC-57 diagnostics. Unset the variable to return to "
+                    + "the platform default (Metal, with a software fallback).");
+            }
+
             return new RenderingInfo(
                 "Platform default (auto-detected)",
                 "macOS defaults to Metal; it falls back to software if the GPU surface cannot be created. "
-                + "No render-backend override is configured (AC-57).");
+                + $"No render-backend override is configured (set {RenderBackendOverride.EnvironmentVariable}"
+                + "=opengl|software to probe AC-57).");
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

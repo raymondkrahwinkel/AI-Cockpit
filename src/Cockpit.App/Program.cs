@@ -358,7 +358,8 @@ sealed class Program
 
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
+    {
+        var builder = AppBuilder.Configure<App>()
             .UsePlatformDetect()
 #if DEBUG
             .WithDeveloperTools()
@@ -366,6 +367,18 @@ sealed class Program
             .WithInterFont()
             .With(CockpitFontOptions())
             .LogToTrace();
+
+        // AC-57 diagnostic probe: force a non-default macOS render backend when COCKPIT_RENDER_BACKEND asks for
+        // it, otherwise leave UsePlatformDetect()'s Metal auto-selection alone. AvaloniaNativePlatformOptions is
+        // read only by the macOS backend, so applying it is inert on Windows/Linux — it just lets a tester run
+        // this same build on OpenGL/Software to isolate whether Metal drives the runaway native-memory growth.
+        if (RenderBackendOverride.FromEnvironment() is { } selection)
+        {
+            builder = builder.With(new AvaloniaNativePlatformOptions { RenderingMode = [.. selection.Modes] });
+        }
+
+        return builder;
+    }
 
     // Emoji fallback so Claude's ✅/🔧/📊/⚠️ render as glyphs instead of tofu boxes — the UI fonts
     // (Inter, Cascadia Mono) carry no emoji. Skia picks the first installed family per platform
