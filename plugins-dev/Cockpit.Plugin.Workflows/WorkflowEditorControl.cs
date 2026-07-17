@@ -218,7 +218,7 @@ internal sealed class WorkflowEditorControl : UserControl
 
     private Control _ViewControls()
     {
-        var zoomIn = _IconButton("+", "Zoom in", () => _canvas.ZoomBy(1.2));
+        var zoomIn = _IconButton(MaterialIconKind.Plus, "Zoom in", () => _canvas.ZoomBy(1.2));
         var zoomOut = _IconButton(MaterialIconKind.Minus, "Zoom out", () => _canvas.ZoomBy(1 / 1.2));
         var reset = _IconButton(MaterialIconKind.Refresh, "Reset the view", _canvas.ResetView);
 
@@ -326,15 +326,6 @@ internal sealed class WorkflowEditorControl : UserControl
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;
-
-    private static Button _IconButton(string glyph, string tip, Action onClick)
-    {
-        var button = new Button { Content = glyph, Classes = { "Compact" }, Width = 28 };
-        ToolTip.SetTip(button, tip);
-        button.Click += (_, _) => onClick();
-
-        return button;
-    }
 
     private static Button _IconButton(MaterialIconKind kind, string tip, Action onClick)
     {
