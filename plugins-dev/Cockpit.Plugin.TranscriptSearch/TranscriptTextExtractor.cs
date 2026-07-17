@@ -3,8 +3,12 @@ using System.Text.Json;
 
 namespace Cockpit.Plugin.TranscriptSearch;
 
-/// <summary>The human-readable text of one transcript JSONL entry: who said it and what, for #9 transcript search.</summary>
-public sealed record TranscriptEntryText(string Role, string Text);
+/// <summary>
+/// The human-readable text of one transcript JSONL entry: who said it (<paramref name="Role"/>), what
+/// (<paramref name="Text"/>), and the working directory the entry was written in (<paramref name="Cwd"/>, the
+/// <c>cwd</c> every message record carries), for #9 transcript search.
+/// </summary>
+public sealed record TranscriptEntryText(string Role, string Text, string? Cwd);
 
 /// <summary>
 /// Pulls the searchable prose out of a single <c>claude</c> transcript JSONL line (#9): a user prompt or an
@@ -56,7 +60,7 @@ public static class TranscriptTextExtractor
             }
 
             var text = _ExtractContentText(content);
-            return string.IsNullOrWhiteSpace(text) ? null : new TranscriptEntryText(role, text);
+            return string.IsNullOrWhiteSpace(text) ? null : new TranscriptEntryText(role, text, _StringOrNull(root, "cwd"));
         }
         catch (JsonException)
         {

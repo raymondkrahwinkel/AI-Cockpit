@@ -389,13 +389,19 @@ The cockpit knows nothing about any provider's history — the transcripts are o
 is how a plugin that *can* browse that history lends it to the dialog without the core depending on the plugin.
 
 ```csharp
-public sealed record ConversationPickerRegistration(string Title, Func<Task<string?>> PickAsync);
+public sealed record ConversationPickerRegistration(string Title, Func<Task<string?>> PickAsync)
+{
+    public Func<Task<PickedConversation?>>? PickWithLocationAsync { get; init; }
+}
+
+public sealed record PickedConversation(string SessionId, string? WorkingDirectory = null);
 ```
 
 | Member | Meaning |
 |---|---|
 | `Title` | What the picker does; shown as the button's tooltip, e.g. "Search transcripts". |
 | `PickAsync` | Runs when the operator asks to pick one — typically opening your own dialog. Return the chosen conversation's id, or `null` when they cancelled. |
+| `PickWithLocationAsync` | Optional richer form for a provider whose history is scoped to a folder: return the chosen conversation's id **and** the directory it ran in (`PickedConversation`), so the resumed session starts there rather than wherever the operator last was. When set, the dialog prefers it over `PickAsync`; leave it `null` if you cannot tell the directory. |
 
 ```csharp
 host.AddConversationPicker(new ConversationPickerRegistration("Search transcripts", async () =>
@@ -404,6 +410,27 @@ host.AddConversationPicker(new ConversationPickerRegistration("Search transcript
     await host.ShowDialogAsync("Search transcripts", () => new MySearchControl(id => picked = id));
     return picked;   // null = cancelled
 }));
+```
+
+If your provider scopes its history to a folder — the way the Claude CLI keeps each session's transcript under
+the directory it was started in — set `PickWithLocationAsync` too, so the resumed session starts in the right
+place instead of wherever the operator last was:
+
+```csharp
+async Task<PickedConversation?> Search()
+{
+    PickedConversation? picked = null;
+    await host.ShowDialogAsync("Search transcripts",
+        () => new MySearchControl(hit => picked = new PickedConversation(hit.SessionId, hit.WorkingDirectory)));
+    return picked;
+}
+
+host.AddConversationPicker(new ConversationPickerRegistration(
+    "Search transcripts",
+    async () => (await Search())?.SessionId)   // id-only fallback
+{
+    PickWithLocationAsync = Search,
+});
 ```
 
 ### `Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync()`

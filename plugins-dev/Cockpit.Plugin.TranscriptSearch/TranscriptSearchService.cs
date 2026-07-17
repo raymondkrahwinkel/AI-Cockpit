@@ -90,6 +90,7 @@ internal sealed class TranscriptSearchService
                     entry.Role,
                     TranscriptSnippet.Build(entry.Text, string.Empty),
                     file.FullName,
+                    entry.Cwd,
                     file.LastWriteTimeUtc);
             }
         }
@@ -178,6 +179,7 @@ internal sealed class TranscriptSearchService
                     entry.Role,
                     TranscriptSnippet.Build(entry.Text, query),
                     file.FullName,
+                    entry.Cwd,
                     file.LastWriteTimeUtc));
                 found++;
             }

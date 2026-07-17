@@ -67,4 +67,23 @@ public class TranscriptTextExtractorTests
         entry!.Role.Should().Be("assistant");
         entry.Text.Should().Be("hi");
     }
+
+    [Fact]
+    public void Extract_CapturesTheCwd_SoASessionCanBeResumedWhereItRan()
+    {
+        var line = """{"type":"user","cwd":"/home/me/project","message":{"role":"user","content":"fix the login bug"}}""";
+
+        var entry = TranscriptTextExtractor.Extract(line);
+
+        entry.Should().NotBeNull();
+        entry!.Cwd.Should().Be("/home/me/project");
+    }
+
+    [Fact]
+    public void Extract_WithoutACwd_LeavesItNull()
+    {
+        var line = """{"type":"user","message":{"role":"user","content":"fix the login bug"}}""";
+
+        TranscriptTextExtractor.Extract(line)!.Cwd.Should().BeNull();
+    }
 }
