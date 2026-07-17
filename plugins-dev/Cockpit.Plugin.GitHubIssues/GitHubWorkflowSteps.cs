@@ -1,4 +1,5 @@
 using Cockpit.Plugins.Abstractions.Workflows;
+using Material.Icons;
 
 namespace Cockpit.Plugin.GitHubIssues;
 
@@ -38,7 +39,9 @@ internal static class GitHubWorkflowSteps
 
         public string Description => "Fires when you pick a GitHub issue to track in a session — the moment work on it actually starts.";
 
-        public string Icon => "🐙";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.Github;
 
         public string Category => "GitHub";
 
@@ -69,7 +72,9 @@ internal static class GitHubWorkflowSteps
 
         public string Description => "Assign a GitHub issue to yourself and, when you have named an in-progress label in the plugin's settings, put it on. Issues have no status field, so this is what starting one means.";
 
-        public string Icon => "▶";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.Play;
 
         public string Category => "GitHub";
 
@@ -124,7 +129,9 @@ internal static class GitHubWorkflowSteps
 
         public string Description => "Leave a comment on a GitHub issue — what a flow did, what it found, what it is waiting for.";
 
-        public string Icon => "💬";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.ChatOutline;
 
         public string Category => "GitHub";
 
@@ -156,7 +163,9 @@ internal static class GitHubWorkflowSteps
 
         public string Description => "Close a GitHub issue as completed or not planned. Those two are the only reasons GitHub records — there is no Done column to move it to.";
 
-        public string Icon => "✔";
+        public string Icon => "";
+
+        public MaterialIconKind? IconKind => MaterialIconKind.Check;
 
         public string Category => "GitHub";
 

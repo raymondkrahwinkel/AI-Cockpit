@@ -23,6 +23,6 @@ public sealed record GitRepoStatus(
     /// <summary>The ahead/behind column for the dialog grid, e.g. "↑2 ↓1", "up to date", "no upstream" or "—".</summary>
     public string RemoteText => GitStatusSummary.RemoteState(this);
 
-    /// <summary>A short state glyph + word for the grid: "✓ clean", "● changes" or "⚠ error".</summary>
-    public string StateText => Error is not null ? "⚠ error" : IsClean ? "✓ clean" : "● changes";
+    /// <summary>A short state word for the grid: "clean", "changes" or "error" — paired with a coloured icon in the dialog.</summary>
+    public string StateText => Error is not null ? "error" : IsClean ? "clean" : "changes";
 }

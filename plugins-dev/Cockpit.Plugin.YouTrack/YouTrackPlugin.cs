@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Material.Icons;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -25,7 +26,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.13.0",
+        Version: "1.13.1",
         Author: "Cockpit",
         Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools, and contributes three workflow steps — a ticket picked for a session, a ticket whose status you moved, and a step that moves one — so a flow can run the ticket half of your working day.");
 
@@ -103,8 +104,11 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         // issue trackers meant two buttons asking the same question of a strip with room for neither.
         host.AddSessionHeaderAction(new PluginSessionAction(
             "Track a YouTrack issue…",
-            "🎫",
-            session => YouTrackSessionHeaderControl.Pick(host, session, links, settings)));
+            "",
+            session => YouTrackSessionHeaderControl.Pick(host, session, links, settings))
+        {
+            IconKind = MaterialIconKind.TicketOutline,
+        });
         // Same action on a keyboard shortcut (#: shortcuts) — the SDK's AddShortcut, shown in Options → Shortcuts.
         host.AddShortcut(new PluginShortcut("youtrack.open", "YouTrack issues", "Shift+Y", OpenIssues));
 

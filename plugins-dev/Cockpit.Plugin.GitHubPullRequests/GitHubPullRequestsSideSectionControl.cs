@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -95,7 +97,7 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
 
         var refresh = new Button
         {
-            Content = "⟳",
+            Content = new MaterialIcon { Kind = MaterialIconKind.Refresh, Width = 12, Height = 12 },
             Classes = { "Subtle" },
             FontSize = 12,
             Padding = new Thickness(5, 1),
@@ -389,14 +391,14 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
             Foreground = _Brush("CockpitTextFaintBrush"),
         };
 
-        var addToPrompt = _RowAction("⧉", "Add to the prompt");
+        var addToPrompt = _RowAction(MaterialIconKind.ContentCopy, "Add to the prompt");
         addToPrompt.Click += async (_, e) =>
         {
             e.Handled = true;
             await _InjectAsync(pullRequest);
         };
 
-        var openInBrowser = _RowAction("↗", "Open in the browser");
+        var openInBrowser = _RowAction(MaterialIconKind.OpenInNew, "Open in the browser");
         openInBrowser.Click += (_, e) =>
         {
             e.Handled = true;
@@ -509,11 +511,11 @@ internal sealed class GitHubPullRequestsSideSectionControl : UserControl
         _Render();
     }
 
-    private static Button _RowAction(string glyph, string tip)
+    private static Button _RowAction(MaterialIconKind icon, string tip)
     {
         var button = new Button
         {
-            Content = glyph,
+            Content = new MaterialIcon { Kind = icon, Width = 11, Height = 11 },
             Classes = { "Subtle" },
             FontSize = 11,
             Padding = new Thickness(5, 1),

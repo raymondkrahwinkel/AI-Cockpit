@@ -5,6 +5,8 @@ using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.YouTrack;
@@ -178,7 +180,20 @@ internal sealed class YouTrackDialogControl : UserControl
         // states to move to, or no session to attach the issue to.
         _start = new Button { Content = "Start", IsVisible = false };
         _start.Click += async (_, _) => await _StartAsync(_grid.SelectedItem as YouTrackIssue);
-        _setState = new Button { Content = "Set state ▾", IsVisible = false };
+        _setState = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new TextBlock { Text = "Set state", VerticalAlignment = VerticalAlignment.Center },
+                    new MaterialIcon { Kind = MaterialIconKind.ChevronDown, Width = 13, Height = 13 },
+                },
+            },
+            IsVisible = false,
+        };
         _setState.Click += (_, _) => _ShowStateMenu(_grid.SelectedItem as YouTrackIssue);
         _link = new Button { Content = "Link to session", IsVisible = false };
         _link.Click += (_, _) => _LinkToActiveSession(_grid.SelectedItem as YouTrackIssue);
@@ -199,7 +214,21 @@ internal sealed class YouTrackDialogControl : UserControl
         };
         _detailStatus = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitAccentBrush"), Margin = new Thickness(0, 2, 0, 0) };
 
-        var copyButton = new Button { Content = "⧉ Copy", FontSize = 11, Padding = new Thickness(8, 2) };
+        var copyButton = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new MaterialIcon { Kind = MaterialIconKind.ContentCopy, Width = 13, Height = 13 },
+                    new TextBlock { Text = "Copy", VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+        };
         copyButton.Click += async (_, _) => await _CopyPromptAsync();
         var promptHeader = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
         DockPanel.SetDock(copyButton, Dock.Right);
@@ -568,7 +597,7 @@ internal sealed class YouTrackDialogControl : UserControl
         {
             await _client.SetStateAsync(instance.InstanceUrl, instance.Token, issue, state, target, CancellationToken.None);
             _stateChanges.Moved(instance, issue, state.CurrentValue ?? string.Empty, target, _host.Sessions.ActiveSessionWorkingDirectory);
-            _detailStatus.Text = $"✓ {issue.IdReadable} → {target}.";
+            _detailStatus.Text = $"{issue.IdReadable} → {target}.";
             await _LoadIssuesAsync();
         }
         catch (Exception exception)
@@ -593,7 +622,7 @@ internal sealed class YouTrackDialogControl : UserControl
         }
 
         _links.Link(paneId, new LinkedIssue(instance, issue));
-        _detailStatus.Text = $"✓ {issue.IdReadable} linked to the active session.";
+        _detailStatus.Text = $"{issue.IdReadable} linked to the active session.";
     }
 
     private void _AddToPrompt(YouTrackIssue? issue)
@@ -611,7 +640,7 @@ internal sealed class YouTrackDialogControl : UserControl
         }
 
         _ = _actions.InjectIntoActiveSessionAsync(PromptTemplate.Render(_settings.Template, issue, _BuildIssueUrl(issue)));
-        _detailStatus.Text = $"✓ Added issue {issue.IdReadable} to the active session's prompt.";
+        _detailStatus.Text = $"Added issue {issue.IdReadable} to the active session's prompt.";
     }
 
     private async Task _CopyPromptAsync()
@@ -622,7 +651,7 @@ internal sealed class YouTrackDialogControl : UserControl
         }
 
         await _actions.SetClipboardTextAsync(_renderedPrompt);
-        _detailStatus.Text = "✓ Prompt copied to the clipboard.";
+        _detailStatus.Text = "Prompt copied to the clipboard.";
     }
 
     private void _OpenInBrowser(YouTrackIssue? issue)

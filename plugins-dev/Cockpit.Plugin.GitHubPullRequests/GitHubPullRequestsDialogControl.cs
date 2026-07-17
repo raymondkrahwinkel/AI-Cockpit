@@ -6,6 +6,8 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Material.Icons;
+using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.Plugin.GitHubPullRequests;
@@ -157,7 +159,21 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         };
         _detailStatus = new TextBlock { FontSize = 11, FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitAccentBrush"), Margin = new Thickness(0, 2, 0, 0) };
 
-        var copyButton = new Button { Content = "⧉ Copy", FontSize = 11, Padding = new Thickness(8, 2) };
+        var copyButton = new Button
+        {
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new MaterialIcon { Kind = MaterialIconKind.ContentCopy, Width = 13, Height = 13 },
+                    new TextBlock { Text = "Copy", VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+            FontSize = 11,
+            Padding = new Thickness(8, 2),
+        };
         copyButton.Click += async (_, _) => await _CopyPromptAsync();
         var promptHeader = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
         DockPanel.SetDock(copyButton, Dock.Right);
@@ -452,7 +468,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         }
 
         _ = _actions.InjectIntoActiveSessionAsync(_RenderPrompt(pullRequest));
-        _detailStatus.Text = $"✓ Added pull request #{pullRequest.Number} to the active session's prompt.";
+        _detailStatus.Text = $"Added pull request #{pullRequest.Number} to the active session's prompt.";
     }
 
     private async Task _CopyPromptAsync()
@@ -463,7 +479,7 @@ internal sealed class GitHubPullRequestsDialogControl : UserControl
         }
 
         await _actions.SetClipboardTextAsync(_renderedPrompt);
-        _detailStatus.Text = "✓ Prompt copied to the clipboard.";
+        _detailStatus.Text = "Prompt copied to the clipboard.";
     }
 
     private void _OpenInBrowser(GitHubPullRequest? pullRequest)
