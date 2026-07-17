@@ -438,9 +438,9 @@
                                            IsVisible="{Binding TranscriptionAdvice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
-                                <!-- AC-68 slice 3: first-use calibration — a real measurement of speed + desktop hitch
-                                     on the chosen backend, remembered for this machine, that confirms or overturns the
-                                     rule-table recommendation above. -->
+                                <!-- AC-68: first-use calibration — a real measurement of speed + desktop hitch on
+                                     every backend this machine can use (CPU and, if a runtime loads, GPU), each timed
+                                     in its own process, that decides what Auto runs on with a CPU preference. -->
                                 <StackPanel Spacing="8" IsVisible="{Binding ShowCalibration}" Margin="0,6,0,0">
                                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,2"/>
                                     <Grid ColumnDefinitions="*,Auto">
@@ -450,28 +450,87 @@
                                                    VerticalAlignment="Center"
                                                    Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
                                     </Grid>
-                                    <TextBlock Text="Measures how fast a sentence transcribes and how much the desktop hitches, on your chosen backend. The result is remembered for this machine."
+                                    <TextBlock Text="Times a sentence on every backend this machine can use and measures how much each one hitches the desktop, then picks the one Auto uses — preferring the CPU unless the GPU is meaningfully faster. Remembered for this machine."
                                                Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                                     <StackPanel Spacing="6" IsVisible="{Binding HasCalibration}">
-                                        <Grid ColumnDefinitions="96,*,60">
-                                            <TextBlock Grid.Column="0" Text="Speed" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-                                            <ProgressBar Grid.Column="1" Minimum="0" Maximum="3000" Value="{Binding CalibrationLatencyMs}"
-                                                         Height="8" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="2" Text="{Binding CalibrationSpeedText}" HorizontalAlignment="Right"
-                                                       VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"/>
-                                        </Grid>
-                                        <Grid ColumnDefinitions="96,*,60">
-                                            <TextBlock Grid.Column="0" Text="Desktop hitch" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
-                                            <ProgressBar Grid.Column="1" Minimum="0" Maximum="50" Value="{Binding CalibrationHitchMs}"
-                                                         Height="8" VerticalAlignment="Center"/>
-                                            <TextBlock Grid.Column="2" Text="{Binding CalibrationHitchText}" HorizontalAlignment="Right"
-                                                       VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"/>
-                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding CalibrationResults}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Padding="8,6" Margin="0,2" CornerRadius="6"
+                                                            Background="{StaticResource CockpitSecondaryBgBrush}">
+                                                        <StackPanel Spacing="4">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
+                                                                               VerticalAlignment="Center"/>
+                                                                    <Border IsVisible="{Binding IsChosen}" CornerRadius="3" Padding="5,1"
+                                                                            Background="{StaticResource CockpitAccentBrush}" VerticalAlignment="Center">
+                                                                        <TextBlock Text="AUTO" FontSize="9" FontWeight="Bold" Foreground="White"/>
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <TextBlock Grid.Column="1" Text="{Binding SpeedText}" HorizontalAlignment="Right"
+                                                                           VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"/>
+                                                            </Grid>
+                                                            <ProgressBar Minimum="0" Value="{Binding LatencyMs}"
+                                                                         Maximum="{Binding $parent[ItemsControl].DataContext.CalibrationSpeedMaxMs}"
+                                                                         Height="7"/>
+                                                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                                                <TextBlock Grid.Column="0" Text="desktop hitch" VerticalAlignment="Center"
+                                                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="10" Margin="0,0,8,0"/>
+                                                                <ProgressBar Grid.Column="1" Minimum="0" Value="{Binding HitchMs}"
+                                                                             Maximum="{Binding $parent[ItemsControl].DataContext.CalibrationHitchMaxMs}"
+                                                                             Height="5" VerticalAlignment="Center"/>
+                                                                <TextBlock Grid.Column="2" Text="{Binding HitchText}" HorizontalAlignment="Right"
+                                                                           VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}"
+                                                                           FontSize="10" Margin="8,0,0,0"
+                                                                           Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                                            </Grid>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <TextBlock Text="{Binding CalibrationChosenText}" FontWeight="SemiBold" FontSize="12"
+                                                   Foreground="{StaticResource CockpitAccentBrush}" Margin="0,2,0,0"/>
                                         <TextBlock Text="{Binding CalibrationRationale}"
                                                    Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding CalibrationModelText}"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11"
+                                                   FontFamily="{StaticResource CockpitMonoFont}"/>
+
+                                        <!-- AC-68: the model ladder — the same model timed at several sizes on the
+                                             winning backend, to advise the accuracy-vs-speed trade-off. -->
+                                        <StackPanel Spacing="5" IsVisible="{Binding HasModelLadder}" Margin="0,4,0,0">
+                                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,2"/>
+                                            <TextBlock Text="Model speed on the chosen backend" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            <ItemsControl ItemsSource="{Binding CalibrationModelResults}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid ColumnDefinitions="150,*,60" Margin="0,1">
+                                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Model}" FontSize="11" VerticalAlignment="Center"
+                                                                           FontFamily="{StaticResource CockpitMonoFont}"/>
+                                                                <Border IsVisible="{Binding IsRecommended}" CornerRadius="3" Padding="5,1"
+                                                                        Background="{StaticResource CockpitAccentBrush}" VerticalAlignment="Center">
+                                                                    <TextBlock Text="PICK" FontSize="9" FontWeight="Bold" Foreground="White"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <ProgressBar Grid.Column="1" Minimum="0" Value="{Binding LatencyMs}"
+                                                                         Maximum="{Binding $parent[ItemsControl].DataContext.CalibrationModelMaxMs}"
+                                                                         Height="6" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="2" Text="{Binding SpeedText}" HorizontalAlignment="Right"
+                                                                       VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding CalibrationModelRecommendation}" FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="{StaticResource CockpitAccentBrush}"/>
+                                            <TextBlock Text="{Binding CalibrationModelAdvice}"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                        </StackPanel>
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -801,6 +860,23 @@
                          Foreground="{StaticResource CockpitAccentBrush}"/>
             <TextBlock Text="Do not close AI-Cockpit while this runs." HorizontalAlignment="Center"
                        FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+        </StackPanel>
+    </Border>
+
+    <!-- The calibration overlay (AC-68). It blocks the dialog while a measurement runs: each backend is timed in a
+         child process and the desktop hitch is sampled here, so letting the operator drive the UI underneath would
+         both muddy the hitch reading and invite a settings change mid-run. -->
+    <Border IsVisible="{Binding IsCalibrating}" Background="#CC16181D">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Width="330">
+            <TextBlock Text="Calibrating transcription" HorizontalAlignment="Center" FontSize="13" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding CalibrationStatus}" HorizontalAlignment="Center" TextAlignment="Center"
+                       FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}" TextWrapping="Wrap"/>
+            <ProgressBar Minimum="0" Maximum="100" Height="6"
+                         IsIndeterminate="{Binding CalibrationProgressIndeterminate}"
+                         Value="{Binding CalibrationProgressValue}"
+                         Foreground="{StaticResource CockpitAccentBrush}"/>
+            <TextBlock Text="Measuring each backend in its own process — this can take a few minutes, especially the CPU run and the first-time model or runtime download." HorizontalAlignment="Center" TextAlignment="Center"
+                       FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}" TextWrapping="Wrap"/>
         </StackPanel>
     </Border>
   </Panel>

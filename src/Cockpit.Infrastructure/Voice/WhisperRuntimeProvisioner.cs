@@ -20,7 +20,10 @@ namespace Cockpit.Infrastructure.Voice;
 /// </para>
 /// </summary>
 internal sealed class WhisperRuntimeProvisioner(
-    IVoiceSettingsStore settingsStore, ITranscriptionAdvisor advisor, ILogger<WhisperRuntimeProvisioner> logger) : ISingletonService
+    IVoiceSettingsStore settingsStore,
+    ITranscriptionAdvisor advisor,
+    ITranscriptionCalibrationStore calibrationStore,
+    ILogger<WhisperRuntimeProvisioner> logger) : ISingletonService
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private bool _prepared;
@@ -50,29 +53,30 @@ internal sealed class WhisperRuntimeProvisioner(
             var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
             var progress = new ImmediateProgress<VoicePreparationProgress>(step => Preparing?.Invoke(this, step));
 
-            // "Auto" is the hardware-aware pick, not just "GPU-first" (AC-68 slice 2): on a single GPU that also
-            // draws the screen the recommendation is CPU, so a long dictation does not stutter the desktop. An
-            // explicit CPU/GPU choice is honoured as-is.
+            // "Auto" resolves to what this machine measured, if it has been calibrated (AC-68): the calibration
+            // times every usable backend and picks one with a CPU preference, so it overrules the rule-table guess
+            // with real numbers. Before any calibration, the recommendation is the best first guess. An explicit
+            // CPU/GPU choice is honoured as-is.
             var preference = settings.BackendPreference;
             if (preference is VoiceBackendPreference.Auto)
             {
-                var recommendation = advisor.Recommend();
-                preference = recommendation.Backend;
-                logger.LogInformation("Transcription Auto resolved to {Backend} on this machine — {Reason}", preference, recommendation.Reason);
+                preference = await _ResolveAutoAsync(cancellationToken).ConfigureAwait(false);
             }
 
             var platform = WhisperRuntimeCache.CurrentPlatform;
             var order = platform is { } host
                 ? WhisperBackendPlanner.BuildOrder(preference, host)
                 : [WhisperRuntimeBackend.Cpu];
-            RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
 
             if (platform is { } fetchHost)
             {
-                await WhisperRuntimeCache
-                    .EnsureAvailableAsync(order, fetchHost, cancellationToken, logger, progress)
+                await WhisperRuntimeActivation
+                    .ApplyAsync(order, fetchHost, cancellationToken, logger, progress)
                     .ConfigureAwait(false);
-                RuntimeOptions.LibraryPath = WhisperRuntimeCache.SearchPath;
+            }
+            else
+            {
+                RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
             }
 
             // macOS only: Metal ships inside the bundled CPU runtime, but its shader has to be findable.
@@ -84,5 +88,28 @@ internal sealed class WhisperRuntimeProvisioner(
         {
             _lock.Release();
         }
+    }
+
+    /// <summary>
+    /// What "Auto" runs on: this machine's measured calibration verdict if it has one, otherwise the rule-table
+    /// recommendation. The calibration is the authority — it timed the backends here — so a stored choice wins over
+    /// the guess; the recommendation only fills in until the operator runs a calibration.
+    /// </summary>
+    private async Task<VoiceBackendPreference> _ResolveAutoAsync(CancellationToken cancellationToken)
+    {
+        var calibration = await calibrationStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (calibration is { ChosenBackend: var chosen } && chosen is not VoiceBackendPreference.Auto)
+        {
+            logger.LogInformation("Transcription Auto resolved to {Backend} from this machine's calibration", chosen);
+
+            return chosen;
+        }
+
+        var recommendation = advisor.Recommend();
+        logger.LogInformation(
+            "Transcription Auto resolved to {Backend} on this machine (rule-table guess; not yet calibrated) — {Reason}",
+            recommendation.Backend, recommendation.Reason);
+
+        return recommendation.Backend;
     }
 }

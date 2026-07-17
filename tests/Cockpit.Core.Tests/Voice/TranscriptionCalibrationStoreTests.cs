@@ -31,22 +31,36 @@ public class TranscriptionCalibrationStoreTests : IDisposable
         (await store.LoadAsync()).Should().BeNull();
     }
 
+    private static TranscriptionCalibration Calibration(VoiceBackendPreference chosen, string model = "large-v3-turbo") =>
+        new(
+            [
+                new BackendMeasurement(VoiceBackendPreference.Cpu, LatencyMs: 4200, HitchMs: 0),
+                new BackendMeasurement(VoiceBackendPreference.Vulkan, LatencyMs: 820, HitchMs: 3),
+            ],
+            chosen,
+            [
+                new ModelMeasurement("large-v3-turbo", LatencyMs: 820),
+                new ModelMeasurement("small", LatencyMs: 300),
+            ],
+            RecommendedModel: "large-v3-turbo",
+            model);
+
     [Fact]
     public async Task SaveThenLoad_OnTheSameMachine_RoundTrips()
     {
         var store = new TranscriptionCalibrationStore(_configFilePath, "desktop-A");
-        var calibration = new TranscriptionCalibration(820, 3, VoiceBackendPreference.Cpu, "large-v3-turbo");
+        var calibration = Calibration(VoiceBackendPreference.Vulkan);
 
         await store.SaveAsync(calibration);
 
-        (await store.LoadAsync()).Should().Be(calibration);
+        (await store.LoadAsync()).Should().BeEquivalentTo(calibration);
     }
 
     [Fact]
     public async Task ADifferentMachine_DoesNotSeeAnothersCalibration()
     {
         await new TranscriptionCalibrationStore(_configFilePath, "desktop-A")
-            .SaveAsync(new TranscriptionCalibration(820, 3, VoiceBackendPreference.Cpu, "large-v3-turbo"));
+            .SaveAsync(Calibration(VoiceBackendPreference.Vulkan));
 
         (await new TranscriptionCalibrationStore(_configFilePath, "laptop-B").LoadAsync()).Should().BeNull();
     }
@@ -56,12 +70,12 @@ public class TranscriptionCalibrationStoreTests : IDisposable
     {
         var desktop = new TranscriptionCalibrationStore(_configFilePath, "desktop-A");
         var laptop = new TranscriptionCalibrationStore(_configFilePath, "laptop-B");
-        var desktopResult = new TranscriptionCalibration(820, 3, VoiceBackendPreference.Cpu, "large-v3-turbo");
+        var desktopResult = Calibration(VoiceBackendPreference.Cpu);
 
         await desktop.SaveAsync(desktopResult);
-        await laptop.SaveAsync(new TranscriptionCalibration(400, 41, VoiceBackendPreference.Vulkan, "small"));
+        await laptop.SaveAsync(Calibration(VoiceBackendPreference.Vulkan, "small"));
 
-        (await desktop.LoadAsync()).Should().Be(desktopResult, "the laptop's save must not clobber the desktop's entry");
+        (await desktop.LoadAsync()).Should().BeEquivalentTo(desktopResult, "the laptop's save must not clobber the desktop's entry");
     }
 
     public void Dispose()
