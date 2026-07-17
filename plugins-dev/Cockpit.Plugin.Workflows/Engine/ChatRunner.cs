@@ -34,9 +34,10 @@ internal sealed class ChatRunner(string typeId, bool discord) : IStepRunner
     public string ConsentAction(StepContext context)
     {
         var message = context.Resolve(context.Node.Parameters.GetValueOrDefault("Message")).Text.Trim();
+        // The full webhook URL, not just its host: the path/token is what actually selects the channel, so two hooks
+        // on the same host (a real one and an attacker's) must be distinguishable in the prompt.
         var webhook = context.Resolve(context.Node.Parameters.GetValueOrDefault("Webhook URL")).Text.Trim();
-        var where = Uri.TryCreate(webhook, UriKind.Absolute, out var url) ? url.Host : webhook;
-        return $"Post to {(discord ? "Discord" : "Slack")} ({where}):\n{message}";
+        return $"Post to {(discord ? "Discord" : "Slack")} {webhook}:\n{message}";
     }
 
     public async Task<StepOutcome> RunAsync(StepContext context, CancellationToken cancellationToken)

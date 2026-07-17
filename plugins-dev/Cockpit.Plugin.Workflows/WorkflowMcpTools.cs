@@ -227,13 +227,14 @@ internal sealed class WorkflowMcpTools
         }
     }
 
-    // The step types an MCP caller may not create or arm (#AC-38): they run with the operator's rights, so a flow
-    // containing one is the operator's to build and arm in the editor. Derived from the engine's runners — one source
-    // of truth with the runtime gate. Returns the first offending typeId, or null when the flow is clean.
+    // The step types an MCP caller may not create or arm (#AC-38): only the Dangerous ones, which run with the
+    // operator's rights, so a flow containing one is theirs to build and arm in the editor. A LowRisk step is left
+    // agent-creatable and gated at runtime instead. Derived from the engine's runners — one source of truth. Returns
+    // the first offending typeId, or null when the flow is clean.
     private string? _DangerousNode(Workflow workflow)
     {
-        var gated = EngineFactory.Create(_host, _host.WorkflowSteps).ConsentRequiredTypeIds;
-        return workflow.Nodes.FirstOrDefault(node => gated.Contains(node.TypeId))?.TypeId;
+        var forbidden = EngineFactory.Create(_host, _host.WorkflowSteps).AgentForbiddenTypeIds;
+        return workflow.Nodes.FirstOrDefault(node => forbidden.Contains(node.TypeId))?.TypeId;
     }
 
     private string _RefuseDangerous(string typeId) => _Fail(

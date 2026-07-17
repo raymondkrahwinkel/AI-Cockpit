@@ -94,6 +94,9 @@ internal static class YouTrackWorkflowSteps
     {
         public string TypeId => "youtrack.status";
 
+        // Moves a real ticket on a real board (and can assign it) with your token, so gated (#AC-38).
+        public WorkflowStepConsent? RequiredConsent => WorkflowStepConsent.Dangerous;
+
         public string Name => "Set ticket status";
 
         public string Description => "Move a ticket to a status its own board allows. Write \"forward\" or \"back\" to follow the board's own order, a status by name, or leave it empty for whatever that board calls in progress. Optionally assigns it to you.";

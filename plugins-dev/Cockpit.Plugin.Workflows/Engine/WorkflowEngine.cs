@@ -22,9 +22,19 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
     private readonly Dictionary<string, IStepRunner> _runners =
         runners.ToDictionary(runner => runner.TypeId, StringComparer.Ordinal);
 
-    /// <summary>The step types that need consent to run — what create/arm refuse from an MCP caller (#AC-38), derived from the runners so there is one source of truth.</summary>
+    // Computed once from the runner registry (fixed per engine): the types the runtime gate asks consent for (any
+    // risk), and the subset an MCP caller may not create or arm (only Dangerous). Derived from the runners so there is
+    // one source of truth with the runtime gate.
+    private HashSet<string>? _consentRequired;
+    private HashSet<string>? _agentForbidden;
+
+    /// <summary>The step types the runtime gate asks consent for — anything with a risk (LowRisk or Dangerous), #AC-38.</summary>
     public IReadOnlySet<string> ConsentRequiredTypeIds =>
-        _runners.Values.Where(runner => runner.RequiredConsent is not null).Select(runner => runner.TypeId).ToHashSet(StringComparer.Ordinal);
+        _consentRequired ??= _runners.Values.Where(runner => runner.RequiredConsent is not null).Select(runner => runner.TypeId).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>The step types an MCP caller may not create or arm (#AC-38): only the Dangerous ones. A LowRisk step stays agent-buildable and is gated at runtime instead.</summary>
+    public IReadOnlySet<string> AgentForbiddenTypeIds =>
+        _agentForbidden ??= _runners.Values.Where(runner => runner.RequiredConsent is ConsentRisk.Dangerous).Select(runner => runner.TypeId).ToHashSet(StringComparer.Ordinal);
 
     /// <summary>Runs the flow from <paramref name="startNodeId"/> — a trigger. Never throws: what went wrong is written into the run, which is the point of keeping one.</summary>
     public async Task<WorkflowRun> RunAsync(
@@ -165,7 +175,10 @@ public sealed class WorkflowEngine(IReadOnlyList<IStepRunner> runners, ICockpitH
 
             if (!decision.IsApproved)
             {
-                return StepOutcome.Stop("You did not approve this step, so the flow stopped here.");
+                // Also the message when nobody was there to ask (a trigger fired it while you were away): the gate
+                // fails closed, so the step is refused rather than run silently. Marking the flow Run unattended is
+                // how you allow that.
+                return StepOutcome.Stop("This step needs your consent to run and it was not given, so the flow stopped here. If this flow should run its consent-gated steps unattended, mark it Run unattended.");
             }
         }
 

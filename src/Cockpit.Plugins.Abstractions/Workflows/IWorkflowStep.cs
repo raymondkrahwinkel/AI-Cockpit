@@ -1,5 +1,3 @@
-using Cockpit.Plugins.Abstractions.Consent;
-
 namespace Cockpit.Plugins.Abstractions.Workflows;
 
 /// <summary>
@@ -71,12 +69,13 @@ public interface IWorkflowStep
     IReadOnlyDictionary<string, string> Produces => new Dictionary<string, string>();
 
     /// <summary>
-    /// Whether running this step needs the operator's consent, and at what risk — null (the default) means it does not
-    /// (#AC-38). A step that acts with the operator's rights (a shell command, a session hand-off, arbitrary egress)
-    /// declares it, so the workflows engine gates it: the operator Approves/Denies the literal action before it runs
-    /// (unless they started the run), and an MCP caller cannot create or arm a flow that contains it.
+    /// Whether running this step needs the operator's consent, and at what risk (#AC-38). A non-trigger step MUST
+    /// declare this: leaving it null (undeclared) refuses the step at load rather than silently treating it as safe, so
+    /// a step that acts with the operator's rights cannot slip through ungated. Declare <see cref="WorkflowStepConsent.None"/>
+    /// for a genuinely safe step, or <see cref="WorkflowStepConsent.Dangerous"/> for one that runs a command, hands off
+    /// a session, or sends data out. Triggers are never run, so their value is ignored.
     /// </summary>
-    ConsentRisk? RequiredConsent => null;
+    WorkflowStepConsent? RequiredConsent => null;
 
     /// <summary>
     /// Runs the step. Throwing fails it, and the message is what the operator reads in the run — so write it as a
