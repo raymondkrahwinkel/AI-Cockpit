@@ -16,13 +16,21 @@ public sealed record TranscriptionCapabilities(bool CudaUsable, bool VulkanUsabl
 }
 
 /// <summary>
-/// Detects which Whisper acceleration backends this host can load, so the Options → Voice → Transcribe page
-/// offers only host-relevant choices (no CUDA on a non-NVIDIA machine) and can explain the trade-off. This is
-/// slice 1 of AC-68 — capability detection only. Later slices enrich the advice with GPU brand and
-/// display-adapter facts (AC-68 slice 2) and a measured first-use calibration (slice 3).
+/// Detects what this host can do for speech-to-text, so the Options → Voice → Transcribe page offers only
+/// host-relevant choices (no CUDA on a non-NVIDIA machine), names the hardware, and can recommend a model +
+/// backend with a reason. Slice 1 was capability detection; slice 2 adds the GPU brand / display-adapter facts
+/// and the recommendation. A later slice measures a first-use calibration on top of the recommendation.
 /// </summary>
 public interface ITranscriptionAdvisor
 {
     /// <summary>Which GPU backends this machine can actually load. Cached after the first probe.</summary>
     TranscriptionCapabilities DetectCapabilities();
+
+    /// <summary>The display GPU's brand, description, whether it drives a monitor, and its VRAM (AC-68 slice 2).
+    /// Best-effort; a field the host would not reveal stays at its neutral default. Cached after the first probe.</summary>
+    GpuHardware DetectGpu();
+
+    /// <summary>The hardware-aware model + backend pick for this machine, with the reason and badges (AC-68 slice 2).
+    /// This is what "Auto" resolves to.</summary>
+    TranscriptionRecommendation Recommend();
 }

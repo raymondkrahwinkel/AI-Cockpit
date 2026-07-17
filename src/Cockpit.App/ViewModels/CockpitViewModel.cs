@@ -968,8 +968,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public const string CustomModelChoice = "Custom…";
 
     /// <summary>Curated Whisper models offered by the Options → Voice → Transcribe dropdown (AC-68), each with a short
-    /// accuracy-vs-load hint; any other ggml name is reachable via <see cref="CustomModelChoice"/>.</summary>
-    public IReadOnlyList<TranscriptionModelOption> TranscriptionModelChoices { get; } =
+    /// accuracy-vs-load hint. Prefixed at runtime with an "Auto ★" recommendation and suffixed with <see cref="CustomModelChoice"/>.</summary>
+    private static readonly IReadOnlyList<TranscriptionModelOption> _curatedModels =
     [
         new("large-v3-turbo", "most accurate · heaviest"),
         new("medium", "≈1pt less accurate on NL · lighter"),
@@ -979,8 +979,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         new(CustomModelChoice, "enter any ggml name", IsCustom: true),
     ];
 
-    /// <summary>Selected item in the transcription-model dropdown (AC-68) — a curated model or the "Custom…" sentinel.
-    /// Drives <see cref="VoiceModelName"/> and toggles <see cref="IsTranscriptionModelCustom"/>.</summary>
+    /// <summary>Items for the model dropdown (AC-68): an "Auto ★" recommendation (when an advisor is present), then the
+    /// curated models, then "Custom…". Built once at construction — the recommendation is fixed for the session.</summary>
+    public ObservableCollection<TranscriptionModelOption> TranscriptionModelChoices { get; } = new();
+
+    /// <summary>The per-machine recommendation (AC-68 slice 2); null in the design-time/test graph with no advisor.</summary>
+    private TranscriptionRecommendation? _transcriptionRecommendation;
+
+    /// <summary>Whether the model dropdown is on the "Auto ★" item — persisted as <see cref="Cockpit.Core.Voice.VoiceSettings.ModelAutoSelected"/>.</summary>
+    private bool _transcriptionModelAuto;
+
+    /// <summary>Selected item in the transcription-model dropdown (AC-68) — the "Auto ★" recommendation, a curated
+    /// model, or the "Custom…" sentinel. Drives <see cref="VoiceModelName"/> and toggles <see cref="IsTranscriptionModelCustom"/>.</summary>
     [ObservableProperty]
     private TranscriptionModelOption? _selectedTranscriptionModel;
 
@@ -1015,7 +1025,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _InitVoiceTranscriptionOptions()
     {
         var capabilities = _transcriptionAdvisor?.DetectCapabilities() ?? TranscriptionCapabilities.CpuOnly;
+        _transcriptionRecommendation = _transcriptionAdvisor?.Recommend();
 
+        // Model dropdown: the "Auto ★" recommendation first (only when we have an advisor to recommend), then the
+        // curated models and Custom…. The Auto item carries the recommended model as its hint.
+        TranscriptionModelChoices.Clear();
+        if (_transcriptionRecommendation is { } recommendation)
+        {
+            TranscriptionModelChoices.Add(new("★ Auto — recommended", recommendation.Model, IsAuto: true));
+        }
+
+        foreach (var model in _curatedModels)
+        {
+            TranscriptionModelChoices.Add(model);
+        }
+
+        // Backend dropdown: host-aware Auto / GPU / CPU.
         VoiceBackendPreferences.Clear();
         foreach (var choice in TranscriptionOptions.BackendChoices(capabilities))
         {
@@ -1023,16 +1048,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         SelectedVoiceBackendPreference = VoiceBackendPreferences[0];
-        SelectedTranscriptionModel = TranscriptionModelChoices.FirstOrDefault(model => model.Name == VoiceModelName)
-                                     ?? TranscriptionModelChoices[0];
 
-        TranscriptionHardware = TranscriptionOptions.HardwareBadge(capabilities);
+        // Badges: the recommendation's (brand · drives display · CUDA state) when we have one, else the plain line.
+        TranscriptionHardware = _transcriptionRecommendation is { Badges.Count: > 0 } withBadges
+            ? string.Join(" · ", withBadges.Badges)
+            : TranscriptionOptions.HardwareBadge(capabilities);
+
+        _SyncTranscriptionModelFromName();
         _UpdateTranscriptionAdvice();
     }
 
-    /// <summary>Recomputes the one-line backend advice from the current selection and detected capabilities (AC-68).</summary>
+    /// <summary>Recomputes the one-line advice (AC-68). For "Auto" the recommendation's reason is the richest
+    /// explanation (why CPU on a single GPU that draws the screen); an explicit CPU/GPU choice gets the generic note.</summary>
     private void _UpdateTranscriptionAdvice()
     {
+        if (SelectedVoiceBackendPreference.Value is VoiceBackendPreference.Auto && _transcriptionRecommendation is { } recommendation)
+        {
+            TranscriptionAdvice = recommendation.Reason;
+            return;
+        }
+
         var capabilities = _transcriptionAdvisor?.DetectCapabilities() ?? TranscriptionCapabilities.CpuOnly;
         TranscriptionAdvice = TranscriptionOptions.Advice(SelectedVoiceBackendPreference.Value, capabilities);
     }
@@ -1048,6 +1083,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        if (value.IsAuto)
+        {
+            _transcriptionModelAuto = true;
+            IsTranscriptionModelCustom = false;
+            // Resolve the Auto item to the concrete recommended model, so the speech-to-text service reads a real name.
+            if (_transcriptionRecommendation is { } recommendation)
+            {
+                VoiceModelName = recommendation.Model;
+            }
+
+            return;
+        }
+
+        _transcriptionModelAuto = false;
         if (value.IsCustom)
         {
             IsTranscriptionModelCustom = true;
@@ -1076,7 +1125,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// after loading so a saved custom model reopens in the "Custom…" state, and a preset reopens selected.</summary>
     private void _SyncTranscriptionModelFromName()
     {
-        var preset = TranscriptionModelChoices.FirstOrDefault(model => !model.IsCustom && model.Name == VoiceModelName);
+        // Auto ★ when the operator chose it and there is a recommendation item to point at.
+        if (_transcriptionModelAuto && TranscriptionModelChoices.FirstOrDefault(model => model.IsAuto) is { } auto)
+        {
+            IsTranscriptionModelCustom = false;
+            VoiceCustomModelName = string.Empty;
+            SelectedTranscriptionModel = auto;
+            return;
+        }
+
+        var preset = TranscriptionModelChoices.FirstOrDefault(model => !model.IsAuto && !model.IsCustom && model.Name == VoiceModelName);
         if (preset is not null)
         {
             IsTranscriptionModelCustom = false;
@@ -2562,8 +2620,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _voiceSettingsStore.LoadAsync();
         VoiceEnabled = settings.IsEnabled;
         VoiceModelName = settings.ModelName;
-        // Reopen a saved custom model in the "Custom…" state, a preset selected (AC-68). Done after ModelName is set,
-        // mirroring how the terminal-font dropdown is synced from its effective family.
+        // Reopen on the "Auto ★" item, a preset, or "Custom…" per what was saved (AC-68). On Auto, refresh the
+        // effective model to the current recommendation so a hardware change since last save is reflected.
+        _transcriptionModelAuto = settings.ModelAutoSelected;
+        if (_transcriptionModelAuto && _transcriptionRecommendation is { } recommendation)
+        {
+            VoiceModelName = recommendation.Model;
+        }
+
         _SyncTranscriptionModelFromName();
         // A GPU preference saved on a machine that can no longer load it (config moved, driver gone) has no matching
         // host-aware option and falls back to Auto rather than showing a dead entry.
@@ -2649,6 +2713,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             IsEnabled = VoiceEnabled,
             ModelName = string.IsNullOrWhiteSpace(VoiceModelName) ? "large-v3-turbo" : VoiceModelName.Trim(),
+            ModelAutoSelected = _transcriptionModelAuto,
             BackendPreference = SelectedVoiceBackendPreference.Value,
             CleanupEnabled = VoiceCleanupEnabled,
             AutoDetectLocalLlm = VoiceAutoDetectLocalLlm,

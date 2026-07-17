@@ -387,9 +387,10 @@
                                 <!-- AC-68: detected acceleration, so the choices below read as host-aware rather than generic. -->
                                 <Border Background="{StaticResource CockpitSecondaryBgBrush}"
                                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                                        CornerRadius="5" Padding="8,5" HorizontalAlignment="Left" Margin="0,2">
+                                        CornerRadius="5" Padding="8,5" HorizontalAlignment="Left" MaxWidth="440" Margin="0,2">
                                     <TextBlock Text="{Binding TranscriptionHardware}"
                                                FontFamily="{StaticResource CockpitMonoFont}" FontSize="10.5"
+                                               TextWrapping="Wrap"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                 </Border>
                                 <!-- Curated model dropdown (AC-68): presets with an accuracy-vs-load hint, plus a

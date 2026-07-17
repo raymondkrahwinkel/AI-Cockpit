@@ -13,7 +13,8 @@ namespace Cockpit.Infrastructure.Voice;
 internal sealed class TranscriptionAdvisor : ITranscriptionAdvisor, ISingletonService
 {
     private readonly object _gate = new();
-    private TranscriptionCapabilities? _cached;
+    private TranscriptionCapabilities? _cachedCapabilities;
+    private GpuHardware? _cachedGpu;
 
     public TranscriptionCapabilities DetectCapabilities()
     {
@@ -21,9 +22,20 @@ internal sealed class TranscriptionAdvisor : ITranscriptionAdvisor, ISingletonSe
         // cannot change without a restart, and the Options dialog asks for it every time it opens.
         lock (_gate)
         {
-            return _cached ??= _Probe();
+            return _cachedCapabilities ??= _Probe();
         }
     }
+
+    public GpuHardware DetectGpu()
+    {
+        lock (_gate)
+        {
+            return _cachedGpu ??= GpuHardwareProbe.Detect();
+        }
+    }
+
+    public TranscriptionRecommendation Recommend() =>
+        TranscriptionRecommender.Recommend(DetectCapabilities(), DetectGpu(), WhisperRuntimeCache.CurrentPlatform);
 
     private static TranscriptionCapabilities _Probe()
     {
