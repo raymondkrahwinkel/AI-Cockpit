@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
@@ -64,7 +65,7 @@ internal sealed class PluginSessionHeaderHost : StackPanel
     {
         var button = new Button
         {
-            Content = "⋯",
+            Content = CockpitIcons.Icon(MaterialIconKind.DotsHorizontal),
             Padding = new Thickness(7, 1),
             VerticalAlignment = VerticalAlignment.Center,
         };

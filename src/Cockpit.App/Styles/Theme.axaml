@@ -493,7 +493,7 @@
 
     <!-- The store row's primary call-to-action (Install / Update): a filled accent pill at the compact
          height, switched on via Classes.accentCta only while the action does something — an up-to-date
-         "Installed ✓" keeps the plain Compact treatment. Declared after Button.Compact so the accent fill
+         "Installed" keeps the plain Compact treatment. Declared after Button.Compact so the accent fill
          wins over the compact surface when a row's button carries both classes. -->
     <Style Selector="Button.accentCta">
         <Setter Property="Padding" Value="14,0"/>

@@ -4,6 +4,7 @@ using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Material.Icons;
 
 namespace Cockpit.App.Controls;
 
@@ -68,7 +69,7 @@ public sealed class ShortcutCaptureControl : UserControl
 
         _clearButton = new Button
         {
-            Content = "✕",
+            Content = CockpitIcons.Icon(MaterialIconKind.Close, 12),
             Padding = new Thickness(6, 2),
             Classes = { "Subtle" },
             Margin = new Thickness(4, 0, 0, 0),

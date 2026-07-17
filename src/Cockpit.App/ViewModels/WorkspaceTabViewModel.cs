@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Material.Icons;
 using Cockpit.Core.Workspaces;
 
 namespace Cockpit.App.ViewModels;
@@ -14,8 +15,8 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
 
     public bool IsActive => isActive;
 
-    /// <summary>The glyph that tells the two workspace kinds apart at a glance in the strip.</summary>
-    public string Icon => workspace.Type == WorkspaceType.Dashboard ? "📊" : "💬";
+    /// <summary>The icon that tells the two workspace kinds apart at a glance in the strip.</summary>
+    public MaterialIconKind Icon => workspace.Type == WorkspaceType.Dashboard ? MaterialIconKind.ViewDashboardOutline : MaterialIconKind.ChatOutline;
 
     /// <summary>The tab's label. Set on commit so the strip updates before the rebuilt tabs arrive from the store.</summary>
     [ObservableProperty]

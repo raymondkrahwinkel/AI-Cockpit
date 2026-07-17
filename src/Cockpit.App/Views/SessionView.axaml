@@ -5,6 +5,7 @@
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:conv="using:Cockpit.App.Converters"
              xmlns:sessions="using:Cockpit.Core.Sessions"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
@@ -58,8 +59,10 @@
                          room than the thing it names. The tooltip carries what the icon cannot say. -->
                     <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
                                   VerticalAlignment="Center"
-                                  Content="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
-                                  ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}"/>
+                                  ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
+                        <materialIcons:MaterialIcon Kind="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
+                                                     Width="14" Height="14"/>
+                    </ToggleButton>
                     <ToggleButton Content="Allow all tools" IsChecked="{Binding AutoApproveTools}" Classes="Compact"
                                   VerticalAlignment="Center"
                                   IsVisible="{Binding ShowToolAutoApprove}"
@@ -174,10 +177,10 @@
             <Border DockPanel.Dock="Top" IsVisible="{Binding IsAwaitingResponse}" Margin="2,0,0,8"
                     HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <TextBlock Text="●" FontSize="12" VerticalAlignment="Center"
+                    <materialIcons:MaterialIcon Kind="Circle" Width="10" Height="10" VerticalAlignment="Center"
                                Foreground="{StaticResource CockpitAccentBrush}">
-                        <TextBlock.Styles>
-                            <Style Selector="TextBlock">
+                        <materialIcons:MaterialIcon.Styles>
+                            <Style Selector="materialIcons|MaterialIcon">
                                 <Style.Animations>
                                     <Animation Duration="0:0:1.1" IterationCount="INFINITE">
                                         <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
@@ -186,8 +189,8 @@
                                     </Animation>
                                 </Style.Animations>
                             </Style>
-                        </TextBlock.Styles>
-                    </TextBlock>
+                        </materialIcons:MaterialIcon.Styles>
+                    </materialIcons:MaterialIcon>
                     <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
@@ -214,9 +217,11 @@
                                 <TextBlock Text="{Binding DisplayText}" FontSize="12" VerticalAlignment="Center"
                                            MaxWidth="360" TextTrimming="CharacterEllipsis"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                <Button Content="✕" Command="{Binding RemoveCommand}" Classes="Subtle"
+                                <Button Command="{Binding RemoveCommand}" Classes="Subtle"
                                         VerticalAlignment="Center" Padding="4,0"
-                                        ToolTip.Tip="Cancel this queued message"/>
+                                        ToolTip.Tip="Cancel this queued message">
+                                    <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                </Button>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -239,9 +244,11 @@
                                 Padding="4" Margin="0,0,6,6">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <Image Source="{Binding Thumbnail}" Height="44" MaxWidth="72" Stretch="Uniform"/>
-                                <Button Content="✕" Command="{Binding RemoveCommand}" Classes="Subtle"
+                                <Button Command="{Binding RemoveCommand}" Classes="Subtle"
                                         VerticalAlignment="Top" Padding="4,0"
-                                        ToolTip.Tip="Remove image"/>
+                                        ToolTip.Tip="Remove image">
+                                    <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                </Button>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
@@ -323,21 +330,31 @@
 
                                 <!-- On-demand read-aloud (#35): works even when the session's Read-aloud
                                      toggle is off — an explicit per-row request to hear this one reply. -->
-                                <Button Content="🔊 Read aloud" Classes="Subtle Compact" HorizontalAlignment="Left"
+                                <Button Classes="Subtle Compact" HorizontalAlignment="Left"
                                         FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
                                         IsVisible="{Binding IsAssistantMarkdown}"
                                         Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ReadAloudCommand}"
                                         CommandParameter="{Binding}"
-                                        ToolTip.Tip="Read this reply aloud"/>
+                                        ToolTip.Tip="Read this reply aloud">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="VolumeHigh" Width="12" Height="12"/>
+                                        <TextBlock Text="Read aloud" FontSize="11"/>
+                                    </StackPanel>
+                                </Button>
 
                                 <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
                                      to the full input plus the coupled result (L14, matched on tool_use_id).
                                      A structured/code result renders in a monospace code box with a copy
                                      button (T6); a plain result stays inline text. -->
                                 <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
-                                    <Button Content="{Binding ToolHeader}" Command="{Binding ToggleExpandedCommand}"
+                                    <Button Command="{Binding ToggleExpandedCommand}"
                                             Classes="Subtle toolRow" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            Foreground="{StaticResource CockpitTextSecondaryBrush}">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                            <TextBlock Text="{Binding ToolHeader}"/>
+                                        </StackPanel>
+                                    </Button>
                                     <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
                                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                              Classes="toolBody"
@@ -363,10 +380,14 @@
 
                                 <!-- Standalone (orphan) tool results: collapsed by default; expand via chevron. -->
                                 <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
-                                    <Button Content="{Binding ToggleGlyph}"
-                                            Command="{Binding ToggleExpandedCommand}"
+                                    <Button Command="{Binding ToggleExpandedCommand}"
                                             Classes="Subtle toolRow" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                            Foreground="{StaticResource CockpitTextSecondaryBrush}">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                            <TextBlock Text="{Binding ToggleLabel}"/>
+                                        </StackPanel>
+                                    </Button>
                                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                Classes="toolBody"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
@@ -405,13 +426,15 @@
 
         <!-- Scroll-to-bottom affordance: shown only when scrolled up (#21), jumps back to the newest
              row and resumes following. On top of the transcript (last Grid child), bottom-right. -->
-        <Button x:Name="ScrollToBottomButton" Content="↓" IsVisible="False"
+        <Button x:Name="ScrollToBottomButton" IsVisible="False"
                 Classes="Accent" Click="_OnScrollToBottomClick"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 Width="32" Height="32" Padding="0" Margin="0,0,10,10"
-                FontSize="15" CornerRadius="16"
-                ToolTip.Tip="Jump to the newest message"/>
+                CornerRadius="16"
+                ToolTip.Tip="Jump to the newest message">
+            <materialIcons:MaterialIcon Kind="ChevronDown" Width="16" Height="16"/>
+        </Button>
         </Grid>
 
     </DockPanel>

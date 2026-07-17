@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace Cockpit.App.Controls;
 
@@ -14,7 +16,7 @@ namespace Cockpit.App.Controls;
 /// </summary>
 internal sealed class PluginSectionControl : UserControl
 {
-    private readonly TextBlock _chevron;
+    private readonly MaterialIcon _chevron;
     private readonly Border _body;
     private bool _expanded = true;
 
@@ -24,12 +26,9 @@ internal sealed class PluginSectionControl : UserControl
     /// </param>
     public PluginSectionControl(string title, Control content, Action? onSettings = null)
     {
-        _chevron = new TextBlock
-        {
-            Text = "▾", // ▾
-            Foreground = _Brush("CockpitTextFaintBrush", Brushes.Gray),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        _chevron = CockpitIcons.Icon(MaterialIconKind.ChevronDown, 13);
+        _chevron.Foreground = _Brush("CockpitTextFaintBrush", Brushes.Gray);
+        _chevron.VerticalAlignment = VerticalAlignment.Center;
 
         var titleBlock = new TextBlock
         {
@@ -102,7 +101,7 @@ internal sealed class PluginSectionControl : UserControl
     {
         _expanded = !_expanded;
         _body.IsVisible = _expanded;
-        _chevron.Text = _expanded ? "▾" : "▸"; // ▾ / ▸
+        _chevron.Kind = _expanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
     }
 
     private static IBrush _Brush(string key, IBrush fallback) =>

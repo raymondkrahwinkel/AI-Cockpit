@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
              xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
@@ -70,20 +71,24 @@
             </StackPanel>
 
             <!-- Actions: settings gear + enable/disable power for an installed plugin, then the primary
-                 Install/Update call-to-action (accent-filled while it does something; a quiet "Installed ✓"
+                 Install/Update call-to-action (accent-filled while it does something; a quiet "Installed"
                  once up to date). -->
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <Button Content="⚙" Classes="Subtle Compact" Padding="6,2" FontSize="13"
+                <Button Classes="Subtle Compact" Padding="6,2"
                         IsVisible="{Binding HasSettings}"
                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.OpenStorePluginSettingsCommand}"
                         CommandParameter="{Binding}"
-                        ToolTip.Tip="Plugin settings"/>
-                <Button Content="{Binding ToggleGlyph}" Classes="Subtle Compact" Padding="6,2" FontSize="14"
+                        ToolTip.Tip="Plugin settings">
+                    <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"/>
+                </Button>
+                <Button Classes="Subtle Compact" Padding="6,2"
                         Foreground="{Binding ToggleBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
                         IsVisible="{Binding IsInstalled}"
                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.ToggleStorePluginCommand}"
                         CommandParameter="{Binding}"
-                        ToolTip.Tip="{Binding ToggleTooltip}"/>
+                        ToolTip.Tip="{Binding ToggleTooltip}">
+                    <materialIcons:MaterialIcon Kind="{Binding ToggleGlyph}" Width="14" Height="14"/>
+                </Button>
                 <Button Content="{Binding PrimaryActionLabel}" Classes="Compact"
                         Classes.accentCta="{Binding CanTakePrimaryAction}"
                         IsEnabled="{Binding CanTakePrimaryAction}"

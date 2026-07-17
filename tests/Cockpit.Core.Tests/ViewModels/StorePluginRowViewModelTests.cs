@@ -141,7 +141,7 @@ public class StorePluginRowViewModelTests
     {
         var row = new StorePluginRowViewModel(_Entry(latestVersion: "1.0.0"), "url", "1.0.0");
 
-        row.PrimaryActionLabel.Should().Be("Installed ✓");
+        row.PrimaryActionLabel.Should().Be("Installed");
         row.CanTakePrimaryAction.Should().BeFalse();
     }
 }

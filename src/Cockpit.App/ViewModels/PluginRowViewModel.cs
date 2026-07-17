@@ -31,7 +31,7 @@ public sealed class PluginRowViewModel(DiscoveredPlugin discovered, bool hasSett
     /// <summary>True when this plugin failed to load or initialize.</summary>
     public bool HasFailure => !string.IsNullOrEmpty(failureError);
 
-    public string FailureText => $"⚠ Failed to load: {failureError}";
+    public string FailureText => $"Failed to load: {failureError}";
 
     public string FolderId => discovered.FolderId;
 
