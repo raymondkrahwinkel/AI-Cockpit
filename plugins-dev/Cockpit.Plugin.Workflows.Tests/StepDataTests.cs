@@ -78,6 +78,22 @@ public class StepDataTests
         StepData.Resolve("{output}", []).Missing.Should().Equal("output");
     }
 
+    [Fact]
+    public void WithAnEscaper_OnlyTheSubstitutedValueIsQuoted_NotTheTemplate()
+    {
+        var result = StepData.Resolve("echo {output}", _Items(("output", "a; rm -rf ~")), escapeValue: ShellQuoting.QuotePosix);
+
+        result.Text.Should().Be("echo 'a; rm -rf ~'");
+    }
+
+    [Fact]
+    public void WithAnEscaper_AComputedValueIsQuotedToo_NotOnlyAPlainField()
+    {
+        var result = StepData.Resolve("echo {= 'a; b' }", [], escapeValue: ShellQuoting.QuotePosix);
+
+        result.Text.Should().Be("echo 'a; b'");
+    }
+
     private static IReadOnlyList<WorkflowItem> _Items(params (string Field, string Value)[] fields)
     {
         var json = new JsonObject();
