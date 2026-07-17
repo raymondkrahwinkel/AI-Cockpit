@@ -31,13 +31,12 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Cockpit is a GUI app, but when it is launched from a terminal (e.g. Ghostty) it inherits that
-        // terminal's self-identification — TERM_PROGRAM=ghostty, GHOSTTY_*, TERM=xterm-ghostty. The SvcSystems
-        // (XTerm.NET) renderer picks that up through the Avalonia/Skia text stack and draws every line
-        // underlined; a desktop launch has none of these set, so it does not. Strip the host-terminal identity
-        // from this process's own environment before Avalonia starts — the same markers TtyEnvironment already
-        // scrubs for the claude pty (#58), so the pty inherits a clean environment too.
-        ScrubHostTerminalIdentity();
+        // Strip everything the host owns from this process's own environment before Avalonia starts or anything
+        // spawns a child: the agent-session markers of a Claude Code session the cockpit may have been launched
+        // from (else a spawned session adopts the parent's id — AC-42), the host terminal's self-identification
+        // (which drew every line underlined under Ghostty — #58), and any inherited Anthropic credential. Doing it
+        // once here means every spawn route inherits a clean base rather than each re-deriving its own scrub.
+        ScrubInheritedHostEnvironment();
 
         // Only one cockpit at a time (AC-4). This goes first because the housekeeping directly below it deletes
         // --mcp-config files, and the bundled-plugin install further down deletes plugin directories: run those
@@ -308,17 +307,27 @@ sealed class Program
     }
 #endif
 
-    // Removes the host terminal's self-identification from this process's own environment (see the call in
-    // Main). Reuses the same marker set TtyEnvironment scrubs for the claude pty (#58): TERM_PROGRAM(_VERSION)
-    // covers every terminal that sets it, plus the GHOSTTY_* vars, and TERM is normalised to a generic
-    // terminfo name whatever terminal launched us — so the render is deterministic and terminal-independent.
-    // COLORTERM is deliberately left untouched — it is a generic truecolor-support signal, not a terminal id.
-    private static void ScrubHostTerminalIdentity()
+    // Removes from this process's own environment everything the host owns and must not hand down to a spawned
+    // child (see the call in Main) — the same set TtyEnvironment scrubs for the claude pty, applied once here so
+    // every spawn route (TTY, SDK, MCP stdio) inherits a clean base instead of each re-deriving its own scrub with
+    // different coverage (AC-42). That set is:
+    //   - the markers of the agent session the cockpit was launched from (CLAUDECODE / CLAUDE_CODE_* /
+    //     CLAUDE_AGENT_*): an inherited CLAUDE_CODE_SESSION_ID makes a child adopt the parent's session id and
+    //     write its turns into the parent's transcript (AC-42). CLAUDE_CONFIG_DIR is deliberately not in this set
+    //     and is re-applied per profile;
+    //   - the host terminal's self-identification (TERM_PROGRAM(_VERSION), GHOSTTY_*): the pty child is rendered by
+    //     Cockpit's own Exclr8 emulator, and a leaked TERM_PROGRAM=ghostty caused every line to draw underlined (#58);
+    //   - any inherited Anthropic credential (ANTHROPIC_*): one that reaches the CLI silently moves the session onto
+    //     API-key billing.
+    // A normal desktop launch has none of these set, so this is a no-op there; it bites exactly when the cockpit is
+    // started from a shell that exports one. TERM is normalised to a generic terminfo name so the render is
+    // terminal-independent. COLORTERM is deliberately left untouched — a generic truecolor signal, not an identity.
+    private static void ScrubInheritedHostEnvironment()
     {
         var markers = new List<string>();
         foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
         {
-            if (entry.Key is string key && Cockpit.Core.Sessions.Tty.TtyEnvironment.IsHostTerminalIdentityMarker(key))
+            if (entry.Key is string key && Cockpit.Core.Sessions.Tty.TtyEnvironment.IsHostControlled(key))
             {
                 markers.Add(key);
             }
@@ -326,8 +335,8 @@ sealed class Program
 
         foreach (var key in markers)
         {
-            // Managed + native (libc) both: Skia reads the native environ via getenv, so a managed-only removal
-            // would leave the host terminal's identity leaking through (the underline bug under Ghostty).
+            // Managed + native (libc) both: Skia and a spawned child read the native environ via getenv, so a
+            // managed-only removal would leave the stripped variable leaking through.
             ProcessEnvironment.Remove(key);
         }
 
