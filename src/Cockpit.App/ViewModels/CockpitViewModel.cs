@@ -2961,7 +2961,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>
     /// Moves the selection to the previous session in <see cref="Sessions"/>, wrapping from the first
     /// to the last. No-op when there are no sessions; selects the only session when there is exactly
-    /// one. Bound to the configurable <see cref="ShortcutAction.PreviousSession"/> shortcut (Ctrl+Up by default).
+    /// one. Bound to the configurable <see cref="ShortcutAction.PreviousSession"/> shortcut (Ctrl+Shift+Up by default).
     /// </summary>
     [RelayCommand]
     public void SelectPreviousSession() => _StepSelection(-1);
@@ -2969,7 +2969,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>
     /// Moves the selection to the next session in <see cref="Sessions"/>, wrapping from the last to
     /// the first. No-op when there are no sessions. Bound to the configurable
-    /// <see cref="ShortcutAction.NextSession"/> shortcut (Ctrl+Down by default).
+    /// <see cref="ShortcutAction.NextSession"/> shortcut (Ctrl+Shift+Down by default).
     /// </summary>
     [RelayCommand]
     public void SelectNextSession() => _StepSelection(1);

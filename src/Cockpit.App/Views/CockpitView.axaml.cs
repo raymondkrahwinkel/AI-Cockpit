@@ -153,8 +153,7 @@ public partial class CockpitView : UserControl
         }
 
         var panel = SessionGrid?.GetVisualDescendants().OfType<SessionTilePanel>().FirstOrDefault();
-        if (panel?.NeighbourInDirection(active, direction) is SessionPanelViewModel neighbour
-            && cockpit.SelectSessionCommand.CanExecute(neighbour))
+        if (panel?.NeighbourInDirection(active, direction) is SessionPanelViewModel neighbour)
         {
             cockpit.SelectSessionCommand.Execute(neighbour);
         }
