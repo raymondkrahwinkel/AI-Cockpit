@@ -254,6 +254,12 @@
                                                     <TextBlock Text="⚠" Foreground="{StaticResource CockpitStatusWaitingBrush}"
                                                                IsVisible="{Binding SessionStatus, Converter={x:Static conv:IsNeedsAttentionConverter.Instance}}"
                                                                ToolTip.Tip="Needs attention"/>
+                                                    <!-- A consent request is waiting on this session (#AC-47): the same
+                                                         "Ask me first" hand the cockpit.approve step uses, in the accent
+                                                         colour, so the sidebar shows it even when the pane is off screen. -->
+                                                    <TextBlock Text="✋" Foreground="{StaticResource CockpitAccentBrush}"
+                                                               IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                               ToolTip.Tip="Waiting for your consent"/>
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                                     <!-- Mirrors the session-header provider pill (SessionView.axaml) so a local

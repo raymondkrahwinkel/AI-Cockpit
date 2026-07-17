@@ -79,6 +79,9 @@
             </DockPanel>
         </Border>
 
+        <!-- Consent banner (#AC-47): shown under the header, above the terminal, when a request is waiting on this session. -->
+        <controls:ConsentBannerHost DockPanel.Dock="Top" Margin="0,0,0,6"/>
+
         <!-- The terminal surface: Exclr8.Terminal, a pure Avalonia terminal-emulator renderer with no
              PTY plumbing of its own. The code-behind hosts the ConPTY/Porta.Pty process, feeds pty
              output in via Write(...), forwards the control's Input/Output byte events to the pty, and
