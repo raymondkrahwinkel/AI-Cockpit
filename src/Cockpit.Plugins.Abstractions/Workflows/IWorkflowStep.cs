@@ -1,3 +1,5 @@
+using Material.Icons;
+
 namespace Cockpit.Plugins.Abstractions.Workflows;
 
 /// <summary>
@@ -25,8 +27,15 @@ public interface IWorkflowStep
     /// <summary>One sentence: what it does, and anything the operator would be surprised by.</summary>
     string Description { get; }
 
-    /// <summary>A single character or emoji for the card.</summary>
+    /// <summary>A single character or emoji for the card. Used when <see cref="IconKind"/> is null.</summary>
     string Icon { get; }
+
+    /// <summary>
+    /// A bundled vector icon for the card, preferred over <see cref="Icon"/> when set, so a step reads as part of the
+    /// theme instead of an emoji the canvas renders in the machine's own font. Null (the default) keeps the
+    /// <see cref="Icon"/> string, so an existing step keeps working.
+    /// </summary>
+    MaterialIconKind? IconKind => null;
 
     /// <summary>The heading it appears under in the step picker: the plugin's own name reads best ("YouTrack").</summary>
     string Category { get; }

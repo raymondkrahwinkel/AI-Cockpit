@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Material.Icons;
 using Cockpit.App.Plugins;
 using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions.Widgets;
@@ -23,6 +24,7 @@ public sealed partial class WidgetPaneViewModel : ObservableObject
         _context = context;
         Title = registration.Title;
         Icon = registration.Icon;
+        IconKind = registration.IconKind;
         HasConfig = registration.HasConfig;
         View = registration.CreateView(context);
         _configView = registration.CreateConfigView;
@@ -44,6 +46,9 @@ public sealed partial class WidgetPaneViewModel : ObservableObject
     public string Title { get; }
 
     public string Icon { get; }
+
+    /// <summary>The bundled vector icon the widget named, or null when it only gave an <see cref="Icon"/> glyph.</summary>
+    public MaterialIconKind? IconKind { get; }
 
     /// <summary>Gates the pane header's ⚙: false means this widget declared no settings form, so no gear is shown at all.</summary>
     public bool HasConfig { get; }
