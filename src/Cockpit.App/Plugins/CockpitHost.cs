@@ -6,6 +6,8 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Infrastructure.Consent;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Toasts;
 using Cockpit.Infrastructure.Sessions;
@@ -61,6 +63,11 @@ internal sealed class CockpitHost(
 
     public void ShowToast(string message, PluginToastSeverity severity, string? actionLabel, Action? onAction) =>
         services.GetRequiredService<IToastService>().Show(message, _ToToastSeverity(severity), actionLabel, onAction);
+
+    public Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) =>
+        // The plugin's identity is stamped here, not taken from the request — a plugin cannot ask under another's name.
+        services.GetRequiredService<IConsentBroker>()
+            .RequestConsentAsync(request with { Source = request.Source with { PluginId = pluginId } });
 
     public void AddSideMenuSection(string title, Func<Control> createView) =>
         contributionSink.AddPluginSideSection(pluginId, title, createView);

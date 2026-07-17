@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
@@ -270,6 +271,21 @@ public interface ICockpitHost
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information, string? actionLabel = null, Action? onAction = null)
     {
     }
+
+    /// <summary>
+    /// Asks the operator to approve a single action before the plugin performs it (#AC-47) — the shared consent
+    /// gate for anything a plugin does with the operator's rights on an agent's say-so: a workflow's shell/egress
+    /// step, taking over a terminal pane. The host shows an Approve/Deny surface built from <paramref name="request"/>
+    /// and returns what the operator chose; the plugin acts only on <see cref="ConsentDecision.IsApproved"/>.
+    /// <para>
+    /// The gate belongs to the host, never to the plugin — a plugin cannot approve its own action, and the surface
+    /// renders <see cref="ConsentRequest.Action"/> verbatim rather than any wording the plugin composes, so a
+    /// prompt-injected caller cannot describe a hostile action as a benign one (see <see cref="ConsentRequest"/>).
+    /// </para>
+    /// Default denies — a host that does not implement consent must fail closed, never silently approve. Only the
+    /// app's own host shows the real prompt.
+    /// </summary>
+    Task<ConsentDecision> RequestConsentAsync(ConsentRequest request) => Task.FromResult(ConsentDecision.Denied);
 
     /// <summary>
     /// Registers a dashboard widget type (see <see cref="WidgetRegistration"/>) — the widget equivalent of

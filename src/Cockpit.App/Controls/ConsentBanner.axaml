@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:conv="using:Cockpit.App.Converters"
+             x:Class="Cockpit.App.Controls.ConsentBanner"
+             x:DataType="vm:ConsentPromptViewModel">
+
+    <!-- The one Approve/Deny consent surface (#AC-47): the literal action shown verbatim, a coloured left edge
+         (amber for a dangerous action, accent for low-risk), and the operator's decision. Hosted in the pane
+         chrome above the session content, so it reads on the session it belongs to. -->
+    <Border CornerRadius="{StaticResource CockpitControlRadius}" ClipToBounds="True"
+            Background="{StaticResource CockpitPanelBgBrush}"
+            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+        <DockPanel>
+            <!-- Left edge: the risk colour, so a dangerous action is legible at a glance before a word is read. -->
+            <Border DockPanel.Dock="Left" Width="3"
+                    Background="{Binding EdgeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+
+            <StackPanel Margin="11,9,11,10" Spacing="6">
+                <!-- Title row: glyph + host-framed title on the left, the source on the right. -->
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding Glyph}" Margin="0,0,7,0"
+                               VerticalAlignment="Center"
+                               Foreground="{Binding EdgeBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding SourceLabel}"
+                               VerticalAlignment="Center" FontSize="11"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12.5"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                </DockPanel>
+
+                <!-- Ground truth: the literal action, verbatim, selectable so it can be copied and checked. -->
+                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource CockpitControlRadius}" Padding="9,8">
+                    <SelectableTextBlock Text="{Binding Action}" TextWrapping="Wrap"
+                                         FontFamily="{StaticResource CockpitMonoFont}" FontSize="12"
+                                         Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                </Border>
+
+                <!-- Decision row: remember (low-risk only) on the left, Deny/Approve on the right. -->
+                <DockPanel>
+                    <CheckBox DockPanel.Dock="Left" Content="Remember for this session"
+                              IsChecked="{Binding Remember}" IsVisible="{Binding CanRemember}"
+                              FontSize="11.5" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Right">
+                        <Button Content="Deny" Classes="Compact" Command="{Binding DenyCommand}"/>
+                        <Button Content="Approve" Classes="Accent Compact" Command="{Binding ApproveCommand}"/>
+                    </StackPanel>
+                </DockPanel>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</UserControl>
