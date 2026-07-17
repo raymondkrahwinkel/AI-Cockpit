@@ -63,4 +63,11 @@ public interface ISessionDialogService
 
     /// <summary>Asks the operator to confirm a destructive action (remove a store/profile/plugin/…). Returns true only when they confirm; Cancel/✕/Esc return false. Shown over the topmost window.</summary>
     Task<bool> ShowConfirmationDialogAsync(string title, string message, string confirmLabel = "Remove");
+
+    /// <summary>
+    /// Shows the Set-status dialog (AC-32) seeded with <paramref name="currentStatusline"/> so the operator can edit a
+    /// session's status line by hand. Returns the new value — an empty string when they clear it — or null when they
+    /// cancel, leaving the status unchanged.
+    /// </summary>
+    Task<string?> ShowSetStatusDialogAsync(string currentStatusline);
 }

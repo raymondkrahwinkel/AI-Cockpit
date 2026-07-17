@@ -3193,6 +3193,30 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void RenameSession(SessionPanelViewModel session) => session.BeginRename();
 
+    /// <summary>
+    /// Context-menu Set status (AC-32): edit this session's status line by hand through the dialog, seeded with its
+    /// current value. Writes the result back to the same <see cref="SessionPanelViewModel.Statusline"/> the MCP
+    /// <c>set_status</c> tool sets, so manual and agent updates stay one source of truth; a cancel leaves it as it was.
+    /// </summary>
+    [RelayCommand]
+    private async Task SetSessionStatusAsync(SessionPanelViewModel session)
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        var result = await _dialogService.ShowSetStatusDialogAsync(session.Statusline);
+        if (result is not null)
+        {
+            session.Statusline = result;
+        }
+    }
+
+    /// <summary>Context-menu Clear status (AC-32): wipe this session's status line, the same as the MCP setting it to empty.</summary>
+    [RelayCommand]
+    private void ClearSessionStatus(SessionPanelViewModel session) => session.Statusline = string.Empty;
+
     /// <summary>Context-menu Move up: shift the session one place earlier in the sidebar order.</summary>
     [RelayCommand]
     private void MoveSessionUp(SessionPanelViewModel session)

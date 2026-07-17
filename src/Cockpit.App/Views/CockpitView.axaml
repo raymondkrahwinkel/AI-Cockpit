@@ -244,6 +244,10 @@
                                             <MenuItem Header="Rename" Click="OnRenameSession"/>
                                             <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
                                             <Separator/>
+                                            <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
+                                            <MenuItem Header="Clear status" Click="OnClearSessionStatus"
+                                                      IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <Separator/>
                                             <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
                                             <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
                                             <Separator/>
