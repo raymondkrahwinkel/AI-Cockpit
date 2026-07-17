@@ -100,13 +100,22 @@ internal sealed class WorkflowMcpTools
             Serializer);
 
     [McpServerTool(Name = "run_workflow")]
-    [Description("Runs a workflow now, from its manual-start (▶) step, and waits for it to finish. Returns the run's id, status (Completed/Failed/…) and, on failure, why. The flow needs a manual trigger step to be runnable this way; a purely event-triggered flow has nothing to start by hand. The run also appears in the cockpit's workflow run history.")]
+    [Description("Runs a workflow now, from its manual-start (▶) step, and waits for it to finish. Returns the run's id, status (Completed/Failed/…) and, on failure, why. Only an active (armed) flow can be run this way — a disarmed flow is refused; ask the operator to activate it. The flow also needs a manual trigger step to be runnable by hand; a purely event-triggered flow has nothing to start. The run also appears in the cockpit's workflow run history.")]
     public async Task<string> RunWorkflow(
         [Description("The workflow id, as returned by list_workflows.")] string id)
     {
         if (_store.Load().FirstOrDefault(flow => flow.Id == id) is not { } workflow)
         {
             return _Fail($"No workflow with id '{id}'.");
+        }
+
+        // The operator's arm switch gates the agent too: a disarmed flow is one they have not (or no longer) authorised
+        // to run, so refuse the agent route the same way create/arm already refuse a dangerous flow (#AC-62). The
+        // operator can still test a disarmed flow by hand with the editor's Run button — that draft/test route is
+        // unaffected because it does not come through here.
+        if (!workflow.IsActive)
+        {
+            return _Fail("This workflow is not armed; ask the operator to activate it before running it.");
         }
 
         // Prefer a manual trigger that is wired and enabled — the same choice the editor's Run button makes.
