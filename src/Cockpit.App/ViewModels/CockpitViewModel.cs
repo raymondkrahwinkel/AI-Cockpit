@@ -1471,16 +1471,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _voiceNaturalizeReadAloud;
 
-    /// <summary>Selectable read-aloud voices (#35) offered by the Options flyout combo box.</summary>
-    public IReadOnlyList<PiperVoiceOption> TtsVoices => PiperVoiceCatalog.Voices;
+    /// <summary>Selectable read-aloud voices (#35) offered by the Options flyout combo box — SupertonicTTS speaker choices.</summary>
+    public IReadOnlyList<TtsVoiceOption> TtsVoices => TtsVoiceCatalog.Voices;
 
-    /// <summary>Piper voice used for read-aloud (#35). The model downloads lazily on first use, the same as the Whisper model.</summary>
+    /// <summary>SupertonicTTS speaker used for read-aloud (#35). One multilingual model voices both languages; the model downloads lazily on first use, the same as the Whisper model.</summary>
     [ObservableProperty]
-    private PiperVoiceOption _selectedTtsVoice = PiperVoiceCatalog.Default;
-
-    /// <summary>Piper voice the Dutch segments of a mixed-language read-aloud reply route to when naturalization tags the languages (#35). Drawn from the same <see cref="TtsVoices"/> list.</summary>
-    [ObservableProperty]
-    private PiperVoiceOption _selectedDutchTtsVoice = PiperVoiceCatalog.DutchDefault;
+    private TtsVoiceOption _selectedTtsVoice = TtsVoiceCatalog.Default;
 
     [ObservableProperty]
     private string _voiceSettingsStatus = string.Empty;
@@ -2857,8 +2853,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
         VoiceNaturalizeReadAloud = settings.NaturalizeReadAloud;
-        SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
-        SelectedDutchTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceIdDutch) ?? PiperVoiceCatalog.DutchDefault;
+        SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
 
         // Show this machine's last calibration if it has ever been run here (AC-68 slice 3).
@@ -2941,8 +2936,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
             NaturalizeReadAloud = VoiceNaturalizeReadAloud,
-            TtsVoiceId = SelectedTtsVoice.VoiceId,
-            TtsVoiceIdDutch = SelectedDutchTtsVoice.VoiceId,
+            TtsVoiceSid = SelectedTtsVoice.Sid,
             SttLanguage = SelectedSttLanguage.Code,
             InputDeviceName = SelectedInputDevice.DeviceName ?? "",
             OutputDeviceName = SelectedOutputDevice.DeviceName ?? "",
@@ -2954,8 +2948,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         foreach (var session in Sessions)
         {
             session.NaturalizeReadAloud = VoiceNaturalizeReadAloud;
-            session.TtsVoiceId = SelectedTtsVoice.VoiceId;
-            session.DutchTtsVoiceId = SelectedDutchTtsVoice.VoiceId;
+            session.TtsVoiceSid = SelectedTtsVoice.Sid;
         }
 
         VoiceSettingsStatus = "Saved";

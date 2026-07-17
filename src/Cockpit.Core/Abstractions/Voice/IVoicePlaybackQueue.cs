@@ -9,15 +9,15 @@ namespace Cockpit.Core.Abstractions.Voice;
 /// </summary>
 public interface IVoicePlaybackQueue
 {
-    /// <summary>Queues <paramref name="sentences"/> for playback in the given voice, appended after whatever is already queued.</summary>
-    void Enqueue(IReadOnlyList<string> sentences, string voiceId);
+    /// <summary>Queues <paramref name="sentences"/> for playback with the given speaker and language, appended after whatever is already queued.</summary>
+    void Enqueue(IReadOnlyList<string> sentences, int speakerId, string language);
 
     /// <summary>
-    /// Queues language-routed <paramref name="segments"/> for playback: each segment speaks in its own
-    /// voice and a short silence separates two consecutive segments whose voice differs, so a Dutch/English
-    /// switch reads as a natural pause rather than the timbre jumping mid-breath.
+    /// Queues language-routed <paramref name="segments"/> for playback: the single Supertonic voice
+    /// (<paramref name="speakerId"/>) speaks each segment in its own language, back-to-back — no silence gap,
+    /// since one voice reading two languages has no timbre jump to bridge.
     /// </summary>
-    void Enqueue(IReadOnlyList<SpeechSegment> segments);
+    void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId);
 
     /// <summary>
     /// Raised when read-aloud playback becomes active (a batch starts) or goes idle (the queue drains),

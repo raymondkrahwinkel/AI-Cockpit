@@ -33,7 +33,7 @@ public class TtyReadAloudTests
         vm.LaunchConfigured(Work, "default", "sonnet", "medium");
 
         reader.DidNotReceiveWithAnyArgs().ReadAssistantTextAsync(default!, default!, default);
-        voicePlaybackQueue.DidNotReceiveWithAnyArgs().Enqueue(default!, default!);
+        voicePlaybackQueue.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]
@@ -65,7 +65,8 @@ public class TtyReadAloudTests
         reader.Received(1).ReadAssistantTextAsync(Work, Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>());
         voicePlaybackQueue.Received(1).Enqueue(
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Here is the tty answer." })),
-            vm.TtsVoiceId);
+            vm.TtsVoiceSid,
+            "en");
     }
 
     [Fact]
@@ -89,7 +90,8 @@ public class TtyReadAloudTests
             (SessionProfile?)null, Arg.Any<IReadOnlySet<string>>(), Arg.Any<CancellationToken>());
         voicePlaybackQueue.Received(1).Enqueue(
             Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Profile-less answer." })),
-            vm.TtsVoiceId);
+            vm.TtsVoiceSid,
+            "en");
     }
 
     [Fact]
