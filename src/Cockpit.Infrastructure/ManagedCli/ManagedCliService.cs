@@ -24,6 +24,10 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
         | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
 
+    // Headroom over the largest real CLI (claude ~264 MB) — a cap so a compromised/misbehaving origin cannot stream an
+    // unbounded body into memory (OOM) before the checksum is even computed, and a decompression bomb cannot fill the disk.
+    private const long MaxDownloadBytes = 600L * 1024 * 1024;
+
     // One shared client for the process, same rationale as the voice caches and the plugin store: avoid per-download
     // socket exhaustion. Overridable through the internal constructor so a test can supply a stubbed handler.
     private static readonly HttpClient SharedHttp = new();
@@ -109,6 +113,16 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
                 return ManagedCliInstallResult.Fail($"Could not determine the latest version of '{cliName}'.");
             }
 
+            // The version string comes from the provider's own channel (a compromised/edge-poisoned origin is exactly
+            // the supply-chain threat this feature courts), and it becomes a path segment and a URL component. Require
+            // it to be a plain dotted-numeric Version: that rejects any traversal (`..`, separators) outright, and it
+            // is also the shape ResolveInstalledPath parses — so an install can never land in a directory resolution
+            // would not find. Anything else is refused rather than trusted.
+            if (!Version.TryParse(version, out _))
+            {
+                return ManagedCliInstallResult.Fail($"'{cliName}' reported an unexpected version format ('{version}') and was not installed.");
+            }
+
             var versionDirectory = Path.Combine(_cliRoot, cliName, version);
             var plan = await descriptor.BuildDownloadPlanAsync(_http, platform, version, cancellationToken).ConfigureAwait(false);
             var finalPath = Path.Combine(versionDirectory, plan.ExecutableFileName);
@@ -144,7 +158,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
         try
         {
-            var bytes = await _http.GetByteArrayAsync(plan.Url, cancellationToken).ConfigureAwait(false);
+            var bytes = await _DownloadAsync(plan.Url, cancellationToken).ConfigureAwait(false);
 
             // Verify before anything is written out or unpacked. A mismatch means the bytes are not what the provider
             // published — reject and install nothing.
@@ -189,6 +203,41 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         }
     }
 
+    // Fetch the binary/archive bytes with a size cap, a timeout and a User-Agent. Streams the body and aborts the
+    // moment it passes the cap, so an oversized (declared or actual) response never fully materialises in memory.
+    private async Task<byte[]> _DownloadAsync(string url, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(10));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd("Cockpit-ManagedCli");
+
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        if (response.Content.Headers.ContentLength is { } declared && declared > MaxDownloadBytes)
+        {
+            throw new InvalidOperationException($"The download is larger than the {MaxDownloadBytes / (1024 * 1024)} MB limit and was refused.");
+        }
+
+        await using var body = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await body.ReadAsync(chunk, timeout.Token).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > MaxDownloadBytes)
+            {
+                throw new InvalidOperationException($"The download exceeded the {MaxDownloadBytes / (1024 * 1024)} MB limit and was refused.");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
+    }
+
     // Curated extraction (the poison-bug lesson: take only what is needed, not a whole tree). The archive bytes are
     // already in memory, and a MemoryStream is seekable, so SharpCompress can sniff the format without the rewind
     // trouble a forward-only network stream causes.
@@ -210,7 +259,23 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
             using var entryStream = reader.OpenEntryStream();
             using var output = File.Create(executablePath);
-            entryStream.CopyTo(output);
+
+            // Bound the extracted size too: the archive passed the checksum, but cap defensively so a (source-signed)
+            // decompression bomb cannot fill the disk.
+            var chunk = new byte[81920];
+            long written = 0;
+            int read;
+            while ((read = entryStream.Read(chunk, 0, chunk.Length)) > 0)
+            {
+                written += read;
+                if (written > MaxDownloadBytes)
+                {
+                    throw new InvalidOperationException($"The archive entry exceeded the {MaxDownloadBytes / (1024 * 1024)} MB limit and was refused.");
+                }
+
+                output.Write(chunk, 0, read);
+            }
+
             return;
         }
 

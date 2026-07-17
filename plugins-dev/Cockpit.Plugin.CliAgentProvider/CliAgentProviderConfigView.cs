@@ -22,16 +22,19 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
     private readonly TextBlock _commandStatus = ProviderConfigStatus.CreateLine();
     private readonly TextBlock _workingDirectoryStatus = ProviderConfigStatus.CreateLine();
 
+    private readonly ICockpitHost _host;
     private readonly ManagedCliConfigSection _managedCli;
 
     public Control View { get; }
 
     public CliAgentProviderConfigView(string? existingConfigJson, ICockpitHost host)
     {
+        _host = host;
         var existing = string.IsNullOrWhiteSpace(existingConfigJson)
             ? null
             : JsonSerializer.Deserialize<CliAgentConfig>(existingConfigJson, CliAgentConfig.JsonOptions);
-        _managedCli = new ManagedCliConfigSection(host, CodexManagedCli.CliName, "Codex CLI");
+        // The panel refreshes the command-status line after install/remove, so the two never disagree.
+        _managedCli = new ManagedCliConfigSection(host, CodexManagedCli.CliName, "Codex CLI", _UpdateCommandStatus);
 
         _command = new TextBox { Text = existing?.Command ?? "codex" };
         _workingDirectory = new TextBox { Text = existing?.WorkingDirectory ?? string.Empty, PlaceholderText = "Directory codex may read (and, in workspace-write, edit)" };
@@ -84,7 +87,10 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         _UpdateWorkingDirectoryStatus();
     }
 
-    /// <summary>Resolves the command against PATH (cross-OS, incl. Windows .cmd/.exe/.bat shims) and shows where it was found, or that it is not on PATH — informational, since a profile may legitimately pin a command for a machine that has it installed elsewhere.</summary>
+    /// <summary>
+    /// Resolves the command exactly as a session spawn will (pin &gt; managed &gt; PATH) and states, in one line, what
+    /// will run and whether it is a cockpit-managed copy — so this never contradicts the managed panel below.
+    /// </summary>
     private void _UpdateCommandStatus()
     {
         var command = _command.Text?.Trim() ?? string.Empty;
@@ -94,14 +100,25 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
             return;
         }
 
-        var resolved = CliExecutableLocator.Resolve(command);
-        if (Path.IsPathRooted(resolved) && File.Exists(resolved))
+        var isPinned = Path.IsPathRooted(command);
+        var resolved = CliExecutableLocator.Resolve(command, _host.ResolveManagedCliPath);
+        var managedPath = _host.ResolveManagedCliPath(CodexManagedCli.CliName);
+
+        if (!isPinned && !string.IsNullOrEmpty(managedPath) && string.Equals(resolved, managedPath, StringComparison.Ordinal))
         {
-            ProviderConfigStatus.Set(_commandStatus, $"Found: {resolved}", isOk: true);
+            ProviderConfigStatus.Set(_commandStatus, $"Managed by Cockpit — this copy is used: {resolved}", isOk: true);
+        }
+        else if (isPinned && File.Exists(resolved))
+        {
+            ProviderConfigStatus.Set(_commandStatus, $"Using pinned path (not managed): {resolved}", isOk: true);
+        }
+        else if (Path.IsPathRooted(resolved) && File.Exists(resolved))
+        {
+            ProviderConfigStatus.Set(_commandStatus, $"Found on PATH (not managed): {resolved}", isOk: true);
         }
         else
         {
-            ProviderConfigStatus.Set(_commandStatus, "Not found on PATH — check it is installed, or paste an absolute path.", isOk: false);
+            ProviderConfigStatus.Set(_commandStatus, "Not found on PATH — install it below, or paste an absolute path.", isOk: false);
         }
     }
 
@@ -166,7 +183,7 @@ internal sealed class CliAgentProviderConfigView : IPluginProviderConfigView
         try
         {
             var config = new CliAgentConfig(Command: command, ConfigDir: configDir);
-            var executablePath = CliExecutableLocator.Resolve(command);
+            var executablePath = CliExecutableLocator.Resolve(command, _host.ResolveManagedCliPath);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             var listing = await CodexModelCatalog.ListAsync(() => new ProcessCliSubprocess(), config, executablePath, cts.Token).ConfigureAwait(true);
             if (listing.Ids.Count > 0)
