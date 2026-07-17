@@ -102,14 +102,22 @@ public static class DependencyInjection
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             services.AddSingleton<IProcessTableReader, WmiProcessTableReader>();
+            services.AddSingleton<ICrashLogReader, WindowsCrashLogReader>();
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             services.AddSingleton<IProcessTableReader, PsProcessTableReader>();
+            services.AddSingleton<ICrashLogReader, MacCrashLogReader>();
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            services.AddSingleton<IProcessTableReader, ProcProcessTableReader>();
+            services.AddSingleton<ICrashLogReader, LinuxCrashLogReader>();
         }
         else
         {
             services.AddSingleton<IProcessTableReader, ProcProcessTableReader>();
+            services.AddSingleton<ICrashLogReader, NoOpCrashLogReader>();
         }
 #pragma warning restore CA1416
     }
