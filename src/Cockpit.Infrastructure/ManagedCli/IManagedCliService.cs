@@ -9,6 +9,9 @@ namespace Cockpit.Infrastructure.ManagedCli;
 /// </summary>
 public interface IManagedCliService
 {
+    /// <summary>The names of the managed CLIs plugins have registered — what a background update check iterates.</summary>
+    IReadOnlyCollection<string> RegisteredCliNames { get; }
+
     /// <summary>Records a plugin's install recipe under its <see cref="ManagedCliDescriptor.CliName"/>. Idempotent — re-registering the same name replaces it.</summary>
     void Register(ManagedCliDescriptor descriptor);
 
@@ -34,4 +37,11 @@ public interface IManagedCliService
     /// removed. Never throws — a locked file is reported as "not fully removed" rather than crashing a settings action.
     /// </summary>
     bool RemoveInstalled(string cliName);
+
+    /// <summary>
+    /// The installed version (from disk) and the latest version the provider offers (a lightweight channel check, no
+    /// download) for <paramref name="cliName"/>. A channel that cannot be reached yields a null latest version rather
+    /// than throwing, so a config view's update check degrades to "can't tell" instead of failing.
+    /// </summary>
+    Task<ManagedCliStatus> GetStatusAsync(string cliName, CancellationToken cancellationToken = default);
 }
