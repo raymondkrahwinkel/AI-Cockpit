@@ -162,17 +162,8 @@
             </Grid>
         </Border>
 
-        <!-- Consent banner (#AC-47): shown under the header, above the transcript, when a request is waiting on this
-             session. Bound to PendingConsent (inherited from SessionPanelViewModel); hidden when there is none. -->
-        <ContentControl DockPanel.Dock="Top" Margin="0,0,0,6"
-                        Content="{Binding PendingConsent}"
-                        IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <ContentControl.ContentTemplate>
-                <DataTemplate x:DataType="vm:ConsentPromptViewModel">
-                    <controls:ConsentBanner/>
-                </DataTemplate>
-            </ContentControl.ContentTemplate>
-        </ContentControl>
+        <!-- Consent banner (#AC-47): shown under the header, above the transcript, when a request is waiting on this session. -->
+        <controls:ConsentBannerHost DockPanel.Dock="Top" Margin="0,0,0,6"/>
 
         <!-- Input bar: queued-message chips, then pending-attachment chips, then dark multiline textbox + accent Send. -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="True">

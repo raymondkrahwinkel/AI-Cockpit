@@ -54,11 +54,14 @@ internal sealed class ConsentService(IConsentAuditLog auditLog) : IConsentBroker
         var id = Guid.NewGuid();
         var pending = new _Pending(request, canRemember);
         _pending[id] = pending;
+
+        // Show the prompt before wiring cancellation, so PromptOpened always precedes any PromptClosed: a token that
+        // is already — or becomes — cancelled then fires _Cancel after the banner is up, never before it (which would
+        // leave a banner whose id the broker has already forgotten, impossible to answer).
+        handler.Invoke(this, new ConsentPrompt(id, request, canRemember));
         pending.CtRegistration = cancellationToken.CanBeCanceled
             ? cancellationToken.Register(() => _Cancel(id))
             : default;
-
-        handler.Invoke(this, new ConsentPrompt(id, request, canRemember));
 
         return await pending.Completion.Task.ConfigureAwait(false);
     }
@@ -90,8 +93,16 @@ internal sealed class ConsentService(IConsentAuditLog auditLog) : IConsentBroker
     private void _Finish(_Pending pending, Guid promptId, ConsentOutcome outcome, bool remembered)
     {
         pending.CtRegistration.Dispose();
-        _ = _RecordAsync(pending.Request, outcome, remembered);
-        PromptClosed?.Invoke(this, promptId);
+        PromptClosed?.Invoke(this, promptId);   // take the banner down at once
+        _ = _ResolveAsync(pending, outcome, remembered);
+    }
+
+    // The caller's decision resolves only after the audit line is flushed — the same order the remembered and
+    // fail-closed paths already take — so a crash can't leave the operator having acted on a decision the
+    // append-only trail never recorded.
+    private async Task _ResolveAsync(_Pending pending, ConsentOutcome outcome, bool remembered)
+    {
+        await _RecordAsync(pending.Request, outcome, remembered).ConfigureAwait(false);
         pending.Completion.TrySetResult(new ConsentDecision(outcome, remembered));
     }
 
