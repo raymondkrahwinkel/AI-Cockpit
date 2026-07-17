@@ -384,13 +384,48 @@
                                 <TextBlock Text="Transcription" FontWeight="SemiBold"/>
                                 <TextBlock Text="Turns your speech into text with Whisper, on-device. This is the speech-to-text model — separate from the local LLM that tidies the text on the Cleanup page."
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <!-- AC-68: detected acceleration, so the choices below read as host-aware rather than generic. -->
+                                <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                        CornerRadius="5" Padding="8,5" HorizontalAlignment="Left" MaxWidth="440" Margin="0,2">
+                                    <TextBlock Text="{Binding TranscriptionHardware}"
+                                               FontFamily="{StaticResource CockpitMonoFont}" FontSize="10.5"
+                                               TextWrapping="Wrap"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                </Border>
+                                <!-- Curated model dropdown (AC-68): presets with an accuracy-vs-load hint, plus a
+                                     "Custom…" item that reveals the old free-text box for any other ggml name. -->
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Transcription model"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
-                                    <TextBox Text="{Binding VoiceModelName}" Width="150"
-                                             ToolTip.Tip="Whisper ggml model, e.g. large-v3-turbo, small, base, tiny — larger is more accurate but slower"/>
+                                    <ComboBox ItemsSource="{Binding TranscriptionModelChoices}"
+                                              SelectedItem="{Binding SelectedTranscriptionModel}"
+                                              MinWidth="220">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:TranscriptionModelOption">
+                                                <Grid ColumnDefinitions="*,Auto" MinWidth="196">
+                                                    <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Hint}" Margin="12,0,0,0"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                               FontFamily="{StaticResource CockpitMonoFont}" FontSize="10"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                                            IsVisible="{Binding IsTranscriptionModelCustom}">
+                                    <TextBlock Text="Custom model"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding VoiceCustomModelName}" Width="220"
+                                             PlaceholderText="e.g. large-v3-turbo-q5_0"
+                                             ToolTip.Tip="Any Whisper ggml model name; quantized variants (q5_0, q8_0) work too"/>
+                                </StackPanel>
+                                <!-- Host-aware backend (AC-68): only Auto/CPU plus a GPU entry when a GPU runtime
+                                     actually loads here — never CUDA on a non-NVIDIA machine. -->
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Transcription backend"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -398,6 +433,54 @@
                                     <ComboBox ItemsSource="{Binding VoiceBackendPreferences}"
                                               SelectedItem="{Binding SelectedVoiceBackendPreference}"
                                               DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding TranscriptionAdvice}"
+                                           IsVisible="{Binding TranscriptionAdvice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                                <!-- AC-68 slice 3: first-use calibration — a real measurement of speed + desktop hitch
+                                     on the chosen backend, remembered for this machine, that confirms or overturns the
+                                     rule-table recommendation above. -->
+                                <StackPanel Spacing="8" IsVisible="{Binding ShowCalibration}" Margin="0,6,0,0">
+                                    <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,2"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="First-use calibration" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding CalibrationStatus}"
+                                                   IsVisible="{Binding CalibrationStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
+                                    </Grid>
+                                    <TextBlock Text="Measures how fast a sentence transcribes and how much the desktop hitches, on your chosen backend. The result is remembered for this machine."
+                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                                    <StackPanel Spacing="6" IsVisible="{Binding HasCalibration}">
+                                        <Grid ColumnDefinitions="96,*,60">
+                                            <TextBlock Grid.Column="0" Text="Speed" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                            <ProgressBar Grid.Column="1" Minimum="0" Maximum="3000" Value="{Binding CalibrationLatencyMs}"
+                                                         Height="8" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding CalibrationSpeedText}" HorizontalAlignment="Right"
+                                                       VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"/>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="96,*,60">
+                                            <TextBlock Grid.Column="0" Text="Desktop hitch" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"/>
+                                            <ProgressBar Grid.Column="1" Minimum="0" Maximum="50" Value="{Binding CalibrationHitchMs}"
+                                                         Height="8" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding CalibrationHitchText}" HorizontalAlignment="Right"
+                                                       VerticalAlignment="Center" FontFamily="{StaticResource CockpitMonoFont}" FontSize="11"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding CalibrationRationale}"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <Button Content="Run calibration" Command="{Binding RunCalibrationCommand}"
+                                                IsEnabled="{Binding CanRunCalibration}"/>
+                                        <TextBlock Text="Turn on push-to-talk dictation above first — calibration needs the model."
+                                                   IsVisible="{Binding !VoiceEnabled}" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>

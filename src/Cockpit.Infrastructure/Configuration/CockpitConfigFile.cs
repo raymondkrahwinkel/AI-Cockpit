@@ -96,4 +96,11 @@ internal sealed class CockpitConfigFile
 
     /// <summary>The main window's last position/size/maximized state; owned by the window-bounds store.</summary>
     public WindowBoundsEntry? WindowBounds { get; set; }
+
+    /// <summary>
+    /// First-use STT calibration (AC-68 slice 3) keyed by machine name; owned by the transcription-calibration
+    /// store. Keyed per machine because a config can be synced or restored onto a different box, and a GPU
+    /// measurement from one machine says nothing about another's.
+    /// </summary>
+    public Dictionary<string, TranscriptionCalibrationEntry> TranscriptionCalibrations { get; set; } = [];
 }
