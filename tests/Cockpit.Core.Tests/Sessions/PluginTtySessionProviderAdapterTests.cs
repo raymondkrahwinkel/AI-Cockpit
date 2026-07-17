@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
-using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
@@ -22,7 +21,7 @@ public class PluginTtySessionProviderAdapterTests
         string providerId = "cli-agent-provider.codex", string configJson = """{"Command":"codex"}""")
     {
         var inner = Substitute.For<IPluginTtyProvider>();
-        return (new PluginTtySessionProviderAdapter(providerId, inner, configJson, new McpAuthKey()), inner);
+        return (new PluginTtySessionProviderAdapter(providerId, inner, configJson), inner);
     }
 
     [Fact]
@@ -40,7 +39,13 @@ public class PluginTtySessionProviderAdapterTests
         inner.BuildLaunch(Arg.Any<PluginTtyLaunchContext>()).Returns(new PluginTtyLaunchSpec(
             "codex", [], new Dictionary<string, string?>(), "/wd", []));
         var options = new Dictionary<string, string> { ["sandbox"] = "workspace-write" };
-        var baseEnvironment = new Dictionary<string, string> { ["PATH"] = "/usr/bin" };
+        // The host (TtyLauncher) owns COCKPIT_MCP_KEY on the base and hands it to the adapter already set (AC-40);
+        // the adapter relays the base untouched rather than injecting the key itself.
+        var baseEnvironment = new Dictionary<string, string>
+        {
+            ["PATH"] = "/usr/bin",
+            [WellKnownSessionEnvironment.CockpitMcpKey] = "run-key",
+        };
         var context = new TtyLaunchContext(null, options, "/wd", null, baseEnvironment);
 
         adapter.BuildLaunch(context);
@@ -50,7 +55,7 @@ public class PluginTtySessionProviderAdapterTests
             && pluginContext.Options == options
             && pluginContext.WorkingDirectory == "/wd"
             && pluginContext.BaseEnvironment!["PATH"] == "/usr/bin"
-            && pluginContext.BaseEnvironment.ContainsKey(WellKnownSessionEnvironment.CockpitMcpKey)
+            && pluginContext.BaseEnvironment[WellKnownSessionEnvironment.CockpitMcpKey] == "run-key"
             && pluginContext.Resume == null));
     }
 

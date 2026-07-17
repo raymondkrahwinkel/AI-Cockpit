@@ -25,7 +25,6 @@ internal sealed class PluginTtySessionProviderAdapter(
     string providerId,
     IPluginTtyProvider inner,
     string configJson,
-    McpAuthKey authKey,
     IMcpServerCatalog? mcpServerCatalog = null) : ITtySessionProvider
 {
     public string ProviderId => providerId;
@@ -34,20 +33,15 @@ internal sealed class PluginTtySessionProviderAdapter(
     {
         var (mcpServers, canDelegate) = _ResolveRegistry();
 
-        // This run's MCP auth key rides the base environment (AC-40), so a cockpit-hosted server's config can
-        // reference COCKPIT_MCP_KEY rather than embed a literal. It is not host-controlled, so the pty base scrub
-        // passes it through to the child.
-        var baseEnvironment = context.BaseEnvironment is null
-            ? new Dictionary<string, string>(StringComparer.Ordinal)
-            : new Dictionary<string, string>(context.BaseEnvironment, StringComparer.Ordinal);
-        baseEnvironment[WellKnownSessionEnvironment.CockpitMcpKey] = authKey.Value;
-
+        // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP
+        // auth key on it (COCKPIT_MCP_KEY, AC-40) so a cockpit-hosted server's config can reference the env var
+        // rather than embed a literal — it is not the adapter's to add, only to relay.
         var spec = inner.BuildLaunch(new PluginTtyLaunchContext(
             configJson,
             context.Options,
             context.WorkingDirectory,
             _Resume(context.Resume),
-            baseEnvironment)
+            context.BaseEnvironment)
         {
             McpServers = mcpServers,
             DelegationSystemPrompt = canDelegate ? DelegationSystemPrompt.Default : null,
