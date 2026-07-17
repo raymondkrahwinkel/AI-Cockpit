@@ -18,4 +18,11 @@ public sealed record StepContext(
 {
     /// <summary>Fills the placeholders in one of this step's parameters.</summary>
     public StepDataResult Resolve(string? text) => StepData.Resolve(text, Input, Produced);
+
+    /// <summary>
+    /// Fills the placeholders, passing each substituted value through <paramref name="escapeValue"/> first — the
+    /// command step uses this to shell-quote untrusted step data so it stays one inert argument (AC-39).
+    /// </summary>
+    public StepDataResult Resolve(string? text, Func<string, string> escapeValue) =>
+        StepData.Resolve(text, Input, Produced, escapeValue);
 }

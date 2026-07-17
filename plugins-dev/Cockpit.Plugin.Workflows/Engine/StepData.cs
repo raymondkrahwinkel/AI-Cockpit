@@ -28,16 +28,24 @@ public static partial class StepData
     /// Fills the placeholders in <paramref name="text"/>. <paramref name="input"/> is what this step was handed;
     /// <paramref name="produced"/> is what every step that has already run produced, by name.
     /// </summary>
+    /// <param name="escapeValue">
+    /// Applied to each substituted value — a placeholder lookup or an expression result — before it is spliced in,
+    /// leaving the surrounding template untouched. The command step passes shell quoting here so untrusted step data
+    /// cannot break out of its argument (AC-39); callers that resolve into a non-shell context (a URL, a message, a
+    /// working directory handed to an API) pass nothing and get the raw value.
+    /// </param>
     public static StepDataResult Resolve(
         string? text,
         IReadOnlyList<WorkflowItem> input,
-        IReadOnlyDictionary<string, IReadOnlyList<WorkflowItem>>? produced = null)
+        IReadOnlyDictionary<string, IReadOnlyList<WorkflowItem>>? produced = null,
+        Func<string, string>? escapeValue = null)
     {
         if (string.IsNullOrEmpty(text))
         {
             return new StepDataResult(text ?? string.Empty, []);
         }
 
+        var escape = escapeValue ?? (static value => value);
         var missing = new List<string>();
         var errors = new List<string>();
 
@@ -47,7 +55,9 @@ public static partial class StepData
         {
             try
             {
-                return _Text(Expressions.Evaluate(match.Groups[1].Value, input, produced ?? _nothing));
+                // A computed value is derived from the same step data and spliced the same way, so it is escaped too;
+                // a failed expression is left exactly as written (and reported), never escaped into place.
+                return escape(_Text(Expressions.Evaluate(match.Groups[1].Value, input, produced ?? _nothing)));
             }
             catch (InvalidOperationException exception)
             {
@@ -62,7 +72,7 @@ public static partial class StepData
 
             if (_Lookup(reference, input, produced) is { } value)
             {
-                return value;
+                return escape(value);
             }
 
             missing.Add(reference);
