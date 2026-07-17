@@ -49,6 +49,18 @@ public partial class TtyView : UserControl
     // claude on the transient size and immediately reflowing it is a prime cause of the stacked-at-top render.
     private DispatcherTimer? _resizeSettle;
 
+    // AC-57: cap how often streaming pty output repaints the terminal. Exclr8's TerminalControl re-shapes all
+    // visible text (HarfBuzz shaping + glyph-run construction, no cross-frame cache) on every Render, so one
+    // repaint per pty chunk during a burst is a per-frame allocation storm — ~16 MB/s here, ~88 MB/s on macOS,
+    // where Metal retains it as native memory until the app falls over (the runaway this issue is about). The
+    // pty reader now appends into _outputPending on its background thread and a UI-thread timer flushes it into
+    // Terminal.Write at ~30 fps, so the control invalidates (and re-shapes) at a bounded rate rather than on
+    // every chunk. All bytes still arrive, in order; only the paint cadence is capped, and 30 fps stays smooth.
+    private const int OutputFlushIntervalMs = 33;
+    private readonly object _outputLock = new();
+    private readonly List<byte> _outputPending = [];
+    private DispatcherTimer? _outputFlush;
+
     // #58 confirmation logging: every Exclr8 Resized event and every pty.Resize call, so the net-zero
     // round-trip signature (>=2 Resized with different sizes within the settle window, followed by one
     // pty.Resize equal to the previous pty size) can be confirmed from %APPDATA%\Cockpit\logs\cockpit.log.
@@ -547,6 +559,13 @@ public partial class TtyView : UserControl
         _logger?.LogInformation("TTY-DIAG [redraw] after: {Snapshot}", TtyDiagnosticsSnapshot.Capture(Terminal.Buffer));
     }
 
+    private DispatcherTimer CreateOutputFlushTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(OutputFlushIntervalMs) };
+        timer.Tick += (_, _) => _FlushOutput();
+        return timer;
+    }
+
     private void OnRedrawClick(object? sender, RoutedEventArgs e) => ForceRedraw();
 
     private void UpdateDiagnostics()
@@ -620,6 +639,11 @@ public partial class TtyView : UserControl
             _viewModel?.OnLaunchFailed();
             return;
         }
+
+        // AC-57: the ~30 fps flush timer that drains the pty reader's buffer into Terminal.Write, capping the
+        // repaint (and text re-shape) rate. Created here on the UI thread, alongside the reader it feeds.
+        _outputFlush ??= CreateOutputFlushTimer();
+        _outputFlush.Start();
 
         _outputCancellation = new CancellationTokenSource();
         _ = PumpOutputAsync(_pty, _outputCancellation.Token);
@@ -747,9 +771,12 @@ public partial class TtyView : UserControl
                     break;
                 }
 
-                var chunk = new byte[read];
-                Array.Copy(buffer, chunk, read);
-                await Dispatcher.UIThread.InvokeAsync(() => Terminal.Write(chunk));
+                // AC-57: hand the bytes to the UI-thread flush timer instead of writing (and repainting) per read.
+                // Copied out under the lock before the next ReadAsync overwrites the buffer.
+                lock (_outputLock)
+                {
+                    _outputPending.AddRange(buffer.AsSpan(0, read));
+                }
             }
         }
         catch (OperationCanceledException)
@@ -761,13 +788,42 @@ public partial class TtyView : UserControl
             // Pipe broken (process exited); fall through to the exit notification.
         }
 
-        await Dispatcher.UIThread.InvokeAsync(() => _viewModel?.OnProcessExited());
+        // Drain whatever the reader accumulated before announcing the exit, so the last frame of output is not
+        // left sitting in the buffer when the process ends between flush ticks.
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _FlushOutput();
+            _viewModel?.OnProcessExited();
+        });
+    }
+
+    // Writes everything the pty reader has accumulated in one Terminal.Write, on the UI thread. Driven by the
+    // ~30 fps flush timer (and once more on exit) so the terminal repaints at a bounded rate under a burst — see
+    // the _outputFlush field comment. A no-op when nothing is pending, so an idle session costs nothing.
+    private void _FlushOutput()
+    {
+        byte[] chunk;
+        lock (_outputLock)
+        {
+            if (_outputPending.Count == 0)
+            {
+                return;
+            }
+
+            chunk = [.. _outputPending];
+            _outputPending.Clear();
+        }
+
+        Terminal.Write(chunk);
     }
 
     private void OnUnloaded(object? sender, RoutedEventArgs e)
     {
         _resizeSettle?.Stop();
         _resizeSettle = null;
+
+        _outputFlush?.Stop();
+        _outputFlush = null;
 
         _outputCancellation?.Cancel();
         _outputCancellation?.Dispose();
