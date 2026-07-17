@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
+using Cockpit.Plugins.Abstractions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -19,6 +21,14 @@ public sealed record AboutInfo(
     string IssuesUrl,
     string PluginStoreUrl)
 {
+    /// <summary>
+    /// The build's "important numbers", shown as a faint line under the version: the plugin contract the host
+    /// provides (the hard compatibility gate — a plugin is refused unless its <c>abstractionsVersion</c> matches),
+    /// the SDK semver plugin authors build against, and the .NET runtime. These are the identifiers a bug report
+    /// needs, put where a user already looks for "what version am I on".
+    /// </summary>
+    public string BuildText { get; init; } = "";
+
     public const string DefaultGitHubUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit";
     public const string DefaultIssuesUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit/issues";
     public const string DefaultPluginStoreUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins";
@@ -42,12 +52,22 @@ public sealed record AboutInfo(
         "Apache 2.0 with the Commons Clause · © 2026 Raymond Krahwinkel / Krahwinkel-IT",
         DefaultGitHubUrl,
         DefaultIssuesUrl,
-        DefaultPluginStoreUrl);
+        DefaultPluginStoreUrl)
+    {
+        BuildText = _BuildText(),
+    };
 
     // Built-ins first, then whatever provider plugins are installed — one flat list, because from where the
     // operator sits they are all just providers a session can run under.
     private static string _ProviderText(IEnumerable<string>? pluginProviderNames) =>
         string.Join(" · ", BuiltInProviders.Concat(pluginProviderNames ?? []));
+
+    // "Plugin API 1 (SDK 1.4.0) · .NET 10.0.10". The API number is the contract major the host provides — the
+    // gate PluginLoadPolicy enforces on every plugin's abstractionsVersion. Its major stays in lock-step with the
+    // SDK semver's major (the SDK's minor moves for additive, non-breaking changes), so showing both tells a plugin
+    // author which contract they target and which SDK features are available. FrameworkDescription is ".NET x.y.z".
+    private static string _BuildText() =>
+        $"Plugin API {AbstractionsContract.Version} (SDK {_VersionText(typeof(AbstractionsContract).Assembly)}) · {RuntimeInformation.FrameworkDescription}";
 
     private static string _VersionText(Assembly assembly)
     {
