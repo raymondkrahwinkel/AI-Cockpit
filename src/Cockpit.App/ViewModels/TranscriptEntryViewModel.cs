@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Material.Icons;
 
 namespace Cockpit.App.ViewModels;
 
@@ -46,22 +47,24 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// <summary>Plain rows that are neither the user bubble nor markdown: questions, errors, turn results.</summary>
     public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow;
 
-    /// <summary>Chevron glyph for a standalone (orphan) tool-result row; presentational only.</summary>
-    public string ToggleGlyph => IsExpanded ? "▾ Tool result" : "▸ Tool result (click to show)";
+    /// <summary>Chevron icon for a row's expand/collapse toggle, shared by the tool-use header and the standalone tool-result row.</summary>
+    public MaterialIconKind ToggleIconKind => IsExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
+
+    /// <summary>Label for a standalone (orphan) tool-result row's toggle; the chevron itself renders separately as <see cref="ToggleIconKind"/>.</summary>
+    public string ToggleLabel => IsExpanded ? "Tool result" : "Tool result (click to show)";
 
     /// <summary>
-    /// Compact one-line header for a collapsed tool-use row (T5): chevron + tool name + a short hint
-    /// pulled from the input (command/file/pattern/…), so a call reads as "▸ Bash · dotnet build"
-    /// instead of the full input JSON. The full input shows once expanded.
+    /// Compact one-line label for a collapsed tool-use row (T5): tool name + a short hint pulled from the
+    /// input (command/file/pattern/…), so a call reads as "Bash · dotnet build" instead of the full input
+    /// JSON. The full input shows once expanded; the row's own chevron renders separately as <see cref="ToggleIconKind"/>.
     /// </summary>
     public string ToolHeader
     {
         get
         {
-            var glyph = IsExpanded ? "▾ " : "▸ ";
             var name = string.IsNullOrEmpty(ToolName) ? "Tool" : ToolName;
             var summary = _ToolSummary(InputJson);
-            return summary.Length == 0 ? glyph + name : $"{glyph}{name}  ·  {summary}";
+            return summary.Length == 0 ? name : $"{name}  ·  {summary}";
         }
     }
 
@@ -158,10 +161,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 
-    /// <summary>Keeps the computed glyph/header in sync — they are computed, not observable, on their own.</summary>
+    /// <summary>Keeps the computed toggle icon/label/header in sync — they are computed, not observable, on their own.</summary>
     partial void OnIsExpandedChanged(bool value)
     {
-        OnPropertyChanged(nameof(ToggleGlyph));
+        OnPropertyChanged(nameof(ToggleIconKind));
+        OnPropertyChanged(nameof(ToggleLabel));
         OnPropertyChanged(nameof(ToolHeader));
     }
 

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Material.Icons;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -44,8 +45,8 @@ public sealed partial class ConsentPromptViewModel : ViewModelBase
     /// <summary>Theme brush key for the banner's left edge (resolved by <c>StatusBrushConverter</c>): amber for dangerous, accent for low-risk.</summary>
     public string EdgeBrushKey => IsDangerous ? "CockpitStatusWaitingBrush" : "CockpitAccentBrush";
 
-    /// <summary>Glyph next to the title, mirroring the sidebar's plain-text status glyphs.</summary>
-    public string Glyph => IsDangerous ? "⚠" : "◆";
+    /// <summary>Icon next to the title, mirroring the sidebar's status markers.</summary>
+    public MaterialIconKind Glyph => IsDangerous ? MaterialIconKind.AlertOutline : MaterialIconKind.RhombusOutline;
 
     /// <summary>Two-way for the "remember for this session" checkbox; only shown/honoured when <see cref="CanRemember"/>.</summary>
     [ObservableProperty]

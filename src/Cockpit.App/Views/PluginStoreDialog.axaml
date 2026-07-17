@@ -3,6 +3,7 @@
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:views="using:Cockpit.App.Views"
         xmlns:core="using:Cockpit.Core.Plugins"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -44,14 +45,23 @@
                 <TextBox Text="{Binding SearchText}" Width="260" PlaceholderText="Search plugins…"/>
                 <ComboBox ItemsSource="{Binding SortModes}" SelectedItem="{Binding SelectedSortModeOption}"
                           DisplayMemberBinding="{Binding Label}"/>
-                <Button Content="↻ Refresh" Classes="Compact" Command="{Binding RefreshCommand}"/>
+                <Button Classes="Compact" Command="{Binding RefreshCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12"/>
+                        <TextBlock Text="Refresh"/>
+                    </StackPanel>
+                </Button>
                 <!-- One-click update of every installed plugin that has a newer version. Hidden when
                      everything is up to date. -->
                 <Button Classes="Accent Compact"
-                        Content="{Binding Manager.AvailableUpdateCount, StringFormat='⬆ Update all ({0})'}"
                         Command="{Binding Manager.UpdateAllCommand}"
                         IsVisible="{Binding Manager.HasAvailableUpdates}"
-                        ToolTip.Tip="Download and install the latest version of every plugin with an update available."/>
+                        ToolTip.Tip="Download and install the latest version of every plugin with an update available.">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="ArrowUpBoldOutline" Width="12" Height="12"/>
+                        <TextBlock Text="{Binding Manager.AvailableUpdateCount, StringFormat='Update all ({0})'}"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Border>
 
@@ -72,9 +82,14 @@
 
                 <!-- Opens the Manage-stores dialog (add/remove stores, each with its name/icon/count) — moved
                      out of this sidebar into its own dialog (§manage-stores). -->
-                <Button DockPanel.Dock="Bottom" Content="⚙ Manage stores" Classes="Subtle" Margin="8"
+                <Button DockPanel.Dock="Bottom" Classes="Subtle" Margin="8"
                         HorizontalAlignment="Left" Foreground="{StaticResource CockpitAccentBrush}"
-                        Click="OnManageStores"/>
+                        Click="OnManageStores">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"/>
+                        <TextBlock Text="Manage stores"/>
+                    </StackPanel>
+                </Button>
 
                 <!-- Installed / Available updates, pinned to the foot above Manage stores. -->
                 <StackPanel DockPanel.Dock="Bottom" Margin="4,6,4,0">
@@ -156,10 +171,15 @@
                                                        FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
                                             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
-                                                <Button Content="⚙ Settings" Classes="Compact" IsVisible="{Binding HasSettings}"
+                                                <Button Classes="Compact" IsVisible="{Binding HasSettings}"
                                                         ToolTip.Tip="Configure this plugin"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.OpenPluginSettingsCommand}"
-                                                        CommandParameter="{Binding}"/>
+                                                        CommandParameter="{Binding}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <materialIcons:MaterialIcon Kind="Cog" Width="12" Height="12"/>
+                                                        <TextBlock Text="Settings"/>
+                                                    </StackPanel>
+                                                </Button>
                                                 <Button Content="{Binding EnableLabel}" Classes="Compact" IsVisible="{Binding CanEnable}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.EnablePluginCommand}"
                                                         CommandParameter="{Binding}"/>
@@ -168,12 +188,16 @@
                                                         CommandParameter="{Binding}"/>
                                                 <!-- Left-menu order and visibility (#72). This list is ordered
                                                      the way the menu is, so moving a row moves the menu entry. -->
-                                                <Button Content="↑" Classes="Compact Subtle" ToolTip.Tip="Move this plugin up in the left menu"
+                                                <Button Classes="Compact Subtle" ToolTip.Tip="Move this plugin up in the left menu"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).MoveInstalledPluginUpCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                                <Button Content="↓" Classes="Compact Subtle" ToolTip.Tip="Move this plugin down in the left menu"
+                                                        CommandParameter="{Binding}">
+                                                    <materialIcons:MaterialIcon Kind="ArrowUp" Width="12" Height="12"/>
+                                                </Button>
+                                                <Button Classes="Compact Subtle" ToolTip.Tip="Move this plugin down in the left menu"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).MoveInstalledPluginDownCommand}"
-                                                        CommandParameter="{Binding}"/>
+                                                        CommandParameter="{Binding}">
+                                                    <materialIcons:MaterialIcon Kind="ArrowDown" Width="12" Height="12"/>
+                                                </Button>
                                                 <Button Content="{Binding MenuVisibilityLabel}" Classes="Compact Subtle"
                                                         ToolTip.Tip="{Binding MenuVisibilityTip}"
                                                         Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).Manager.TogglePluginMenuVisibilityCommand}"
@@ -342,8 +366,10 @@
                     <StackPanel Margin="16" Spacing="10" DataContext="{Binding SelectedPlugin}"
                                 x:DataType="vm:StorePluginRowViewModel">
 
-                        <Button Content="✕" Classes="Subtle" HorizontalAlignment="Right"
-                                Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).CloseDetailsCommand}"/>
+                        <Button Classes="Subtle" HorizontalAlignment="Right"
+                                Command="{Binding $parent[Window].((vm:PluginStoreDialogViewModel)DataContext).CloseDetailsCommand}">
+                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                        </Button>
 
                         <Border Width="56" Height="56" CornerRadius="12" Background="{StaticResource CockpitSecondaryBgBrush}"
                                 HorizontalAlignment="Left">
@@ -365,12 +391,22 @@
                         <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
 
                         <StackPanel Spacing="4">
-                            <Button Content="Homepage ↗" Classes="Subtle" HorizontalAlignment="Left"
+                            <Button Classes="Subtle" HorizontalAlignment="Left"
                                     Foreground="{StaticResource CockpitAccentBrush}"
-                                    IsVisible="{Binding HasHomepage}" Click="OnOpenHomepage"/>
-                            <Button Content="Repository ↗" Classes="Subtle" HorizontalAlignment="Left"
+                                    IsVisible="{Binding HasHomepage}" Click="OnOpenHomepage">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Homepage"/>
+                                    <materialIcons:MaterialIcon Kind="OpenInNew" Width="12" Height="12"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="Subtle" HorizontalAlignment="Left"
                                     Foreground="{StaticResource CockpitAccentBrush}"
-                                    IsVisible="{Binding HasRepository}" Click="OnOpenRepository"/>
+                                    IsVisible="{Binding HasRepository}" Click="OnOpenRepository">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Repository"/>
+                                    <materialIcons:MaterialIcon Kind="OpenInNew" Width="12" Height="12"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
 
                         <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>

@@ -497,12 +497,12 @@ public class CockpitViewModelTests
         await voiceSettingsStore.Received(1).SaveAsync(Arg.Any<VoiceSettings>(), Arg.Any<CancellationToken>());
         await terminalSettingsStore.Received(1).SaveAsync(Arg.Any<TerminalSettings>(), Arg.Any<CancellationToken>());
 
-        vm.NotificationSettingsStatus.Should().Be("✓ Saved");
-        vm.TranscriptDisplaySettingsStatus.Should().Be("✓ Saved");
-        vm.SessionBehaviorSettingsStatus.Should().Be("✓ Saved");
-        vm.LayoutSettingsStatus.Should().Be("✓ Saved");
-        vm.VoiceSettingsStatus.Should().Be("✓ Saved");
-        vm.TerminalSettingsStatus.Should().Be("✓ Saved");
+        vm.NotificationSettingsStatus.Should().Be("Saved");
+        vm.TranscriptDisplaySettingsStatus.Should().Be("Saved");
+        vm.SessionBehaviorSettingsStatus.Should().Be("Saved");
+        vm.LayoutSettingsStatus.Should().Be("Saved");
+        vm.VoiceSettingsStatus.Should().Be("Saved");
+        vm.TerminalSettingsStatus.Should().Be("Saved");
     }
 
     [Fact]
@@ -587,7 +587,7 @@ public class CockpitViewModelTests
             Arg.Any<CancellationToken>());
         vm.TerminalFontFamily.Should().Be("Cascadia Mono, Consolas, monospace");
         vm.TerminalFontSize.Should().Be(TerminalSettings.MaxFontSize);
-        vm.TerminalSettingsStatus.Should().Be("✓ Saved");
+        vm.TerminalSettingsStatus.Should().Be("Saved");
     }
 
     [Fact]
