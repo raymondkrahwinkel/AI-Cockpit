@@ -20,7 +20,7 @@ namespace Cockpit.Infrastructure.Voice;
 /// </para>
 /// </summary>
 internal sealed class WhisperRuntimeProvisioner(
-    IVoiceSettingsStore settingsStore, ILogger<WhisperRuntimeProvisioner> logger) : ISingletonService
+    IVoiceSettingsStore settingsStore, ITranscriptionAdvisor advisor, ILogger<WhisperRuntimeProvisioner> logger) : ISingletonService
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
     private bool _prepared;
@@ -50,9 +50,20 @@ internal sealed class WhisperRuntimeProvisioner(
             var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
             var progress = new ImmediateProgress<VoicePreparationProgress>(step => Preparing?.Invoke(this, step));
 
+            // "Auto" is the hardware-aware pick, not just "GPU-first" (AC-68 slice 2): on a single GPU that also
+            // draws the screen the recommendation is CPU, so a long dictation does not stutter the desktop. An
+            // explicit CPU/GPU choice is honoured as-is.
+            var preference = settings.BackendPreference;
+            if (preference is VoiceBackendPreference.Auto)
+            {
+                var recommendation = advisor.Recommend();
+                preference = recommendation.Backend;
+                logger.LogInformation("Transcription Auto resolved to {Backend} on this machine — {Reason}", preference, recommendation.Reason);
+            }
+
             var platform = WhisperRuntimeCache.CurrentPlatform;
             var order = platform is { } host
-                ? WhisperBackendPlanner.BuildOrder(settings.BackendPreference, host)
+                ? WhisperBackendPlanner.BuildOrder(preference, host)
                 : [WhisperRuntimeBackend.Cpu];
             RuntimeOptions.RuntimeLibraryOrder = order.Select(WhisperRuntimeBackendMapping.ToNative).ToList();
 

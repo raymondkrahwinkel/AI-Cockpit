@@ -953,23 +953,290 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Master switch for voice input (push-to-talk dictation). Off by default — enabling it is what triggers the first Whisper model download.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunCalibration))]
     private bool _voiceEnabled;
 
-    /// <summary>Ggml model name, e.g. "large-v3-turbo", "base", "tiny" — smaller models download faster and transcribe faster on CPU-only hardware.</summary>
+    private readonly ITranscriptionAdvisor? _transcriptionAdvisor;
+
+    /// <summary>Effective ggml model name fed to the speech-to-text service, e.g. "large-v3-turbo", "small", "tiny".
+    /// Driven by the Options dropdown (<see cref="SelectedTranscriptionModel"/>): a curated model sets it directly,
+    /// the "Custom…" choice mirrors <see cref="VoiceCustomModelName"/>. Smaller models download and transcribe faster.</summary>
     [ObservableProperty]
     private string _voiceModelName = "large-v3-turbo";
 
-    /// <summary>Selectable Whisper backend preferences offered by the Options flyout combo box.</summary>
-    public IReadOnlyList<VoiceBackendPreferenceOption> VoiceBackendPreferences { get; } =
+    /// <summary>Sentinel item in the transcription-model dropdown (AC-68) that reveals a free-text box for any ggml
+    /// name not in the curated list — quantized variants like <c>large-v3-turbo-q5_0</c>, or a model added later.</summary>
+    public const string CustomModelChoice = "Custom…";
+
+    /// <summary>Curated Whisper models offered by the Options → Voice → Transcribe dropdown (AC-68), each with a short
+    /// accuracy-vs-load hint. Prefixed at runtime with an "Auto ★" recommendation and suffixed with <see cref="CustomModelChoice"/>.</summary>
+    private static readonly IReadOnlyList<TranscriptionModelOption> _curatedModels =
     [
-        new("Auto (best available)", VoiceBackendPreference.Auto),
-        new("CUDA (NVIDIA)", VoiceBackendPreference.Cuda),
-        new("Vulkan (Windows only)", VoiceBackendPreference.Vulkan),
-        new("CPU", VoiceBackendPreference.Cpu),
+        new("large-v3-turbo", "most accurate · heaviest"),
+        new("medium", "≈1pt less accurate on NL · lighter"),
+        new("small", "fast · light"),
+        new("base", "faster · less accurate"),
+        new("tiny", "fastest · least accurate"),
+        new(CustomModelChoice, "enter any ggml name", IsCustom: true),
     ];
 
+    /// <summary>Items for the model dropdown (AC-68): an "Auto ★" recommendation (when an advisor is present), then the
+    /// curated models, then "Custom…". Built once at construction — the recommendation is fixed for the session.</summary>
+    public ObservableCollection<TranscriptionModelOption> TranscriptionModelChoices { get; } = new();
+
+    /// <summary>The per-machine recommendation (AC-68 slice 2); null in the design-time/test graph with no advisor.</summary>
+    private TranscriptionRecommendation? _transcriptionRecommendation;
+
+    /// <summary>Whether the model dropdown is on the "Auto ★" item — persisted as <see cref="Cockpit.Core.Voice.VoiceSettings.ModelAutoSelected"/>.</summary>
+    private bool _transcriptionModelAuto;
+
+    /// <summary>Selected item in the transcription-model dropdown (AC-68) — the "Auto ★" recommendation, a curated
+    /// model, or the "Custom…" sentinel. Drives <see cref="VoiceModelName"/> and toggles <see cref="IsTranscriptionModelCustom"/>.</summary>
     [ObservableProperty]
-    private VoiceBackendPreferenceOption _selectedVoiceBackendPreference = new("Auto (best available)", VoiceBackendPreference.Auto);
+    private TranscriptionModelOption? _selectedTranscriptionModel;
+
+    /// <summary>True when the model dropdown is on "Custom…" (AC-68), revealing the free-text box bound to <see cref="VoiceCustomModelName"/>.</summary>
+    [ObservableProperty]
+    private bool _isTranscriptionModelCustom;
+
+    /// <summary>Free-text ggml model entered when the dropdown is on "Custom…" (AC-68); mirrored into <see cref="VoiceModelName"/> while custom is active.</summary>
+    [ObservableProperty]
+    private string _voiceCustomModelName = string.Empty;
+
+    /// <summary>Host-aware Whisper backend choices offered by the Options → Voice → Transcribe combo box (AC-68).
+    /// Built from <see cref="ITranscriptionAdvisor"/>: always Auto and CPU, plus a single GPU option only when a GPU
+    /// runtime actually loads here — so a non-NVIDIA machine is never offered CUDA.</summary>
+    public ObservableCollection<VoiceBackendPreferenceOption> VoiceBackendPreferences { get; } = new();
+
+    [ObservableProperty]
+    private VoiceBackendPreferenceOption _selectedVoiceBackendPreference = new("Auto (recommended)", VoiceBackendPreference.Auto);
+
+    /// <summary>One-line explanation of what the chosen transcription backend does on this machine (AC-68); recomputed
+    /// when the selection changes. Slice 2 makes the Auto recommendation hardware-aware and richer.</summary>
+    [ObservableProperty]
+    private string _transcriptionAdvice = string.Empty;
+
+    /// <summary>A short badge line describing the detected transcription hardware (AC-68), e.g. "Vulkan GPU available"
+    /// or "No GPU acceleration detected — CPU only". Slice 2 adds GPU brand and display-adapter facts.</summary>
+    [ObservableProperty]
+    private string _transcriptionHardware = string.Empty;
+
+    /// <summary>Builds the host-aware backend list and the initial model/advice state (AC-68). Called from both
+    /// constructors; without an advisor (design-time/tests) it offers Auto + CPU only.</summary>
+    private void _InitVoiceTranscriptionOptions()
+    {
+        var capabilities = _transcriptionAdvisor?.DetectCapabilities() ?? TranscriptionCapabilities.CpuOnly;
+        _transcriptionRecommendation = _transcriptionAdvisor?.Recommend();
+
+        // Model dropdown: the "Auto ★" recommendation first (only when we have an advisor to recommend), then the
+        // curated models and Custom…. The Auto item carries the recommended model as its hint.
+        TranscriptionModelChoices.Clear();
+        if (_transcriptionRecommendation is { } recommendation)
+        {
+            TranscriptionModelChoices.Add(new("★ Auto — recommended", recommendation.Model, IsAuto: true));
+        }
+
+        foreach (var model in _curatedModels)
+        {
+            TranscriptionModelChoices.Add(model);
+        }
+
+        // Backend dropdown: host-aware Auto / GPU / CPU.
+        VoiceBackendPreferences.Clear();
+        foreach (var choice in TranscriptionOptions.BackendChoices(capabilities))
+        {
+            VoiceBackendPreferences.Add(choice);
+        }
+
+        SelectedVoiceBackendPreference = VoiceBackendPreferences[0];
+
+        // Badges: the recommendation's (brand · drives display · CUDA state) when we have one, else the plain line.
+        TranscriptionHardware = _transcriptionRecommendation is { Badges.Count: > 0 } withBadges
+            ? string.Join(" · ", withBadges.Badges)
+            : TranscriptionOptions.HardwareBadge(capabilities);
+
+        _SyncTranscriptionModelFromName();
+        _UpdateTranscriptionAdvice();
+    }
+
+    /// <summary>Recomputes the one-line advice (AC-68). For "Auto" the recommendation's reason is the richest
+    /// explanation (why CPU on a single GPU that draws the screen); an explicit CPU/GPU choice gets the generic note.</summary>
+    private void _UpdateTranscriptionAdvice()
+    {
+        if (SelectedVoiceBackendPreference.Value is VoiceBackendPreference.Auto && _transcriptionRecommendation is { } recommendation)
+        {
+            TranscriptionAdvice = recommendation.Reason;
+            return;
+        }
+
+        var capabilities = _transcriptionAdvisor?.DetectCapabilities() ?? TranscriptionCapabilities.CpuOnly;
+        TranscriptionAdvice = TranscriptionOptions.Advice(SelectedVoiceBackendPreference.Value, capabilities);
+    }
+
+    partial void OnSelectedVoiceBackendPreferenceChanged(VoiceBackendPreferenceOption value) => _UpdateTranscriptionAdvice();
+
+    /// <summary>Maps the dropdown selection to the effective model (AC-68): "Custom…" reveals the free-text box and
+    /// uses its value, any curated model is used directly.</summary>
+    partial void OnSelectedTranscriptionModelChanged(TranscriptionModelOption? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+
+        if (value.IsAuto)
+        {
+            _transcriptionModelAuto = true;
+            IsTranscriptionModelCustom = false;
+            // Resolve the Auto item to the concrete recommended model, so the speech-to-text service reads a real name.
+            if (_transcriptionRecommendation is { } recommendation)
+            {
+                VoiceModelName = recommendation.Model;
+            }
+
+            return;
+        }
+
+        _transcriptionModelAuto = false;
+        if (value.IsCustom)
+        {
+            IsTranscriptionModelCustom = true;
+            if (!string.IsNullOrWhiteSpace(VoiceCustomModelName))
+            {
+                VoiceModelName = VoiceCustomModelName.Trim();
+            }
+        }
+        else
+        {
+            IsTranscriptionModelCustom = false;
+            VoiceModelName = value.Name;
+        }
+    }
+
+    /// <summary>While the model dropdown is on "Custom…" (AC-68), keeps the effective model in sync with the box.</summary>
+    partial void OnVoiceCustomModelNameChanged(string value)
+    {
+        if (IsTranscriptionModelCustom && !string.IsNullOrWhiteSpace(value))
+        {
+            VoiceModelName = value.Trim();
+        }
+    }
+
+    /// <summary>Aligns the model dropdown/custom-box with the effective <see cref="VoiceModelName"/> (AC-68) — used
+    /// after loading so a saved custom model reopens in the "Custom…" state, and a preset reopens selected.</summary>
+    private void _SyncTranscriptionModelFromName()
+    {
+        // Auto ★ when the operator chose it and there is a recommendation item to point at.
+        if (_transcriptionModelAuto && TranscriptionModelChoices.FirstOrDefault(model => model.IsAuto) is { } auto)
+        {
+            IsTranscriptionModelCustom = false;
+            VoiceCustomModelName = string.Empty;
+            SelectedTranscriptionModel = auto;
+            return;
+        }
+
+        var preset = TranscriptionModelChoices.FirstOrDefault(model => !model.IsAuto && !model.IsCustom && model.Name == VoiceModelName);
+        if (preset is not null)
+        {
+            IsTranscriptionModelCustom = false;
+            VoiceCustomModelName = string.Empty;
+            SelectedTranscriptionModel = preset;
+        }
+        else
+        {
+            VoiceCustomModelName = VoiceModelName;
+            IsTranscriptionModelCustom = true;
+            SelectedTranscriptionModel = TranscriptionModelChoices.First(model => model.IsCustom);
+        }
+    }
+
+    // ── AC-68 slice 3: first-use calibration ─────────────────────────────────────────────────────────────────
+    private readonly ITranscriptionCalibrator? _transcriptionCalibrator;
+    private readonly ITranscriptionCalibrationStore? _transcriptionCalibrationStore;
+    private TranscriptionCalibration? _transcriptionCalibration;
+
+    /// <summary>True while a calibration measurement runs — disables Run and shows progress (AC-68 slice 3).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunCalibration))]
+    private bool _isCalibrating;
+
+    /// <summary>Progress/status text for the calibration (AC-68 slice 3): "Preparing model…", "Measuring…", or a result note.</summary>
+    [ObservableProperty]
+    private string _calibrationStatus = string.Empty;
+
+    /// <summary>Whether a measured calibration exists to show its bars and rationale (AC-68 slice 3).</summary>
+    [ObservableProperty]
+    private bool _hasCalibration;
+
+    /// <summary>Measured transcription latency in milliseconds (AC-68 slice 3) — the speed bar's value.</summary>
+    [ObservableProperty]
+    private double _calibrationLatencyMs;
+
+    /// <summary>Measured desktop hitch in milliseconds (AC-68 slice 3) — the hitch bar's value.</summary>
+    [ObservableProperty]
+    private double _calibrationHitchMs;
+
+    [ObservableProperty]
+    private string _calibrationSpeedText = string.Empty;
+
+    [ObservableProperty]
+    private string _calibrationHitchText = string.Empty;
+
+    [ObservableProperty]
+    private string _calibrationRationale = string.Empty;
+
+    /// <summary>True when the measured hitch reads as smooth (AC-68 slice 3) — colours the hitch bar/rationale.</summary>
+    [ObservableProperty]
+    private bool _calibrationDesktopSmooth;
+
+    /// <summary>Calibration needs the model, so it can run only when voice is on and a calibrator is present (AC-68 slice 3).</summary>
+    public bool CanRunCalibration => _transcriptionCalibrator is not null && VoiceEnabled && !IsCalibrating;
+
+    /// <summary>Whether the "Run calibration" affordance is offered at all — only in a graph that has a calibrator.</summary>
+    public bool ShowCalibration => _transcriptionCalibrator is not null;
+
+    /// <summary>
+    /// Measures transcription latency and desktop hitch on this machine's configured backend (AC-68 slice 3) and
+    /// remembers it. A failed measurement is reported on the status line, never thrown into the dialog.
+    /// </summary>
+    [RelayCommand]
+    private async Task RunCalibrationAsync()
+    {
+        if (_transcriptionCalibrator is null || IsCalibrating)
+        {
+            return;
+        }
+
+        IsCalibrating = true;
+        CalibrationStatus = "Starting…";
+        try
+        {
+            var progress = new Progress<string>(text => CalibrationStatus = text);
+            _ApplyCalibration(await _transcriptionCalibrator.MeasureAsync(progress));
+            CalibrationStatus = "Measured";
+        }
+        catch (Exception)
+        {
+            // A calibration is a nice-to-have; a model that would not load or a cancelled run must not crash Options.
+            CalibrationStatus = "Calibration could not run — check that voice works first.";
+        }
+        finally
+        {
+            IsCalibrating = false;
+        }
+    }
+
+    private void _ApplyCalibration(TranscriptionCalibration calibration)
+    {
+        _transcriptionCalibration = calibration;
+        HasCalibration = true;
+        CalibrationLatencyMs = calibration.LatencyMs;
+        CalibrationHitchMs = calibration.HitchMs;
+        CalibrationSpeedText = $"{(calibration.LatencyMs / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} s";
+        CalibrationHitchText = $"{calibration.HitchMs.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} ms";
+        CalibrationRationale = TranscriptionCalibrationReport.Rationale(calibration);
+        CalibrationDesktopSmooth = TranscriptionCalibrationReport.IsDesktopSmooth(calibration);
+    }
 
     /// <summary>Selectable dictation languages for speech-to-text — "Auto-detect" plus common fixed languages. A fixed language beats detection when you always dictate in one tongue (Options flyout combo).</summary>
     public IReadOnlyList<SttLanguageOption> SttLanguages { get; } =
@@ -1237,6 +1504,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Seed the Options → Shortcuts rows from the catalog defaults; without a settings store the DI path
         // that normally builds them never runs, and the tab would render empty in the previewer/screenshotter.
         _RebuildShortcutRows();
+
+        // No advisor in the design-time/previewer graph: the Transcribe page then offers Auto + CPU only.
+        _InitVoiceTranscriptionOptions();
     }
 
     /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
@@ -1281,7 +1551,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISecretProtectionService? secretProtection = null,
         IWorkspaceSettingsStore? workspaceSettingsStore = null,
         IWidgetRegistry? widgetRegistry = null,
-        IConsentBroker? consentBroker = null)
+        IConsentBroker? consentBroker = null,
+        ITranscriptionAdvisor? transcriptionAdvisor = null,
+        ITranscriptionCalibrator? transcriptionCalibrator = null,
+        ITranscriptionCalibrationStore? transcriptionCalibrationStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1335,6 +1608,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _delegationMcpToggle = delegationMcpToggle;
         _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
         _renderingSettingsStore = renderingSettingsStore;
+        _transcriptionAdvisor = transcriptionAdvisor;
+        _transcriptionCalibrator = transcriptionCalibrator;
+        _transcriptionCalibrationStore = transcriptionCalibrationStore;
+        // Build the host-aware backend list before the fire-and-forget voice load below reselects the saved
+        // preference against it (AC-68).
+        _InitVoiceTranscriptionOptions();
         _resourceMonitor = resourceMonitor;
         // No session is opened on startup (#31): the app starts on the empty state and a session only
         // exists once the operator creates one from the New-session dialog.
@@ -2434,8 +2713,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var settings = await _voiceSettingsStore.LoadAsync();
         VoiceEnabled = settings.IsEnabled;
         VoiceModelName = settings.ModelName;
+        // Reopen on the "Auto ★" item, a preset, or "Custom…" per what was saved (AC-68). On Auto, refresh the
+        // effective model to the current recommendation so a hardware change since last save is reflected.
+        _transcriptionModelAuto = settings.ModelAutoSelected;
+        if (_transcriptionModelAuto && _transcriptionRecommendation is { } recommendation)
+        {
+            VoiceModelName = recommendation.Model;
+        }
+
+        _SyncTranscriptionModelFromName();
+        // A GPU preference saved on a machine that can no longer load it (config moved, driver gone) has no matching
+        // host-aware option and falls back to Auto rather than showing a dead entry.
         SelectedVoiceBackendPreference = VoiceBackendPreferences.FirstOrDefault(option => option.Value == settings.BackendPreference)
                                          ?? VoiceBackendPreferences[0];
+        _UpdateTranscriptionAdvice();
         VoiceCleanupEnabled = settings.CleanupEnabled;
         VoiceAutoDetectLocalLlm = settings.AutoDetectLocalLlm;
         SelectedLocalLlmPreference = LocalLlmPreferences.FirstOrDefault(option => option.Value == settings.LocalLlmPreference)
@@ -2455,6 +2746,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
         SelectedDutchTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceIdDutch) ?? PiperVoiceCatalog.DutchDefault;
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
+
+        // Show this machine's last calibration if it has ever been run here (AC-68 slice 3).
+        if (_transcriptionCalibrationStore is not null && await _transcriptionCalibrationStore.LoadAsync() is { } calibration)
+        {
+            _ApplyCalibration(calibration);
+        }
     }
 
     // Re-queries the audio backend so a freshly plugged-in device appears, keeping a "System default"
@@ -2515,6 +2812,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             IsEnabled = VoiceEnabled,
             ModelName = string.IsNullOrWhiteSpace(VoiceModelName) ? "large-v3-turbo" : VoiceModelName.Trim(),
+            ModelAutoSelected = _transcriptionModelAuto,
             BackendPreference = SelectedVoiceBackendPreference.Value,
             CleanupEnabled = VoiceCleanupEnabled,
             AutoDetectLocalLlm = VoiceAutoDetectLocalLlm,

@@ -10,6 +10,13 @@ internal sealed class VoiceSettingsEntry
 
     public string ModelName { get; set; } = "large-v3-turbo";
 
+    /// <summary>
+    /// Whether the model follows the per-machine recommendation (AC-68 slice 2). Nullable so a config written
+    /// before this key existed is distinguishable from an explicit false: a missing key means the operator had
+    /// hand-picked <see cref="ModelName"/> under the old free-text box, so it is kept as an explicit choice.
+    /// </summary>
+    public bool? ModelAutoSelected { get; set; }
+
     public VoiceBackendPreference BackendPreference { get; set; } = VoiceBackendPreference.Auto;
 
     public bool CleanupEnabled { get; set; } = true;
@@ -61,6 +68,7 @@ internal sealed class VoiceSettingsEntry
     {
         IsEnabled = settings.IsEnabled,
         ModelName = settings.ModelName,
+        ModelAutoSelected = settings.ModelAutoSelected,
         BackendPreference = settings.BackendPreference,
         CleanupEnabled = settings.CleanupEnabled,
         AutoDetectLocalLlm = settings.AutoDetectLocalLlm,
@@ -86,6 +94,9 @@ internal sealed class VoiceSettingsEntry
     {
         IsEnabled = IsEnabled,
         ModelName = ModelName,
+        // A config saved before this key existed had a hand-picked model — keep it explicit rather than flipping
+        // it to the recommendation behind the operator's back.
+        ModelAutoSelected = ModelAutoSelected ?? false,
         BackendPreference = BackendPreference,
         CleanupEnabled = CleanupEnabled,
         AutoDetectLocalLlm = AutoDetectLocalLlm,

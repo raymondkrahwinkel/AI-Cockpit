@@ -13,6 +13,15 @@ public sealed record VoiceSettings
     /// <summary>Ggml model name (e.g. "large-v3-turbo", "base", "tiny") resolved to a Whisper.net <c>GgmlType</c> in Infrastructure.</summary>
     public string ModelName { get; init; } = "large-v3-turbo";
 
+    /// <summary>
+    /// When true, the transcription model follows the advisor's per-machine recommendation — the "Auto ★" item in
+    /// the Options model dropdown (AC-68 slice 2). <see cref="ModelName"/> still holds the concrete model last
+    /// resolved for it, so the speech-to-text service reads a real ggml name and needs no advisor. Defaults to true
+    /// so a fresh install starts on the recommended model; an existing config saved before this key existed is read
+    /// as an explicit choice (the entry coalesces a missing key to false), so a hand-picked model is never overridden.
+    /// </summary>
+    public bool ModelAutoSelected { get; init; } = true;
+
     public VoiceBackendPreference BackendPreference { get; init; } = VoiceBackendPreference.Auto;
 
     /// <summary>Whether the raw transcript is passed through the local Ollama cleanup step (punctuation/filler removal) before injection.</summary>
