@@ -953,6 +953,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Master switch for voice input (push-to-talk dictation). Off by default — enabling it is what triggers the first Whisper model download.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunCalibration))]
     private bool _voiceEnabled;
 
     private readonly ITranscriptionAdvisor? _transcriptionAdvisor;
@@ -1147,6 +1148,94 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             IsTranscriptionModelCustom = true;
             SelectedTranscriptionModel = TranscriptionModelChoices.First(model => model.IsCustom);
         }
+    }
+
+    // ── AC-68 slice 3: first-use calibration ─────────────────────────────────────────────────────────────────
+    private readonly ITranscriptionCalibrator? _transcriptionCalibrator;
+    private readonly ITranscriptionCalibrationStore? _transcriptionCalibrationStore;
+    private TranscriptionCalibration? _transcriptionCalibration;
+
+    /// <summary>True while a calibration measurement runs — disables Run and shows progress (AC-68 slice 3).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanRunCalibration))]
+    private bool _isCalibrating;
+
+    /// <summary>Progress/status text for the calibration (AC-68 slice 3): "Preparing model…", "Measuring…", or a result note.</summary>
+    [ObservableProperty]
+    private string _calibrationStatus = string.Empty;
+
+    /// <summary>Whether a measured calibration exists to show its bars and rationale (AC-68 slice 3).</summary>
+    [ObservableProperty]
+    private bool _hasCalibration;
+
+    /// <summary>Measured transcription latency in milliseconds (AC-68 slice 3) — the speed bar's value.</summary>
+    [ObservableProperty]
+    private double _calibrationLatencyMs;
+
+    /// <summary>Measured desktop hitch in milliseconds (AC-68 slice 3) — the hitch bar's value.</summary>
+    [ObservableProperty]
+    private double _calibrationHitchMs;
+
+    [ObservableProperty]
+    private string _calibrationSpeedText = string.Empty;
+
+    [ObservableProperty]
+    private string _calibrationHitchText = string.Empty;
+
+    [ObservableProperty]
+    private string _calibrationRationale = string.Empty;
+
+    /// <summary>True when the measured hitch reads as smooth (AC-68 slice 3) — colours the hitch bar/rationale.</summary>
+    [ObservableProperty]
+    private bool _calibrationDesktopSmooth;
+
+    /// <summary>Calibration needs the model, so it can run only when voice is on and a calibrator is present (AC-68 slice 3).</summary>
+    public bool CanRunCalibration => _transcriptionCalibrator is not null && VoiceEnabled && !IsCalibrating;
+
+    /// <summary>Whether the "Run calibration" affordance is offered at all — only in a graph that has a calibrator.</summary>
+    public bool ShowCalibration => _transcriptionCalibrator is not null;
+
+    /// <summary>
+    /// Measures transcription latency and desktop hitch on this machine's configured backend (AC-68 slice 3) and
+    /// remembers it. A failed measurement is reported on the status line, never thrown into the dialog.
+    /// </summary>
+    [RelayCommand]
+    private async Task RunCalibrationAsync()
+    {
+        if (_transcriptionCalibrator is null || IsCalibrating)
+        {
+            return;
+        }
+
+        IsCalibrating = true;
+        CalibrationStatus = "Starting…";
+        try
+        {
+            var progress = new Progress<string>(text => CalibrationStatus = text);
+            _ApplyCalibration(await _transcriptionCalibrator.MeasureAsync(progress));
+            CalibrationStatus = "Measured";
+        }
+        catch (Exception)
+        {
+            // A calibration is a nice-to-have; a model that would not load or a cancelled run must not crash Options.
+            CalibrationStatus = "Calibration could not run — check that voice works first.";
+        }
+        finally
+        {
+            IsCalibrating = false;
+        }
+    }
+
+    private void _ApplyCalibration(TranscriptionCalibration calibration)
+    {
+        _transcriptionCalibration = calibration;
+        HasCalibration = true;
+        CalibrationLatencyMs = calibration.LatencyMs;
+        CalibrationHitchMs = calibration.HitchMs;
+        CalibrationSpeedText = $"{(calibration.LatencyMs / 1000).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} s";
+        CalibrationHitchText = $"{calibration.HitchMs.ToString("0", System.Globalization.CultureInfo.InvariantCulture)} ms";
+        CalibrationRationale = TranscriptionCalibrationReport.Rationale(calibration);
+        CalibrationDesktopSmooth = TranscriptionCalibrationReport.IsDesktopSmooth(calibration);
     }
 
     /// <summary>Selectable dictation languages for speech-to-text — "Auto-detect" plus common fixed languages. A fixed language beats detection when you always dictate in one tongue (Options flyout combo).</summary>
@@ -1463,7 +1552,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorkspaceSettingsStore? workspaceSettingsStore = null,
         IWidgetRegistry? widgetRegistry = null,
         IConsentBroker? consentBroker = null,
-        ITranscriptionAdvisor? transcriptionAdvisor = null)
+        ITranscriptionAdvisor? transcriptionAdvisor = null,
+        ITranscriptionCalibrator? transcriptionCalibrator = null,
+        ITranscriptionCalibrationStore? transcriptionCalibrationStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1518,6 +1609,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _orchestratorMcpEnabled = delegationMcpToggle?.McpEnabled ?? true;
         _renderingSettingsStore = renderingSettingsStore;
         _transcriptionAdvisor = transcriptionAdvisor;
+        _transcriptionCalibrator = transcriptionCalibrator;
+        _transcriptionCalibrationStore = transcriptionCalibrationStore;
         // Build the host-aware backend list before the fire-and-forget voice load below reselects the saved
         // preference against it (AC-68).
         _InitVoiceTranscriptionOptions();
@@ -2653,6 +2746,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceId) ?? PiperVoiceCatalog.Default;
         SelectedDutchTtsVoice = TtsVoices.FirstOrDefault(voice => voice.VoiceId == settings.TtsVoiceIdDutch) ?? PiperVoiceCatalog.DutchDefault;
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
+
+        // Show this machine's last calibration if it has ever been run here (AC-68 slice 3).
+        if (_transcriptionCalibrationStore is not null && await _transcriptionCalibrationStore.LoadAsync() is { } calibration)
+        {
+            _ApplyCalibration(calibration);
+        }
     }
 
     // Re-queries the audio backend so a freshly plugged-in device appears, keeping a "System default"
