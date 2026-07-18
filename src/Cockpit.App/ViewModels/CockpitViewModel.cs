@@ -1458,12 +1458,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _voiceLlmAutoSummary = string.Empty;
 
-    /// <summary>Models reported by the configured local server's <c>/v1/models</c>, seeded with the current + advised models so the dropdown is never empty even when the server is unreachable. Refreshed when the Options dialog opens.</summary>
+    /// <summary>The first model-dropdown entry: "Auto" means no explicit choice — auto-detect (or the server list) decides, and the summary line shows what it landed on. Stored as an empty model id.</summary>
+    private const string AutoModel = "Auto";
+
+    /// <summary>Models offered by the dropdown — always "Auto" first, then the advised models and whatever the server reports, so it is never empty. Refreshed when the Options dialog opens.</summary>
     public ObservableCollection<string> VoiceLlmModels { get; } = [];
 
-    /// <summary>Model id the shared voice-LLM step (STT cleanup + read-aloud) asks the local LLM for. Selected from <see cref="VoiceLlmModels"/> (see <see cref="VoiceCleanupEnabled"/>).</summary>
+    /// <summary>Selected model for the shared voice-LLM step (STT cleanup + read-aloud). "Auto" (the default) lets auto-detect choose; otherwise it is the preferred/exact model. Persisted as an empty id when "Auto".</summary>
     [ObservableProperty]
-    private string _voiceLlmModel = "gemma3:4b";
+    private string _voiceLlmModel = AutoModel;
 
     // The preferred model steers what auto-detect picks (it is used first when the server has it), so refresh the
     // summary — but not the list — when it changes, to avoid disturbing the dropdown the operator is using.
@@ -3077,7 +3080,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceAutoDetectLocalLlm = settings.AutoDetectLocalLlm;
         SelectedLocalLlmPreference = LocalLlmPreferences.FirstOrDefault(option => option.Value == settings.LocalLlmPreference)
                                      ?? LocalLlmPreferences[0];
-        VoiceLlmModel = settings.VoiceLlmModel;
+        VoiceLlmModel = string.IsNullOrWhiteSpace(settings.VoiceLlmModel) ? AutoModel : settings.VoiceLlmModel;
         VoiceLlmBaseUrl = settings.VoiceLlmBaseUrl;
         _suppressVoiceLlmHooks = false;
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
@@ -3188,8 +3191,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     private void _PopulateVoiceLlmModels(IReadOnlyList<string> discovered)
     {
-        var desired = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // "Auto" is always first, so the dropdown is never empty and always shows that an automatic choice is on
+        // the table; then the advised models and whatever the server reported.
+        var desired = new List<string> { AutoModel };
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AutoModel };
         foreach (var model in new[] { VoiceLlmModel, "gemma3:4b", "qwen2.5:3b" }.Concat(discovered))
         {
             if (!string.IsNullOrWhiteSpace(model) && seen.Add(model))
@@ -3199,7 +3204,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         var selection = desired.FirstOrDefault(model => string.Equals(model, VoiceLlmModel, StringComparison.OrdinalIgnoreCase))
-                        ?? desired[0];
+                        ?? AutoModel;
 
         var wasSuppressed = _suppressVoiceLlmHooks;
         _suppressVoiceLlmHooks = true;
@@ -3242,9 +3247,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         AutoDetectLocalLlm = VoiceAutoDetectLocalLlm,
         LocalLlmPreference = SelectedLocalLlmPreference.Value,
-        VoiceLlmModel = string.IsNullOrWhiteSpace(VoiceLlmModel) ? "gemma3:4b" : VoiceLlmModel.Trim(),
+        VoiceLlmModel = _VoiceLlmModelSetting(),
         VoiceLlmBaseUrl = string.IsNullOrWhiteSpace(VoiceLlmBaseUrl) ? "http://localhost:11434" : VoiceLlmBaseUrl.Trim(),
     };
+
+    // The model as it is stored: "Auto" (and blank) become the empty id the resolver reads as "let auto-detect choose".
+    private string _VoiceLlmModelSetting() =>
+        string.IsNullOrWhiteSpace(VoiceLlmModel) || string.Equals(VoiceLlmModel, AutoModel, StringComparison.OrdinalIgnoreCase)
+            ? ""
+            : VoiceLlmModel.Trim();
 
     // Only spelled out in auto mode; in manual mode the operator set the endpoint themselves, so there is nothing to reveal.
     private void _UpdateAutoSummary(LocalLlmEndpoint? endpoint) =>
@@ -3292,7 +3303,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CleanupEnabled = VoiceCleanupEnabled,
             AutoDetectLocalLlm = VoiceAutoDetectLocalLlm,
             LocalLlmPreference = SelectedLocalLlmPreference.Value,
-            VoiceLlmModel = string.IsNullOrWhiteSpace(VoiceLlmModel) ? "gemma3:4b" : VoiceLlmModel.Trim(),
+            VoiceLlmModel = _VoiceLlmModelSetting(),
             VoiceLlmBaseUrl = string.IsNullOrWhiteSpace(VoiceLlmBaseUrl) ? "http://localhost:11434" : VoiceLlmBaseUrl.Trim(),
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,

@@ -53,11 +53,12 @@ public class VoiceSettingsEntryTests
     }
 
     [Fact]
-    public void ToDomain_ModelFallsBackToTheAdvisedDefault_WhenNoKeyPresent()
+    public void ToDomain_ModelFallsBackToAuto_WhenNoKeyPresent()
     {
+        // No model key at all = "Auto" (empty), which the resolver reads as "let auto-detect choose".
         var entry = new VoiceSettingsEntry { VoiceLlmModel = null, CleanupModel = null };
 
-        entry.ToDomain().VoiceLlmModel.Should().Be("gemma3:4b");
+        entry.ToDomain().VoiceLlmModel.Should().BeEmpty();
     }
 
     [Fact]
