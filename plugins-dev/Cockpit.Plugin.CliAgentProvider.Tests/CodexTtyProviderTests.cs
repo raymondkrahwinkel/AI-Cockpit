@@ -136,4 +136,86 @@ public class CodexTtyProviderTests
         // of the machine the test runs on — which is how this test failed the moment codex was installed here.
         Path.GetFileNameWithoutExtension(spec.ExecutablePath).Should().Be("codex");
     }
+
+    // AC-77: the interactive TUI must receive the session's Cockpit MCP servers as `-c mcp_servers.*` overrides,
+    // the same route the headless app-server takes — without this the Codex TUI only ever sees its own ~/.codex
+    // servers. These pin that the overrides are present, precede any `resume`, and that a bearer token rides the
+    // environment rather than the command line.
+
+    [Fact]
+    public void BuildArguments_WithMcpConfigArgs_PrependsThemBeforeEverythingElse()
+    {
+        var mcpConfigArgs = new[] { "-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp" }""" };
+
+        var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null, mcpConfigArgs);
+
+        arguments.Should().StartWith(mcpConfigArgs);
+    }
+
+    [Fact]
+    public void BuildArguments_WithMcpConfigArgsAndResume_PlacesTheConfigOverridesBeforeTheResumeSubcommand()
+    {
+        // Codex reads `-c` as a global flag taken before the subcommand; a `-c` after `resume` would not apply.
+        var mcpConfigArgs = new[] { "-c", """mcp_servers.brain={ url = "http://127.0.0.1:9000/mcp" }""" };
+
+        var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, new PluginTtyResume(SessionId: "thread-123"), mcpConfigArgs);
+
+        arguments.Should().StartWith(mcpConfigArgs);
+        arguments.IndexOf("-c").Should().BeLessThan(arguments.IndexOf("resume"));
+    }
+
+    [Fact]
+    public void BuildArguments_WithoutMcpConfigArgs_AddsNoConfigOverride()
+    {
+        var arguments = CodexTtyProvider.BuildArguments(new CliAgentConfig(), NoOptions, resume: null);
+
+        arguments.Should().NotContain("-c");
+    }
+
+    [Fact]
+    public void BuildLaunch_WithSessionMcpServers_FansThemIntoTheTuiAsConfigOverrides()
+    {
+        var context = _ContextWithServers(new PluginMcpServer { Name = "youtrack", Url = "http://127.0.0.1:9000/mcp", BearerToken = "yt-pat" });
+
+        var spec = new CodexTtyProvider().BuildLaunch(context);
+
+        spec.Arguments.Should().StartWith(["-c", """mcp_servers.youtrack={ url = "http://127.0.0.1:9000/mcp", bearer_token_env_var = "COCKPIT_MCP_TOKEN_0" }"""]);
+        // The secret is in the environment, never in the command line.
+        spec.Arguments.Should().NotContain(arg => arg.Contains("yt-pat"));
+        spec.EnvironmentOverlay.Should().Contain(new KeyValuePair<string, string?>("COCKPIT_MCP_TOKEN_0", "yt-pat"));
+    }
+
+    [Fact]
+    public void BuildLaunch_ForACockpitHostedServer_ReferencesTheSharedAuthKeyWithoutPuttingItInTheOverlay()
+    {
+        // COCKPIT_MCP_KEY is host-controlled and already on the base environment (TtyLauncher, AC-40); the provider
+        // must only reference it, not set it — setting it in the overlay would be scrubbed and defeat the auth.
+        var context = _ContextWithServers(new PluginMcpServer { Name = "cockpit-session", Url = "http://127.0.0.1:8765/mcp", CockpitHosted = true });
+
+        var spec = new CodexTtyProvider().BuildLaunch(context);
+
+        spec.Arguments.Should().Contain("""mcp_servers.cockpit-session={ url = "http://127.0.0.1:8765/mcp", bearer_token_env_var = "COCKPIT_MCP_KEY" }""");
+        spec.EnvironmentOverlay.Should().NotContainKey("COCKPIT_MCP_KEY");
+    }
+
+    [Fact]
+    public void BuildLaunch_WithNoSessionMcpServers_AddsNoConfigOverride()
+    {
+        var context = _ContextWithServers();
+
+        var spec = new CodexTtyProvider().BuildLaunch(context);
+
+        spec.Arguments.Should().NotContain("-c");
+    }
+
+    private static PluginTtyLaunchContext _ContextWithServers(params PluginMcpServer[] servers) =>
+        new(
+            System.Text.Json.JsonSerializer.Serialize(new CliAgentConfig(), CliAgentConfig.JsonOptions),
+            NoOptions,
+            WorkingDirectory: "/home/raymond/repo",
+            Resume: null,
+            BaseEnvironment: new Dictionary<string, string>())
+        {
+            McpServers = servers,
+        };
 }
