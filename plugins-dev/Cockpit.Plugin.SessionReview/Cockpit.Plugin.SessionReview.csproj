@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Per-session diff/review panel (AC-50): a "Review changes" action in each session's header opens a dialog
+       showing what that session changed (git diff of its working directory), coloured for reading, with one click to
+       ask the session to review its own changes. Turns the parallel-agent flow into a review station — the quality
+       guard against AI-slop. Built OUTSIDE the main solution like the other example plugins; package
+       bin/<config>/net10.0 into a .zip for the store. Shared assemblies are compile-only (Private=false /
+       ExcludeAssets=runtime) so the host's copies load and shared types keep one identity. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.SessionReview.Tests" />
+  </ItemGroup>
+
+</Project>
