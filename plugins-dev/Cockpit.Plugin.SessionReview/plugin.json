@@ -1,0 +1,11 @@
+{
+  "id": "session-review",
+  "name": "Session Review",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.SessionReview.dll",
+  "entryType": "Cockpit.Plugin.SessionReview.SessionReviewPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "0.1.0",
+  "description": "A \"Review changes\" action in each session's header opens a panel showing what that session changed — the git diff of its working directory, coloured for reading — with one click to ask the session to review its own changes. Makes the cockpit a review station, not just a runner: the quality guard before an agent's output lands under your name. Requires git installed on the machine running Cockpit.",
+  "author": "Cockpit"
+}
