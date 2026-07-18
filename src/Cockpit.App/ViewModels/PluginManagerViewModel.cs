@@ -573,6 +573,12 @@ public partial class PluginManagerViewModel : ViewModelBase
             StatusMessage = AvailablePlugins.Count == 0
                 ? (problems.Count > 0 ? $"No plugins found ({problems[0]})." : "No plugins found in the configured stores.")
                 : $"{AvailablePlugins.Count} plugin(s) available." + (problems.Count > 0 ? $" ({problems.Count} store(s) unreachable.)" : string.Empty);
+
+            // Reconcile the sidebar badge to the just-browsed truth (AC-76): browsing (opening the store, or the
+            // refresh after an install/update/rollback) recomputes the real available-update count — staged updates
+            // already excluded — so the badge counts down on a consumed update and up on a rollback, without an
+            // ad-hoc per-install decrement that could not tell a fresh install or a rollback apart (review).
+            UpdateBadgeCount = AvailableUpdateCount;
         }
         finally
         {
@@ -868,9 +874,6 @@ public partial class PluginManagerViewModel : ViewModelBase
             if (result.IsSuccess && result.Staged)
             {
                 _pendingUpdateVersions[row.Id] = version.Version;
-                // The operator just brought this plugin up to date (staged until restart), so count it off the
-                // sidebar badge now rather than waiting for the next 15-minute check (AC-76).
-                UpdateBadgeCount = Math.Max(0, UpdateBadgeCount - 1);
             }
 
             return result.IsSuccess;
