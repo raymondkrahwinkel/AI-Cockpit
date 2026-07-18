@@ -83,7 +83,9 @@
             </StackPanel>
             <Button.Flyout>
                 <Flyout Placement="Bottom">
-                    <StackPanel Spacing="6" MinWidth="190">
+                    <StackPanel Spacing="8" MinWidth="210" Margin="4">
+                        <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                         <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
                         <ItemsControl ItemsSource="{Binding RateLimits}">
                             <ItemsControl.ItemTemplate>

@@ -109,10 +109,21 @@ public sealed record SessionLimits(
             ? percentage.GetDouble()
             : (double?)null;
 
-        var resetsAt = window.TryGetProperty("resets_at", out var resets) && resets.ValueKind == JsonValueKind.String
-            && DateTimeOffset.TryParse(resets.GetString(), out var parsed)
-                ? parsed
-                : (DateTimeOffset?)null;
+        // resets_at is a Unix epoch (seconds) number in the statusline JSON — e.g. "resets_at":1784415000 — not an
+        // ISO string (verified against 2.1.209). Parse the number; keep string/ISO parsing as a fallback in case an
+        // older or future version sends it that way, so the reset time survives a shape change rather than vanishing.
+        DateTimeOffset? resetsAt = null;
+        if (window.TryGetProperty("resets_at", out var resets))
+        {
+            if (resets.ValueKind == JsonValueKind.Number && resets.TryGetInt64(out var epochSeconds))
+            {
+                resetsAt = DateTimeOffset.FromUnixTimeSeconds(epochSeconds);
+            }
+            else if (resets.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(resets.GetString(), out var parsed))
+            {
+                resetsAt = parsed;
+            }
+        }
 
         return (used, resetsAt);
     }
