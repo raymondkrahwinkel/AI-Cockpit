@@ -140,6 +140,23 @@ public class DelegationGuardTests
     }
 
     [Fact]
+    public async Task StartedTask_RunsToolsNonInteractively_SoAToolCallCannotHangOnAPromptNobodyWillAnswer()
+    {
+        // AC-78: a local-model session (OpenAiCompatSessionDriver) treats the permission ceiling as a no-op and
+        // gates every MCP tool call on the interactive PermissionRequested flow. With no human to answer it, the
+        // task hung on its first tool call until the timeout. A delegated session is non-interactive by
+        // definition, so it must be put into auto-approve at start — the tool call then runs, bounded by the
+        // policy-restricted enabled-server set, rather than blocking on a prompt nobody will see.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var service = _ServiceWith(driver, _Target("local"));
+
+        await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
+
+        await driver.Received(1).SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task StartedTask_SendsThePromptToTheSession()
     {
         var driver = Substitute.For<ISessionDriver>();

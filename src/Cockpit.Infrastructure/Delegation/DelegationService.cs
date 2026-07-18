@@ -486,6 +486,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
                 workingDirectory: entry.WorkingDirectory);
 
+            // The ceiling above governs a CLI session's own permission handling, but a local-model session
+            // (OpenAiCompatSessionDriver) treats permissionMode as a no-op and gates every MCP tool call through
+            // the interactive PermissionRequested flow. With no human to answer it, the task would hang on its
+            // first tool call until the timeout — the "block waiting for a click that cannot come" the ceiling is
+            // meant to prevent (AC-78). A delegated session is non-interactive by definition, so put it in
+            // auto-approve: tool calls run without a prompt, bounded by the policy-restricted set of enabled MCP
+            // servers (_ToolsForAsync) — the real boundary for a headless session — rather than a prompt nobody
+            // will see. Harmless for a CLI driver, which forwards it to its own session-scoped auto-approve.
+            await runtime.SetAutoApproveToolsAsync(true);
+
             await runtime.SendUserMessageAsync(entry.Prompt);
             _ArmTimeout(entry);
         }
