@@ -5,10 +5,11 @@ namespace Cockpit.App.ViewModels;
 
 /// <summary>
 /// One row in a store's plugin catalogue (#14): the advertised display fields plus the install/update
-/// state derived by comparing the store's latest version against what is installed. Carries the resolved
-/// index URL and the latest version entry so the manager can download and install it.
+/// state derived by comparing the store's latest version against what is installed. Carries the store it came
+/// from (AC-7) and the latest version entry so the manager can download and install it — through the same
+/// store, with its auth or local path.
 /// </summary>
-public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string indexUrl, string? installedVersion, bool isEnabled = false, bool hasSettings = false)
+public sealed class StorePluginRowViewModel(PluginStoreEntry entry, PluginStoreConfig store, string? installedVersion, bool isEnabled = false, bool hasSettings = false)
 {
     public PluginStoreEntry Entry => entry;
 
@@ -27,7 +28,8 @@ public sealed class StorePluginRowViewModel(PluginStoreEntry entry, string index
     /// <summary>Hover text for the enable/disable toggle.</summary>
     public string ToggleTooltip => isEnabled ? "Enabled — click to disable (takes effect after restart)" : "Disabled — click to enable (takes effect after restart)";
 
-    public string IndexUrl => indexUrl;
+    /// <summary>The store this row came from — the manager downloads through it, so a private or local store resolves the same way it was browsed.</summary>
+    public PluginStoreConfig Store => store;
 
     public string Id => entry.Id;
 
