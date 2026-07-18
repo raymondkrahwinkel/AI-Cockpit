@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagnostics;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Voice;
 
