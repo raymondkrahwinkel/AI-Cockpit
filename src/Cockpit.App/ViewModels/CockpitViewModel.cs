@@ -99,6 +99,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // How long the Options dialog waits on a local-LLM probe (resolve + /v1/models) before giving up and keeping
     // the seeded model list — a stopped server refuses fast, but a running-but-busy one can otherwise stall.
     private static readonly TimeSpan LlmProbeTimeout = TimeSpan.FromSeconds(3);
+
+    // Suppresses the per-property refresh hooks while the load method sets several voice-LLM fields at once, and
+    // while a refresh rebuilds the model list (whose Clear() writes a null selection back through the ComboBox).
+    private bool _suppressVoiceLlmHooks;
+    // Coalesces refreshes: a request made while one runs sets the flag, and the running one loops once more — so
+    // overlapping refreshes never race the model collection.
+    private bool _voiceLlmRefreshing;
+    private bool _voiceLlmRefreshQueued;
     private readonly PluginDiagnostics? _pluginDiagnostics;
     private readonly IPluginDialogHost? _pluginDialogHost;
     private readonly List<byte> _recordedPcm = [];
@@ -1404,7 +1412,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _voiceAutoDetectLocalLlm = true;
 
     // Re-resolve the "auto will use…" summary when the operator flips auto-detect, so the line reflects the change.
-    partial void OnVoiceAutoDetectLocalLlmChanged(bool value) => _ = _RefreshVoiceLlmAsync();
+    partial void OnVoiceAutoDetectLocalLlmChanged(bool value)
+    {
+        if (!_suppressVoiceLlmHooks)
+        {
+            _ = _RefreshVoiceLlmAsync();
+        }
+    }
 
     /// <summary>Which detected server auto-detect prefers when both are running (Options combo box).</summary>
     public IReadOnlyList<LocalLlmPreferenceOption> LocalLlmPreferences { get; } =
@@ -1418,7 +1432,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private LocalLlmPreferenceOption _selectedLocalLlmPreference = new("Auto-detect", LocalLlmPreference.Auto);
 
     // A different preferred server can resolve to a different server + model list, so re-resolve and re-list.
-    partial void OnSelectedLocalLlmPreferenceChanged(LocalLlmPreferenceOption value) => _ = _RefreshVoiceLlmAsync();
+    partial void OnSelectedLocalLlmPreferenceChanged(LocalLlmPreferenceOption value)
+    {
+        if (!_suppressVoiceLlmHooks)
+        {
+            _ = _RefreshVoiceLlmAsync();
+        }
+    }
 
     /// <summary>The server-preference combo box is only meaningful while cleanup is on and auto-detect is choosing the server.</summary>
     public bool ShowLocalLlmServerPicker => VoiceCleanupEnabled && VoiceAutoDetectLocalLlm;
@@ -1445,7 +1465,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The preferred model steers what auto-detect picks (it is used first when the server has it), so refresh the
     // summary — but not the list — when it changes, to avoid disturbing the dropdown the operator is using.
-    partial void OnVoiceLlmModelChanged(string value) => _ = _RefreshVoiceLlmSummaryAsync();
+    partial void OnVoiceLlmModelChanged(string value)
+    {
+        if (!_suppressVoiceLlmHooks)
+        {
+            _ = _RefreshVoiceLlmSummaryAsync();
+        }
+    }
 
     /// <summary>Base URL of the local OpenAI-compatible LLM server (Ollama/LM Studio) used by the shared voice-LLM step, without the <c>/v1</c> suffix.</summary>
     [ObservableProperty]
@@ -2959,11 +2985,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                                          ?? VoiceBackendPreferences[0];
         _UpdateTranscriptionAdvice();
         VoiceCleanupEnabled = settings.CleanupEnabled;
+        // Suppress the per-property refresh hooks while loading: setting auto-detect, the server preference and the
+        // model each triggers a voice-LLM refresh, and three overlapping refreshes racing on the model list is what
+        // left the dropdown empty. OptionsAsync runs one refresh after the load instead.
+        _suppressVoiceLlmHooks = true;
         VoiceAutoDetectLocalLlm = settings.AutoDetectLocalLlm;
         SelectedLocalLlmPreference = LocalLlmPreferences.FirstOrDefault(option => option.Value == settings.LocalLlmPreference)
                                      ?? LocalLlmPreferences[0];
         VoiceLlmModel = settings.VoiceLlmModel;
         VoiceLlmBaseUrl = settings.VoiceLlmBaseUrl;
+        _suppressVoiceLlmHooks = false;
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
         // First load is app startup — capture what the hotkey actually armed with, so a later save can tell a real
@@ -3016,40 +3047,89 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     private async Task _RefreshVoiceLlmAsync()
     {
-        using var cts = new CancellationTokenSource(LlmProbeTimeout);
-        IReadOnlyList<string> discovered = [];
+        // Coalesce: if a refresh is already running, ask it to run once more when it finishes rather than racing it
+        // — overlapping refreshes each Clear()ing the model list is what emptied the dropdown.
+        if (_voiceLlmRefreshing)
+        {
+            _voiceLlmRefreshQueued = true;
+            return;
+        }
+
+        _voiceLlmRefreshing = true;
         try
         {
-            var endpoint = await _ResolveVoiceLlmEndpointAsync(cts.Token);
-            _UpdateAutoSummary(endpoint);
-
-            // List from the server that will actually be used — the resolved one in auto mode, the manual URL
-            // otherwise — so the dropdown offers what is really installed there.
-            var listFrom = endpoint?.BaseUrl ?? VoiceLlmBaseUrl;
-            if (_modelCatalog is not null)
+            do
             {
-                discovered = await _modelCatalog.ListModelsAsync(listFrom, cancellationToken: cts.Token);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // A slow/hung local server: keep the seeded list below rather than blocking on it.
-        }
+                _voiceLlmRefreshQueued = false;
 
-        VoiceLlmModels.Clear();
+                IReadOnlyList<string> discovered = [];
+                using (var cts = new CancellationTokenSource(LlmProbeTimeout))
+                {
+                    try
+                    {
+                        var endpoint = await _ResolveVoiceLlmEndpointAsync(cts.Token);
+                        _UpdateAutoSummary(endpoint);
+
+                        // List from the server that will actually be used — the resolved one in auto mode, the
+                        // manual URL otherwise — so the dropdown offers what is really installed there.
+                        var listFrom = endpoint?.BaseUrl ?? VoiceLlmBaseUrl;
+                        if (_modelCatalog is not null)
+                        {
+                            discovered = await _modelCatalog.ListModelsAsync(listFrom, cancellationToken: cts.Token);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // A slow/hung local server: keep the seeded list below rather than blocking on it.
+                    }
+                }
+
+                _PopulateVoiceLlmModels(discovered);
+            }
+            while (_voiceLlmRefreshQueued);
+        }
+        finally
+        {
+            _voiceLlmRefreshing = false;
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the model dropdown from the current selection + advised models (gemma3:4b for Dutch, qwen2.5:3b as
+    /// a safe fallback) plus whatever the server reported, preserving the selection. Hooks are suppressed during
+    /// the rebuild so the Clear()'s null-selection writeback through the ComboBox and the reselect below do not
+    /// trigger another refresh mid-flight. The two advised models are literals, so the list is never empty.
+    /// </summary>
+    private void _PopulateVoiceLlmModels(IReadOnlyList<string> discovered)
+    {
+        var desired = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var model in new[] { VoiceLlmModel, "gemma3:4b", "qwen2.5:3b" }.Concat(discovered))
         {
             if (!string.IsNullOrWhiteSpace(model) && seen.Add(model))
             {
-                VoiceLlmModels.Add(model);
+                desired.Add(model);
             }
         }
 
-        // The current selection is always seeded first, so it stays selected; guard only the empty-string edge.
-        if (!VoiceLlmModels.Contains(VoiceLlmModel))
+        var selection = desired.FirstOrDefault(model => string.Equals(model, VoiceLlmModel, StringComparison.OrdinalIgnoreCase))
+                        ?? desired[0];
+
+        var wasSuppressed = _suppressVoiceLlmHooks;
+        _suppressVoiceLlmHooks = true;
+        try
         {
-            VoiceLlmModel = VoiceLlmModels[0];
+            VoiceLlmModels.Clear();
+            foreach (var model in desired)
+            {
+                VoiceLlmModels.Add(model);
+            }
+
+            VoiceLlmModel = selection;
+        }
+        finally
+        {
+            _suppressVoiceLlmHooks = wasSuppressed;
         }
     }
 
