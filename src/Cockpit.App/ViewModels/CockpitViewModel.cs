@@ -1639,13 +1639,6 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // No advisor in the design-time/previewer graph: the Transcribe page then offers Auto + CPU only.
         _InitVoiceTranscriptionOptions();
-
-        // A representative "a newer build is waiting" state, so the previewer and screenshotter show the AC-73
-        // update banner — the same reason the sessions above carry NeedsAttention/Busy rather than sitting idle.
-        CurrentBuild = "0.3.0 (a1b2c3d)";
-        UpdateName = "Nightly 0.3.0-nightly.42";
-        UpdateUrl = "https://github.com/raymondkrahwinkel/AI-Cockpit/releases/tag/nightly";
-        UpdateBannerVisible = true;
     }
 
     /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
