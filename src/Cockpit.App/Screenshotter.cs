@@ -39,6 +39,10 @@ internal static class Screenshotter
             "set-status" => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
             "session" => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
             "tty" => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
+            // A plain terminal pane (#AC-25/#AC-29): its own scene so the shared header's terminal treatment
+            // (kind chip "TTY", no plugin host, no usage pill, shell name only in the cwd tooltip) is verifiable
+            // headless — the SDK-only 'session' scene is exactly what let the earlier TTY-header miss slip through.
+            "terminal" => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
             "plugin-update-badge" => _PluginUpdateBadge(),
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
