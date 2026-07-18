@@ -95,6 +95,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
     private readonly ITranscriptCleanupService? _cleanupService;
     private readonly ILocalLlmEndpointResolver? _localLlmEndpointResolver;
+    private readonly IAudioCaptureService? _audioCapture;
+    private CancellationTokenSource? _micTestCancellation;
 
     // How long the Options dialog waits on a local-LLM probe (resolve + /v1/models) before giving up and keeping
     // the seeded model list — a stopped server refuses fast, but a running-but-busy one can otherwise stall.
@@ -1519,7 +1521,77 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudLevelThreshold"/>. Decimal because that is what NumericUpDown binds.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VoiceStopReadAloudThresholdValue))]
     private decimal _voiceStopReadAloudLevelThreshold = 0.15m;
+
+    /// <summary>The barge-in threshold as a 0..1 double, for the <c>MicLevelMeter</c> marker (the setting itself is a decimal so NumericUpDown can bind it).</summary>
+    public double VoiceStopReadAloudThresholdValue => (double)VoiceStopReadAloudLevelThreshold;
+
+    /// <summary>Two-way bound to the "Test microphone" toggle; flipping it starts/stops a live level meter for setting the barge-in threshold by eye (AC-9).</summary>
+    [ObservableProperty]
+    private bool _isTestingMic;
+
+    /// <summary>Live microphone level (0..1 RMS) during the mic test, driving the <c>MicLevelMeter</c> fill.</summary>
+    [ObservableProperty]
+    private double _micTestLevel;
+
+    // Start/stop the capture from the toggle itself, so the button and the running state can never disagree. A
+    // failed start (no capture service) reverts the toggle rather than leaving it stuck on.
+    partial void OnIsTestingMicChanged(bool value)
+    {
+        if (value)
+        {
+            if (_audioCapture is null)
+            {
+                IsTestingMic = false;
+                return;
+            }
+
+            _micTestCancellation = new CancellationTokenSource();
+            MicTestLevel = 0;
+            _ = _RunMicTestAsync(_micTestCancellation.Token);
+        }
+        else
+        {
+            _micTestCancellation?.Cancel();
+            _micTestCancellation?.Dispose();
+            _micTestCancellation = null;
+            MicTestLevel = 0;
+        }
+    }
+
+    private async Task _RunMicTestAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var frame in _audioCapture!.CaptureAsync(new AudioFormat(), cancellationToken).ConfigureAwait(false))
+            {
+                var level = AudioLevelMeter.NormalizedRms(frame.Span);
+                Dispatcher.UIThread.Post(() => MicTestLevel = level);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected: StopMicTest cancels the capture stream.
+        }
+        catch (Exception)
+        {
+            // A microphone that will not open should not crash the dialog; the meter simply stays flat.
+        }
+        finally
+        {
+            Dispatcher.UIThread.Post(() => MicTestLevel = 0);
+        }
+    }
+
+    /// <summary>Stops the mic test and releases the microphone. Called from the dialog's close handler so it never stays open.</summary>
+    public void StopMicTest()
+    {
+        if (IsTestingMic)
+        {
+            IsTestingMic = false;
+        }
+    }
 
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.OpenMicSilenceTimeoutMs"/>: trailing silence (ms) that ends an open-mic utterance. Tunable.</summary>
     [ObservableProperty]
@@ -1818,7 +1890,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IModelCatalog? modelCatalog = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptCleanupService? cleanupService = null,
-        ILocalLlmEndpointResolver? localLlmEndpointResolver = null)
+        ILocalLlmEndpointResolver? localLlmEndpointResolver = null,
+        IAudioCaptureService? audioCapture = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1848,6 +1921,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _voicePlaybackQueue = voicePlaybackQueue;
         _cleanupService = cleanupService;
         _localLlmEndpointResolver = localLlmEndpointResolver;
+        _audioCapture = audioCapture;
         _pluginDiagnostics = pluginDiagnostics;
         _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;
