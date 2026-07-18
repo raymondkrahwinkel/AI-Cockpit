@@ -89,7 +89,10 @@ internal sealed class WhisperSpeechToTextService(
                 text.Append(segment.Text);
             }
 
-            return text.ToString().Trim();
+            // Drop Whisper's non-speech tags and hesitation fillers on every path, so a throat-clear or a bare
+            // "um" never reaches the session — the LLM cleanup that would otherwise do it is SDK-only and skips
+            // short utterances, which is exactly this case.
+            return DictationNoiseFilter.Strip(text.ToString());
         }
         finally
         {
