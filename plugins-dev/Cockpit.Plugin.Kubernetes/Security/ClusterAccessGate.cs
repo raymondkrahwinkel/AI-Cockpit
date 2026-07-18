@@ -49,8 +49,12 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
         return await _AuthorizeMutationAsync(cluster, operation, paneId);
     }
 
-    /// <summary>A read against a cluster-scoped resource (nodes, PVs, namespaces): blocked unless the cluster opted in, then consented.</summary>
-    public async Task<GateResult> AuthorizeClusterScopedReadAsync(ClusterRegistration cluster, string operation, string? paneId)
+    /// <summary>
+    /// A read against a cluster-scoped resource (nodes, PVs, namespaces): blocked unless the cluster opted in, then
+    /// consented. <paramref name="resourceKey"/> (group/plural) scopes a remembered approval to the kind that was
+    /// actually shown — approving "read nodes" must not silently authorize clusterroles or persistentvolumes too.
+    /// </summary>
+    public async Task<GateResult> AuthorizeClusterScopedReadAsync(ClusterRegistration cluster, string resourceKey, string operation, string? paneId)
     {
         if (!cluster.AllowClusterScoped)
         {
@@ -67,16 +71,18 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             title: "Kubernetes: read a cluster-scoped resource",
             operation: operation,
             cluster: cluster,
-            scope: $"k8s.clusterscoped:{cluster.Id}",
+            // Per-kind, not per-cluster: a remembered approval binds to the exact kind shown, so it cannot carry over
+            // to a different cluster-scoped kind the operator never saw.
+            scope: $"k8s.clusterscoped:{cluster.Id}:{resourceKey}",
             risk: ConsentRisk.LowRisk,
             allowRemember: true,
             paneId: paneId);
     }
 
     /// <summary>A change to a cluster-scoped resource: opt-in, connection, then an always-fresh Dangerous consent.</summary>
-    public async Task<GateResult> AuthorizeClusterScopedMutationAsync(ClusterRegistration cluster, string operation, string? paneId)
+    public async Task<GateResult> AuthorizeClusterScopedMutationAsync(ClusterRegistration cluster, string resourceKey, string operation, string? paneId)
     {
-        var read = await AuthorizeClusterScopedReadAsync(cluster, operation, paneId);
+        var read = await AuthorizeClusterScopedReadAsync(cluster, resourceKey, operation, paneId);
         if (!read.IsAllowed)
         {
             return read;
@@ -139,7 +145,11 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
     private async Task<GateResult> _AuthorizeConnectionAsync(ClusterRegistration cluster, string? paneId) =>
         await _RequestAsync(
             title: "Kubernetes: open a connection to a cluster",
-            operation: $"Connect to cluster \"{cluster.Label}\" ({_ContextDisplay(cluster)})",
+            // Exec-auth contexts run an external credential command on connect — state that on the runtime prompt an
+            // agent triggers, not only in the settings UI where the cluster was registered.
+            operation: cluster.UsesExecAuth
+                ? $"Connect to cluster \"{cluster.Label}\" ({_ContextDisplay(cluster)}) — connecting runs an external credential command from the kubeconfig"
+                : $"Connect to cluster \"{cluster.Label}\" ({_ContextDisplay(cluster)})",
             cluster: cluster,
             scope: $"k8s.connect:{cluster.Id}",
             risk: ConsentRisk.LowRisk,
@@ -177,7 +187,10 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
     {
         var request = new ConsentRequest(
             Title: title,
-            Action: operation,
+            // The Action is rendered verbatim and parts of it (a pod name, a command, a patch) are agent-supplied.
+            // Collapse control characters so an agent cannot smuggle newlines into the consent body and pad it with
+            // reassuring extra lines — the operator must see one clearly-bounded line.
+            Action: _SingleLine(operation),
             Source: new ConsentSource(paneId, PluginId: null, Label: SourceLabel),
             Scope: scope,
             Risk: risk,
@@ -188,6 +201,18 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             ? GateResult.Allow
             : GateResult.Deny($"The operator did not approve this action on cluster \"{cluster.Label}\".");
     }
+
+    // Neutralize control characters (newlines, tabs, other C0/C1) in an operation string built partly from
+    // agent-supplied, untrusted fields, so the verbatim consent Action stays a single readable line.
+    private static string _SingleLine(string operation) =>
+        string.Create(operation.Length, operation, static (span, source) =>
+        {
+            for (var i = 0; i < source.Length; i++)
+            {
+                var character = source[i];
+                span[i] = char.IsControl(character) ? ' ' : character;
+            }
+        });
 
     private static bool _IsCapabilityEnabled(ClusterRegistration cluster, DangerCapability capability) => capability switch
     {

@@ -13,7 +13,7 @@ internal static class ResourceListSummary
     public static JsonNode Summarize(RawKubernetesList list)
     {
         var items = new JsonArray();
-        foreach (var item in list.Items)
+        foreach (var item in list.Items ?? [])
         {
             string? name = null, itemNamespace = null, created = null;
             if (item.Data.TryGetValue("metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Object)
@@ -31,7 +31,20 @@ internal static class ResourceListSummary
             });
         }
 
-        return new JsonObject { ["count"] = items.Count, ["items"] = items };
+        var summary = new JsonObject { ["count"] = items.Count, ["items"] = items };
+
+        // The server caps the page at the tool's limit; a continue token (or a positive remaining count) means this
+        // is only part of the list. Flag it so an agent knows to narrow the query rather than treat 200 as the total.
+        if (!string.IsNullOrEmpty(list.Metadata?.Continue) || list.Metadata?.RemainingItemCount > 0)
+        {
+            summary["truncated"] = true;
+            if (list.Metadata?.RemainingItemCount is { } remaining)
+            {
+                summary["remainingItemCount"] = remaining;
+            }
+        }
+
+        return summary;
     }
 
     private static string? _StringProperty(JsonElement element, string name) =>

@@ -28,14 +28,41 @@ internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : ID
             return (cached, null);
         }
 
+        var (client, error) = _BuildClient(cluster);
+        if (client is null)
+        {
+            return (null, error);
+        }
+
+        // Two calls racing on the same not-yet-cached cluster both build a client (each owning an HttpClient);
+        // GetOrAdd keeps one, so dispose the loser instead of leaking it.
+        var winner = _clients.GetOrAdd(cluster.Id, client);
+        if (!ReferenceEquals(winner, client))
+        {
+            client.Dispose();
+        }
+
+        return (winner, null);
+    }
+
+    /// <summary>
+    /// A fresh client the caller owns and must dispose — deliberately NOT cached. A long-lived holder (a port-forward
+    /// tunnel) needs a client that <see cref="InvalidateAll"/> cannot dispose out from under it on a settings save.
+    /// </summary>
+    public (IKubernetes? Client, string? Error) ConnectDedicated(ClusterRegistration cluster) => _BuildClient(cluster);
+
+    private (IKubernetes? Client, string? Error) _BuildClient(ClusterRegistration cluster)
+    {
         var context = string.IsNullOrWhiteSpace(cluster.ContextName) ? null : cluster.ContextName;
         try
         {
             KubernetesClientConfiguration config;
             if (!string.IsNullOrWhiteSpace(cluster.KubeconfigPath))
             {
-                // Path model: read the file live (so ~/.kube/config changes and exec-auth token refreshes are picked
-                // up), letting the client resolve relative cert paths against the file's own directory.
+                // Path model: build from the file on disk, letting the client resolve relative cert paths against the
+                // file's own directory. An exec-auth context re-runs its credential plugin on each call, so its token
+                // refreshes stay live; a rotated *static* token in the file is only picked up when the cached client is
+                // rebuilt (after a settings save invalidates it).
                 var path = KubeconfigInspector.ExpandPath(cluster.KubeconfigPath);
                 if (!File.Exists(path))
                 {
@@ -57,17 +84,7 @@ internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : ID
                 config = KubernetesClientConfiguration.BuildConfigFromConfigFile(stream, currentContext: context);
             }
 
-            var client = new k8s.Kubernetes(config);
-
-            // Two calls racing on the same not-yet-cached cluster both build a client (each owning an HttpClient);
-            // GetOrAdd keeps one, so dispose the loser instead of leaking it.
-            var winner = _clients.GetOrAdd(cluster.Id, client);
-            if (!ReferenceEquals(winner, client))
-            {
-                client.Dispose();
-            }
-
-            return (winner, null);
+            return (new k8s.Kubernetes(config), null);
         }
         catch (Exception)
         {
