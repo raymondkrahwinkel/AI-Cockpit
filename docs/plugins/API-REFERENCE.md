@@ -77,6 +77,7 @@ public interface ICockpitHost
     void AddSideMenuButton(string title, Action onInvoke);
     void AddSideMenuSection(string title, Func<Control> createView);
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView);  // default no-op
+    void AddSupervisedActivityProvider(ISupervisedActivitySource source);        // default no-op
     void AddConversationPicker(ConversationPickerRegistration picker);           // default no-op
     void AddWorkflowStep(IWorkflowStep step);                                   // default no-op
     IReadOnlyList<IWorkflowStep> WorkflowSteps { get; }                         // default []
@@ -267,6 +268,21 @@ _ = host.AddMcpServer(new McpServerContribution(
     Name: "My Service: Prod",
     Url: "https://my-service.example.com/mcp",
     BearerToken: myToken));
+```
+
+### `void AddSupervisedActivityProvider(ISupervisedActivitySource source)`
+Registers a source of long-running, agent-started background activities shown in the **app status bar** (a counter
+next to "Delegated tasks"). The counter appears only while something is running and opens a panel listing each
+activity with its details and a **Kill button per item**. The host owns the Kill — an agent has no path to start or
+stop through it, only the operator does. This is the operator-facing kill-switch that a port-forward, an open watch,
+or any other supervised background work needs to be safe.
+- `ISupervisedActivitySource`: `string Label` (the counter label, e.g. `"Port-forwards"`), `IReadOnlyList<SupervisedActivity> Snapshot()` (a fresh list each call), and `event Action? Changed` (raise it when the set changes so the counter and an open panel refresh).
+- `SupervisedActivity(string Id, string Title, IReadOnlyList<ActivityDetail> Details, Func<Task> StopAsync)` — `Details` are `ActivityDetail(Label, Value)` facts shown verbatim (source, target, cluster); `StopAsync` is what the Kill button calls.
+- Default no-op, same compatibility rationale as `AddSessionProvider`.
+
+```csharp
+// A manager that implements ISupervisedActivitySource, exposing its active tunnels:
+host.AddSupervisedActivityProvider(myPortForwardManager);
 ```
 
 ### `void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView)`

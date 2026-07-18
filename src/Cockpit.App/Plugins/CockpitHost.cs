@@ -20,6 +20,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Widgets;
 
 namespace Cockpit.App.Plugins;
@@ -79,6 +80,9 @@ internal sealed class CockpitHost(
 
     public void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView) =>
         contributionSink.AddPluginSessionHeaderItem(createView);
+
+    public void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
+        contributionSink.AddSupervisedActivityProvider(source);
 
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);

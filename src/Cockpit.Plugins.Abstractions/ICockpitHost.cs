@@ -5,6 +5,7 @@ using Cockpit.Plugins.Abstractions.Mcp;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
 
@@ -60,6 +61,19 @@ public interface ICockpitHost
     /// Default no-op so existing hosts keep compiling untouched.
     /// </summary>
     void AddSessionHeaderAction(PluginSessionAction action)
+    {
+    }
+
+    /// <summary>
+    /// Registers a source of long-running, agent-started background activities shown in the app status bar (AC-82) —
+    /// a counter next to "Delegated tasks" that appears only while something is running, and opens a panel listing
+    /// each activity with its details and a Kill button. The host owns that Kill: an agent cannot start or stop
+    /// through it, only the operator can. The plugin supplies the list and the stop callback. This is the
+    /// operator-facing kill-switch that a port-forward — or any other supervised background work — needs to be safe.
+    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
+    /// compiling untouched — only the app's own host renders it.
+    /// </summary>
+    void AddSupervisedActivityProvider(ISupervisedActivitySource source)
     {
     }
 

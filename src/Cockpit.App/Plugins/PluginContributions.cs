@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.Plugins;
 
@@ -44,6 +45,9 @@ public interface IPluginContributionSink
 
     /// <summary>Registers an action in every session header's menu — one menu for all plugins, rather than a button each.</summary>
     void AddPluginSessionHeaderAction(PluginSessionAction action);
+
+    /// <summary>Registers a plugin's source of supervised background activities shown in the status bar (AC-82), with an operator-only Kill per item.</summary>
+    void AddSupervisedActivityProvider(ISupervisedActivitySource source);
 
     /// <summary>Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.</summary>
     void AddPluginShortcut(PluginShortcut shortcut);
