@@ -169,8 +169,28 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
             return true;
         }
 
+        // A store index may list an absolute http(s) URL for a zip or template (a CDN), the same way it can for an
+        // icon. Fetch it as-is rather than resolving it against the store — and only carry the token when it is
+        // the store's own origin, so an absolute foreign path never exfiltrates the credential.
+        if (Uri.TryCreate(relativePath, UriKind.Absolute, out var absolutePath)
+            && (absolutePath.Scheme == Uri.UriSchemeHttp || absolutePath.Scheme == Uri.UriSchemeHttps))
+        {
+            target = new StoreTarget(IsLocal: false, absolutePath.ToString(), GitHubRaw: false, _TokenForSameOrigin(absolutePath.ToString(), store.Location, store.Token));
+
+            return true;
+        }
+
         if (store.HasToken && PluginStoreUrl.TryParseGitHubRepo(store.Location, out var owner, out var repo, out var branch))
         {
+            // The path comes from the store's (untrusted) index — a "../.." must not read another repo through
+            // the Contents API with the operator's token.
+            if (!PluginStoreUrl.IsSafeRelativePath(relativePath))
+            {
+                error = "The store index has an unsafe path.";
+
+                return false;
+            }
+
             target = new StoreTarget(IsLocal: false, PluginStoreUrl.GitHubContentsUrl(owner, repo, relativePath, branch), GitHubRaw: true, store.Token);
 
             return true;
@@ -183,7 +203,12 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
         try
         {
-            target = new StoreTarget(IsLocal: false, PluginStoreUrl.ResolveZipUrl(indexUrl, relativePath), GitHubRaw: false, store.Token);
+            var url = PluginStoreUrl.ResolveZipUrl(indexUrl, relativePath);
+
+            // The index is store-controlled, and Uri combination lets an absolute or protocol-relative path escape
+            // to a foreign host. The token belongs only on the store's own origin, so it is stripped otherwise —
+            // the same rule the icon path follows.
+            target = new StoreTarget(IsLocal: false, url, GitHubRaw: false, _TokenForSameOrigin(url, indexUrl, store.Token));
 
             return true;
         }
@@ -195,16 +220,40 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
         }
     }
 
+    /// <summary>Returns the token only when <paramref name="requestUrl"/> is the same origin (scheme, host, port) as the store; a store-index path that resolves to another host gets no credential.</summary>
+    private static string? _TokenForSameOrigin(string requestUrl, string storeUrl, string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return null;
+        }
+
+        return Uri.TryCreate(requestUrl, UriKind.Absolute, out var request)
+            && Uri.TryCreate(storeUrl, UriKind.Absolute, out var origin)
+            && string.Equals(request.Scheme, origin.Scheme, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(request.Host, origin.Host, StringComparison.OrdinalIgnoreCase)
+            && request.Port == origin.Port
+                ? token
+                : null;
+    }
+
     private static bool _TryResolveIcon(PluginStoreConfig store, string iconUrl, out StoreTarget target, out string? error)
     {
         target = default;
         error = null;
 
-        // An absolute http(s) icon is fetched as-is and never carries the store's token — a credential belongs
-        // only on a request to the store's own host, not on whatever CDN an index chose to point its logo at.
-        if (Uri.TryCreate(iconUrl, UriKind.Absolute, out var absolute)
-            && (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+        // An absolute icon URL is fetched as-is and never carries the store's token — a credential belongs only on
+        // a request to the store's own host, not on whatever CDN an index chose to point its logo at. It must be
+        // http(s): a file:/ftp:/data: URL is rejected outright rather than handed to the fetcher.
+        if (Uri.TryCreate(iconUrl, UriKind.Absolute, out var absolute))
         {
+            if (absolute.Scheme != Uri.UriSchemeHttp && absolute.Scheme != Uri.UriSchemeHttps)
+            {
+                error = "A store icon must be an http(s) URL.";
+
+                return false;
+            }
+
             target = new StoreTarget(IsLocal: false, absolute.ToString(), GitHubRaw: false, Token: null);
 
             return true;

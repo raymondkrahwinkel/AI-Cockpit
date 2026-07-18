@@ -10,23 +10,22 @@ namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
 /// The remote-auth path of <see cref="PluginStoreClient"/> (AC-7): a private store's token rides along as a
-/// bearer header, a public store sends none, and the token is never attached to an absolute icon URL — a
-/// credential belongs only on a request to the store's own host.
+/// bearer header to the store's own origin, a public store sends none, and the token is never attached to an
+/// absolute icon or zip URL on a foreign host — a credential belongs only on a request to the store's own host.
 /// </summary>
 public class PluginStoreClientRemoteAuthTests : IDisposable
 {
-    private readonly HttpListener _listener = new();
+    private readonly HttpListener _store = new();
+    private readonly HttpListener _foreign = new();
     private readonly string _prefix;
+    private readonly string _foreignPrefix;
     private readonly ConcurrentDictionary<string, string?> _authByPath = new();
     private readonly PluginStoreClient _client = new();
 
     public PluginStoreClientRemoteAuthTests()
     {
-        var port = _FreePort();
-        _prefix = $"http://127.0.0.1:{port}/";
-        _listener.Prefixes.Add(_prefix);
-        _listener.Start();
-        _ = _ServeAsync();
+        _prefix = _StartListener(_store);
+        _foreignPrefix = _StartListener(_foreign);
     }
 
     [Fact]
@@ -52,24 +51,66 @@ public class PluginStoreClientRemoteAuthTests : IDisposable
     }
 
     [Fact]
-    public async Task DownloadImageAsync_AbsoluteIconUrl_DoesNotLeakTheToken()
+    public async Task DownloadZipAsync_SameOrigin_SendsTheToken()
     {
-        // Even for a private store, an absolute icon URL is fetched without the token — it may point at any host.
         var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
 
-        await _client.DownloadImageAsync(store, $"{_prefix}cdn/logo.png");
+        await _client.DownloadZipAsync(store, "plugin.zip", null);
 
-        _authByPath["/cdn/logo.png"].Should().BeNull();
+        _authByPath["/mystore/plugin.zip"].Should().Be("Bearer s3cr3t");
     }
 
-    private async Task _ServeAsync()
+    [Fact]
+    public async Task DownloadZipAsync_AbsolutePathToForeignHost_DoesNotSendTheToken()
     {
-        while (_listener.IsListening)
+        // A store-controlled index that lists a zip on another origin must not exfiltrate the token.
+        var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
+
+        await _client.DownloadZipAsync(store, $"{_foreignPrefix}evil.zip", null);
+
+        _authByPath["/evil.zip"].Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DownloadImageAsync_AbsoluteIconUrl_DoesNotLeakTheToken()
+    {
+        var store = PluginStoreConfig.Remote($"{_prefix}mystore/", "s3cr3t");
+
+        await _client.DownloadImageAsync(store, $"{_foreignPrefix}logo.png");
+
+        _authByPath["/logo.png"].Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DownloadZipAsync_PrivateGitHub_RejectsATraversalPath()
+    {
+        // No network: an unsafe path is refused before any request is built.
+        var store = PluginStoreConfig.Remote("https://github.com/owner/repo", "token");
+
+        var result = await _client.DownloadZipAsync(store, "../../other/repo/x.zip", null);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().Contain("unsafe");
+    }
+
+    private string _StartListener(HttpListener listener)
+    {
+        var prefix = $"http://127.0.0.1:{_FreePort()}/";
+        listener.Prefixes.Add(prefix);
+        listener.Start();
+        _ = _ServeAsync(listener);
+
+        return prefix;
+    }
+
+    private async Task _ServeAsync(HttpListener listener)
+    {
+        while (listener.IsListening)
         {
             HttpListenerContext context;
             try
             {
-                context = await _listener.GetContextAsync();
+                context = await listener.GetContextAsync();
             }
             catch (Exception)
             {
@@ -97,11 +138,14 @@ public class PluginStoreClientRemoteAuthTests : IDisposable
 
     public void Dispose()
     {
-        if (_listener.IsListening)
+        foreach (var listener in new[] { _store, _foreign })
         {
-            _listener.Stop();
-        }
+            if (listener.IsListening)
+            {
+                listener.Stop();
+            }
 
-        _listener.Close();
+            listener.Close();
+        }
     }
 }
