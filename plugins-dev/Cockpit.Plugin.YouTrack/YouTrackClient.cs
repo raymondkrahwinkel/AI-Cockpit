@@ -212,6 +212,36 @@ internal sealed class YouTrackClient
         }
     }
 
+    /// <summary>
+    /// Attaches a file to an issue (AC-14): a multipart POST to <c>{instance}/issues/{id}/attachments</c>, the way
+    /// the YouTrack REST API takes an upload. Throws with YouTrack's own reason when it refuses (no permission, too
+    /// large), so the caller can say why.
+    /// </summary>
+    public async Task AttachFileAsync(string instanceBaseUrl, string token, string idReadable, string fileName, byte[] bytes, string mediaType, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
+        // A unique form-field name per file is what YouTrack expects for a multipart attachment upload.
+        content.Add(file, fileName, fileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/issues/{Uri.EscapeDataString(idReadable)}/attachments?fields=id,name");
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = content;
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var failure = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new InvalidOperationException($"YouTrack refused the attachment ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
+    }
+
     private static async Task<string> _GetAsync(string url, string token, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);

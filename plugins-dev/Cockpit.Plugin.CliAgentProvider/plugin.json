@@ -1,7 +1,7 @@
 {
   "id": "cli-agent-provider",
   "name": "CLI Agent Provider (Codex)",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "entryAssembly": "Cockpit.Plugin.CliAgentProvider.dll",
   "entryType": "Cockpit.Plugin.CliAgentProvider.CliAgentProviderPlugin",
   "abstractionsVersion": 1,

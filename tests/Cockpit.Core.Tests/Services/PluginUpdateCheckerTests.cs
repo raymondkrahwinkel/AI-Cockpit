@@ -73,7 +73,7 @@ public class PluginUpdateCheckerTests
     {
         var toastService = Substitute.For<IToastService>();
         var storeClient = Substitute.For<IPluginStoreClient>();
-        storeClient.FetchIndexAsync(StoreUrl, Arg.Any<CancellationToken>())
+        storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
             .Returns(new PluginStoreFetchResult(false, "unreachable", null, null));
         var checker = _CreateChecker(
             installed: [_Plugin("youtrack", "YouTrack", "1.0.0")],
@@ -90,7 +90,7 @@ public class PluginUpdateCheckerTests
     {
         var toastService = Substitute.For<IToastService>();
         var storeConfigStore = Substitute.For<IPluginStoreConfigStore>();
-        storeConfigStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([StoreUrl]);
+        storeConfigStore.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<PluginStoreConfig>>([PluginStoreConfig.Remote(StoreUrl)]);
         var checker = new PluginUpdateChecker(
             _ => throw new IOException("plugins folder unavailable"),
             storeConfigStore,
@@ -147,7 +147,7 @@ public class PluginUpdateCheckerTests
     {
         var toastService = Substitute.For<IToastService>();
         var storeClient = Substitute.For<IPluginStoreClient>();
-        storeClient.FetchIndexAsync(StoreUrl, Arg.Any<CancellationToken>())
+        storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
             .Returns(new PluginStoreFetchResult(
                 true,
                 null,
@@ -178,7 +178,7 @@ public class PluginUpdateCheckerTests
         CockpitViewModel? cockpit = null)
     {
         var storeConfigStore = Substitute.For<IPluginStoreConfigStore>();
-        storeConfigStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([StoreUrl]);
+        storeConfigStore.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<PluginStoreConfig>>([PluginStoreConfig.Remote(StoreUrl)]);
 
         return new PluginUpdateChecker(
             _ => Task.FromResult(installed),
@@ -192,7 +192,7 @@ public class PluginUpdateCheckerTests
     private static IPluginStoreClient _StoreClientReturning(PluginStoreEntry entry)
     {
         var storeClient = Substitute.For<IPluginStoreClient>();
-        storeClient.FetchIndexAsync(StoreUrl, Arg.Any<CancellationToken>())
+        storeClient.FetchIndexAsync(Arg.Any<PluginStoreConfig>(), Arg.Any<CancellationToken>())
             .Returns(new PluginStoreFetchResult(true, null, new PluginStoreIndex(null, [entry]), StoreUrl));
         return storeClient;
     }

@@ -66,6 +66,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     // rescues a busy turn that went silent far past any real turn (a missed end_turn, a killed CLI).
     private static readonly TimeSpan BusySafetyTimeout = TimeSpan.FromSeconds(120);
     private readonly TtyActivityStatusTracker _statusTracker = new(BusySafetyTimeout);
+
+    // Throttles the pty-output liveness keep-alive (AC-75) to ~1 Hz — the terminal flushes at up to 30 fps.
+    private DateTimeOffset _lastAliveSignalAt;
     private CancellationTokenSource? _statusTailCancellation;
     private DispatcherTimer? _statusPollTimer;
     private bool _statusTrackingStopped;
@@ -490,6 +493,30 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         }
 
         SessionStatus = _statusTracker.Poll(DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// The pty produced output — the TUI is still drawing (a thinking spinner ticking, text streaming), so the
+    /// session is visibly alive (AC-75). Keeps the status tracker's safety-timeout clock fresh while a turn is busy,
+    /// so a long but visibly-working think/plan phase never decays to a false Done. Throttled to ~1 Hz — the timeout
+    /// is generous and the terminal can flush at up to 30 fps — and a truly stalled/killed CLI produces no output,
+    /// so its turn still times out to Done. Called on the UI thread from the view's output flush.
+    /// </summary>
+    public void NotifyTerminalOutput()
+    {
+        if (_statusTrackingStopped)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastAliveSignalAt < TimeSpan.FromSeconds(1))
+        {
+            return;
+        }
+
+        _lastAliveSignalAt = now;
+        SessionStatus = _statusTracker.OnAlive(now);
     }
 
     private void _StopStatusTracking()

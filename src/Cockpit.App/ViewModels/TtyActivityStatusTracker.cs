@@ -43,6 +43,27 @@ public sealed class TtyActivityStatusTracker(TimeSpan busySafetyTimeout)
     /// <summary>Re-evaluates the status for <paramref name="now"/> without a new reading — Idle before any signal, Done once a turn completed (or a busy turn went silent past the safety timeout), else Busy/Working-background per the last signal.</summary>
     public SessionStatus Poll(DateTimeOffset now) => _Status(now);
 
+    /// <summary>
+    /// Records that the session is still visibly alive at <paramref name="now"/> — its TUI produced output, e.g. a
+    /// thinking spinner ticking or text streaming (AC-75) — without changing what it is doing. While a turn is busy
+    /// this refreshes the safety-timeout clock, so a long but visibly-working silent turn never decays to a false
+    /// Done. A turn that genuinely completed (<see cref="SessionActivity.TurnComplete"/> → Done) or one not yet
+    /// started (Idle) is left alone: a liveness signal never invents a turn or revives a finished one. A busy turn
+    /// that had <em>decayed</em> to Done via the safety timeout, though, is not finished — its last activity is
+    /// still Busy — so renewed output recovers it to Busy, which is what an alive session should read. A truly
+    /// stalled or killed CLI produces no output at all, so its turn still times out to Done — the safety net is
+    /// unchanged.
+    /// </summary>
+    public SessionStatus OnAlive(DateTimeOffset now)
+    {
+        if (_seenAnySignal && _lastActivity is SessionActivity.Busy or SessionActivity.BackgroundBusy)
+        {
+            _lastSignalAt = now;
+        }
+
+        return _Status(now);
+    }
+
     private SessionStatus _Status(DateTimeOffset now)
     {
         if (!_seenAnySignal)

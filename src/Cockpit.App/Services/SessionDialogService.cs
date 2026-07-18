@@ -232,6 +232,24 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
+    public async Task<string?> PickPluginStoreFolderAsync()
+    {
+        // The active window, not always MainWindow: the picker is launched from the Manage-stores dialog, itself
+        // an owned modal over the store dialog, so it must attach to that stack rather than behind it.
+        if (_ActiveOwnerWindow() is not { } owner)
+        {
+            return null;
+        }
+
+        var folders = await owner.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Choose a plugin store folder",
+            AllowMultiple = false,
+        });
+
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+    }
+
     public async Task<bool> ShowPluginConsentAsync(PluginConsentInfo info)
     {
         // Uses the active window, not always MainWindow: an install/update triggered from the plugin store
@@ -296,5 +314,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var dialog = new ConfirmationDialog { DataContext = new ConfirmationDialogViewModel(title, message, confirmLabel) };
         return await dialog.ShowDialog<bool>(owner);
+    }
+
+    public async Task<string?> ShowSetStatusDialogAsync(string currentStatusline)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var dialog = new SetStatusDialog { DataContext = new SetStatusDialogViewModel(currentStatusline) };
+        return await dialog.ShowDialog<string?>(owner);
     }
 }

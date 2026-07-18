@@ -106,6 +106,50 @@
         </Style>
     </UserControl.Styles>
 
+    <DockPanel LastChildFill="True">
+
+        <!-- Persistent update banner (AC-73). A newer build was too easy to miss as a startup toast: it
+             auto-dismisses, and it fires before the freshly-opened window has focus. This bar stays until the
+             operator opens the release or dismisses it, and returns when a build newer than the dismissed one is
+             found. Docked above the whole window — over sidebar and content both — so it reads as "the application
+             has an update", not "this panel does". The tint is the accent at low alpha, so it tracks the accent
+             colour rather than pinning a second brown. Collapsed (not just transparent) when there is nothing to
+             say, so it costs no height until a build is waiting. -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding UpdateBannerVisible}"
+                Background="#26D97757"
+                BorderBrush="{StaticResource CockpitAccentBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,9">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="Accent" Padding="12,5"
+                            Content="Open release"
+                            Command="{Binding OpenUpdateCommand}"
+                            ToolTip.Tip="{Binding UpdateUrl}"/>
+                    <Button Classes="Subtle" Padding="6,4"
+                            Command="{Binding DismissUpdateCommand}"
+                            ToolTip.Tip="Dismiss — reappears when a newer build is available">
+                        <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14"/>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="ArrowUpBoldCircleOutline" Width="18" Height="18"
+                                                Foreground="{StaticResource CockpitAccentBrush}"
+                                                VerticalAlignment="Center"/>
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                               Text="A new build is available —"/>
+                    <TextBlock VerticalAlignment="Center" FontWeight="SemiBold"
+                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                               Text="{Binding UpdateName}"/>
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Text="{Binding CurrentBuild, StringFormat='· you’re on {0}'}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
     <Grid x:Name="RootGrid">
         <!-- One row for AI-Cockpit, one for the status bar (#78). Everything that was here before stays in
              row 0 by default, so adding the bar did not have to touch a single existing panel. -->
@@ -243,6 +287,10 @@
                                         <ContextMenu>
                                             <MenuItem Header="Rename" Click="OnRenameSession"/>
                                             <MenuItem Header="Duplicate" Click="OnDuplicateSession"/>
+                                            <Separator/>
+                                            <MenuItem Header="Set status…" Click="OnSetSessionStatus"/>
+                                            <MenuItem Header="Clear status" Click="OnClearSessionStatus"
+                                                      IsEnabled="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                             <Separator/>
                                             <MenuItem Header="Move up" Click="OnMoveSessionUp"/>
                                             <MenuItem Header="Move down" Click="OnMoveSessionDown"/>
@@ -998,4 +1046,5 @@
             </DockPanel>
         </Border>
     </Grid>
+    </DockPanel>
 </UserControl>

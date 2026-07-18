@@ -177,6 +177,61 @@ public sealed class ManagedCliServiceTests : IDisposable
             .Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("../evil")]
+    [InlineData("a/b")]
+    [InlineData("..")]
+    public async Task PathBuildingMethods_RejectAnUnsafeCliName(string cliName)
+    {
+        // A cli name becomes a path segment; a separator or dot-segment must never resolve, remove or install anywhere.
+        _PlaceInstalled("acme", "1.0.0"); // a real install exists, but not under the unsafe name
+        var service = _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException("must not download")));
+        service.Register(_Descriptor(cliName, "1.0.0", _RawPlan("x"u8.ToArray())));
+
+        service.ResolveInstalledPath(cliName).Should().BeNull();
+        service.RemoveInstalled(cliName).Should().BeFalse();
+        (await service.EnsureInstalledAsync(cliName)).Success.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetStatus_ReportsInstalledAndLatestVersion()
+    {
+        var service = _Service(new StubHttpMessageHandler(_ => StubHttpMessageHandler.Bytes("x"u8.ToArray())));
+        service.Register(_Descriptor("acme", "2.0.0", _RawPlan("x"u8.ToArray()))); // descriptor's latest = 2.0.0
+        _PlaceInstalled("acme", "1.0.0");
+
+        var status = await service.GetStatusAsync("acme");
+
+        status.InstalledVersion.Should().Be("1.0.0");
+        status.LatestVersion.Should().Be("2.0.0");
+    }
+
+    [Fact]
+    public async Task GetStatus_NotInstalled_ReportsNullInstalled_ButStillLatest()
+    {
+        var service = _Service(new StubHttpMessageHandler(_ => StubHttpMessageHandler.Bytes("x"u8.ToArray())));
+        service.Register(_Descriptor("acme", "2.0.0", _RawPlan("x"u8.ToArray())));
+
+        var status = await service.GetStatusAsync("acme");
+
+        status.InstalledVersion.Should().BeNull();
+        status.LatestVersion.Should().Be("2.0.0");
+    }
+
+    [Fact]
+    public async Task GetStatus_ChannelUnreachable_ReportsInstalledButNullLatest()
+    {
+        // No descriptor registered → the latest cannot be determined; the installed copy is still reported, so the UI
+        // falls back to a plain "Update" rather than a false "up to date".
+        var service = _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException()));
+        _PlaceInstalled("acme", "1.0.0");
+
+        var status = await service.GetStatusAsync("acme");
+
+        status.InstalledVersion.Should().Be("1.0.0");
+        status.LatestVersion.Should().BeNull();
+    }
+
     // The internal ctor takes the cli root directly (in production that is <StateRoot>/cli); mirror that layout so
     // the asserted paths read <root>/cli/<name>/<version>/<exe>.
     private ManagedCliService _Service(StubHttpMessageHandler handler) =>

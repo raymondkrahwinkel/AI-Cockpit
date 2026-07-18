@@ -815,6 +815,11 @@ public partial class TtyView : UserControl
         }
 
         Terminal.Write(chunk);
+
+        // AC-75: output means the pty is still drawing (a thinking spinner ticking, text streaming), so the session
+        // is visibly alive — keep its sidebar dot off a false "Done" while a long think/plan phase writes no
+        // transcript line. Only reached with a non-empty chunk (this method returns early when nothing is pending).
+        _viewModel?.NotifyTerminalOutput();
     }
 
     private void OnUnloaded(object? sender, RoutedEventArgs e)

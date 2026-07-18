@@ -75,6 +75,18 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Registers a handler for images the operator sends with a user message (AC-14) — see
+    /// <see cref="SessionImageSinkRegistration"/>. The host invokes it for every image-bearing message, with the
+    /// session's pane id and the images, so a tracker plugin can attach them to the issue that session tracks. This
+    /// lives on the host, provider-agnostic, rather than in any one tracker plugin, so every provider reaches it the
+    /// same way. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin
+    /// builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void AddSessionImageSink(SessionImageSinkRegistration sink)
+    {
+    }
+
+    /// <summary>
     /// Contributes a step to the workflow editor (#69) — "Move a ticket to In Progress", "Comment on a pull request".
     /// The step appears in the picker under its own category and runs like any other. Without this, what a flow can do
     /// is limited to what the workflows plugin itself was built to do, and every integration the cockpit ever grows
@@ -358,4 +370,15 @@ public interface ICockpitHost
     /// <see langword="false"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
     /// </summary>
     bool RemoveManagedCli(string cliName) => false;
+
+    /// <summary>
+    /// Reports the installed and latest-available versions of a managed CLI (#AC-20), so a config view can offer
+    /// "Update to X" only when a newer version actually exists and say "up to date" otherwise, instead of an Update
+    /// button that may do nothing. Reaches the provider's channel for the latest version (a lightweight check, no
+    /// download); a channel it cannot reach comes back as a null <see cref="ManagedCliStatus.LatestVersion"/> rather
+    /// than a thrown error. Default returns both-null so existing <see cref="ICockpitHost"/> implementations keep
+    /// compiling untouched — only the app's own host performs the check.
+    /// </summary>
+    Task<ManagedCliStatus> GetManagedCliStatusAsync(string cliName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ManagedCliStatus(null, null));
 }

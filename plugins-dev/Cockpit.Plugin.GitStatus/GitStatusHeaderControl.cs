@@ -25,6 +25,7 @@ internal sealed class GitStatusHeaderControl : UserControl
 
     private readonly ICockpitHost _host;
     private readonly IPluginSessionContext _session;
+    private readonly GitStatusSettings _settings;
     private readonly GitStatusReader _reader = new();
     private readonly DispatcherTimer _signalRefresh;
 
@@ -38,10 +39,11 @@ internal sealed class GitStatusHeaderControl : UserControl
     private FileSystemWatcher? _headWatcher;
     private string? _watchedHeadDirectory;
 
-    public GitStatusHeaderControl(ICockpitHost host, IPluginSessionContext session)
+    public GitStatusHeaderControl(ICockpitHost host, IPluginSessionContext session, GitStatusSettings settings)
     {
         _host = host;
         _session = session;
+        _settings = settings;
 
         _dot = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center };
         _label = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
@@ -74,6 +76,11 @@ internal sealed class GitStatusHeaderControl : UserControl
         base.OnAttachedToVisualTree(e);
         _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
         _session.OutputProduced += _OnSessionOutput;
+        // Toggling "show branch name" (AC-36) takes effect at once on every live header. Subscribed here and dropped
+        // on detach — symmetric with the session events — so a transient header is never left rooted (unlike
+        // ICockpitHost.OnSettingsSaved, which has no unsubscribe).
+        _settings.Changed += _OnSettingsChanged;
+        _label.IsVisible = _settings.ShowBranchName;
         _ = _LoadAsync();
         _ = _EnsureHeadWatcherAsync();
     }
@@ -83,9 +90,12 @@ internal sealed class GitStatusHeaderControl : UserControl
         base.OnDetachedFromVisualTree(e);
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
         _session.OutputProduced -= _OnSessionOutput;
+        _settings.Changed -= _OnSettingsChanged;
         _signalRefresh.Stop();
         _DisposeHeadWatcher();
     }
+
+    private void _OnSettingsChanged() => _label.IsVisible = _settings.ShowBranchName;
 
     private void _OnWorkingDirectoryChanged(object? sender, EventArgs e)
     {
@@ -217,6 +227,9 @@ internal sealed class GitStatusHeaderControl : UserControl
         IsVisible = true;
         _dot.Fill = status.IsClean ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush");
         _label.Text = status.Branch;
+        // The dot is always the at-a-glance status; the branch name is optional (AC-36). Hidden, it lives on in the
+        // tooltip below, so no information is lost — only header width.
+        _label.IsVisible = _settings.ShowBranchName;
         ToolTip.SetTip(_row, $"{status.Name} · {status.Branch}\n{GitStatusSummary.Describe(status)}\n\nClick to add this summary to the session's prompt.");
     }
 

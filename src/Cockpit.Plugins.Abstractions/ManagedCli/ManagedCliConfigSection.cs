@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 
@@ -18,6 +19,10 @@ namespace Cockpit.Plugins.Abstractions.ManagedCli;
 /// </summary>
 public sealed class ManagedCliConfigSection
 {
+    // A muted, checkmark-less brush for the neutral states (not-installed, downloading) — a green ✓ there would read
+    // as a success mark on something that has not happened. The green ✓ is kept only for the actually-installed state.
+    private static readonly IBrush _MutedBrush = new SolidColorBrush(Color.Parse("#9AA0A6"));
+
     private readonly ICockpitHost _host;
     private readonly string _cliName;
     private readonly string _displayName;
@@ -60,30 +65,104 @@ public sealed class ManagedCliConfigSection
         };
 
         _Refresh();
+        _ = _RefreshUpdateStateAsync();
     }
 
     private void _Refresh()
     {
-        var managedPath = _host.ResolveManagedCliPath(_cliName);
-        if (!string.IsNullOrEmpty(managedPath))
+        _installButton.IsEnabled = true;
+        if (!string.IsNullOrEmpty(_host.ResolveManagedCliPath(_cliName)))
         {
-            ProviderConfigStatus.Set(_status, $"Installed and used automatically: {managedPath}", isOk: true);
+            // Which copy runs (and its path) is stated by the config view's executable line; here just confirm the
+            // install, so the two lines complement rather than repeat each other. The update check below refines the
+            // button ("Up to date" / "Update to X") once the provider's latest version is known.
+            ProviderConfigStatus.Set(_status, "Installed", isOk: true);
             _installButton.Content = "Update";
             _removeButton.IsVisible = true;
         }
         else
         {
-            ProviderConfigStatus.Set(_status, $"Not installed — {_displayName} is resolved from a pinned path or PATH. Install to let the cockpit manage it.", isOk: true);
+            _SetMuted($"Not installed. Install to let Cockpit download and manage {_displayName}.");
             _installButton.Content = "Install";
             _removeButton.IsVisible = false;
         }
+    }
+
+    // Ask the provider whether the installed copy is the latest, so "Update" is offered only when a newer version
+    // actually exists and "Up to date" (disabled) is shown otherwise — not an Update button that may do nothing. A
+    // channel that cannot be reached leaves the plain "Update" fallback rather than a false "up to date".
+    private async Task _RefreshUpdateStateAsync()
+    {
+        if (string.IsNullOrEmpty(_host.ResolveManagedCliPath(_cliName)))
+        {
+            return;
+        }
+
+        _installButton.Content = "Checking…";
+        _installButton.IsEnabled = false;
+
+        ManagedCliStatus status;
+        try
+        {
+            status = await _host.GetManagedCliStatusAsync(_cliName).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            // The check must never leave the button stuck on "Checking…": fall back to a plain, enabled Update
+            // (unless it was removed in the meantime).
+            if (!string.IsNullOrEmpty(_host.ResolveManagedCliPath(_cliName)))
+            {
+                _installButton.Content = "Update";
+                _installButton.IsEnabled = true;
+            }
+
+            return;
+        }
+
+        // The operator may have removed it while the check ran.
+        if (string.IsNullOrEmpty(_host.ResolveManagedCliPath(_cliName)))
+        {
+            return;
+        }
+
+        _installButton.IsEnabled = true;
+        var installed = status.InstalledVersion;
+
+        if (string.IsNullOrEmpty(status.LatestVersion) || string.IsNullOrEmpty(installed))
+        {
+            _installButton.Content = "Update";
+            ProviderConfigStatus.Set(_status, installed is { Length: > 0 } ? $"Installed — {installed}" : "Installed", isOk: true);
+            return;
+        }
+
+        var updateAvailable = Version.TryParse(installed, out var installedVersion)
+            && Version.TryParse(status.LatestVersion, out var latestVersion)
+            && latestVersion > installedVersion;
+
+        if (updateAvailable)
+        {
+            _installButton.Content = $"Update to {status.LatestVersion}";
+            ProviderConfigStatus.Set(_status, $"Installed — {installed} · {status.LatestVersion} available", isOk: true);
+        }
+        else
+        {
+            _installButton.Content = "Up to date";
+            _installButton.IsEnabled = false;
+            ProviderConfigStatus.Set(_status, $"Installed — {installed} (latest)", isOk: true);
+        }
+    }
+
+    private void _SetMuted(string message)
+    {
+        _status.Text = message;
+        _status.Foreground = _MutedBrush;
     }
 
     private async Task _InstallAsync()
     {
         _installButton.IsEnabled = false;
         _removeButton.IsEnabled = false;
-        ProviderConfigStatus.Set(_status, $"Downloading {_displayName}… this can take a minute.", isOk: true);
+        _SetMuted($"Downloading {_displayName}… this can take a minute.");
 
         // InstallManagedCliAsync never throws — an offline machine or a checksum mismatch comes back as an
         // unsuccessful result, so a failed install just leaves the operator on PATH rather than breaking the dialog.
@@ -96,6 +175,7 @@ public sealed class ManagedCliConfigSection
         {
             _host.ShowToast($"{_displayName} {result.Version} installed.", PluginToastSeverity.Success);
             _Refresh();
+            _ = _RefreshUpdateStateAsync();
             _onStateChanged?.Invoke();
         }
         else
