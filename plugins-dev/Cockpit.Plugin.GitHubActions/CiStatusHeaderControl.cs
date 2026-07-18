@@ -29,6 +29,7 @@ internal sealed class CiStatusHeaderControl : UserControl
 
     private CiRun? _current;
     private int _loadToken;
+    private CancellationTokenSource? _loadCts;
 
     public CiStatusHeaderControl(IPluginSessionContext session)
     {
@@ -57,6 +58,7 @@ internal sealed class CiStatusHeaderControl : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _loadCts = new CancellationTokenSource();
         _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
         _refresh.Start();
         _ = _LoadAsync();
@@ -67,6 +69,10 @@ internal sealed class CiStatusHeaderControl : UserControl
         base.OnDetachedFromVisualTree(e);
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
         _refresh.Stop();
+        // Cancel any in-flight gh call so a hung network request does not outlive the closed panel.
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = null;
     }
 
     private void _OnWorkingDirectoryChanged(object? sender, EventArgs e) => _ = _LoadAsync();
@@ -74,8 +80,9 @@ internal sealed class CiStatusHeaderControl : UserControl
     private async Task _LoadAsync()
     {
         var directory = _session.WorkingDirectory;
-        if (string.IsNullOrEmpty(directory))
+        if (string.IsNullOrEmpty(directory) || _loadCts is not { } cts)
         {
+            _current = null;
             IsVisible = false;
             return;
         }
@@ -84,7 +91,7 @@ internal sealed class CiStatusHeaderControl : UserControl
         CiRun? run;
         try
         {
-            run = await _client.GetLatestRunAsync(directory, CancellationToken.None);
+            run = await _client.GetLatestRunAsync(directory, cts.Token);
         }
         catch (Exception)
         {

@@ -128,10 +128,35 @@ internal sealed class CiWorkflowRunClient
             return (-1, string.Empty, string.Empty);
         }
 
-        var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        var stderr = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        // gh run list makes a network call and can stall; cap it so a hung request cannot pile up under the repeating
+        // refresh timer, and cancel it when the caller (a detached header) goes away.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        try
+        {
+            // Drain both streams concurrently — reading one to end before the other can deadlock if the child fills
+            // the other pipe's buffer.
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            return (process.ExitCode, await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
+        }
+        catch (OperationCanceledException)
+        {
+            // Timed out or the caller cancelled — kill the stuck process so it cannot accumulate, and show nothing.
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception)
+            {
+                // Best effort — the process may have exited between the check and the kill.
+            }
 
-        return (process.ExitCode, stdout, stderr);
+            return (-1, string.Empty, string.Empty);
+        }
     }
 }
