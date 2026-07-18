@@ -316,6 +316,14 @@
                                     <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
                                                    Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                                            IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
+                                    <ToggleButton Content="Test microphone" IsChecked="{Binding IsTestingMic}" Classes="Compact"/>
+                                    <controls:MicLevelMeter Level="{Binding MicTestLevel}" Threshold="{Binding VoiceStopReadAloudThresholdValue}"
+                                                            Width="200" Height="12" VerticalAlignment="Center"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). Set the threshold so normal speech crosses it but the room does not."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
                                     <TextBlock Text="Open-mic: end utterance after (silence ms)"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
