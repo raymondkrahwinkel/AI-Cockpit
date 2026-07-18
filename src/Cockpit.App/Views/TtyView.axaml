@@ -78,35 +78,39 @@
                     <!-- Usage pill (AC-37): the three meters fold into one "ctx NN%" pill; hover reveals ctx/5h/wk,
                          each usage window with its reset time (relative + absolute). Hidden for a terminal / before
                          the provider reports a context figure, exactly like the bars it replaces. -->
-                    <Border Grid.Column="6" VerticalAlignment="Center" Margin="8,0,0,0"
+                    <Button Grid.Column="6" VerticalAlignment="Center" Margin="8,0,0,0" Padding="8,2"
+                            MinWidth="0" MinHeight="0"
                             Background="{StaticResource CockpitSecondaryBgBrush}"
                             BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                            CornerRadius="20" Padding="8,2"
-                            IsVisible="{Binding ContextUsedPercent, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            CornerRadius="20"
+                            IsVisible="{Binding ContextUsedPercent, Converter={x:Static ObjectConverters.IsNotNull}}"
+                            ToolTip.Tip="Usage — click for the 5h / weekly windows and reset times">
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <TextBlock Text="{Binding ContextUsedPercent, StringFormat='ctx {0:0}%'}" FontSize="10"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                             <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10"
                                                         Foreground="{StaticResource CockpitTextFaintBrush}"/>
                         </StackPanel>
-                        <ToolTip.Tip>
-                            <StackPanel Spacing="6" MinWidth="190">
-                                <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
-                                <StackPanel Spacing="1" Margin="0,4,0,0">
-                                    <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
-                                    <TextBlock Text="{Binding FiveHourResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                               FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                               IsVisible="{Binding FiveHourResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                        <Button.Flyout>
+                            <Flyout Placement="Bottom">
+                                <StackPanel Spacing="6" MinWidth="190">
+                                    <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
+                                    <StackPanel Spacing="1" Margin="0,4,0,0">
+                                        <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
+                                        <TextBlock Text="{Binding FiveHourResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
+                                                   FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding FiveHourResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                    </StackPanel>
+                                    <StackPanel Spacing="1" Margin="0,4,0,0">
+                                        <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
+                                        <TextBlock Text="{Binding SevenDayResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
+                                                   FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding SevenDayResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                    </StackPanel>
                                 </StackPanel>
-                                <StackPanel Spacing="1" Margin="0,4,0,0">
-                                    <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
-                                    <TextBlock Text="{Binding SevenDayResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                               FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                               IsVisible="{Binding SevenDayResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </ToolTip.Tip>
-                    </Border>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
                 </Grid>
             </DockPanel>
         </Border>

@@ -38,6 +38,7 @@ internal static class Screenshotter
             "tasks" => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
             "set-status" => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
             "session" => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+            "tty" => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = new ViewModels.TtyViewModel() } },
             "plugin-update-badge" => _PluginUpdateBadge(),
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
