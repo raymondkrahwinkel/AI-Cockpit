@@ -24,61 +24,28 @@
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
             <DockPanel>
-                <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,2,0" Spacing="1">
-                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Right"/>
-                    <!-- AC-13: the agent/workflow statusline, under the title; hidden when blank. -->
-                    <TextBlock Text="{Binding Statusline}" FontSize="10" Opacity="0.65" HorizontalAlignment="Right"
-                               TextTrimming="CharacterEllipsis"
-                               IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                <!-- Controls dock right and stay on the bar (AC-37): read-aloud + the debug redraw. -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <!-- Read-aloud (#35b): tails the live JSONL transcript for assistant text; a speaker, struck through when off (#73). -->
+                    <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact" VerticalAlignment="Center"
+                                  IsVisible="{Binding !IsTerminal}"
+                                  ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
+                        <materialIcons:MaterialIcon Kind="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}" Width="14" Height="14"/>
+                    </ToggleButton>
+                    <!-- Redraw is a diagnostic, not part of the work: shown only with the debug controls on (#73). -->
+                    <Button Content="Redraw" Click="OnRedrawClick" Classes="Compact" VerticalAlignment="Center"
+                            IsVisible="{Binding ShowDebugControls}"
+                            ToolTip.Tip="Force the terminal to repaint from scratch — recovers the TUI if a resize/focus change left it misaligned or stacked at the top"/>
                 </StackPanel>
-                <StackPanel x:Name="StatusRow" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Border Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
-                        CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1"
-                        ToolTip.Tip="{Binding Diagnostics}">
-                    <TextBlock Text="TTY" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                </Border>
-                <TextBlock Text="{Binding Status}" VerticalAlignment="Center" FontSize="11"
-                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <TextBlock Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}" VerticalAlignment="Center" FontSize="11"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"
-                           IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                <!-- Working directory the TUI runs in (#: header working-path). Ellipsised so a deep path
-                     never stretches the header; the full path is on hover. -->
-                <TextBlock Text="{Binding WorkingPath}" VerticalAlignment="Center" FontSize="11"
-                           Foreground="{StaticResource CockpitTextFaintBrush}"
-                           TextTrimming="CharacterEllipsis" MaxWidth="300"
-                           ToolTip.Tip="{Binding WorkingPath}"/>
-                <!-- What the session is spending: how full its context window is, and how much of the five-hour and
-                     weekly allowance is gone. A bar each, because the operator is not after the number — they want
-                     to know whether something is running out, and a filled strip says that without being read. Each
-                     one hides itself until Claude has reported it: before the first response it reports none of it,
-                     and a bar sitting at "0%" would be a claim rather than a silence. -->
-                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
-                            ToolTip.Tip="{Binding LimitsTooltip}"
-                            IsVisible="{Binding !IsTerminal}">
-                    <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
-                    <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
-                    <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
-                </StackPanel>
-                <!-- Plugin-contributed header items (#: session header items) — same contribution point the SDK
-                     header renders, so a plugin writes its indicator once and it shows in both session kinds. Hidden
-                     for a terminal (#AC-25): a plugin session indicator has nothing to say about a plain shell. -->
-                <controls:PluginSessionHeaderHost IsVisible="{Binding !IsTerminal}"/>
-                <!-- Read-aloud (#35b): tails the live JSONL session transcript for assistant text. A speaker,
-                     struck through when off (#73) — the header is a strip, and a word costs more room than the
-                     thing it names. -->
-                <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
-                              VerticalAlignment="Center"
-                              IsVisible="{Binding !IsTerminal}"
-                              ToolTip.Tip="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Tip}}">
-                    <materialIcons:MaterialIcon Kind="{Binding ReadResponsesAloud, Converter={x:Static conv:ReadAloudIconConverter.Icon}}"
-                                                 Width="14" Height="14"/>
-                </ToggleButton>
-                <!-- Redraw is a diagnostic, not part of the work: shown only with the debug controls on (#73). -->
-                <Button Content="Redraw" Click="OnRedrawClick" Classes="Compact" VerticalAlignment="Center"
-                        IsVisible="{Binding ShowDebugControls}"
-                        ToolTip.Tip="Force the terminal to repaint from scratch — recovers the TUI if a resize/focus change left it misaligned or stacked at the top"/>
-                </StackPanel>
+
+                <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · token
+                     meter · usage pill — SessionHeaderBar, the same control the SDK header uses. The controls above
+                     dock right. The kind chip's hover is this view's own render diagnostics. -->
+                <controls:SessionHeaderBar VerticalAlignment="Center">
+                    <controls:SessionHeaderBar.KindChipTooltip>
+                        <TextBlock Text="{Binding Diagnostics}" MaxWidth="440" TextWrapping="Wrap" FontSize="11"/>
+                    </controls:SessionHeaderBar.KindChipTooltip>
+                </controls:SessionHeaderBar>
             </DockPanel>
         </Border>
 
