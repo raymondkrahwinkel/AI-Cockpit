@@ -1,0 +1,11 @@
+{
+  "id": "docker",
+  "name": "Docker",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.Docker.dll",
+  "entryType": "Cockpit.Plugin.Docker.DockerPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "0.3.0",
+  "description": "Register the local Docker daemon and give agents scoped, human-approved access to containers through an mcp__cockpit-docker__* server. The plugin talks to the Docker Engine API itself (via Docker.DotNet) and keeps the connection — an agent never gets the Docker socket. Every call is gated: the first touch of the daemon asks for consent (reads are free after that), and every change (start/stop/remove/run) asks afresh with the literal command shown and is never remembered. Exec is off until you turn it on. Configure the daemon endpoint in the plugin settings (blank uses the local default socket).",
+  "author": "Cockpit"
+}

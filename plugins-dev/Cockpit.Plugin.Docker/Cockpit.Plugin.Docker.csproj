@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Docker plugin (AC-84): register the local Docker daemon and inject an mcp__cockpit-docker__* MCP server so an
+       agent can work with containers under strict, human-approved control. Proxy model — the plugin talks to the
+       Docker Engine API itself via Docker.DotNet, keeps the connection, and gates every call (daemon connection,
+       mutations, exec). Sibling of the Kubernetes plugin (AC-80). Built OUTSIDE the main solution (plugins-dev/) like
+       the other plugins; package bin/<config>/net10.0 into a .zip and install it via the plugin store.
+       EnableDynamicLoading emits the .deps.json the host's AssemblyDependencyResolver needs. Shared assemblies
+       (Cockpit.Plugins.Abstractions, Avalonia, the DI abstractions, ModelContextProtocol) are compile-only
+       (Private=false / ExcludeAssets=runtime) so the host's copies load and shared types keep one identity.
+       Docker.DotNet is this plugin's own runtime dependency (like Workflows ships Jint), so it and its transitive
+       deps are packaged into the plugin folder. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The [McpServerTool] attributes for the cockpit-docker MCP (AC-84). Host-provided (the cockpit already loads
+         ModelContextProtocol), so compile-only — the plugin ships no copy and the attribute types keep one identity. -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <!-- The plugin's own runtime dependency: the Docker Engine API client. Not compile-only — it and its transitive
+         deps ship in the plugin folder. netstandard2.0 assembly, loads on net10. -->
+    <PackageReference Include="Docker.DotNet" Version="3.125.15" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.Docker.Tests" />
+  </ItemGroup>
+
+</Project>
