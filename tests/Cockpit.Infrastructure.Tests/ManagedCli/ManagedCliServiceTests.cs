@@ -177,6 +177,22 @@ public sealed class ManagedCliServiceTests : IDisposable
             .Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("../evil")]
+    [InlineData("a/b")]
+    [InlineData("..")]
+    public async Task PathBuildingMethods_RejectAnUnsafeCliName(string cliName)
+    {
+        // A cli name becomes a path segment; a separator or dot-segment must never resolve, remove or install anywhere.
+        _PlaceInstalled("acme", "1.0.0"); // a real install exists, but not under the unsafe name
+        var service = _Service(new StubHttpMessageHandler(_ => throw new InvalidOperationException("must not download")));
+        service.Register(_Descriptor(cliName, "1.0.0", _RawPlan("x"u8.ToArray())));
+
+        service.ResolveInstalledPath(cliName).Should().BeNull();
+        service.RemoveInstalled(cliName).Should().BeFalse();
+        (await service.EnsureInstalledAsync(cliName)).Success.Should().BeFalse();
+    }
+
     [Fact]
     public async Task GetStatus_ReportsInstalledAndLatestVersion()
     {
