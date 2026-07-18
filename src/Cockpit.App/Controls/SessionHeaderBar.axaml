@@ -55,8 +55,10 @@
             </ToolTip.Tip>
         </materialIcons:MaterialIcon>
 
-        <!-- Branch (plugin-contributed, e.g. git-status): width-capped; takes no space when none contributes. -->
-        <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0" MaxWidth="160"/>
+        <!-- Branch (plugin-contributed, e.g. git-status): width-capped; hidden on a plain terminal pane (AC-25),
+             where a plugin session indicator has nothing to say; takes no space when none contributes. -->
+        <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0" MaxWidth="160"
+                                          IsVisible="{Binding ShowPluginHeaderItems}"/>
 
         <!-- Token/cost meter (#8): the session's running token + cost total; hidden until anything has accrued
              (a session kind with no usage feed leaves HasUsage false, so it simply never shows). -->
@@ -73,10 +75,10 @@
                 Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="20"
-                IsVisible="{Binding ContextUsedPercent, Converter={x:Static ObjectConverters.IsNotNull}}"
-                ToolTip.Tip="Usage — click for the 5h / weekly windows and reset times">
+                IsVisible="{Binding HasUsagePill}"
+                ToolTip.Tip="{Binding LimitsTooltip}">
             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                <TextBlock Text="{Binding ContextUsedPercent, StringFormat='ctx {0:0}%'}" FontSize="10"
+                <TextBlock Text="{Binding ContextUsedPercent, StringFormat='ctx {0:0}%', TargetNullValue='usage'}" FontSize="10"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10"
                                             Foreground="{StaticResource CockpitTextFaintBrush}"/>

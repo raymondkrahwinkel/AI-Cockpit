@@ -218,7 +218,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     public ObservableCollection<SessionRateWindow> RateLimits { get; } = [];
 
-    /// <summary>The whole usage story for the pill's flyout, including when each window rolls over — the thing a bar cannot say.</summary>
+    /// <summary>
+    /// Whether the header's usage pill shows at all (AC-37): there is a context figure, or at least one usage window.
+    /// Gating on ctx alone hid the 5h/wk windows — reachable only through the pill's flyout — whenever a provider
+    /// reported rate limits without a ctx figure (e.g. right after a /compact). Depends on both ContextUsedPercent
+    /// and the RateLimits collection, so both notify it (the ctx setter and a CollectionChanged subscription).
+    /// </summary>
+    public bool HasUsagePill => ContextUsedPercent is not null || RateLimits.Count > 0;
+
+    /// <summary>The whole usage story for the pill's hover, including when each window rolls over — the thing a bar cannot say.</summary>
     [ObservableProperty]
     private string _limitsTooltip = string.Empty;
 
@@ -228,6 +236,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     [ObservableProperty]
     private string? _kindLabel;
+
+    /// <summary>
+    /// Whether plugin-contributed session-header items show (AC-25/AC-37): true for a real agent session, false for
+    /// a plain terminal, where a plugin session indicator has nothing to say. On the base so the one SessionHeaderBar
+    /// gates the shared PluginSessionHeaderHost without needing the TTY-only IsTerminal flag.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showPluginHeaderItems = true;
 
     /// <summary>True once any usage/cost has accrued (#8), so the header's token/cost meter shows only when there is something to show. On the base so the one SessionHeaderBar renders it (a session kind with no usage feed leaves it false).</summary>
     [ObservableProperty]
@@ -240,6 +256,15 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <summary>Per-bucket usage breakdown for the meter's hover (#8).</summary>
     [ObservableProperty]
     private string _usageTooltip = string.Empty;
+
+    protected SessionPanelViewModel()
+    {
+        // HasUsagePill depends on the RateLimits collection as well as ContextUsedPercent, so a window being
+        // added/cleared has to raise it too (the ctx setter is covered by OnContextUsedPercentChanged below).
+        RateLimits.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUsagePill));
+    }
+
+    partial void OnContextUsedPercentChanged(double? value) => OnPropertyChanged(nameof(HasUsagePill));
 
     /// <summary>
     /// Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the
