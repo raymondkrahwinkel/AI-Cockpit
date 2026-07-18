@@ -49,6 +49,8 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         _logger = logger;
     }
 
+    public IReadOnlyCollection<string> RegisteredCliNames => [.. _descriptors.Keys];
+
     public void Register(ManagedCliDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -57,7 +59,7 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
     public string? ResolveInstalledPath(string cliName)
     {
-        if (string.IsNullOrWhiteSpace(cliName))
+        if (!_IsSafeCliName(cliName))
         {
             return null;
         }
@@ -72,9 +74,62 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
         return newestVersionDirectory is null ? null : _ExecutableIn(newestVersionDirectory, cliName);
     }
 
+    public async Task<ManagedCliStatus> GetStatusAsync(string cliName, CancellationToken cancellationToken = default)
+    {
+        var installed = _InstalledVersion(cliName);
+
+        string? latest = null;
+        if (_descriptors.TryGetValue(cliName, out var descriptor))
+        {
+            try
+            {
+                // Bound the check so a hung endpoint cannot hold the config-view button on "Checking…" or the
+                // 15-minute poller for the HttpClient default (100 s) — the download path caps itself the same way.
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(20));
+
+                var resolved = (await descriptor.ResolveLatestVersionAsync(_http, timeout.Token).ConfigureAwait(false)).Trim();
+                // Only report a latest version that passes the same gate an install would — a garbage/edge response
+                // must not present itself as an available update.
+                if (Version.TryParse(resolved, out _))
+                {
+                    latest = resolved;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw; // the caller cancelled — propagate; the internal 20 s timeout falls through to "can't tell" below
+            }
+            catch (Exception exception)
+            {
+                // Offline, a slow endpoint hitting the 20 s cap, or an edge response — "can't tell", not a failure.
+                _logger?.LogDebug(exception, "Managed CLI '{CliName}' latest-version check failed", cliName);
+            }
+        }
+
+        return new ManagedCliStatus(installed, latest);
+    }
+
+    private string? _InstalledVersion(string cliName)
+    {
+        if (!_IsSafeCliName(cliName))
+        {
+            return null;
+        }
+
+        var cliDirectory = Path.Combine(_cliRoot, cliName);
+        if (!Directory.Exists(cliDirectory))
+        {
+            return null;
+        }
+
+        var newest = _NewestVersionDirectory(cliDirectory);
+        return newest is null ? null : Path.GetFileName(newest);
+    }
+
     public bool RemoveInstalled(string cliName)
     {
-        if (string.IsNullOrWhiteSpace(cliName))
+        if (!_IsSafeCliName(cliName))
         {
             return false;
         }
@@ -99,6 +154,11 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
 
     public async Task<ManagedCliInstallResult> EnsureInstalledAsync(string cliName, CancellationToken cancellationToken = default)
     {
+        if (!_IsSafeCliName(cliName))
+        {
+            return ManagedCliInstallResult.Fail($"'{cliName}' is not a valid managed-CLI name.");
+        }
+
         if (!_descriptors.TryGetValue(cliName, out var descriptor))
         {
             return ManagedCliInstallResult.Fail($"No managed-CLI descriptor is registered for '{cliName}'.");
@@ -304,6 +364,15 @@ internal sealed class ManagedCliService : IManagedCliService, ISingletonService
     }
 
     private static string _LeafName(string path) => path.Replace('\\', '/').TrimEnd('/').Split('/').Last();
+
+    // A cli name becomes a path segment (<cliRoot>/<name>/...), so reject anything that could climb out of the cli
+    // root — a separator or a dot-segment. Names come from a trusted in-process plugin, but the host API also takes a
+    // caller-supplied name, so guard at every path-building entry rather than assume the caller sanitised it.
+    private static bool _IsSafeCliName(string cliName) =>
+        !string.IsNullOrWhiteSpace(cliName)
+        && cliName.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]) < 0
+        && cliName != "."
+        && cliName != "..";
 
     private static string? _NewestVersionDirectory(string cliDirectory)
     {

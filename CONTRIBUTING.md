@@ -38,6 +38,9 @@ it keeps a one-person project alive.
    headless).
 4. **Mind the trust boundary.** The cockpit never reads, stores or transmits Claude credentials —
    it only checks that a login exists. Anything that would change that needs an issue first.
+5. **Record it in the changelog.** When the work is finished, add a bullet under `## [Unreleased]`
+   in [`CHANGELOG.md`](CHANGELOG.md) — see *Changelog* below. A finished item that leaves no trace
+   there is not finished.
 
 ## Commit style
 
@@ -50,3 +53,17 @@ Bullet-list commit messages, one bullet per changed concern, written in English:
 ```
 
 Types: `added` · `changed` · `fixed` · `removed` · `refactored`. No summary line above the bullets.
+
+## Changelog
+
+Every finished work item lands in [`CHANGELOG.md`](CHANGELOG.md) under `## [Unreleased]`, so that from
+one release to the next it is clear what actually changed — without reading the git log.
+
+- The commit types above map straight onto the changelog sections: `added:` → **Added**, `changed:` /
+  `refactored:` → **Changed**, `fixed:` → **Fixed**, `removed:` → **Removed**. Reuse the wording; keep
+  it operator-facing (what changed for the person running the cockpit, not the class that changed).
+- Add to `[Unreleased]` — never write a version heading yourself.
+- **Releasing is a tag.** Push a `v*` tag (`git tag v1.2.3 && git push origin v1.2.3`) and the Release
+  workflow rolls `[Unreleased]` into a dated `## [1.2.3]` section, commits that back, and uses the same
+  text as the GitHub release notes. The tag is the version — the About dialog, the updater and the
+  changelog all read it.

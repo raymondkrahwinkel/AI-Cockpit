@@ -83,6 +83,9 @@ internal sealed class CockpitHost(
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
 
+    public void AddSessionImageSink(SessionImageSinkRegistration sink) =>
+        services.GetRequiredService<ISessionImageSinkRegistry>().Register(sink);
+
     // This plugin's own storage, observe surface and declared secret keys travel with the registration: a placed
     // instance builds its context long after load, and by then the widget id is the only thing linking it back
     // here. The declared keys are what lets an export drop a credential the name rule cannot guess ("pat").
@@ -229,6 +232,11 @@ internal sealed class CockpitHost(
 
     public bool RemoveManagedCli(string cliName) =>
         services.GetService<IManagedCliService>()?.RemoveInstalled(cliName) ?? false;
+
+    public Task<ManagedCliStatus> GetManagedCliStatusAsync(string cliName, CancellationToken cancellationToken = default) =>
+        services.GetService<IManagedCliService>() is { } managedCli
+            ? managedCli.GetStatusAsync(cliName, cancellationToken)
+            : Task.FromResult(new ManagedCliStatus(null, null));
 
     public Task SetSessionStatusline(string paneId, string statusline) =>
         _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);

@@ -9,8 +9,30 @@ namespace Cockpit.Plugin.GitStatus;
 internal sealed class GitStatusSettings(IPluginStorage storage)
 {
     private const string ReposKey = "repos";
+    private const string ShowBranchNameKey = "showBranchName";
+
+    /// <summary>
+    /// Raised when a display setting changes, so a live session-header badge can update at once without a restart.
+    /// Deliberately used instead of <c>ICockpitHost.OnSettingsSaved</c> (which has no unsubscribe): a per-session
+    /// header is transient, so it subscribes on attach and unsubscribes on detach — no dead control is left rooted.
+    /// </summary>
+    public event Action? Changed;
 
     public IReadOnlyList<string> Repos => storage.Get<List<string>>(ReposKey) ?? [];
 
     public void SaveRepos(IReadOnlyList<string> repos) => storage.Set(ReposKey, new List<string>(repos));
+
+    /// <summary>
+    /// Whether the session-header badge shows the branch name next to the status dot (AC-36). Off leaves only the
+    /// coloured dot on screen — the branch stays in the tooltip — freeing header width. Defaults to on (dot + name).
+    /// </summary>
+    public bool ShowBranchName
+    {
+        get => storage.Get<bool?>(ShowBranchNameKey) ?? true;
+        set
+        {
+            storage.Set(ShowBranchNameKey, value);
+            Changed?.Invoke();
+        }
+    }
 }

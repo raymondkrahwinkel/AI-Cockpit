@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Configuration;
 
@@ -74,8 +75,8 @@ internal sealed class CockpitConfigFile
     /// </summary>
     public Dictionary<string, List<string>> PluginCredentialFields { get; set; } = [];
 
-    /// <summary>Configured plugin-store URLs (#14) the manager browses for installable plugins; owned by the plugin-store config store.</summary>
-    public List<string> PluginStores { get; set; } = [];
+    /// <summary>Configured plugin stores (#14, AC-7) the manager browses — remote (public or private) or local; owned by the plugin-store config store. A bare URL string from a pre-AC-7 config still reads (see <see cref="Cockpit.Core.Plugins.PluginStoreConfigJsonConverter"/>).</summary>
+    public List<PluginStoreConfig> PluginStores { get; set; } = [];
 
     /// <summary>
     /// First-run marker (#43) for the built-in default store: set the first time <see cref="PluginStores"/>

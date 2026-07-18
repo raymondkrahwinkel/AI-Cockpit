@@ -1,12 +1,14 @@
+using Cockpit.Core.Plugins;
+
 namespace Cockpit.Core.Abstractions.Plugins;
 
-/// <summary>Persists the configured plugin-store URLs (#14) — the <c>pluginStores</c> list in <c>cockpit.json</c> the manager browses.</summary>
+/// <summary>Persists the configured plugin stores (#14, AC-7) — the <c>pluginStores</c> list in <c>cockpit.json</c> the manager browses, each a remote (public or private) or a local folder.</summary>
 public interface IPluginStoreConfigStore
 {
-    Task<IReadOnlyList<string>> LoadAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PluginStoreConfig>> LoadAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Adds a store URL if it is not already present (case-insensitive); a no-op otherwise.</summary>
-    Task AddAsync(string storeUrl, CancellationToken cancellationToken = default);
+    /// <summary>Adds a store if one with the same kind and location is not already present (case-insensitive); replaces an existing one at the same location so its token can be updated.</summary>
+    Task AddAsync(PluginStoreConfig store, CancellationToken cancellationToken = default);
 
-    Task RemoveAsync(string storeUrl, CancellationToken cancellationToken = default);
+    Task RemoveAsync(PluginStoreConfig store, CancellationToken cancellationToken = default);
 }

@@ -52,7 +52,20 @@
          null, so existing plugins keep compiling and running unchanged. Additive API — still a minor; the major and
          abstractionsVersion stay 1. A plugin that sets IconKind needs a host that ships the icon set (Material.Icons),
          which its minHostVersion must state. -->
-    <Version>1.9.0</Version>
+    <!-- 1.9.0 (#AC-20): added the managed-CLI contract — the ManagedCli types (ManagedCliDescriptor/DownloadPlan/
+         ArchiveFormat/Platform/InstallResult, init-only records) and the reusable ManagedCliConfigSection, plus
+         ICockpitHost.AddManagedCli/ResolveManagedCliPath/InstallManagedCliAsync/RemoveManagedCli (default-implemented).
+         A plugin describes where its CLI comes from while the host installer stays provider-agnostic. Additive API —
+         still a minor; the major and abstractionsVersion stay 1. -->
+    <!-- 1.10.0 (#AC-20): added ManagedCliStatus and ICockpitHost.GetManagedCliStatusAsync (default-implemented), so a
+         config view can offer "Update to X" only when a newer version actually exists and a background check can toast
+         when an installed managed CLI is outdated. Additive API — still a minor; the major and abstractionsVersion
+         stay 1. -->
+    <!-- 1.11.0 (#AC-14): added the session-image sink contract — SessionImageAttachment/SessionImageDispatch/
+         SessionImageSinkRegistration (records) and ICockpitHost.AddSessionImageSink (default-implemented), so the host
+         can route the images an operator sends with a message to any plugin, provider-agnostic (a tracker attaches
+         them to the issue its session tracks). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.11.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
