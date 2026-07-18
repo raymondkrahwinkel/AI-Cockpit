@@ -622,6 +622,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _updateUrl = string.Empty;
 
+    /// <summary>The newer build's name/version, shown as the headline of the persistent update banner (AC-73).</summary>
+    [ObservableProperty]
+    private string _updateName = string.Empty;
+
+    /// <summary>
+    /// Whether the persistent update banner (AC-73) is shown: a newer build was found and the operator has not
+    /// dismissed this one. The startup toast auto-dismisses before the window has focus and is missed; the banner
+    /// stays until "Open release" or dismiss, and comes back when a build newer than the dismissed one turns up —
+    /// so the same release never nags while a genuinely newer one still gets through.
+    /// </summary>
+    [ObservableProperty]
+    private bool _updateBannerVisible;
+
+    /// <summary>The identity (version + commit) of the release now on offer, and of the one the operator last
+    /// dismissed from the banner. A nightly has no version — its commit is its whole identity — so both go in.</summary>
+    private string _offeredRelease = string.Empty;
+    private string _dismissedRelease = string.Empty;
+
     public bool CanCheckForUpdates => _updates is not null;
 
     public bool HasUpdate => UpdateUrl.Length > 0;
@@ -2463,6 +2481,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>Opens the release page. The cockpit does not install itself — see IUpdateService for why.</summary>
+    [RelayCommand]
     public void OpenUpdate()
     {
         if (UpdateUrl.Length == 0)
@@ -2481,11 +2500,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>
+    /// Hides the update banner (AC-73) for the build now on offer. Per-build, not forever: the operator is saying
+    /// "not this one", so a later check that finds a newer build shows the banner again — see <see cref="_Announce"/>.
+    /// </summary>
+    [RelayCommand]
+    private void DismissUpdate()
+    {
+        _dismissedRelease = _offeredRelease;
+        UpdateBannerVisible = false;
+    }
+
     private void _Announce(AppRelease release)
     {
         UpdateUrl = release.Url;
+        UpdateName = release.Name;
         UpdateStatus = $"{release.Name} is available (published {release.PublishedAt.ToLocalTime():d MMMM yyyy}).";
         OnPropertyChanged(nameof(HasUpdate));
+
+        // The banner shows unless the operator already dismissed this exact build. A release's identity is its
+        // version and commit — for a nightly the version is empty and the commit is the whole of it (a rolling
+        // tag has no number), so a newer build always has a different key and the banner returns on its own.
+        _offeredRelease = $"{release.Version} {release.Commit}";
+        UpdateBannerVisible = _offeredRelease != _dismissedRelease;
     }
 
     partial void OnCheckForUpdatesOnStartupChanged(bool value) => _SaveUpdateSettings();

@@ -33,6 +33,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - added: a project changelog. Every finished work item is recorded here, and each release turns the
   `[Unreleased]` section into that version's GitHub release notes, so it is clear from one release to
   the next what changed (AC-73 follow-up).
+- added: a persistent update banner. A newer build is announced by a dismissible bar under the title
+  bar — new version, current build, and an "Open release" button — instead of only a startup toast
+  that auto-dismisses before the window has focus and is easy to miss. Dismissing hides it until a
+  newer build is found (AC-73).
 
 ### Changed
 
