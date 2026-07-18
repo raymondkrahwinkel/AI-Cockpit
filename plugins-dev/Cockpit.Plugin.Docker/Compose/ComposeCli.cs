@@ -30,8 +30,35 @@ internal sealed class ComposeCli : IComposeCli
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
 
-        return new ComposeResult(process.ExitCode, await stdoutTask, await stderrTask);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+            return new ComposeResult(process.ExitCode, await stdoutTask, await stderrTask);
+        }
+        catch (OperationCanceledException)
+        {
+            // Don't leave the compose child (and its subprocesses) running when the caller cancels.
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception)
+            {
+                // Best-effort kill.
+            }
+
+            // Observe the read tasks so they don't fault unobserved after the kill.
+            try
+            {
+                await Task.WhenAll(stdoutTask, stderrTask);
+            }
+            catch (Exception)
+            {
+                // Draining after a kill can fault; ignore.
+            }
+
+            throw;
+        }
     }
 }

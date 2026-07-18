@@ -65,7 +65,12 @@
          SessionImageSinkRegistration (records) and ICockpitHost.AddSessionImageSink (default-implemented), so the host
          can route the images an operator sends with a message to any plugin, provider-agnostic (a tracker attaches
          them to the issue its session tracks). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.11.0</Version>
+    <!-- 1.12.0 (#AC-91): added the ToolbarAction record and ICockpitHost.AddToolbarAction (default-implemented), so a
+         plugin contributes a global quick-action button to the Sessions toolbar next to the workspace gear — it opens
+         the plugin's own settings (ShowSettingsAsync) or runs any action it assigns. The icon names a bundled
+         MaterialIconKind (like PluginSessionAction's IconKind, AC-33). Existing plugins keep compiling (the member is
+         default no-op). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.12.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

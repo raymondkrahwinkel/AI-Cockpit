@@ -81,8 +81,23 @@ public sealed class DockerAccessGateTests
 
         await gate.AuthorizeMutationAsync("remove\ncontainer\n\"web\"", Session);
 
-        asked[1].Action.Should().Be("remove container \"web\"");
+        // Newlines are escaped VISIBLY (as the two literal chars \n) so the operator sees the command is multi-line —
+        // an agent cannot disguise a second line as commented-out — while the consent body stays one physical line.
+        asked[1].Action.Should().Be("remove\\ncontainer\\n\"web\"");
         asked[1].Action.Should().NotContain("\n");
+    }
+
+    [Fact]
+    public async Task Action_NeutralizesNonWhitespaceControlChars()
+    {
+        var (gate, asked) = _Gate(ConsentOutcome.Approved);
+
+        var escape = ((char)0x1b).ToString();
+
+        // A raw ANSI escape (a non-whitespace control char) must not survive into the consent body.
+        await gate.AuthorizeMutationAsync($"stop {escape}[2Jcontainer", Session);
+
+        asked[1].Action.Should().NotContain(escape);
     }
 
     [Fact]

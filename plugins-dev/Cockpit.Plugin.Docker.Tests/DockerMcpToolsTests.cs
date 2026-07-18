@@ -185,7 +185,7 @@ public sealed class DockerMcpToolsTests
         json!["ok"]!.GetValue<bool>().Should().BeTrue();
         h.Compose.Calls.Should().ContainSingle();
         h.Compose.Calls[0].Directory.Should().Be("/srv/app");
-        h.Compose.Calls[0].Args.Should().Equal("-f", "docker-compose.yml", "up", "-d", "web");
+        h.Compose.Calls[0].Args.Should().Equal("-f", "docker-compose.yml", "up", "-d", "--", "web");
         h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
         h.Asked.Last().AllowRemember.Should().BeFalse();
     }

@@ -1,3 +1,5 @@
+using Material.Icons;
+
 namespace Cockpit.Plugins.Abstractions;
 
 /// <summary>
@@ -7,6 +9,6 @@ namespace Cockpit.Plugins.Abstractions;
 /// (<see cref="ICockpitHost.ShowDialogAsync"/>), or anything else.
 /// </summary>
 /// <param name="Title">Short label, shown as the button's tooltip and used as its accessible name.</param>
-/// <param name="Icon">Optional Material.Icons kind name (e.g. "Docker", "Kubernetes", "Cog"); a generic icon is used when null or unknown.</param>
+/// <param name="Icon">Bundled vector icon to show (e.g. <see cref="MaterialIconKind.Docker"/>); a generic icon is used when null.</param>
 /// <param name="OnInvoke">Runs on click, on the UI thread.</param>
-public sealed record ToolbarAction(string Title, string? Icon, Func<Task> OnInvoke);
+public sealed record ToolbarAction(string Title, MaterialIconKind? Icon, Func<Task> OnInvoke);

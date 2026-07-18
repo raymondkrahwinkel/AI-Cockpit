@@ -1,3 +1,4 @@
+using System.Text;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 
@@ -80,19 +81,55 @@ internal sealed class DockerAccessGate(ICockpitHost host)
     {
         var request = new ConsentRequest(
             Title: title,
-            // Rendered verbatim; parts are agent-supplied, so collapse whitespace/control chars to a single line.
+            // Rendered verbatim; parts are agent-supplied, so flatten to a single bounded line with control chars escaped.
             Action: _SingleLine(operation),
             Source: new ConsentSource(paneId, PluginId: null, Label: SourceLabel),
             Scope: scope,
             Risk: risk,
             AllowRemember: allowRemember);
 
-        var decision = await host.RequestConsentAsync(request);
+        ConsentDecision decision;
+        try
+        {
+            decision = await host.RequestConsentAsync(request);
+        }
+        catch (Exception)
+        {
+            // Fail closed: a consent gate that errors must deny, never fall through to the daemon.
+            return GateResult.Deny("The operator did not approve this Docker action.");
+        }
+
         return decision.IsApproved
             ? GateResult.Allow
             : GateResult.Deny("The operator did not approve this Docker action.");
     }
 
-    private static string _SingleLine(string text) =>
-        string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    // Rendered verbatim to the operator; parts (a container name, a command) are agent-supplied. Escape line breaks
+    // and tabs VISIBLY (so a multi-line command reads as multi-line and cannot be disguised as commented-out) and
+    // neutralize every other control character, keeping the consent body a single bounded line — an agent cannot
+    // smuggle extra lines into, or hide part of, what the operator approves.
+    private static string _SingleLine(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            switch (ch)
+            {
+                case '\n':
+                    builder.Append("\\n");
+                    break;
+                case '\r':
+                    builder.Append("\\r");
+                    break;
+                case '\t':
+                    builder.Append("\\t");
+                    break;
+                default:
+                    builder.Append(char.IsControl(ch) ? ' ' : ch);
+                    break;
+            }
+        }
+
+        return builder.ToString();
+    }
 }

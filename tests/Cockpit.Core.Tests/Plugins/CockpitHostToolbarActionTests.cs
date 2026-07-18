@@ -1,3 +1,4 @@
+using Material.Icons;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.Plugins;
 using Cockpit.Plugins.Abstractions;
@@ -18,7 +19,7 @@ public class CockpitHostToolbarActionTests
     {
         var sink = Substitute.For<IPluginContributionSink>();
         ICockpitHost host = _BuildHost(sink);
-        var action = new ToolbarAction("Docker settings", "Docker", () => Task.CompletedTask);
+        var action = new ToolbarAction("Docker settings", MaterialIconKind.Docker, () => Task.CompletedTask);
 
         host.AddToolbarAction(action);
 
