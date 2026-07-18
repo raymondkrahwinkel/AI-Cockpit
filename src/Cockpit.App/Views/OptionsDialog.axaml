@@ -78,9 +78,9 @@
                                            VerticalAlignment="Center"/>
                                 <NumericUpDown Value="{Binding IdleThresholdMinutes}" Minimum="1" Maximum="240"
                                                Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="How long without keyboard/mouse before you count as away (used for the Discord channel)."/>
                             </StackPanel>
-                            <TextBlock Text="How long without keyboard/mouse before you count as away (used for the Discord channel)."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -97,9 +97,9 @@
                                            VerticalAlignment="Center"/>
                                 <NumericUpDown Value="{Binding SessionIdleMinutes}" Minimum="0" Maximum="240"
                                                Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="How long a finished session stays &quot;done&quot; before it counts as idle. 0 leaves it on &quot;done&quot;. This is about a session having nothing to do — not about you being away."/>
                             </StackPanel>
-                            <TextBlock Text="How long a finished session stays &quot;done&quot; before it counts as idle. 0 leaves it on &quot;done&quot;. This is about a session having nothing to do — not about you being away."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -118,33 +118,42 @@
                     <ScrollViewer Grid.Column="1">
                         <StackPanel Spacing="8" Margin="16">
                             <TextBlock Text="Session behaviour" FontWeight="SemiBold"/>
-                            <CheckBox Content="Close a session when you type &quot;exit&quot;"
-                                      IsChecked="{Binding AutoCloseOnExit}"/>
-                            <TextBlock Text="The message is still sent; the session closes once that turn finishes."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Close a session when you type &quot;exit&quot;"
+                                          IsChecked="{Binding AutoCloseOnExit}"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="The message is still sent; the session closes once that turn finishes."/>
+                            </StackPanel>
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
-                            <TextBlock Text="Layout" FontWeight="SemiBold"/>
-                            <!-- The cockpit-wide default. These bind to the Global… properties on purpose: a
-                                 sessions workspace can override them from its own ⚙, and binding the effective
-                                 value here would save that workspace's choice over the default the moment Options
-                                 was opened on it. -->
-                            <CheckBox Content="Show one session at a time (no grid)"
-                                      IsChecked="{Binding GlobalSingleSessionLayout}"/>
-                            <TextBlock Text="Switch between sessions from the sidebar or with the session-switch shortcut."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                            <CheckBox Content="Stack sessions vertically (one column)"
-                                      IsChecked="{Binding GlobalStackSessionsVertically}"
-                                      IsEnabled="{Binding !GlobalSingleSessionLayout}"/>
-                            <TextBlock Text="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                            <TextBlock Text="This is the default for every sessions workspace. One can arrange itself differently from its own ⚙, above the grid."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                            <CheckBox Content="Minimize to tray when closing the window"
-                                      IsChecked="{Binding MinimizeToTrayOnClose}"/>
-                            <TextBlock Text="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Layout" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="The cockpit-wide default for every sessions workspace. A workspace can arrange itself differently from its own ⚙, above the grid."/>
+                            </StackPanel>
+                            <!-- These bind to the Global… properties on purpose: a sessions workspace can override
+                                 them from its own ⚙, and binding the effective value here would save that
+                                 workspace's choice over the default the moment Options was opened on it. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Show one session at a time (no grid)"
+                                          IsChecked="{Binding GlobalSingleSessionLayout}"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Switch between sessions from the sidebar or with the session-switch shortcut."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Stack sessions vertically (one column)"
+                                          IsChecked="{Binding GlobalStackSessionsVertically}"
+                                          IsEnabled="{Binding !GlobalSingleSessionLayout}"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="In the grid, place sessions one above the other instead of side by side. Off = the adaptive grid (two sessions sit side by side; three or four form a 2×2). Either way, drag the gutters between panes to resize and the header grip to reorder. No effect when showing one session at a time."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Minimize to tray when closing the window"
+                                          IsChecked="{Binding MinimizeToTrayOnClose}"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Keeps the app running in the system tray instead of quitting. Check that the tray icon appears before relying on it."/>
+                            </StackPanel>
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
@@ -216,9 +225,9 @@
                                            VerticalAlignment="Center"/>
                                 <NumericUpDown Value="{Binding TerminalFontSize}" Minimum="8" Maximum="32"
                                                Increment="1" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."/>
                             </StackPanel>
-                            <TextBlock Text="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -639,9 +648,11 @@
                     </Border>
                     <ScrollViewer Grid.Column="1">
                         <StackPanel Spacing="8" Margin="16">
-                            <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold"/>
-                            <TextBlock Text="Click a shortcut and press the keys you want (Esc cancels, ✕ clears; clearing it unbinds the shortcut). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke — except the session switch, which stays live over the terminal so you can always switch away."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Click a shortcut and press the keys you want (Esc cancels, ✕ clears; clearing it unbinds the shortcut). Shortcuts don't fire while you're typing in a text box or the terminal, so they never hijack a keystroke — except the session switch, which stays live over the terminal. Plugin-contributed shortcuts (marked 'plugin') can be changed here too."/>
+                            </StackPanel>
 
                             <ItemsControl ItemsSource="{Binding ShortcutRows}">
                                 <ItemsControl.ItemTemplate>
@@ -654,9 +665,6 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-
-                            <TextBlock Text="Plugin-contributed shortcuts (marked &quot;plugin&quot;) can be changed here too."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -674,9 +682,11 @@
                     </Border>
                     <ScrollViewer Grid.Column="1">
                         <StackPanel Spacing="8" Margin="16">
-                            <TextBlock Text="Updates" FontWeight="SemiBold"/>
-                            <TextBlock Text="AI-Cockpit asks GitHub whether a newer build exists. It does not install itself: replacing a running, unsigned application on three platforms is a promise this project cannot keep, and an updater that half-keeps it is worse than a link you click yourself."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Updates" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="AI-Cockpit asks GitHub whether a newer build exists. It does not install itself: replacing a running, unsigned application on three platforms is a promise this project cannot keep, and an updater that half-keeps it is worse than a link you click yourself."/>
+                            </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
                                 <TextBlock Text="This build:" Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" VerticalAlignment="Center"/>
@@ -685,9 +695,7 @@
 
                             <CheckBox Content="Look for a newer build when AI-Cockpit starts" IsChecked="{Binding CheckForUpdatesOnStartup}"/>
                             <CheckBox Content="Also tell me about nightly builds" IsChecked="{Binding IncludeNightlyBuilds}"
-                                      ToolTip.Tip="The rolling build of main, as it was last night. Things there are expected to break."/>
-                            <TextBlock Text="Nightlies are main, built last night. Useful for trying something that landed today; not what you run a working day on."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+                                      ToolTip.Tip="The rolling build of main, built last night — useful for trying something that landed today, but things there are expected to break; not what you run a working day on."/>
 
                             <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
                                 <Button Content="Check now" Click="OnCheckForUpdates" IsEnabled="{Binding CanCheckForUpdates}"/>
@@ -713,23 +721,23 @@
                     </Border>
                     <ScrollViewer Grid.Column="1">
                         <StackPanel Spacing="8" Margin="16">
-                            <TextBlock Text="Back up AI-Cockpit" FontWeight="SemiBold"/>
-                            <TextBlock Text="One archive with your settings, profiles, plugins and everything they saved. The speech models are left out on purpose — they are gigabytes, and they download again in minutes. The same archive is what you carry to another machine."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Back up AI-Cockpit" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="One archive with your settings, profiles, plugins and everything they saved. The speech models are left out on purpose — they are gigabytes, and they download again in minutes. The same archive is what you carry to another machine."/>
+                            </StackPanel>
 
                             <CheckBox Content="Include my keys and tokens" IsChecked="{Binding BackupIncludesCredentials}"
-                                      ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring."/>
-                            <TextBlock Text="Off by default. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+                                      ToolTip.Tip="Provider API keys, the Discord webhook, plugin tokens. Off by default: an archive you can drop in a cloud folder must not be a key ring. Without them the archive is safe to store anywhere, and a restore tells you which ones to enter again."/>
 
                             <CheckBox Content="Include the profiles' own config directories" IsChecked="{Binding BackupIncludesProfiles}"
-                                      ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside AI-Cockpit's directory"/>
-                            <TextBlock Text="These hold the agents' logins. Needed to move a machine; not needed to undo a mistake."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap" Margin="24,-4,0,0"/>
+                                      ToolTip.Tip="~/.claude and friends — the agents' own logins, which live outside AI-Cockpit's directory. Needed to move a machine; not needed to undo a mistake."/>
 
-                            <TextBlock Text="Plugins to include" FontWeight="SemiBold" Margin="0,10,0,0"/>
-                            <TextBlock Text="A plugin's binaries and everything it stored travel together, or not at all. All of them unless you say otherwise."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
+                                <TextBlock Text="Plugins to include" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="A plugin's binaries and everything it stored travel together, or not at all. All of them unless you say otherwise."/>
+                            </StackPanel>
                             <ItemsControl ItemsSource="{Binding BackupPlugins}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:BackupPluginViewModel">
@@ -765,9 +773,11 @@
                     </Border>
                     <ScrollViewer Grid.Column="1">
                         <StackPanel Spacing="8" Margin="16">
-                            <TextBlock Text="Encrypt your credentials" FontWeight="SemiBold"/>
-                            <TextBlock Text="Your provider API keys, MCP bearer tokens and the plugins' tokens are stored in cockpit.json. Encrypting them means the file gives up nothing without your password — if it is copied, synced, backed up, or the laptop walks off."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Encrypt your credentials" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Your provider API keys, MCP bearer tokens and the plugins' tokens are stored in cockpit.json. Encrypting them means the file gives up nothing without your password — if it is copied, synced, backed up, or the laptop walks off."/>
+                            </StackPanel>
 
                             <Border Background="{StaticResource CockpitSecondaryBgBrush}"
                                     BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
@@ -796,17 +806,23 @@
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        TextWrapping="Wrap" Margin="0,4,0,0"/>
 
-                            <TextBlock Text="If you forget the password" FontWeight="SemiBold" Margin="0,12,0,0"/>
-                            <TextBlock Text="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
+                                <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."/>
+                            </StackPanel>
 
-                            <TextBlock Text="If something goes wrong halfway" FontWeight="SemiBold" Margin="0,10,0,0"/>
-                            <TextBlock Text="It cannot leave you with half a file. The new config is written beside the old one and renamed over it in one step, so you have either the old one or the new one — never a mix — and the previous version is kept as cockpit.json.bak. A value that will not convert aborts the whole thing and touches nothing. And an already-encrypted value is never encrypted a second time, so a config that ended up mixed anyway (a restored backup, a hand edit) still opens, and the rest is encrypted on the next save."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
+                                <TextBlock Text="If something goes wrong halfway" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="It cannot leave you with half a file. The new config is written beside the old one and renamed over it in one step, so you have either the old one or the new one — never a mix — and the previous version is kept as cockpit.json.bak. A value that will not convert aborts the whole thing and touches nothing. And an already-encrypted value is never encrypted a second time, so a config that ended up mixed anyway (a restored backup, a hand edit) still opens, and the rest is encrypted on the next save."/>
+                            </StackPanel>
 
-                            <TextBlock Text="What this does not do" FontWeight="SemiBold" Margin="0,10,0,0"/>
-                            <TextBlock Text="It protects the file, not a running AI-Cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,10,0,0">
+                                <TextBlock Text="What this does not do" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="It protects the file, not a running AI-Cockpit. While the app is unlocked the credentials are in memory and are handed to the sessions and tool servers that need them — and a plugin you installed runs inside this app and can read them. The plugins you trust are the ones you install."/>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
@@ -824,9 +840,11 @@
                     </Border>
                     <ScrollViewer Grid.Column="1">
                         <StackPanel Spacing="8" Margin="16">
-                            <TextBlock Text="Diagnostics" FontWeight="SemiBold"/>
-                            <TextBlock Text="Controls that exist to investigate AI-Cockpit itself, rather than to do the work. They are hidden by default: a session header is a strip, and a button you never need does not belong in it."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Diagnostics" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Controls that exist to investigate AI-Cockpit itself, rather than to do the work. They are hidden by default: a session header is a strip, and a button you never need does not belong in it."/>
+                            </StackPanel>
                             <CheckBox Content="Show debug controls" IsChecked="{Binding ShowDebugControls}"
                                       ToolTip.Tip="Adds the Redraw button to every TTY session's header — it forces the terminal to repaint when a resize or focus change left the TUI misaligned"/>
 
@@ -836,9 +854,11 @@
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"
                                     IsVisible="{Binding ShowRenderBackendSetting}"/>
                             <StackPanel Spacing="6" IsVisible="{Binding ShowRenderBackendSetting}">
-                                <TextBlock Text="Render backend (macOS)" FontWeight="SemiBold"/>
-                                <TextBlock Text="Which graphics backend AI-Cockpit draws with. Auto lets macOS pick (Metal); switch to OpenGL or Software to test whether the Metal path is behind runaway memory growth (AC-57). No effect on Windows/Linux."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Render backend (macOS)" FontWeight="SemiBold"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Which graphics backend AI-Cockpit draws with. Auto lets macOS pick (Metal); switch to OpenGL or Software to test whether the Metal path is behind runaway memory growth (AC-57). No effect on Windows/Linux."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Backend" VerticalAlignment="Center"/>
                                     <ComboBox ItemsSource="{Binding RenderBackendChoices}"
@@ -861,9 +881,11 @@
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,8"/>
 
-                            <TextBlock Text="System diagnostics" FontWeight="SemiBold"/>
-                            <TextBlock Text="What this install runs on, how it draws, and what it is holding in memory — plus any crash or out-of-memory logs the OS wrote. Copy it into a report instead of hunting through Activity Monitor and crash-report folders."
-                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="System diagnostics" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="What this install runs on, how it draws, and what it is holding in memory — plus any crash or out-of-memory logs the OS wrote. Copy it into a report instead of hunting through Activity Monitor and crash-report folders."/>
+                            </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Refresh" Click="OnRefreshDiagnostics"/>
