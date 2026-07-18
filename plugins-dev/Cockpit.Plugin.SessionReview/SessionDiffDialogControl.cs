@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.SessionReview;
 
@@ -18,8 +20,8 @@ internal sealed class SessionDiffDialogControl : UserControl
 
     private static readonly FontFamily Mono = new("Cascadia Code,Consolas,DejaVu Sans Mono,monospace");
 
-    private readonly ICockpitActions _actions;
-    private readonly string? _workingDirectory;
+    private readonly ICockpitHost _host;
+    private readonly IPluginSessionContext _session;
     private readonly GitDiffReader _reader = new();
     private readonly TextBlock _header = new() { FontSize = 12, Margin = new Thickness(0, 0, 0, 6), TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel _lines = new() { Spacing = 0 };
@@ -29,10 +31,10 @@ internal sealed class SessionDiffDialogControl : UserControl
     private string _diff = string.Empty;
     private string _branch = string.Empty;
 
-    public SessionDiffDialogControl(ICockpitActions actions, string? workingDirectory)
+    public SessionDiffDialogControl(ICockpitHost host, IPluginSessionContext session)
     {
-        _actions = actions;
-        _workingDirectory = workingDirectory;
+        _host = host;
+        _session = session;
 
         _review = new Button { Content = "Ask this session to review", IsEnabled = false };
         _review.Click += async (_, _) => await _ReviewAsync();
@@ -81,7 +83,7 @@ internal sealed class SessionDiffDialogControl : UserControl
         GitDiffResult result;
         try
         {
-            result = await _reader.ReadAsync(_workingDirectory ?? string.Empty, CancellationToken.None);
+            result = await _reader.ReadAsync(_session.WorkingDirectory ?? string.Empty, CancellationToken.None);
         }
         catch (Exception)
         {
@@ -143,14 +145,39 @@ internal sealed class SessionDiffDialogControl : UserControl
 
     private async Task _ReviewAsync()
     {
-        await _actions.InjectIntoActiveSessionAsync(ReviewPrompt.Build(_branch));
+        try
+        {
+            // InjectIntoActiveSessionAsync writes to the selected session, but this panel is about one specific
+            // session. Only inject when that session is the selected one — otherwise the review prompt would land in
+            // an unrelated session's input. If it is not selected (or none is), say so rather than inject blindly.
+            if (!string.Equals(_host.Sessions.ActivePaneId, _session.PaneId, StringComparison.Ordinal))
+            {
+                _host.ShowToast(
+                    "Select this session first, then click Review — the prompt goes to the selected session.",
+                    PluginToastSeverity.Warning);
+                return;
+            }
+
+            await _host.Actions.InjectIntoActiveSessionAsync(ReviewPrompt.Build(_branch));
+        }
+        catch (Exception)
+        {
+            // Injecting is a convenience — a failure must not crash the dialog.
+        }
     }
 
     private async Task _CopyAsync()
     {
-        if (!string.IsNullOrEmpty(_diff))
+        try
         {
-            await _actions.SetClipboardTextAsync(_diff);
+            if (!string.IsNullOrEmpty(_diff))
+            {
+                await _host.Actions.SetClipboardTextAsync(_diff);
+            }
+        }
+        catch (Exception)
+        {
+            // Copy is best-effort.
         }
     }
 

@@ -34,7 +34,7 @@ public sealed class SessionReviewPlugin : ICockpitPlugin
             string.Empty,
             session => _ = host.ShowDialogAsync(
                 "Session review",
-                () => new SessionDiffDialogControl(host.Actions, session.WorkingDirectory),
+                () => new SessionDiffDialogControl(host, session),
                 860,
                 620))
         {
