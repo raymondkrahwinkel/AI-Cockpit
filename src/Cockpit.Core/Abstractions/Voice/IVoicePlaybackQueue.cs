@@ -20,6 +20,15 @@ public interface IVoicePlaybackQueue
     void Enqueue(IReadOnlyList<SpeechSegment> segments, int speakerId);
 
     /// <summary>
+    /// Marks read-aloud as active before anything is queued, so the overlay shows it is working during the
+    /// gap the operator otherwise sees as silence — the local-LLM cleanup/naturalize/summarize pass and the
+    /// first synthesis (including the one-time model download) that run before any audio plays. Raises
+    /// <see cref="PlaybackActiveChanged"/> the same as real playback; the batch that follows clears it when it
+    /// finishes, and <see cref="StopAll"/> clears it if nothing ends up queued.
+    /// </summary>
+    void NotifyPreparing();
+
+    /// <summary>
     /// Raised when read-aloud playback becomes active (a batch starts) or goes idle (the queue drains),
     /// so open-mic dictation can pause itself while the cockpit is speaking and never transcribe its own
     /// text-to-speech. Fires on the playback consumer thread — subscribers marshal as needed.

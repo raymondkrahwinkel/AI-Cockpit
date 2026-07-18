@@ -1542,6 +1542,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         _voicePlaybackQueue.StopAll();
+        _voicePlaybackQueue.NotifyPreparing();
         var speakerId = SelectedTtsVoice.Sid;
         var mode = SelectedReadAloudMode.Value;
 

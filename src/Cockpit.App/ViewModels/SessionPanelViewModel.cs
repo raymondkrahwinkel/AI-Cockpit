@@ -354,6 +354,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
+        // Show the overlay now: the local-LLM rewrite and the first synthesis (and any first-use model download)
+        // run before a word is heard, and that gap otherwise reads as nothing happening.
+        _voicePlaybackQueue?.NotifyPreparing();
+
         if (_cleanupService is not null && ReadAloudMode is ReadAloudMode.Naturalized or ReadAloudMode.Summarized)
         {
             var joined = string.Join(" ", sentences);
