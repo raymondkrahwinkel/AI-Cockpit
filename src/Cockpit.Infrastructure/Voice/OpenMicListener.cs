@@ -165,10 +165,11 @@ internal sealed class OpenMicListener(
     private async Task _FinalizeUtteranceAsync(float[] samples, CancellationToken cancellationToken)
     {
         var text = await speechToText.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
-        if (!string.IsNullOrWhiteSpace(text))
-        {
-            UtteranceTranscribed?.Invoke(this, text);
-        }
+
+        // Raised even when the transcript filtered down to nothing (a throat-clear or a bare "um" the noise filter
+        // removed): the overlay was flipped to "Transcribing" on SpeechEnded, and the coordinator clears it when the
+        // utterance completes and drops the empty text — suppressing the empty case left that pill stuck spinning.
+        UtteranceTranscribed?.Invoke(this, text);
     }
 
     private static float[] _ToFloatSamples(List<byte> pcmS16Bytes, int byteCount)

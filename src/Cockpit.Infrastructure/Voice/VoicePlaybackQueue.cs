@@ -31,7 +31,8 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private CancellationTokenSource _playbackCancellation = new();
     private readonly Task _consumerTask;
 
-    // Read and written only on the single consumer thread, so no synchronization is needed.
+    // Flipped by both the consumer loop and NotifyPreparing (UI thread), so it is guarded by _activeGate.
+    private readonly object _activeGate = new();
     private bool _isPlaybackActive;
 
     public event EventHandler<bool>? PlaybackActiveChanged;
@@ -69,6 +70,8 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         _channel.Writer.TryWrite(new QueuedUtterance(segments, speakerId));
     }
 
+    public void NotifyPreparing() => _SetPlaybackActive(true);
+
     public void StopAll()
     {
         // Swap in a fresh token so a later Enqueue plays normally again, then cancel + dispose the old
@@ -80,6 +83,9 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         while (_channel.Reader.TryRead(out _))
         {
         }
+
+        // Clear a "preparing" pill that never reached playback (barge-in during the local-LLM/synth gap).
+        _SetPlaybackActive(false);
     }
 
     private async Task _ConsumeAsync()
@@ -166,12 +172,18 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
 
     private void _SetPlaybackActive(bool active)
     {
-        if (_isPlaybackActive == active)
+        // NotifyPreparing (UI thread) and the consumer loop both flip this, so the transition is guarded — the
+        // event is raised outside the lock so a handler can never deadlock against it.
+        lock (_activeGate)
         {
-            return;
+            if (_isPlaybackActive == active)
+            {
+                return;
+            }
+
+            _isPlaybackActive = active;
         }
 
-        _isPlaybackActive = active;
         PlaybackActiveChanged?.Invoke(this, active);
     }
 }
