@@ -95,8 +95,8 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
             Cmd = command.ToList(),
         }, cancellationToken);
 
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
+        using var stdout = new MemoryStream();
+        using var stderr = new MemoryStream();
 
         using (var stream = await client.Exec.StartAndAttachContainerExecAsync(exec.ID, tty: false, cancellationToken))
         {
@@ -109,20 +109,18 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
                     break;
                 }
 
-                var text = Encoding.UTF8.GetString(buffer, 0, read.Count);
-                if (read.Target == MultiplexedStream.TargetStream.StandardError)
-                {
-                    stderr.Append(text);
-                }
-                else
-                {
-                    stdout.Append(text);
-                }
+                // Accumulate raw bytes and decode once at EOF — a multi-byte UTF-8 char can straddle a read boundary,
+                // and decoding each chunk on its own would turn it into replacement characters.
+                var target = read.Target == MultiplexedStream.TargetStream.StandardError ? stderr : stdout;
+                target.Write(buffer, 0, read.Count);
             }
         }
 
         var inspect = await client.Exec.InspectContainerExecAsync(exec.ID, cancellationToken);
-        return new ExecResult(inspect.ExitCode, stdout.ToString(), stderr.ToString());
+        return new ExecResult(
+            inspect.ExitCode,
+            Encoding.UTF8.GetString(stdout.ToArray()),
+            Encoding.UTF8.GetString(stderr.ToArray()));
     }
 
     public async Task<string> RunContainerAsync(RunSpec spec, CancellationToken cancellationToken)
@@ -144,8 +142,28 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
             },
         };
 
-        var created = await _Client().Containers.CreateContainerAsync(parameters, cancellationToken);
-        await _Client().Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), cancellationToken);
+        var client = _Client();
+        var created = await client.Containers.CreateContainerAsync(parameters, cancellationToken);
+        try
+        {
+            await client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Start failed after create — best-effort remove so a create+start failure leaves no dead container behind.
+            try
+            {
+                await client.Containers.RemoveContainerAsync(
+                    created.ID, new ContainerRemoveParameters { Force = true }, CancellationToken.None);
+            }
+            catch (Exception)
+            {
+                // Best-effort cleanup only.
+            }
+
+            throw;
+        }
+
         return created.ID;
     }
 
@@ -163,14 +181,45 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
 
         foreach (var entry in publish)
         {
-            var parts = entry.Split(':', 2);
-            var containerPart = parts.Length == 2 ? parts[1] : parts[0];
-            var hostPart = parts.Length == 2 ? parts[0] : null;
+            if (string.IsNullOrWhiteSpace(entry))
+            {
+                continue;
+            }
+
+            // "container", "host:container", or "ip:host:container" — the container part may carry an optional /proto.
+            var parts = entry.Split(':');
+            string? hostIp = null;
+            string? hostPart;
+            string containerPart;
+            switch (parts.Length)
+            {
+                case 1:
+                    hostPart = null;
+                    containerPart = parts[0];
+                    break;
+                case 2:
+                    hostPart = parts[0];
+                    containerPart = parts[1];
+                    break;
+                case 3:
+                    hostIp = parts[0];
+                    hostPart = parts[1];
+                    containerPart = parts[2];
+                    break;
+                default:
+                    // Unrecognized shape (e.g. bracketed IPv6, a port range) — skip rather than mis-bind it.
+                    continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(containerPart))
+            {
+                continue;
+            }
 
             var portKey = containerPart.Contains('/', StringComparison.Ordinal) ? containerPart : $"{containerPart}/tcp";
             exposed[portKey] = default;
 
-            if (hostPart is { Length: > 0 })
+            if (!string.IsNullOrWhiteSpace(hostPart))
             {
                 if (!bindings.TryGetValue(portKey, out var list))
                 {
@@ -178,7 +227,7 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
                     bindings[portKey] = list;
                 }
 
-                list.Add(new PortBinding { HostPort = hostPart });
+                list.Add(new PortBinding { HostPort = hostPart, HostIP = string.IsNullOrEmpty(hostIp) ? null : hostIp });
             }
         }
 

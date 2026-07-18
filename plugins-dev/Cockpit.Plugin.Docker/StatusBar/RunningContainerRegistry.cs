@@ -48,6 +48,10 @@ internal sealed class RunningContainerRegistry(IDockerEngine engine, Func<DateTi
         {
             await engine.RemoveContainerAsync(id, force: true, CancellationToken.None);
         }
+        catch (Exception)
+        {
+            // Best-effort: an already-gone container (e.g. the Kill button pressed twice) must not surface an error.
+        }
         finally
         {
             if (_containers.TryRemove(id, out _))

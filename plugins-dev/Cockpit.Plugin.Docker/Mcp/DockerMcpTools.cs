@@ -252,7 +252,7 @@ internal sealed class DockerMcpTools(
         CancellationToken cancellationToken = default)
     {
         var args = _ComposeArgs(file, "up", "-d");
-        args.AddRange(services ?? []);
+        _AppendServices(args, services);
         return _ComposeMutateAsync(directory, args, session, cancellationToken);
     }
 
@@ -275,7 +275,7 @@ internal sealed class DockerMcpTools(
         CancellationToken cancellationToken = default)
     {
         var args = _ComposeArgs(file, "build");
-        args.AddRange(services ?? []);
+        _AppendServices(args, services);
         return _ComposeMutateAsync(directory, args, session, cancellationToken);
     }
 
@@ -335,6 +335,17 @@ internal sealed class DockerMcpTools(
         catch (Exception ex)
         {
             return McpText.Error($"The docker compose command could not be run ({ex.GetType().Name}). Check that Docker Compose is installed and the directory and compose file are correct.");
+        }
+    }
+
+    // Service names are agent-supplied; a value starting with '-' would otherwise be parsed by `docker compose` as an
+    // option (argument injection). The `--` terminator forces everything after it to be treated as service names.
+    private static void _AppendServices(List<string> args, string[]? services)
+    {
+        if (services is { Length: > 0 })
+        {
+            args.Add("--");
+            args.AddRange(services);
         }
     }
 

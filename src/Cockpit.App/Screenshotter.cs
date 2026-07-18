@@ -92,9 +92,9 @@ internal static class Screenshotter
     {
         var cockpit = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true };
         cockpit.PluginToolbarActions.Add(new Plugins.PluginToolbarAction(
-            "docker", new Cockpit.Plugins.Abstractions.ToolbarAction("Docker settings", "Docker", () => Task.CompletedTask)));
+            "docker", new Cockpit.Plugins.Abstractions.ToolbarAction("Docker settings", Material.Icons.MaterialIconKind.Docker, () => Task.CompletedTask)));
         cockpit.PluginToolbarActions.Add(new Plugins.PluginToolbarAction(
-            "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", "Kubernetes", () => Task.CompletedTask)));
+            "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", Material.Icons.MaterialIconKind.Kubernetes, () => Task.CompletedTask)));
 
         return new MainWindow { DataContext = cockpit };
     }

@@ -86,7 +86,7 @@ internal sealed class PluginToolbarHost : StackPanel
         var button = new Button
         {
             Padding = new Thickness(8, 4),
-            Content = new MaterialIcon { Kind = _Kind(action.Icon), Width = 14, Height = 14 },
+            Content = new MaterialIcon { Kind = action.Icon ?? MaterialIconKind.PuzzleOutline, Width = 14, Height = 14 },
         };
         ToolTip.SetTip(button, action.Title);
         button.Click += async (_, _) => await _Invoke(action);
@@ -117,7 +117,7 @@ internal sealed class PluginToolbarHost : StackPanel
     private static Button _OverflowRow(ToolbarAction action, Flyout flyout)
     {
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        content.Children.Add(new MaterialIcon { Kind = _Kind(action.Icon), Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center });
+        content.Children.Add(new MaterialIcon { Kind = action.Icon ?? MaterialIconKind.PuzzleOutline, Width = 14, Height = 14, VerticalAlignment = VerticalAlignment.Center });
         content.Children.Add(new TextBlock { Text = action.Title, VerticalAlignment = VerticalAlignment.Center });
 
         var row = new Button
@@ -146,11 +146,6 @@ internal sealed class PluginToolbarHost : StackPanel
             // Fail-soft: a plugin's toolbar action must not crash the cockpit UI.
         }
     }
-
-    private static MaterialIconKind _Kind(string? icon) =>
-        icon is not null && Enum.TryParse<MaterialIconKind>(icon, ignoreCase: true, out var kind)
-            ? kind
-            : MaterialIconKind.PuzzleOutline;
 
     private void _Detach()
     {
