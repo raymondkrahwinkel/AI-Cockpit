@@ -150,6 +150,17 @@ public interface ISessionDriver : IAsyncDisposable
     Task SetAutoApproveToolsAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
+    /// Puts this session into non-interactive delegated tool-gating (AC-79): a delegated session has no human to
+    /// answer a permission prompt, so every MCP tool call is decided against <paramref name="ceiling"/> and
+    /// <paramref name="allowedTools"/> instead of being put to anyone — a tool above the ceiling and not on the
+    /// allow-list is denied with a reason (as its tool result), never left hanging. Default no-op: only the local
+    /// (OpenAI-compatible) driver, whose tool calls would otherwise prompt, honours this; the Claude/Codex CLIs
+    /// run non-interactively under their own permission mode. Not called for a profile whose "Auto-Approve tool
+    /// calls" is on — that uses <see cref="SetAutoApproveToolsAsync"/> to allow everything.
+    /// </summary>
+    Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    /// <summary>
     /// Switches one of the generic <see cref="LiveOptions"/> for the rest of this session (#45 D4) — the operator
     /// picked a new value in the live-control panel, keyed by the option's <see cref="SessionLiveOption.Key"/>. The
     /// driver applies it to its next turn. Default no-op: a driver with no generic live options has none to switch.

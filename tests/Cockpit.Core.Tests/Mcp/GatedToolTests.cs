@@ -17,7 +17,7 @@ public class GatedToolTests
         var calls = 0;
         AIFunction inner = AIFunctionFactory.Create(() => { calls++; return "the result"; }, "myTool");
         var gate = Substitute.For<IToolApprovalGate>();
-        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ToolApprovalResult.Allow);
         var tool = new GatedTool(inner, gate);
 
         var result = await tool.InvokeAsync();
@@ -32,7 +32,7 @@ public class GatedToolTests
         var calls = 0;
         AIFunction inner = AIFunctionFactory.Create(() => { calls++; return "the result"; }, "myTool");
         var gate = Substitute.For<IToolApprovalGate>();
-        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ToolApprovalResult.Deny(null));
         var tool = new GatedTool(inner, gate);
 
         var result = await tool.InvokeAsync();
@@ -46,7 +46,7 @@ public class GatedToolTests
     {
         AIFunction inner = AIFunctionFactory.Create((Func<string>)(() => throw new InvalidOperationException("bad path")), "myTool");
         var gate = Substitute.For<IToolApprovalGate>();
-        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
+        gate.RequestApprovalAsync(Arg.Any<string>(), "myTool", Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ToolApprovalResult.Allow);
         var tool = new GatedTool(inner, gate);
 
         // A tool error must not abort the turn: it comes back as the result (so the model can react) and is

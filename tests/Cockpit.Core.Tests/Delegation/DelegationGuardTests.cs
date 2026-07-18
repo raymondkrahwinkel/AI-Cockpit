@@ -140,20 +140,61 @@ public class DelegationGuardTests
     }
 
     [Fact]
-    public async Task StartedTask_RunsToolsNonInteractively_SoAToolCallCannotHangOnAPromptNobodyWillAnswer()
+    public async Task StartedTask_WithoutAutoApprove_InstallsTheCeilingGate_NotBlanketAutoApprove()
     {
-        // AC-78: a local-model session (OpenAiCompatSessionDriver) treats the permission ceiling as a no-op and
-        // gates every MCP tool call on the interactive PermissionRequested flow. With no human to answer it, the
-        // task hung on its first tool call until the timeout. A delegated session is non-interactive by
-        // definition, so it must be put into auto-approve at start — the tool call then runs, bounded by the
-        // policy-restricted enabled-server set, rather than blocking on a prompt nobody will see.
+        // AC-79: a delegated local-model session is non-interactive (no human to answer a tool prompt). With the
+        // profile's "Auto-Approve tool calls" off, it must gate each tool call against the ceiling + allow-list
+        // rather than either hanging on a prompt or blanket-approving everything. _Target's default ceiling is
+        // acceptEdits and it lists no tools.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var service = _ServiceWith(driver, _Target("local", policy => policy with { PermissionCeiling = "plan", AllowedTools = ["get_current_user"] }));
+
+        await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
+
+        await driver.Received(1).SetDelegatedToolGateAsync(
+            "plan",
+            Arg.Is<IReadOnlyList<string>>(list => list.Count == 1 && list.Contains("get_current_user")),
+            Arg.Any<CancellationToken>());
+        await driver.DidNotReceive().SetAutoApproveToolsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StartedTask_WithoutAutoApprove_UsesTheProfilesDefaultCeiling()
+    {
+        // The default target carries the default ceiling (acceptEdits) and no allow-list; the gate must be armed
+        // with exactly that, so the common no-config case grades tool calls rather than hanging or allowing all.
         var driver = Substitute.For<ISessionDriver>();
         driver.Events.Returns(_EmptyStream());
         var service = _ServiceWith(driver, _Target("local"));
 
         await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
 
+        await driver.Received(1).SetDelegatedToolGateAsync(
+            DelegationPolicy.DefaultPermissionCeiling,
+            Arg.Is<IReadOnlyList<string>>(list => list.Count == 0),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StartedTask_WithAutoApproveOn_AllowsEverything_AndDoesNotInstallTheCeilingGate()
+    {
+        // The operator's per-profile "Auto-Approve tool calls" is the explicit "trust this profile fully": a
+        // delegated session then allows every tool (still bounded by the enabled-server set), so it uses blanket
+        // auto-approve and not the ceiling gate.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var profile = new SessionProfile(
+            "local",
+            new ClaudeConfig(string.Empty),
+            Defaults: new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools: true),
+            Delegation: new DelegationPolicy(AllowedAsTarget: true));
+        var service = _ServiceWith(driver, profile);
+
+        await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
+
         await driver.Received(1).SetAutoApproveToolsAsync(true, Arg.Any<CancellationToken>());
+        await driver.DidNotReceive().SetDelegatedToolGateAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

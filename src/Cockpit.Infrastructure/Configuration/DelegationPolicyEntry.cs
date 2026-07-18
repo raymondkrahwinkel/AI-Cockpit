@@ -26,6 +26,8 @@ internal sealed class DelegationPolicyEntry
 
     public List<string>? Tags { get; set; }
 
+    public List<string>? AllowedTools { get; set; }
+
     public static DelegationPolicyEntry? FromDomain(DelegationPolicy? policy) => policy is null
         ? null
         : new DelegationPolicyEntry
@@ -39,16 +41,20 @@ internal sealed class DelegationPolicyEntry
             AllowedTaskTypes = policy.AllowedTaskTypes?.ToList(),
             Purpose = policy.Purpose,
             Tags = policy.Tags?.ToList(),
+            AllowedTools = policy.AllowedTools?.ToList(),
         };
 
     public DelegationPolicy ToDomain() => new(
         AllowedAsTarget,
         MaxConcurrent,
         AllowedWorkingDirs,
-        PermissionCeiling,
+        // A hand-edited config could carry a null/blank ceiling; coerce to the default so a delegated session is
+        // never left with no ceiling (which would disarm the gate and hang the task on a prompt nobody answers).
+        string.IsNullOrWhiteSpace(PermissionCeiling) ? DelegationPolicy.DefaultPermissionCeiling : PermissionCeiling,
         MayDelegateFurther,
         TimeoutMinutes,
         AllowedTaskTypes,
         Purpose,
-        Tags);
+        Tags,
+        AllowedTools);
 }

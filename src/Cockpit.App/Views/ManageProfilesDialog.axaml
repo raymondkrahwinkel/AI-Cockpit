@@ -232,6 +232,31 @@
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                             </StackPanel>
 
+                            <!-- AC-79: for a local-model delegated session (no human to answer a tool-permission
+                                 prompt) the ceiling grades which tool calls run unattended, and the allow-list is the
+                                 explicit trust anchor for tools an MCP server does not annotate. Ignored when the
+                                 profile's "Auto-Approve tool calls" is on, which already allows everything. -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Tool permission ceiling (delegated, local models)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <ComboBox ItemsSource="{Binding PermissionCeilingChoices}"
+                                          SelectedItem="{Binding PermissionCeiling}"
+                                          HorizontalAlignment="Left" MinWidth="200"
+                                          ToolTip.Tip="How far a delegated local-model session may go without a human: plan/default = read-only tools only, acceptEdits = also non-destructive writes, bypassPermissions = everything. Ignored when 'Auto-Approve tool calls' is on."/>
+                                <TextBlock Text="plan / default = read-only only · acceptEdits = also writes · bypassPermissions = everything"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Auto-runnable tools (allow-list)" FontSize="11" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox Text="{Binding AllowedTools}"
+                                         AcceptsReturn="True"
+                                         MinHeight="60"
+                                         TextWrapping="NoWrap"
+                                         PlaceholderText="get_current_user&#x0a;one tool name per line"/>
+                                <TextBlock Text="Tools a delegated session may run unattended regardless of the ceiling — the explicit trust anchor for tools whose MCP server gives no read-only/destructive hint (those are otherwise blocked). One tool name per line."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="Tasks at once" FontSize="11" VerticalAlignment="Center"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>

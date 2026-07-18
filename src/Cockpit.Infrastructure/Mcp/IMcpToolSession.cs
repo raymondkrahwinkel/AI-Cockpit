@@ -1,3 +1,4 @@
+using Cockpit.Core.Sessions.Permissions;
 using Microsoft.Extensions.AI;
 
 namespace Cockpit.Infrastructure.Mcp;
@@ -12,4 +13,11 @@ internal interface IMcpToolSession : IAsyncDisposable
     IReadOnlyList<AIFunction> Tools { get; }
 
     IReadOnlyList<string> ConnectedServerNames { get; }
+
+    /// <summary>
+    /// Each connected tool's permission class (AC-79), keyed by tool name, derived from its MCP read-only/
+    /// destructive annotations at connect. Feeds the delegated non-interactive gate: a tool absent from the map
+    /// is treated as <see cref="ToolPermissionClass.Unknown"/>.
+    /// </summary>
+    IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses { get; }
 }
