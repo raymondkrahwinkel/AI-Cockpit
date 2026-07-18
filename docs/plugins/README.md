@@ -13,6 +13,9 @@
   for the GitHub Issues and System Monitor plugins) to use as a template for your own store catalogue. The
   second one is a widget, so it also shows the `"category": "Widgets"` that puts a plugin in the store's Widgets
   section.
+- **[AUTOMATED-PUBLISH.md](AUTOMATED-PUBLISH.md)** — maintainer note: the one-click **Publish plugin to store**
+  Actions workflow that builds, hashes and opens a PR against the official store, with a host-version gate that
+  refuses to publish a plugin ahead of the app it needs. For pushing *this* repo's plugins to the official store.
 
 Start with the [Quickstart](PLUGIN-SDK.md#quickstart) in the SDK guide if you just want a plugin running, or
 ["How do I set up my own store?"](PLUGIN-SDK.md#the-index--indexjson) if you're publishing a catalogue.
