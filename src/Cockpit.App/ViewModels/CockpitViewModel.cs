@@ -2279,7 +2279,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.NewSession => NewSessionCommand,
             ShortcutAction.ManageProfiles => ManageProfilesCommand,
             ShortcutAction.McpServers => OpenMcpServersCommand,
-            ShortcutAction.PluginStore => Plugins.OpenStoreDialogCommand,
+            ShortcutAction.PluginStore => OpenPluginStoreCommand,
             ShortcutAction.Options => OptionsCommand,
             ShortcutAction.About => AboutCommand,
             ShortcutAction.ToggleZoom => ToggleZoomCommand,
@@ -3717,6 +3717,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await Plugins.LoadAsync();
         await _dialogService.ShowPluginStoreDialogAsync(Plugins, PluginStoreFilter.UpdatesAvailable);
+    }
+
+    /// <summary>
+    /// Opens the plugin store from the sidebar (AC-76) — on the Updates filter when updates are waiting (the sidebar
+    /// badge is showing), so a click on the "N updates" indicator lands straight on them; otherwise the normal browse.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenPluginStoreAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await Plugins.LoadAsync();
+        await _dialogService.ShowPluginStoreDialogAsync(Plugins, Plugins.HasUpdateBadge ? PluginStoreFilter.UpdatesAvailable : null);
     }
 
     /// <summary>Opens the About dialog (#46) from the sidebar: app name, version, description and links.</summary>
