@@ -38,11 +38,11 @@ public class KubernetesMcpToolsTests
 
         var gate = new ClusterAccessGate(host);
         var connections = new ClusterConnectionFactory(settings);
-        return (new KubernetesMcpTools(settings, gate, connections), asked);
+        return (new KubernetesMcpTools(settings, gate, connections, new PortForwardManager()), asked);
     }
 
-    private static ClusterRegistration _Cluster(bool exec = false, bool clusterScoped = false) =>
-        new("id-1", "prod", ContextName: "", ["default"], AllowClusterScoped: clusterScoped, AllowExec: exec);
+    private static ClusterRegistration _Cluster(bool exec = false, bool clusterScoped = false, bool portForward = false) =>
+        new("id-1", "prod", ContextName: "", ["default"], AllowClusterScoped: clusterScoped, AllowExec: exec, AllowPortForward: portForward);
 
     private static ConsentRequest? _WithScopePrefix(IEnumerable<ConsentRequest> asked, string prefix) =>
         asked.FirstOrDefault(request => request.Scope.StartsWith(prefix, StringComparison.Ordinal));
@@ -119,6 +119,18 @@ public class KubernetesMcpToolsTests
         secretAsk.Should().NotBeNull("a secret is not \"free to read\" just because its namespace is allowed");
         secretAsk!.Risk.Should().Be(ConsentRisk.Dangerous);
         secretAsk.AllowRemember.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PortForward_WhenCapabilityOff_IsBlockedWithASettingsHint()
+    {
+        var (tools, asked) = _Build(ConsentOutcome.Approved, _Cluster(portForward: false));
+
+        var json = JsonNode.Parse(await tools.PortForward("prod", Session, "default", "nginx", 80));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        json["error"]!.GetValue<string>().Should().Contain("settings");
+        asked.Should().BeEmpty("a capability that is off is a policy block — no prompt");
     }
 
     [Fact]

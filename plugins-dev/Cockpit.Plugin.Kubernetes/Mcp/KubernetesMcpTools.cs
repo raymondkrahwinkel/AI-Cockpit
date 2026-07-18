@@ -21,8 +21,10 @@ namespace Cockpit.Plugin.Kubernetes.Mcp;
 /// to the session that asked. Whether a resource is namespaced or cluster-scoped is decided by its real REST scope
 /// (<see cref="ResourceScope"/>), never by whether the agent left the namespace blank.
 /// </summary>
-internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAccessGate gate, ClusterConnectionFactory connections)
+internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAccessGate gate, ClusterConnectionFactory connections, PortForwardManager portForwards)
 {
+    private static readonly TimeSpan PortForwardMaxLifetime = TimeSpan.FromMinutes(30);
+
     [McpServerTool(Name = "list_clusters")]
     [Description("Lists the Kubernetes clusters the operator registered, with each cluster's label, its allowed namespaces, and which extra capabilities (cluster-scoped resources, exec) are turned on for it. Reading or changing anything else goes through the other tools and asks the operator for consent. Start here to see what you can reach.")]
     public string ListClusters() =>
@@ -329,6 +331,54 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
                 pod, @namespace, container, ["/bin/sh", "-c", command], tty: false, callback, token);
 
             return McpText.Ok(new { ok = true, exitCode, stdout = stdout.ToString(), stderr = stderr.ToString() });
+        }, cancellationToken);
+    }
+
+    [McpServerTool(Name = "port_forward")]
+    [Description("Opens a port-forward tunnel from a local loopback port to a pod port. port-forward is off unless the operator turned it on for this cluster, and it reaches past the namespace boundary, so it always asks afresh with the literal target shown, and is never remembered. The tunnel appears in the status bar with a Kill button and auto-closes after 30 minutes. Returns the bound local address and a tunnel id.")]
+    public async Task<string> PortForward(
+        [Description("The cluster label.")] string cluster,
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The namespace of the pod.")] string @namespace,
+        [Description("The pod name.")] string pod,
+        [Description("The pod port to forward to.")] int remotePort,
+        [Description("The local loopback port to bind, or 0 to let the OS pick a free one.")] int localPort = 0,
+        CancellationToken cancellationToken = default)
+    {
+        if (_FindCluster(cluster) is not { } registration)
+        {
+            return _UnknownCluster(cluster);
+        }
+
+        if (remotePort is < 1 or > 65535)
+        {
+            return McpText.Error("remotePort must be between 1 and 65535.");
+        }
+
+        if (localPort is < 0 or > 65535)
+        {
+            return McpText.Error("localPort must be between 0 and 65535 (0 picks a free port).");
+        }
+
+        var target = localPort == 0 ? "an OS-assigned local port" : $"127.0.0.1:{localPort}";
+        var decision = await gate.AuthorizeDangerAsync(registration, DangerCapability.PortForward, @namespace, $"port-forward pod \"{pod}\" (namespace \"{@namespace}\") port {remotePort} to {target}", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        return await _WithClient(registration, (client, _) =>
+        {
+            var tunnel = portForwards.Start(client, registration.Label, @namespace, pod, remotePort, localPort, PortForwardMaxLifetime);
+            return Task.FromResult(McpText.Ok(new
+            {
+                ok = true,
+                tunnelId = tunnel.Id,
+                localAddress = $"127.0.0.1:{tunnel.LocalPort}",
+                remotePort,
+                pod,
+                note = "Listed in the status bar with a Kill button; auto-closes after 30 minutes.",
+            }));
         }, cancellationToken);
     }
 

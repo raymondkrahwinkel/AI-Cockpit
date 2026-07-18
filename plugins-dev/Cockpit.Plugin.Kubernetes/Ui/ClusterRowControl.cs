@@ -22,6 +22,7 @@ internal sealed class ClusterRowControl : UserControl
     private readonly TextBox _kubeconfig;
     private readonly CheckBox _allowClusterScoped;
     private readonly CheckBox _allowExec;
+    private readonly CheckBox _allowPortForward;
 
     public event Action? RemoveRequested;
 
@@ -50,6 +51,7 @@ internal sealed class ClusterRowControl : UserControl
         };
         _allowClusterScoped = new CheckBox { Content = "Allow cluster-scoped resources (nodes, PVs, namespaces, cluster roles)", IsChecked = existing?.AllowClusterScoped ?? false };
         _allowExec = new CheckBox { Content = "Allow exec (run a command in a pod)", IsChecked = existing?.AllowExec ?? false };
+        _allowPortForward = new CheckBox { Content = "Allow port-forward (open a tunnel into the cluster)", IsChecked = existing?.AllowPortForward ?? false };
 
         var remove = new Button { Content = "Remove cluster", Margin = new Thickness(0, 4, 0, 0) };
         remove.Click += (_, _) => RemoveRequested?.Invoke();
@@ -85,6 +87,7 @@ internal sealed class ClusterRowControl : UserControl
         panel.Children.Add(_Hint("Extra capabilities — off by default; each reaches past the namespace boundary"));
         panel.Children.Add(_allowClusterScoped);
         panel.Children.Add(_allowExec);
+        panel.Children.Add(_allowPortForward);
         panel.Children.Add(remove);
 
         Content = new Border
@@ -113,9 +116,8 @@ internal sealed class ClusterRowControl : UserControl
         AllowedNamespaces: _ParseNamespaces(_allowedNamespaces.Text),
         AllowClusterScoped: _allowClusterScoped.IsChecked ?? false,
         AllowExec: _allowExec.IsChecked ?? false,
-        // port-forward and attach are model+gate-ready but not surfaced in v1 (their safe form needs an
-        // operator-facing kill-switch), so they stay off until the follow-up wires their tools and toggles.
-        AllowPortForward: false,
+        AllowPortForward: _allowPortForward.IsChecked ?? false,
+        // attach is model+gate-ready but has no meaningful non-interactive MCP tool yet, so it stays off.
         AllowAttach: false,
         UsesExecAuth: _usesExecAuth);
 
