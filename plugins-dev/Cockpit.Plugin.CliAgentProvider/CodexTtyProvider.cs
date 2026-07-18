@@ -48,10 +48,17 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
         // A cockpit-managed install (AC-20), if present, is preferred over PATH.
         var executablePath = CliExecutableLocator.Resolve(string.IsNullOrWhiteSpace(config.Command) ? "codex" : config.Command, managedResolver);
 
+        // The session's Cockpit MCP servers (#26/AC-77) fan into the interactive TUI the same way the headless
+        // app-server spawn takes them (CodexAppServerSessionDriver): as `-c mcp_servers.<name>={…}` overrides
+        // built by CodexMcpConfig, with any bearer token riding the process environment rather than the command
+        // line. Claude's TTY provider does the equivalent via --mcp-config; without this the Codex TUI only ever
+        // sees its own ~/.codex servers, never the cockpit's. Empty when the session resolved no servers.
+        var mcpLaunch = CodexMcpConfig.Build(context.McpServers);
+
         return new PluginTtyLaunchSpec(
             executablePath,
-            BuildArguments(config, context.Options, context.Resume),
-            BuildEnvironmentOverlay(config),
+            BuildArguments(config, context.Options, context.Resume, mcpLaunch.ConfigArgs),
+            BuildEnvironmentOverlay(config, mcpLaunch.EnvironmentVariables),
             context.WorkingDirectory,
             SessionScopedFiles: []);
     }
@@ -78,9 +85,17 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
     /// for why. <c>internal</c> (and free of any pty/process dependency) so the resume-vs-fresh and
     /// option-vs-config-default branching is unit-testable without spawning a real CLI.
     /// </summary>
-    internal static List<string> BuildArguments(CliAgentConfig config, IReadOnlyDictionary<string, string> options, PluginTtyResume? resume)
+    internal static List<string> BuildArguments(CliAgentConfig config, IReadOnlyDictionary<string, string> options, PluginTtyResume? resume, IReadOnlyList<string>? mcpConfigArgs = null)
     {
         var arguments = new List<string>();
+
+        // The MCP `-c mcp_servers.*` overrides (AC-77) must precede any `resume` subcommand: Codex reads `-c` as a
+        // global config flag, and it takes those before the subcommand — the same placement the app-server spawn
+        // uses (`[.. configArgs, "app-server"]`). Prepending them here keeps resume + MCP working together.
+        if (mcpConfigArgs is { Count: > 0 })
+        {
+            arguments.AddRange(mcpConfigArgs);
+        }
 
         if (resume is not null)
         {
@@ -112,13 +127,27 @@ internal sealed class CodexTtyProvider(Func<string, string?>? managedResolver = 
         return arguments;
     }
 
-    /// <summary>Only <c>CODEX_HOME</c> — the API key goes nowhere near a TTY spawn's environment overlay: the interactive TUI prompts for <c>codex login</c> itself, same as Claude's TTY mode never carries an API key either.</summary>
-    internal static IReadOnlyDictionary<string, string?> BuildEnvironmentOverlay(CliAgentConfig config)
+    /// <summary>
+    /// <c>CODEX_HOME</c> plus any per-server MCP bearer-token env vars (AC-77). The API key still goes nowhere near
+    /// a TTY spawn's overlay: the interactive TUI prompts for <c>codex login</c> itself, same as Claude's TTY mode
+    /// never carries an API key. A cockpit-hosted server's <c>COCKPIT_MCP_KEY</c> is not set here either — it is
+    /// host-controlled and already on the base environment from <c>TtyLauncher</c> (AC-40); only the non-hosted
+    /// <c>COCKPIT_MCP_TOKEN_*</c> vars this session minted travel through the overlay.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, string?> BuildEnvironmentOverlay(CliAgentConfig config, IReadOnlyDictionary<string, string?>? mcpEnvironment = null)
     {
         var overlay = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(config.ConfigDir))
         {
             overlay["CODEX_HOME"] = config.ConfigDir;
+        }
+
+        if (mcpEnvironment is not null)
+        {
+            foreach (var (key, value) in mcpEnvironment)
+            {
+                overlay[key] = value;
+            }
         }
 
         return overlay;
