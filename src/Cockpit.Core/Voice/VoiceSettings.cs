@@ -41,10 +41,11 @@ public sealed record VoiceSettings
 
     /// <summary>
     /// Model id the shared voice-LLM step (STT cleanup + read-aloud naturalize/summarize) asks the local server
-    /// for. Preferred over an auto-picked model when auto-detect finds it on the server. Defaults to
-    /// <c>gemma3:4b</c> (better Dutch); <c>qwen2.5:3b</c> is a safe fallback.
+    /// for. Preferred over an auto-picked model when auto-detect finds it on the server. Empty means "Auto" — no
+    /// explicit choice, let the server's model list decide (the default). <c>gemma3:4b</c> reads Dutch best and
+    /// <c>qwen2.5:3b</c> is a safe fallback if you pick one by hand.
     /// </summary>
-    public string VoiceLlmModel { get; init; } = "gemma3:4b";
+    public string VoiceLlmModel { get; init; } = "";
 
     /// <summary>
     /// Base URL of the local OpenAI-compatible LLM server the shared voice-LLM step calls — Ollama

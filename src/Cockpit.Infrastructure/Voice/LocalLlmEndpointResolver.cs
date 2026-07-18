@@ -28,10 +28,22 @@ internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable,
 
     public async Task<LocalLlmEndpoint> ResolveAsync(VoiceSettings settings, CancellationToken cancellationToken = default)
     {
-        var manual = new LocalLlmEndpoint(settings.VoiceLlmBaseUrl, settings.VoiceLlmModel);
+        // Empty preferred model = "Auto": no explicit choice, let the server's model list decide. A concrete id is
+        // still needed to actually send a request, so this is the fallback when a list cannot be read.
+        var preferred = settings.VoiceLlmModel ?? "";
+        var fallbackModel = string.IsNullOrWhiteSpace(preferred) ? "gemma3:4b" : preferred;
+
         if (!settings.AutoDetectLocalLlm)
         {
-            return manual;
+            // Manual: a chosen model is used as-is; "Auto" picks one from the configured server (or the default).
+            if (!string.IsNullOrWhiteSpace(preferred))
+            {
+                return new LocalLlmEndpoint(settings.VoiceLlmBaseUrl, preferred);
+            }
+
+            var manualModels = await modelCatalog.ListModelsAsync(settings.VoiceLlmBaseUrl, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var manualModel = manualModels is { Count: > 0 } ? _PickModel(manualModels, preferred) ?? fallbackModel : fallbackModel;
+            return new LocalLlmEndpoint(settings.VoiceLlmBaseUrl, manualModel);
         }
 
         // Which servers are running right now — the same process-name detection the memory breakdown uses (#78),
@@ -44,7 +56,7 @@ internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable,
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Local LLM auto-detect could not read the process table; using the configured endpoint");
-            return manual;
+            return new LocalLlmEndpoint(settings.VoiceLlmBaseUrl, fallbackModel);
         }
 
         foreach (var server in _ApplyPreference(running, settings.LocalLlmPreference))
@@ -62,14 +74,14 @@ internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable,
                 continue;
             }
 
-            var model = _PickModel(models, settings.VoiceLlmModel);
+            var model = _PickModel(models, preferred);
             if (model is not null)
             {
                 return new LocalLlmEndpoint(baseUrl, model);
             }
         }
 
-        return manual;
+        return new LocalLlmEndpoint(settings.VoiceLlmBaseUrl, fallbackModel);
     }
 
     /// <summary>

@@ -38,6 +38,25 @@ public class LocalLlmEndpointResolverTests
     }
 
     [Fact]
+    public async Task ResolveAsync_AutoModelInManualMode_PicksFromTheConfiguredServer()
+    {
+        // Manual server, but "Auto" model (empty): the resolver reads the configured server's list and picks one.
+        var reader = Substitute.For<IProcessTableReader>();
+        var catalog = _CatalogWith("text-embedding-nomic", "phi-3-mini-4k-instruct");
+        var resolver = _Create(reader, catalog);
+
+        var endpoint = await resolver.ResolveAsync(new VoiceSettings
+        {
+            AutoDetectLocalLlm = false,
+            VoiceLlmBaseUrl = "http://configured:1234",
+            VoiceLlmModel = "",
+        });
+
+        endpoint.BaseUrl.Should().Be("http://configured:1234");
+        endpoint.Model.Should().Be("phi-3-mini-4k-instruct");
+    }
+
+    [Fact]
     public async Task ResolveAsync_LmStudioRunning_UsesItsUrlAndTheConfiguredModelWhenPresent()
     {
         var reader = _ReaderWith("LM Studio");

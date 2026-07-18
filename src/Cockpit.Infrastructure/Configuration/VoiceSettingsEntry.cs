@@ -133,8 +133,8 @@ internal sealed class VoiceSettingsEntry
         CleanupEnabled = CleanupEnabled,
         AutoDetectLocalLlm = AutoDetectLocalLlm,
         LocalLlmPreference = LocalLlmPreference,
-        // Prefer the neutral key; fall back through the renamed-cleanup key and default so an existing config migrates cleanly.
-        VoiceLlmModel = VoiceLlmModel ?? CleanupModel ?? "gemma3:4b",
+        // Prefer the neutral key; fall back through the renamed-cleanup key. Neither present = "Auto" (empty).
+        VoiceLlmModel = VoiceLlmModel ?? CleanupModel ?? "",
         // Prefer the neutral key; fall back through the renamed-cleanup and older Ollama keys so an existing config migrates cleanly.
         VoiceLlmBaseUrl = VoiceLlmBaseUrl ?? CleanupBaseUrl ?? OllamaBaseUrl ?? "http://localhost:11434",
         PushToTalkKeyName = PushToTalkKeyName,
