@@ -24,6 +24,7 @@ using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.SessionBehavior;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shortcuts;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
@@ -90,6 +91,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
+    private readonly IModelCatalog? _modelCatalog;
     private readonly PluginDiagnostics? _pluginDiagnostics;
     private readonly IPluginDialogHost? _pluginDialogHost;
     private readonly List<byte> _recordedPcm = [];
@@ -1407,13 +1409,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The manual model + URL fields are shown only when cleanup is on and auto-detect is off — otherwise Cockpit decides both, and the two would contradict the picker above.</summary>
     public bool ShowManualLlmFields => VoiceCleanupEnabled && !VoiceAutoDetectLocalLlm;
 
-    /// <summary>Model id the cleanup step asks the local LLM for (see <see cref="VoiceCleanupEnabled"/>).</summary>
-    [ObservableProperty]
-    private string _voiceCleanupModel = "qwen2.5:3b-instruct";
+    /// <summary>Models reported by the configured local server's <c>/v1/models</c>, seeded with the current + advised models so the dropdown is never empty even when the server is unreachable. Refreshed when the Options dialog opens.</summary>
+    public ObservableCollection<string> VoiceLlmModels { get; } = [];
 
-    /// <summary>Base URL of the local OpenAI-compatible LLM server (Ollama/LM Studio) used for cleanup, without the <c>/v1</c> suffix.</summary>
+    /// <summary>Model id the shared voice-LLM step (STT cleanup + read-aloud) asks the local LLM for. Selected from <see cref="VoiceLlmModels"/> (see <see cref="VoiceCleanupEnabled"/>).</summary>
     [ObservableProperty]
-    private string _voiceCleanupBaseUrl = "http://localhost:11434";
+    private string _voiceLlmModel = "gemma3:4b";
+
+    /// <summary>Base URL of the local OpenAI-compatible LLM server (Ollama/LM Studio) used by the shared voice-LLM step, without the <c>/v1</c> suffix.</summary>
+    [ObservableProperty]
+    private string _voiceLlmBaseUrl = "http://localhost:11434";
 
     /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
     [ObservableProperty]
@@ -1672,7 +1677,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IConsentBroker? consentBroker = null,
         ITranscriptionAdvisor? transcriptionAdvisor = null,
         ITranscriptionCalibrator? transcriptionCalibrator = null,
-        ITranscriptionCalibrationStore? transcriptionCalibrationStore = null)
+        ITranscriptionCalibrationStore? transcriptionCalibrationStore = null,
+        IModelCatalog? modelCatalog = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1698,6 +1704,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _audioDeviceProvider = audioDeviceProvider;
+        _modelCatalog = modelCatalog;
         _pluginDiagnostics = pluginDiagnostics;
         _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;
@@ -2849,8 +2856,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceAutoDetectLocalLlm = settings.AutoDetectLocalLlm;
         SelectedLocalLlmPreference = LocalLlmPreferences.FirstOrDefault(option => option.Value == settings.LocalLlmPreference)
                                      ?? LocalLlmPreferences[0];
-        VoiceCleanupModel = settings.CleanupModel;
-        VoiceCleanupBaseUrl = settings.CleanupBaseUrl;
+        VoiceLlmModel = settings.VoiceLlmModel;
+        VoiceLlmBaseUrl = settings.VoiceLlmBaseUrl;
         VoicePushToTalkKeyName = settings.PushToTalkKeyName;
         VoiceGlobalPushToTalk = settings.GlobalPushToTalk;
         // First load is app startup — capture what the hotkey actually armed with, so a later save can tell a real
@@ -2894,6 +2901,35 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedOutputDevice = OutputDevices.FirstOrDefault(device => device.DeviceName == _NullIfEmpty(settings.OutputDeviceName)) ?? OutputDevices[0];
     }
 
+    /// <summary>
+    /// Refreshes the voice-LLM model dropdown from the configured server's <c>/v1/models</c> when the Options
+    /// dialog opens. Seeded with the current selection and the advised models (gemma3:4b for Dutch, qwen2.5:3b as
+    /// a safe fallback) so the list is never empty and the saved model stays selected even when the server is
+    /// unreachable — the catalog fails soft to an empty list, never throwing.
+    /// </summary>
+    private async Task _RefreshVoiceLlmModelsAsync()
+    {
+        var discovered = _modelCatalog is null
+            ? []
+            : await _modelCatalog.ListModelsAsync(VoiceLlmBaseUrl);
+
+        VoiceLlmModels.Clear();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var model in new[] { VoiceLlmModel, "gemma3:4b", "qwen2.5:3b" }.Concat(discovered))
+        {
+            if (!string.IsNullOrWhiteSpace(model) && seen.Add(model))
+            {
+                VoiceLlmModels.Add(model);
+            }
+        }
+
+        // The current selection is always seeded first, so it stays selected; guard only the empty-string edge.
+        if (!VoiceLlmModels.Contains(VoiceLlmModel))
+        {
+            VoiceLlmModel = VoiceLlmModels[0];
+        }
+    }
+
     private static void _PopulateDevices(ObservableCollection<AudioDeviceOption> target, IReadOnlyList<AudioDeviceInfo> devices)
     {
         target.Clear();
@@ -2934,8 +2970,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             CleanupEnabled = VoiceCleanupEnabled,
             AutoDetectLocalLlm = VoiceAutoDetectLocalLlm,
             LocalLlmPreference = SelectedLocalLlmPreference.Value,
-            CleanupModel = string.IsNullOrWhiteSpace(VoiceCleanupModel) ? "qwen2.5:3b-instruct" : VoiceCleanupModel.Trim(),
-            CleanupBaseUrl = string.IsNullOrWhiteSpace(VoiceCleanupBaseUrl) ? "http://localhost:11434" : VoiceCleanupBaseUrl.Trim(),
+            VoiceLlmModel = string.IsNullOrWhiteSpace(VoiceLlmModel) ? "gemma3:4b" : VoiceLlmModel.Trim(),
+            VoiceLlmBaseUrl = string.IsNullOrWhiteSpace(VoiceLlmBaseUrl) ? "http://localhost:11434" : VoiceLlmBaseUrl.Trim(),
             PushToTalkKeyName = string.IsNullOrWhiteSpace(VoicePushToTalkKeyName) ? "F9" : VoicePushToTalkKeyName.Trim(),
             GlobalPushToTalk = VoiceGlobalPushToTalk,
             AutoSubmitAfterVoice = VoiceAutoSubmit,
@@ -3260,6 +3296,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _RefreshAudioDevicesAsync();
+        await _RefreshVoiceLlmModelsAsync();
         await Plugins.LoadAsync();
         await _dialogService.ShowOptionsDialogAsync(this);
     }

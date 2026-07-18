@@ -1,8 +1,7 @@
-using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Diagnostics;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Diagnostics;
 using Cockpit.Core.Voice;
 
@@ -11,10 +10,11 @@ namespace Cockpit.Infrastructure.Voice;
 /// <summary>
 /// <see cref="ILocalLlmEndpointResolver"/> that auto-detects the running local model server the same way the
 /// memory breakdown does (process name, via <see cref="LocalModelServers"/>), maps it to its default port, and
-/// reads its model list to choose one. Falls back to the operator's configured URL/model whenever auto-detect is
-/// off, the process table can't be read, or no detected server is actually serving.
+/// reads its model list (through the shared <see cref="IModelCatalog"/>) to choose one. Falls back to the
+/// operator's configured URL/model whenever auto-detect is off, the process table can't be read, or no detected
+/// server is actually serving.
 /// </summary>
-internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable, HttpClient httpClient, ILogger<LocalLlmEndpointResolver> logger)
+internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable, IModelCatalog modelCatalog, ILogger<LocalLlmEndpointResolver> logger)
     : ILocalLlmEndpointResolver, ISingletonService
 {
     // The ports the two servers listen on out of the box; a running server is mapped to its URL here. A custom
@@ -27,7 +27,7 @@ internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable,
 
     public async Task<LocalLlmEndpoint> ResolveAsync(VoiceSettings settings, CancellationToken cancellationToken = default)
     {
-        var manual = new LocalLlmEndpoint(settings.CleanupBaseUrl, settings.CleanupModel);
+        var manual = new LocalLlmEndpoint(settings.VoiceLlmBaseUrl, settings.VoiceLlmModel);
         if (!settings.AutoDetectLocalLlm)
         {
             return manual;
@@ -53,7 +53,7 @@ internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable,
                 continue;
             }
 
-            var models = await _ListModelsAsync(baseUrl, cancellationToken).ConfigureAwait(false);
+            var models = await modelCatalog.ListModelsAsync(baseUrl, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (models is not { Count: > 0 })
             {
                 // The process is up but its HTTP server is not serving models (e.g. LM Studio open, server not
@@ -61,7 +61,7 @@ internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable,
                 continue;
             }
 
-            var model = _PickModel(models, settings.CleanupModel);
+            var model = _PickModel(models, settings.VoiceLlmModel);
             if (model is not null)
             {
                 return new LocalLlmEndpoint(baseUrl, model);
@@ -87,25 +87,6 @@ internal sealed class LocalLlmEndpointResolver(IProcessTableReader processTable,
         return preferredName is null
             ? running
             : running.OrderByDescending(server => string.Equals(server.Name, preferredName, StringComparison.Ordinal));
-    }
-
-    private async Task<IReadOnlyList<string>?> _ListModelsAsync(string baseUrl, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var response = await httpClient
-                .GetFromJsonAsync<ModelsResponse>($"{baseUrl.TrimEnd('/')}/v1/models", cancellationToken)
-                .ConfigureAwait(false);
-            return response?.Data?
-                .Select(entry => entry.Id)
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Select(id => id!)
-                .ToList();
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            return null;
-        }
     }
 
     /// <summary>

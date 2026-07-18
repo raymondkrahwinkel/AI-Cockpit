@@ -565,16 +565,20 @@
                                               DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
-                                    <TextBlock Text="Cleanup model"
+                                    <TextBlock Text="Model"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
-                                    <TextBox Text="{Binding VoiceCleanupModel}" Width="150"/>
+                                    <ComboBox ItemsSource="{Binding VoiceLlmModels}"
+                                              SelectedItem="{Binding VoiceLlmModel}" MinWidth="200"/>
                                 </StackPanel>
+                                <TextBlock Text="Shared by transcript cleanup and read-aloud. Populated from the server at the URL below; gemma3:4b reads Dutch best, qwen2.5:3b is a safe fallback."
+                                           IsVisible="{Binding ShowManualLlmFields}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
                                     <TextBlock Text="Local LLM URL"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
-                                    <TextBox Text="{Binding VoiceCleanupBaseUrl}" Width="150"
+                                    <TextBox Text="{Binding VoiceLlmBaseUrl}" Width="150"
                                              PlaceholderText="http://localhost:11434 (Ollama) / :1234 (LM Studio)"/>
                                 </StackPanel>
                             </StackPanel>

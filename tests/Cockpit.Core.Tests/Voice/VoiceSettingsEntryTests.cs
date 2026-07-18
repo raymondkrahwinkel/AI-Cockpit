@@ -5,45 +5,72 @@ using FluentAssertions;
 namespace Cockpit.Core.Tests.Voice;
 
 /// <summary>
-/// Locks the on-disk migration from the Ollama-specific cleanup key to the neutral OpenAI-compatible one:
-/// an existing config wrote <c>OllamaBaseUrl</c>, and loading it must surface that value under the new
-/// <c>CleanupBaseUrl</c> — otherwise a laptop that customized the Ollama URL would silently reset to the
-/// default on the first run of the generalized build.
+/// Locks the on-disk migration onto the shared, provider-neutral voice-LLM keys: an existing config wrote the
+/// older <c>CleanupBaseUrl</c>/<c>CleanupModel</c> (or the still-older Ollama-specific <c>OllamaBaseUrl</c>),
+/// and loading it must surface those values under the new <c>VoiceLlmBaseUrl</c>/<c>VoiceLlmModel</c> — otherwise
+/// a laptop that customized the server/model would silently reset to the default on the first run.
 /// </summary>
 public class VoiceSettingsEntryTests
 {
     [Fact]
-    public void ToDomain_MigratesLegacyOllamaBaseUrl_WhenNeutralKeyAbsent()
+    public void ToDomain_MigratesLegacyOllamaBaseUrl_WhenNewerKeysAbsent()
     {
-        var entry = new VoiceSettingsEntry { CleanupBaseUrl = null, OllamaBaseUrl = "http://legacy:9999" };
+        var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = null, CleanupBaseUrl = null, OllamaBaseUrl = "http://legacy:9999" };
 
-        entry.ToDomain().CleanupBaseUrl.Should().Be("http://legacy:9999");
+        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://legacy:9999");
+    }
+
+    [Fact]
+    public void ToDomain_MigratesRenamedCleanupBaseUrl_WhenNeutralKeyAbsent()
+    {
+        var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = null, CleanupBaseUrl = "http://cleanup:1234" };
+
+        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://cleanup:1234");
     }
 
     [Fact]
     public void ToDomain_PrefersNeutralKey_OverLegacy()
     {
-        var entry = new VoiceSettingsEntry { CleanupBaseUrl = "http://new:1234", OllamaBaseUrl = "http://legacy:9999" };
+        var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = "http://new:1234", CleanupBaseUrl = "http://old:1", OllamaBaseUrl = "http://legacy:9999" };
 
-        entry.ToDomain().CleanupBaseUrl.Should().Be("http://new:1234");
+        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://new:1234");
     }
 
     [Fact]
-    public void ToDomain_FallsBackToDefault_WhenNeitherKeyPresent()
+    public void ToDomain_FallsBackToDefault_WhenNoKeyPresent()
     {
-        var entry = new VoiceSettingsEntry { CleanupBaseUrl = null, OllamaBaseUrl = null };
+        var entry = new VoiceSettingsEntry { VoiceLlmBaseUrl = null, CleanupBaseUrl = null, OllamaBaseUrl = null };
 
-        entry.ToDomain().CleanupBaseUrl.Should().Be("http://localhost:11434");
+        entry.ToDomain().VoiceLlmBaseUrl.Should().Be("http://localhost:11434");
     }
 
     [Fact]
-    public void FromDomain_NeverPopulatesTheLegacyKey()
+    public void ToDomain_MigratesRenamedCleanupModel_WhenNeutralKeyAbsent()
     {
-        var entry = VoiceSettingsEntry.FromDomain(new VoiceSettings { CleanupBaseUrl = "http://x:1" });
+        var entry = new VoiceSettingsEntry { VoiceLlmModel = null, CleanupModel = "qwen2.5:3b-instruct" };
 
-        // Legacy key stays null so it is not written back (JsonIgnore WhenWritingNull), leaving only the neutral key on disk.
+        entry.ToDomain().VoiceLlmModel.Should().Be("qwen2.5:3b-instruct");
+    }
+
+    [Fact]
+    public void ToDomain_ModelFallsBackToTheAdvisedDefault_WhenNoKeyPresent()
+    {
+        var entry = new VoiceSettingsEntry { VoiceLlmModel = null, CleanupModel = null };
+
+        entry.ToDomain().VoiceLlmModel.Should().Be("gemma3:4b");
+    }
+
+    [Fact]
+    public void FromDomain_NeverPopulatesTheLegacyKeys()
+    {
+        var entry = VoiceSettingsEntry.FromDomain(new VoiceSettings { VoiceLlmBaseUrl = "http://x:1", VoiceLlmModel = "m" });
+
+        // Legacy keys stay null so they are not written back (JsonIgnore WhenWritingNull), leaving only the neutral keys on disk.
         entry.OllamaBaseUrl.Should().BeNull();
-        entry.CleanupBaseUrl.Should().Be("http://x:1");
+        entry.CleanupBaseUrl.Should().BeNull();
+        entry.CleanupModel.Should().BeNull();
+        entry.VoiceLlmBaseUrl.Should().Be("http://x:1");
+        entry.VoiceLlmModel.Should().Be("m");
     }
 
     [Fact]
