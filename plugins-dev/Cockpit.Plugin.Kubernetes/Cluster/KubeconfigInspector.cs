@@ -11,6 +11,57 @@ namespace Cockpit.Plugin.Kubernetes.Cluster;
 /// </summary>
 internal static class KubeconfigInspector
 {
+    /// <summary>Expands a leading <c>~</c> to the user's home directory; otherwise returns the trimmed path unchanged.</summary>
+    public static string ExpandPath(string path)
+    {
+        var trimmed = path.Trim();
+        if (trimmed == "~" || trimmed.StartsWith("~/", StringComparison.Ordinal))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return trimmed == "~" ? home : Path.Combine(home, trimmed[2..]);
+        }
+
+        return trimmed;
+    }
+
+    /// <summary>The effective kubeconfig YAML: the file at <paramref name="path"/> (read live, <c>~</c> expanded) if a path is set, otherwise the pasted <paramref name="content"/>. Null when neither yields anything.</summary>
+    public static string? ReadYaml(string? path, string? content)
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            try
+            {
+                var expanded = ExpandPath(path);
+                return File.Exists(expanded) ? File.ReadAllText(expanded) : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(content) ? null : content;
+    }
+
+    /// <summary>The contexts declared in a kubeconfig, and its current-context. Empty on unparseable input (never throws).</summary>
+    public static KubeconfigContexts ListContexts(string kubeconfigYaml)
+    {
+        try
+        {
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(kubeconfigYaml));
+            var config = KubernetesClientConfiguration.LoadKubeConfig(stream);
+            var names = config.Contexts?
+                .Select(context => context.Name)
+                .Where(name => !string.IsNullOrEmpty(name))
+                .ToList() ?? [];
+            return new KubeconfigContexts(names, config.CurrentContext);
+        }
+        catch (Exception)
+        {
+            return new KubeconfigContexts([], null);
+        }
+    }
+
     public static ExecAuthInfo Inspect(string kubeconfigYaml, string? contextName)
     {
         try

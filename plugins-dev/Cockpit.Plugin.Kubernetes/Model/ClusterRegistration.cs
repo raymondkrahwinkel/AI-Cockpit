@@ -10,7 +10,7 @@ namespace Cockpit.Plugin.Kubernetes.Model;
 /// cluster-scoped resource, or exec/port-forward/attach, only happens on a cluster where the operator turned it on.
 /// </para>
 /// </summary>
-/// <param name="Id">Stable id, also the key the kubeconfig is stored under (<c>cluster.{Id}.kubeconfig</c>).</param>
+/// <param name="Id">Stable id, also the key the pasted kubeconfig is stored under (<c>cluster.{Id}.kubeconfig</c>).</param>
 /// <param name="Label">Friendly name shown in prompts and the settings list.</param>
 /// <param name="ContextName">Which kubeconfig context to use; blank means the file's current-context.</param>
 /// <param name="AllowedNamespaces">The namespaces an agent may reach without a per-access consent prompt.</param>
@@ -19,6 +19,7 @@ namespace Cockpit.Plugin.Kubernetes.Model;
 /// <param name="AllowPortForward">Whether <c>port-forward</c> (a tunnel into the cluster) is offered for this cluster. Off by default.</param>
 /// <param name="AllowAttach">Whether <c>attach</c> (attaching to a running container) is offered for this cluster. Off by default.</param>
 /// <param name="UsesExecAuth">Whether the chosen context authenticates via a kubeconfig exec credential plugin (e.g. aws/gke) — connecting then runs an external process, so the operator is warned. Detected when the cluster is saved.</param>
+/// <param name="KubeconfigPath">A kubeconfig file to read live on each connect (e.g. <c>~/.kube/config</c>); blank means use the pasted kubeconfig stored under the secret layer instead. Operator-supplied, never agent input.</param>
 public sealed record ClusterRegistration(
     string Id,
     string Label,
@@ -28,7 +29,8 @@ public sealed record ClusterRegistration(
     bool AllowExec = false,
     bool AllowPortForward = false,
     bool AllowAttach = false,
-    bool UsesExecAuth = false)
+    bool UsesExecAuth = false,
+    string KubeconfigPath = "")
 {
     public bool IsNamespaceAllowed(string @namespace) =>
         AllowedNamespaces.Any(allowed => string.Equals(allowed, @namespace, StringComparison.Ordinal));
