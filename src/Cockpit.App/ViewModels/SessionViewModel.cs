@@ -749,10 +749,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _needsAttention = false;
         _RecomputeStatus();
 
+        var sent = false;
         try
         {
             await _runtime.SendUserMessageAsync(text, images);
-            await _OfferImagesToSinksAsync(images);
+            sent = true;
         }
         catch (Exception ex)
         {
@@ -760,6 +761,14 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             IsBusy = false;
             IsAwaitingResponse = false;
             _RecomputeStatus();
+        }
+
+        // Only once the message is actually out: offer its images to any sink in the background — a slow upload must
+        // not hold up the send or the next queued message, and a sink failure (kept isolated by the registry) must
+        // never surface as a "Send failed" on a message that did send.
+        if (sent)
+        {
+            _ = _OfferImagesToSinksAsync(images);
         }
     }
 
@@ -783,8 +792,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await sinks.NotifyAsync(new SessionImageDispatch(PaneId, attachments));
     }
 
-    private static string _ImageExtension(string mediaType) =>
-        mediaType.Split('/').LastOrDefault() is { Length: > 0 } subtype ? subtype : "png";
+    private static string _ImageExtension(string mediaType)
+    {
+        var subtype = mediaType.Split('/').LastOrDefault() ?? string.Empty;
+        // A compound subtype (image/svg+xml) or one with parameters (…;charset=…) must not leak "+xml"/";…" into
+        // the file name.
+        var clean = subtype.Split('+', ';')[0].Trim();
+
+        return clean.Length > 0 ? clean : "png";
+    }
 
     /// <summary>
     /// Dispatches the next queued message (T8) once a turn frees the session. Fire-and-forget: the
