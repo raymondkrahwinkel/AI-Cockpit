@@ -13,7 +13,7 @@ using Cockpit.Plugin.Kubernetes.Settings;
 namespace Cockpit.Plugin.Kubernetes.Mcp;
 
 /// <summary>
-/// The MCP tools an agent uses to work with a registered cluster (AC-80), exposed as <c>mcp__k8s__*</c>. Every tool
+/// The MCP tools an agent uses to work with a registered cluster (AC-80), exposed as <c>mcp__cockpit-k8s__*</c>. Every tool
 /// that touches a cluster routes through <see cref="ClusterAccessGate"/> first — opening the cluster, the namespace
 /// jail, and (for a change) an always-fresh consent — and only then reaches the kube-apiserver through the
 /// plugin-held client. The agent never sees a kubeconfig; it names a cluster by its label and a resource by its

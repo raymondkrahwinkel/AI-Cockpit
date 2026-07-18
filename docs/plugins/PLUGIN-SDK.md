@@ -587,6 +587,13 @@ public void Initialize(ICockpitHost host)
 
 ## Build, package, install
 
+> **Bump the version only when you publish.** A plugin's `version` (in `plugin.json` and the `PluginMetadata`)
+> names a *released* build, not a work-in-progress. Leave it on the last published number while you iterate in
+> `plugins-dev/` — the dev cockpit loads your plugin by its files, not its version, so raising it mid-development
+> buys nothing and only churns the store's history (a day's worth of debugging should not read as three releases).
+> Raise it once, in the same change that ships the new zip and the `index.json` entry. The source version then
+> always matches what the store carries, which is exactly what the update check compares against.
+
 1. **Build:** `dotnet build -c Release`. The three files that matter are your DLL, its `.deps.json` and
    `plugin.json` — and **none of the shared assemblies**, which is the thing to verify: an Avalonia or
    abstractions DLL in there means a `PackageReference` is missing its `<ExcludeAssets>runtime</ExcludeAssets>`,

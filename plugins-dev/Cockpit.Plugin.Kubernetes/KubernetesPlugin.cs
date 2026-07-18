@@ -10,7 +10,7 @@ namespace Cockpit.Plugin.Kubernetes;
 
 /// <summary>
 /// Kubernetes plugin (AC-80): register clusters and give agents scoped, human-approved access to them through an
-/// mcp__k8s__* server. The plugin talks to the kube-apiserver itself (proxy model) and keeps the credentials, so
+/// mcp__cockpit-k8s__* server. The plugin talks to the kube-apiserver itself (proxy model) and keeps the credentials, so
 /// an agent reaches a cluster only through gated tools — opening a cluster, a namespace outside its allowed list,
 /// and every change all ask the operator first (see <see cref="Security.ClusterAccessGate"/>). This build wires the
 /// cluster-registration settings; the gated MCP tools are added on top of it.
@@ -20,9 +20,9 @@ public sealed class KubernetesPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "kubernetes",
         DisplayName: "Kubernetes",
-        Version: "0.3.1",
+        Version: "0.1.0",
         Author: "Cockpit",
-        Description: "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__k8s__* server. The plugin talks to the cluster itself and keeps the credentials — an agent never gets a kubeconfig. Opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each session (reads included), and every change asks afresh. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster.");
+        Description: "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__cockpit-k8s__* server. The plugin talks to the cluster itself and keeps the credentials — an agent never gets a kubeconfig. Opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each session (reads included), and every change asks afresh. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster.");
 
     private ClusterConnectionFactory? _connections;
     private PortForwardManager? _portForwards;
@@ -42,7 +42,7 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         var tools = new KubernetesMcpTools(settings, gate, connections, portForwards);
 
         host.AddSettings(() => new KubernetesSettingsControl(settings));
-        _ = host.AddMcpEndpoint("k8s", tools, isEnabled: () => settings.McpEnabled);
+        _ = host.AddMcpEndpoint("cockpit-k8s", tools, isEnabled: () => settings.McpEnabled);
 
         // The open tunnels appear in the status bar with an operator-only Kill (AC-82).
         host.AddSupervisedActivityProvider(portForwards);
