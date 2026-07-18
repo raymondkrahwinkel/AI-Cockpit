@@ -31,7 +31,8 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private CancellationTokenSource _playbackCancellation = new();
     private readonly Task _consumerTask;
 
-    // Flipped by both the consumer loop and NotifyPreparing (UI thread), so it is guarded by _activeGate.
+    // Flipped by both the consumer loop and NotifyPreparing/StopAll (UI thread), so all three fields below are
+    // guarded by _activeGate.
     private readonly object _activeGate = new();
     private bool _isPlaybackActive;
 
@@ -39,9 +40,23 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     // read-aloud announces its preparing→speaking boundary again.
     private bool _speakingAnnounced;
 
+    // Bumped by StopAll so a caller preparing a batch can tell a barge-in cancelled it mid-rewrite (see Generation).
+    private int _generation;
+
     public event EventHandler<bool>? PlaybackActiveChanged;
 
     public event EventHandler? SpeakingStarted;
+
+    public int Generation
+    {
+        get
+        {
+            lock (_activeGate)
+            {
+                return _generation;
+            }
+        }
+    }
 
     public VoicePlaybackQueue(ITextToSpeechService textToSpeech, IAudioPlaybackService audioPlayback, ILogger<VoicePlaybackQueue> logger)
     {
@@ -88,6 +103,13 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         previous.Dispose();
         while (_channel.Reader.TryRead(out _))
         {
+        }
+
+        // Bump the generation so a batch still preparing (awaiting the local-LLM rewrite) drops itself instead of
+        // enqueuing over this interrupt once it comes back.
+        lock (_activeGate)
+        {
+            _generation++;
         }
 
         // Clear a "preparing" pill that never reached playback (barge-in during the local-LLM/synth gap).
@@ -145,10 +167,17 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             }
 
             // The first real clip of this window is the preparing→speaking boundary: until now it was synthesizing
-            // in silence, and the overlay should switch from "preparing" to "reading aloud" exactly here.
-            if (!_speakingAnnounced)
+            // in silence, and the overlay should switch from "preparing" to "reading aloud" exactly here. The
+            // check-and-set is atomic under the gate because a UI-thread StopAll can reset the flag concurrently.
+            bool announce;
+            lock (_activeGate)
             {
+                announce = !_speakingAnnounced;
                 _speakingAnnounced = true;
+            }
+
+            if (announce)
+            {
                 SpeakingStarted?.Invoke(this, EventArgs.Empty);
             }
 
@@ -196,12 +225,13 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             }
 
             _isPlaybackActive = active;
-        }
 
-        // Going idle ends the window: the next read-aloud starts preparing again before it speaks.
-        if (!active)
-        {
-            _speakingAnnounced = false;
+            // Going idle ends the window: the next read-aloud starts preparing again before it speaks. Reset under
+            // the same gate that guards the announce check-and-set above.
+            if (!active)
+            {
+                _speakingAnnounced = false;
+            }
         }
 
         PlaybackActiveChanged?.Invoke(this, active);

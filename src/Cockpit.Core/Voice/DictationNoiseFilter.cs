@@ -35,9 +35,12 @@ public static partial class DictationNoiseFilter
         return LeadingPunctuation().Replace(stripped, string.Empty).Trim();
     }
 
-    // A span wrapped in *...*, [...] or (...), not crossing a line break so a stray bracket cannot swallow a whole
-    // paragraph. Whisper's sound-event tags are always short and single-line.
-    [GeneratedRegex(@"\*[^*\r\n]*\*|\[[^\]\r\n]*\]|\([^)\r\n]*\)")]
+    // A span wrapped in *...* or [...] (Whisper only ever uses those for sound events, never for dictated words, so
+    // any content is safe to drop), or a *single-token* parenthesis like "(coughs)"/"(laughs)". The parenthesis arm
+    // is deliberately narrower — a person genuinely speaks multi-word parentheticals ("the result (about ten
+    // percent) is fine"), and those must survive, whereas Whisper's parenthesised cues are single words. None cross a
+    // line break, so a stray bracket cannot swallow a whole paragraph.
+    [GeneratedRegex(@"\*[^*\r\n]*\*|\[[^\]\r\n]*\]|\([^)\s\r\n]+\)")]
     private static partial Regex NonSpeechTag();
 
     // Standalone hesitation fillers, case-insensitive, with drawn-out spellings (um/umm, uh/uhh, hmm/hmmm, …), plus
