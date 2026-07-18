@@ -211,16 +211,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
 
     // The default gap that keeps the CR out of the transcript's ConPTY read (AC-64): a one-shot UI-thread timer.
     private static void _DelayAutoSubmitOnUiThread(Action submit) =>
-        Dispatcher.UIThread.Post(() =>
-        {
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
-            timer.Tick += (_, _) =>
-            {
-                timer.Stop();
-                submit();
-            };
-            timer.Start();
-        });
+        Dispatcher.UIThread.Post(() => DispatcherTimer.RunOnce(submit, TimeSpan.FromMilliseconds(60)));
 
     /// <summary>
     /// Configures the panel with the profile and start defaults chosen in the New-session dialog, then
