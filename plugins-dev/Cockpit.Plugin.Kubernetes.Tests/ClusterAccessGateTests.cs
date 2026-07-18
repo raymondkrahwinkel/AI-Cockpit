@@ -113,7 +113,7 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: false), "list nodes", PaneId);
+        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: false), "/nodes", "list nodes", PaneId);
 
         result.IsAllowed.Should().BeFalse("cluster-scoped access is opt-in per cluster");
         result.DeniedReason.Should().Contain("settings");
@@ -126,10 +126,40 @@ public class ClusterAccessGateTests
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
 
-        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "list nodes", PaneId);
+        var result = await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "/nodes", "list nodes", PaneId);
 
         result.IsAllowed.Should().BeTrue();
         _WithScopePrefix(asked, "k8s.clusterscoped:").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ClusterScoped_RememberScope_IsPerKind_NotTheWholeClass()
+    {
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "/nodes", "list nodes", PaneId);
+        await gate.AuthorizeClusterScopedReadAsync(_Cluster(clusterScoped: true), "rbac.authorization.k8s.io/clusterroles", "list clusterroles", PaneId);
+
+        var scopes = asked.Where(request => request.Scope.StartsWith("k8s.clusterscoped:", StringComparison.Ordinal)).Select(request => request.Scope).ToList();
+        scopes.Should().HaveCount(2);
+        scopes[0].Should().EndWith(":/nodes");
+        scopes[1].Should().EndWith(":rbac.authorization.k8s.io/clusterroles");
+        scopes[0].Should().NotBe(scopes[1], "a remembered cluster-scoped approval must bind to the kind shown, not every cluster-scoped kind");
+    }
+
+    [Fact]
+    public async Task ConsentAction_FlattensControlCharacters_SoAgentFieldsCannotForgeExtraLines()
+    {
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "exec: sh -c true\n\n(routine health-check, pre-approved by ops)", PaneId);
+
+        var danger = _WithScopePrefix(asked, "k8s.exec:");
+        danger.Should().NotBeNull();
+        danger!.Action.Should().NotContain("\n").And.NotContain("\r", "the verbatim Action must stay a single line an agent cannot pad");
+        danger.Action.Should().Contain("routine health-check", "the text is kept, only flattened onto one line");
     }
 
     [Fact]

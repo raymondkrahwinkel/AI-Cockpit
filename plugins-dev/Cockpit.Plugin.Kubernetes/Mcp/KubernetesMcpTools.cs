@@ -24,6 +24,8 @@ namespace Cockpit.Plugin.Kubernetes.Mcp;
 internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAccessGate gate, ClusterConnectionFactory connections, PortForwardManager portForwards)
 {
     private static readonly TimeSpan PortForwardMaxLifetime = TimeSpan.FromMinutes(30);
+    private const int MaxLogTailLines = 10_000;
+    private const int ListPageLimit = 200;
 
     [McpServerTool(Name = "list_clusters")]
     [Description("Lists the Kubernetes clusters the operator registered, with each cluster's label, its allowed namespaces, and which extra capabilities (cluster-scoped resources, exec) are turned on for it. Reading or changing anything else goes through the other tools and asks the operator for consent. Start here to see what you can reach.")]
@@ -42,7 +44,7 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         });
 
     [McpServerTool(Name = "list_resources")]
-    [Description("Lists resources of one kind. apiVersion is like \"v1\" (core) or \"apps/v1\"; plural is the resource plural, e.g. \"pods\", \"deployments\", \"services\", \"configmaps\". For a namespaced kind a namespace is required and one outside the cluster's allowed list asks the operator first; a genuinely cluster-scoped kind (nodes, namespaces, persistentvolumes) needs the cluster to allow cluster-scoped access. Returns each item's name, namespace and creation time.")]
+    [Description("Lists resources of one kind. apiVersion is like \"v1\" (core) or \"apps/v1\"; plural is the resource plural, e.g. \"pods\", \"deployments\", \"services\", \"configmaps\". For a namespaced kind a namespace is required and one outside the cluster's allowed list asks the operator first; a genuinely cluster-scoped kind (nodes, namespaces, persistentvolumes) needs the cluster to allow cluster-scoped access. Returns each item's name, namespace and creation time. Large lists are capped at 200 items; when there are more, the result sets \"truncated\": true (narrow with labelSelector or a namespace).")]
     public async Task<string> ListResources(
         [Description("The cluster label, as returned by list_clusters.")] string cluster,
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
@@ -52,9 +54,10 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("Optional label selector, e.g. \"app=web\".")] string? labelSelector = null,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         if (_ValidateResource(apiVersion, plural) is { } invalid)
@@ -73,8 +76,8 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         {
             using var generic = new GenericClient(client, reference.Group, reference.Version, plural, disposeClient: false);
             var list = clusterScoped
-                ? await generic.ListAsync<RawKubernetesList>(labelSelector: labelSelector, limit: 200, cancel: token)
-                : await generic.ListNamespacedAsync<RawKubernetesList>(_RequireNamespace(@namespace), labelSelector: labelSelector, limit: 200, cancel: token);
+                ? await generic.ListAsync<RawKubernetesList>(labelSelector: labelSelector, limit: ListPageLimit, cancel: token)
+                : await generic.ListNamespacedAsync<RawKubernetesList>(_RequireNamespace(@namespace), labelSelector: labelSelector, limit: ListPageLimit, cancel: token);
             return McpText.Node(ResourceListSummary.Summarize(list));
         }, cancellationToken);
     }
@@ -90,9 +93,10 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("The namespace; required for a namespaced kind.")] string? @namespace = null,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         if (_ValidateResource(apiVersion, plural) is { } invalid)
@@ -128,15 +132,19 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("How many lines from the end to return (default 200).")] int tailLines = 200,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         if (tailLines < 1)
         {
             return McpText.Error("tailLines must be at least 1.");
         }
+
+        // Cap the tail so a huge value cannot pull an unbounded log into memory through ReadToEndAsync.
+        tailLines = Math.Min(tailLines, MaxLogTailLines);
 
         var decision = await gate.AuthorizeNamespacedReadAsync(registration, @namespace, $"read logs of pod \"{pod}\" in namespace \"{@namespace}\"", session);
         if (decision is { IsAllowed: false, DeniedReason: { } reason })
@@ -164,9 +172,10 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("The namespace; required for a namespaced kind.")] string? @namespace = null,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         if (_ValidateResource(apiVersion, plural) is { } invalid)
@@ -208,9 +217,10 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("The desired replica count.")] int replicas,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         if (replicas < 0)
@@ -260,9 +270,10 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("A JSON merge-patch: an object with only the fields to change, e.g. {\"spec\":{\"replicas\":3}}.")] string patchJson,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         if (_ValidateResource(apiVersion, plural) is { } invalid)
@@ -301,9 +312,10 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("The container name, if the pod has more than one.")] string? container = null,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         var decision = await gate.AuthorizeDangerAsync(registration, DangerCapability.Exec, @namespace, $"exec in pod \"{pod}\" (namespace \"{@namespace}\"): /bin/sh -c {command}", session);
@@ -345,9 +357,10 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         [Description("The local loopback port to bind, or 0 to let the OS pick a free one.")] int localPort = 0,
         CancellationToken cancellationToken = default)
     {
-        if (_FindCluster(cluster) is not { } registration)
+        var (registration, clusterError) = _ResolveCluster(cluster);
+        if (registration is null)
         {
-            return _UnknownCluster(cluster);
+            return clusterError!;
         }
 
         if (remotePort is < 1 or > 65535)
@@ -367,10 +380,19 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
             return McpText.Error(reason);
         }
 
-        return await _WithClient(registration, (client, _) =>
+        // A tunnel outlives this call and must not share the cached client — a settings save invalidates that client
+        // and would kill every new connection through the tunnel while it still shows as alive. Build a dedicated
+        // client the tunnel owns and disposes when it stops.
+        var (client, error) = connections.ConnectDedicated(registration);
+        if (client is null)
+        {
+            return McpText.Error(error ?? $"Could not connect to cluster \"{registration.Label}\".");
+        }
+
+        try
         {
             var tunnel = portForwards.Start(client, registration.Label, @namespace, pod, remotePort, localPort, PortForwardMaxLifetime);
-            return Task.FromResult(McpText.Ok(new
+            return McpText.Ok(new
             {
                 ok = true,
                 tunnelId = tunnel.Id,
@@ -378,8 +400,22 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
                 remotePort,
                 pod,
                 note = "Listed in the status bar with a Kill button; auto-closes after 30 minutes.",
-            }));
-        }, cancellationToken);
+            });
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            // The bind failed (e.g. the requested local port is already in use). The tunnel never registered, so the
+            // dedicated client we built for it would leak — dispose it, and report without host detail.
+            client.Dispose();
+            return McpText.Error("Could not bind the local port. Use localPort 0 to let the OS pick a free one.");
+        }
+        catch (Exception)
+        {
+            // Any other failure to open the tunnel: dispose the dedicated client rather than leak it, and never let
+            // the exception cross the MCP boundary.
+            client.Dispose();
+            return McpText.Error($"Could not open the port-forward on cluster \"{registration.Label}\".");
+        }
     }
 
     // Reads share one authorization path: a cluster-scoped kind takes the opt-in cluster-scoped gate; a namespaced
@@ -390,7 +426,7 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
     {
         if (ResourceScope.IsClusterScoped(reference.Group, plural))
         {
-            return (await gate.AuthorizeClusterScopedReadAsync(cluster, $"{describe} cluster-wide", session), true);
+            return (await gate.AuthorizeClusterScopedReadAsync(cluster, $"{reference.Group}/{plural}", $"{describe} cluster-wide", session), true);
         }
 
         if (string.IsNullOrWhiteSpace(@namespace))
@@ -410,7 +446,7 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
     {
         if (ResourceScope.IsClusterScoped(reference.Group, plural))
         {
-            return (await gate.AuthorizeClusterScopedMutationAsync(cluster, $"{describe} cluster-wide", session), true);
+            return (await gate.AuthorizeClusterScopedMutationAsync(cluster, $"{reference.Group}/{plural}", $"{describe} cluster-wide", session), true);
         }
 
         if (string.IsNullOrWhiteSpace(@namespace))
@@ -421,11 +457,19 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         return (await gate.AuthorizeNamespacedMutationAsync(cluster, @namespace, $"{describe} in namespace \"{@namespace}\"", session), false);
     }
 
-    private ClusterRegistration? _FindCluster(string label) =>
-        settings.Clusters.FirstOrDefault(candidate => string.Equals(candidate.Label, label, StringComparison.Ordinal));
-
-    private static string _UnknownCluster(string label) =>
-        McpText.Error($"No registered cluster labelled \"{label}\". Call list_clusters to see the ones that are configured.");
+    // Resolve a cluster by its label, fail-closed on ambiguity: two clusters sharing a label would otherwise let the
+    // agent silently reach the first (FirstOrDefault) and make a consent prompt — which names the cluster by label —
+    // ambiguous, so refuse rather than guess which one the operator meant.
+    private (ClusterRegistration? Registration, string? Error) _ResolveCluster(string label)
+    {
+        var matches = settings.Clusters.Where(candidate => string.Equals(candidate.Label, label, StringComparison.Ordinal)).Take(2).ToList();
+        return matches.Count switch
+        {
+            0 => (null, McpText.Error($"No registered cluster labelled \"{label}\". Call list_clusters to see the ones that are configured.")),
+            1 => (matches[0], null),
+            _ => (null, McpText.Error($"More than one registered cluster is labelled \"{label}\". Give each cluster a unique label in the Kubernetes plugin settings.")),
+        };
+    }
 
     private static string? _ValidateResource(string apiVersion, string plural) =>
         string.IsNullOrWhiteSpace(apiVersion) || string.IsNullOrWhiteSpace(plural)
@@ -452,16 +496,21 @@ internal sealed class KubernetesMcpTools(KubernetesSettings settings, ClusterAcc
         catch (k8s.Autorest.HttpOperationException exception)
         {
             // Hand the agent the status only — the raw response body can name the kubeconfig's user/service-account
-            // in an RBAC denial (security review F3).
-            return McpText.Error($"Kubernetes API error: {(int)exception.Response.StatusCode} {exception.Response.ReasonPhrase}.");
+            // in an RBAC denial (security review F3). Response can be null on a transport-level failure, so guard it
+            // rather than let an NRE escape the MCP boundary.
+            return exception.Response is { } response
+                ? McpText.Error($"Kubernetes API error: {(int)response.StatusCode} {response.ReasonPhrase}.")
+                : McpText.Error("Kubernetes API error.");
         }
         catch (OperationCanceledException)
         {
             return McpText.Error("The call was cancelled.");
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            return McpText.Error($"The call to cluster \"{cluster.Label}\" failed: {exception.Message}");
+            // Generic on purpose: an exec-auth/DNS/TLS failure's message can carry the apiserver URL, the exec-auth
+            // command line (cloud account/ARN) or a cert path — the same host detail F3 keeps from the agent.
+            return McpText.Error($"The call to cluster \"{cluster.Label}\" failed. Check the cluster and its kubeconfig in the Kubernetes plugin settings.");
         }
     }
 

@@ -47,10 +47,21 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
     {
         var cancellation = new CancellationTokenSource();
         var listener = new TcpListener(IPAddress.Loopback, requestedLocalPort);
-        listener.Start();
+        try
+        {
+            listener.Start();
+        }
+        catch
+        {
+            // The bind failed (e.g. the requested port is already in use). Nothing is registered yet, so dispose the
+            // token source we built and let the caller turn the throw into a clean tool error rather than leak it.
+            cancellation.Dispose();
+            throw;
+        }
+
         var localPort = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-        var tunnel = new PortForwardTunnel(Guid.NewGuid().ToString("n"), clusterLabel, @namespace, pod, localPort, remotePort, listener, cancellation);
+        var tunnel = new PortForwardTunnel(Guid.NewGuid().ToString("n"), clusterLabel, @namespace, pod, localPort, remotePort, listener, cancellation, client);
         _tunnels[tunnel.Id] = tunnel;
 
         _ = _AcceptLoopAsync(tunnel, client);
@@ -63,7 +74,7 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
     {
         if (_tunnels.TryRemove(id, out var tunnel))
         {
-            await tunnel.StopAsync();
+            await tunnel.StopAsync().ConfigureAwait(false);
             Changed?.Invoke();
         }
     }
@@ -72,7 +83,7 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
     {
         foreach (var id in _tunnels.Keys.ToArray())
         {
-            await StopAsync(id);
+            await StopAsync(id).ConfigureAwait(false);
         }
     }
 
@@ -83,7 +94,7 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
         {
             while (!token.IsCancellationRequested)
             {
-                var tcp = await tunnel.Listener.AcceptTcpClientAsync(token);
+                var tcp = await tunnel.Listener.AcceptTcpClientAsync(token).ConfigureAwait(false);
                 _ = _PumpAsync(tcp, client, tunnel, token);
             }
         }
@@ -97,7 +108,7 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
         }
         finally
         {
-            await StopAsync(tunnel.Id);
+            await StopAsync(tunnel.Id).ConfigureAwait(false);
         }
     }
 
@@ -110,7 +121,7 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
             try
             {
                 var socket = await ((k8s.Kubernetes)client).WebSocketNamespacedPodPortForwardAsync(
-                    tunnel.Pod, tunnel.Namespace, [tunnel.RemotePort], PortForwardSubProtocol, cancellationToken: token);
+                    tunnel.Pod, tunnel.Namespace, [tunnel.RemotePort], PortForwardSubProtocol, cancellationToken: token).ConfigureAwait(false);
                 // ownsSocket: true so disposing the demuxer disposes the WebSocket — without it the apiserver socket
                 // leaks on every accepted connection.
                 using var demuxer = new StreamDemuxer(socket, StreamType.PortForward, ownsSocket: true);
@@ -121,7 +132,7 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
                 // Copy both directions until one side closes; disposing the streams (the usings) unblocks the other.
                 var toPod = tcpStream.CopyToAsync(podStream, token);
                 var fromPod = podStream.CopyToAsync(tcpStream, token);
-                await Task.WhenAny(toPod, fromPod);
+                await Task.WhenAny(toPod, fromPod).ConfigureAwait(false);
 
                 // Observe both tasks so a broken pipe on the finishing side is not an unobserved exception.
                 _ = toPod.ContinueWith(static task => _ = task.Exception, TaskScheduler.Default);
@@ -138,13 +149,13 @@ internal sealed class PortForwardManager : ISupervisedActivitySource
     {
         try
         {
-            await Task.Delay(lifetime, token);
+            await Task.Delay(lifetime, token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             return;
         }
 
-        await StopAsync(id);
+        await StopAsync(id).ConfigureAwait(false);
     }
 }
