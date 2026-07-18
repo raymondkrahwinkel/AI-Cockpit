@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -13,18 +14,33 @@ public static class PluginHash
     /// consent when the entry DLL changed but not when a sibling <em>dependency</em> DLL was swapped — and those
     /// are loaded in-process with full trust (<c>PluginLoadContext</c> resolves them from the folder), so a tamper
     /// or a store update that kept the entry byte-identical ran unconsented code. Each file contributes its
-    /// forward-slash relative path and its own SHA-256; the lines are ordered by path so the pin is independent of
-    /// enumeration order and platform separator, then hashed. Any changed byte in any file — or a moved/renamed
-    /// file — changes the pin, so the consent prompt returns. Pure: the caller does the file IO.
+    /// forward-slash relative path and its own SHA-256, ordered by path so the pin is independent of enumeration
+    /// order and platform separator. Any changed byte in any file — or a moved/renamed file — changes the pin, so
+    /// the consent prompt returns. Pure: the caller does the file IO.
     /// </summary>
     public static string ComputeClosure(IEnumerable<PluginClosureFile> files)
     {
-        var lines = files
+        using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var file in files
             .Select(file => (Path: file.RelativePath.Replace('\\', '/'), file.Sha256))
-            .OrderBy(file => file.Path, StringComparer.Ordinal)
-            .Select(file => $"{file.Sha256}  {file.Path}");
+            .OrderBy(file => file.Path, StringComparer.Ordinal))
+        {
+            // Length-prefix each field rather than joining with a delimiter: a Unix path may contain any byte but
+            // '/' and NUL — a newline included — so a crafted filename could otherwise forge or merge entries and
+            // collide two different closures against the pin. Framed lengths make the encoding unambiguous.
+            _AppendFramed(digest, Encoding.UTF8.GetBytes(file.Path));
+            _AppendFramed(digest, Encoding.UTF8.GetBytes(file.Sha256));
+        }
 
-        return Compute(Encoding.UTF8.GetBytes(string.Join('\n', lines)));
+        return Convert.ToHexStringLower(digest.GetHashAndReset());
+    }
+
+    private static void _AppendFramed(IncrementalHash digest, byte[] data)
+    {
+        Span<byte> length = stackalloc byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32LittleEndian(length, data.Length);
+        digest.AppendData(length);
+        digest.AppendData(data);
     }
 }
 
