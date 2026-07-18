@@ -2,12 +2,14 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -23,6 +25,10 @@ namespace Cockpit.App.ViewModels;
 public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly ISessionManager? _sessionManager;
+
+    // Optional (null at design time / in tests): the host routes a message's images to any plugin that registered
+    // a sink, so a tracker can attach them to the issue this session tracks (AC-14).
+    private readonly ISessionImageSinkRegistry? _imageSinkRegistry;
 
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
     // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
@@ -284,9 +290,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null)
+        ITranscriptCleanupService? cleanupService = null,
+        ISessionImageSinkRegistry? imageSinkRegistry = null)
     {
         _sessionManager = sessionManager;
+        _imageSinkRegistry = imageSinkRegistry;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
     }
@@ -744,6 +752,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         try
         {
             await _runtime.SendUserMessageAsync(text, images);
+            await _OfferImagesToSinksAsync(images);
         }
         catch (Exception ex)
         {
@@ -753,6 +762,29 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             _RecomputeStatus();
         }
     }
+
+    // Hands the message's images to any plugin that registered a sink (AC-14), so a tracker can attach them to the
+    // issue this session tracks. Provider-agnostic and fail-soft (the registry isolates a sink that throws), and a
+    // no-op with no images or no registry — this session's message has already been sent either way.
+    private async Task _OfferImagesToSinksAsync(IReadOnlyList<Core.Sessions.ImageAttachment> images)
+    {
+        if (images.Count == 0 || _imageSinkRegistry is not { } sinks)
+        {
+            return;
+        }
+
+        var attachments = images
+            .Select((image, index) => new SessionImageAttachment(
+                image.MediaType,
+                image.Base64Data,
+                $"pasted-image-{index + 1}.{_ImageExtension(image.MediaType)}"))
+            .ToList();
+
+        await sinks.NotifyAsync(new SessionImageDispatch(PaneId, attachments));
+    }
+
+    private static string _ImageExtension(string mediaType) =>
+        mediaType.Split('/').LastOrDefault() is { Length: > 0 } subtype ? subtype : "png";
 
     /// <summary>
     /// Dispatches the next queued message (T8) once a turn frees the session. Fire-and-forget: the
