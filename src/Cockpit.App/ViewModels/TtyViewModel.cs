@@ -143,6 +143,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private double? _sevenDayUsedPercent;
 
+    /// <summary>When the five-hour / weekly window rolls over (AC-37: shown in the usage-pill hover); null until the provider reports it.</summary>
+    [ObservableProperty]
+    private DateTimeOffset? _fiveHourResetsAt;
+
+    /// <inheritdoc cref="FiveHourResetsAt"/>
+    [ObservableProperty]
+    private DateTimeOffset? _sevenDayResetsAt;
+
     /// <summary>The whole story on hover, including when each window rolls over — which is the thing a bar cannot say.</summary>
     [ObservableProperty]
     private string _limitsTooltip = string.Empty;
@@ -584,6 +592,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                                 ContextUsedPercent = limits.ContextUsedPercent;
                                 FiveHourUsedPercent = limits.FiveHourUsedPercent;
                                 SevenDayUsedPercent = limits.SevenDayUsedPercent;
+                                FiveHourResetsAt = limits.FiveHourResetsAt;
+                                SevenDayResetsAt = limits.SevenDayResetsAt;
                                 LimitsTooltip = DescribeLimits(limits);
                             });
                         }
