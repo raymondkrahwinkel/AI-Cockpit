@@ -146,6 +146,19 @@ public class TtyActivityStatusTrackerTests
     }
 
     [Fact]
+    public void OnAlive_AfterASafetyTimeoutDone_RecoversToBusyOnRenewedOutput()
+    {
+        // A busy turn that decayed to Done via the safety timeout is not genuinely finished (its last activity is
+        // still Busy), so renewed pty output means it is alive again and recovers to Busy — an alive session should
+        // read Busy. Contrast a TurnComplete Done, which stays Done (OnAlive_AfterATurnCompleted_...).
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout);
+        tracker.OnActivity(SessionActivity.Busy, T0);
+        tracker.Poll(T0 + SafetyTimeout).Should().Be(SessionStatus.Done);
+
+        tracker.OnAlive(T0 + SafetyTimeout + TimeSpan.FromSeconds(1)).Should().Be(SessionStatus.Busy);
+    }
+
+    [Fact]
     public void OnAlive_ThatStopsComing_LetsTheTurnFallToDone()
     {
         // The safety net is intact: once the pty goes truly silent (no output, no keep-alive), the busy turn still
