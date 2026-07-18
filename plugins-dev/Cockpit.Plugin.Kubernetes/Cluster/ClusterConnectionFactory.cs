@@ -28,17 +28,35 @@ internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : ID
             return (cached, null);
         }
 
-        var kubeconfig = settings.GetKubeconfig(cluster.Id);
-        if (kubeconfig is null)
-        {
-            return (null, $"No kubeconfig is stored for cluster \"{cluster.Label}\". Add one in the Kubernetes plugin settings.");
-        }
-
+        var context = string.IsNullOrWhiteSpace(cluster.ContextName) ? null : cluster.ContextName;
         try
         {
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(kubeconfig));
-            var context = string.IsNullOrWhiteSpace(cluster.ContextName) ? null : cluster.ContextName;
-            var config = KubernetesClientConfiguration.BuildConfigFromConfigFile(stream, currentContext: context);
+            KubernetesClientConfiguration config;
+            if (!string.IsNullOrWhiteSpace(cluster.KubeconfigPath))
+            {
+                // Path model: read the file live (so ~/.kube/config changes and exec-auth token refreshes are picked
+                // up), letting the client resolve relative cert paths against the file's own directory.
+                var path = KubeconfigInspector.ExpandPath(cluster.KubeconfigPath);
+                if (!File.Exists(path))
+                {
+                    // Label only — the absolute path is host detail the agent should not see (it names the user/home).
+                    return (null, $"The kubeconfig for cluster \"{cluster.Label}\" is not available. Check its file path in the Kubernetes plugin settings.");
+                }
+
+                config = KubernetesClientConfiguration.BuildConfigFromConfigFile(new FileInfo(path), currentContext: context);
+            }
+            else
+            {
+                var kubeconfig = settings.GetKubeconfig(cluster.Id);
+                if (kubeconfig is null)
+                {
+                    return (null, $"No kubeconfig is set for cluster \"{cluster.Label}\". Add a file path or paste one in the Kubernetes plugin settings.");
+                }
+
+                using var stream = new MemoryStream(Encoding.UTF8.GetBytes(kubeconfig));
+                config = KubernetesClientConfiguration.BuildConfigFromConfigFile(stream, currentContext: context);
+            }
+
             var client = new k8s.Kubernetes(config);
 
             // Two calls racing on the same not-yet-cached cluster both build a client (each owning an HttpClient);
@@ -51,9 +69,10 @@ internal sealed class ClusterConnectionFactory(KubernetesSettings settings) : ID
 
             return (winner, null);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            return (null, $"Could not build a client for cluster \"{cluster.Label}\": {exception.Message}");
+            // Label only — a build/parse failure message can echo the file path or its contents to the agent.
+            return (null, $"Could not connect to cluster \"{cluster.Label}\". Check its kubeconfig in the Kubernetes plugin settings.");
         }
     }
 

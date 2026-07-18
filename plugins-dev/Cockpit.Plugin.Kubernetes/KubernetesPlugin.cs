@@ -20,7 +20,7 @@ public sealed class KubernetesPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "kubernetes",
         DisplayName: "Kubernetes",
-        Version: "0.2.0",
+        Version: "0.3.0",
         Author: "Cockpit",
         Description: "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__k8s__* server. The plugin talks to the cluster itself and keeps the credentials — an agent never gets a kubeconfig. Opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each session (reads included), and every change asks afresh. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster.");
 

@@ -1,11 +1,11 @@
 {
   "id": "kubernetes",
   "name": "Kubernetes",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "entryAssembly": "Cockpit.Plugin.Kubernetes.dll",
   "entryType": "Cockpit.Plugin.Kubernetes.KubernetesPlugin",
   "abstractionsVersion": 1,
   "minHostVersion": "0.3.0",
-  "description": "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__k8s__* server. The plugin talks to the cluster itself (via the official Kubernetes client) and keeps the credentials — an agent never gets a kubeconfig. Every call is gated: opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each time (reads included), and every change asks afresh and is never remembered. Cluster-scoped resources, exec and port-forward are off until you turn them on per cluster. A port-forward tunnel shows in the status bar with an operator-only Kill and auto-closes. Configure clusters in the plugin settings; the kubeconfig is stored under the secret layer.",
+  "description": "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__k8s__* server. The plugin talks to the cluster itself (via the official Kubernetes client) and keeps the credentials — an agent never gets a kubeconfig. Every call is gated: opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each time (reads included), and every change asks afresh and is never remembered. Cluster-scoped resources, exec and port-forward are off until you turn them on per cluster. A port-forward tunnel shows in the status bar with an operator-only Kill and auto-closes. Configure clusters in the plugin settings: point at a kubeconfig file (e.g. ~/.kube/config, read live) and pick a context from it, or paste a kubeconfig which is stored under the secret layer.",
   "author": "Cockpit"
 }

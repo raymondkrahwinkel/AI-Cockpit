@@ -95,14 +95,21 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
             }
 
             var pasted = row.KubeconfigInput.Trim();
-            if (pasted.Length > 0)
+            if (!string.IsNullOrEmpty(registration.KubeconfigPath))
+            {
+                // The path model owns the source — drop any stored secret so a later cleared path cannot silently
+                // revive a stale kubeconfig.
+                _settings.ClearKubeconfig(row.Id);
+            }
+            else if (pasted.Length > 0)
             {
                 _settings.SetKubeconfig(row.Id, pasted);
             }
 
-            // Detect exec-auth on the effective kubeconfig (the pasted one, or the one already stored) so the row
-            // can warn that connecting will run an external process.
-            var effectiveKubeconfig = pasted.Length > 0 ? pasted : _settings.GetKubeconfig(row.Id);
+            // Detect exec-auth on the effective kubeconfig (the file at the path, or the pasted/stored content) so
+            // the row can warn that connecting will run an external process.
+            var content = pasted.Length > 0 ? pasted : _settings.GetKubeconfig(row.Id);
+            var effectiveKubeconfig = KubeconfigInspector.ReadYaml(registration.KubeconfigPath, content);
             if (effectiveKubeconfig is { Length: > 0 })
             {
                 registration = registration with { UsesExecAuth = KubeconfigInspector.Inspect(effectiveKubeconfig, registration.ContextName).UsesExecAuth };
@@ -111,10 +118,12 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
             registrations.Add(registration);
         }
 
-        var keptIds = kept.Select(row => row.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var removedId in _originalClusterIds.Where(id => !keptIds.Contains(id)))
+        // Clear the stored kubeconfig of any cluster that is no longer saved — removed, or its label cleared so it
+        // was dropped above — so an orphaned secret does not linger.
+        var savedIds = registrations.Select(registration => registration.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var goneId in _originalClusterIds.Where(id => !savedIds.Contains(id)))
         {
-            _settings.ClearKubeconfig(removedId);
+            _settings.ClearKubeconfig(goneId);
         }
 
         _settings.Clusters = registrations;
