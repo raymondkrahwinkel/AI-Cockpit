@@ -190,8 +190,37 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Raw bytes, no cleanup — the terminal has no input box to proofread in, so the transcript goes straight to the pty like a typed keystroke.</summary>
     protected override void OnVoiceTextReady(string text) => VoiceTranscriptReady?.Invoke(text);
 
-    /// <summary>Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends after typing — submits the just-injected transcript to the interactive claude TUI.</summary>
-    protected override void OnVoiceSubmitRequested() => VoiceTranscriptReady?.Invoke("\r");
+    /// <summary>
+    /// Auto-submit: writes a carriage return into the pty, the same byte a physical Enter sends after typing —
+    /// submits the just-injected transcript to the interactive claude TUI.
+    /// <para>
+    /// The CR is sent a short beat after the transcript rather than immediately (AC-64). On Windows, ConPTY
+    /// coalesces two back-to-back writes — the transcript text, then this CR — into one read, and the TUI folds the
+    /// CR into the prompt as a literal newline (a stray □) instead of registering a discrete Enter, so the text is
+    /// typed but never sent. A ~60 ms gap (well under the perception threshold) puts the CR in its own pty read so it
+    /// lands as a real Enter on every platform. Scheduled on the UI thread, so it is robust whether the request came
+    /// from push-to-talk or open-mic.
+    /// </para>
+    /// </summary>
+    protected override void OnVoiceSubmitRequested() => _scheduleAutoSubmit(() => VoiceTranscriptReady?.Invoke("\r"));
+
+    private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
+
+    /// <summary>Test seam (AC-64): run the auto-submit action inline instead of after the ~60 ms UI-thread gap, so the transcript-then-CR ordering is assertable without a real timer.</summary>
+    internal void SetAutoSubmitScheduler(Action<Action> scheduler) => _scheduleAutoSubmit = scheduler;
+
+    // The default gap that keeps the CR out of the transcript's ConPTY read (AC-64): a one-shot UI-thread timer.
+    private static void _DelayAutoSubmitOnUiThread(Action submit) =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(60) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                submit();
+            };
+            timer.Start();
+        });
 
     /// <summary>
     /// Configures the panel with the profile and start defaults chosen in the New-session dialog, then
