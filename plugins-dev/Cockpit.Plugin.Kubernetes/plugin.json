@@ -1,0 +1,11 @@
+{
+  "id": "kubernetes",
+  "name": "Kubernetes",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.Kubernetes.dll",
+  "entryType": "Cockpit.Plugin.Kubernetes.KubernetesPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "0.1.0",
+  "description": "Register Kubernetes clusters and give agents scoped, human-approved access to them through an mcp__k8s__* server. The plugin talks to the cluster itself (via the official Kubernetes client) and keeps the credentials — an agent never gets a kubeconfig. Every call is gated: opening a cluster asks for consent, a namespace outside the cluster's allowed list asks each time (reads included), and every change asks afresh and is never remembered. Cluster-scoped resources and exec/port-forward/attach are off until you turn them on per cluster. Configure clusters in the plugin settings; the kubeconfig is stored under the secret layer.",
+  "author": "Cockpit"
+}
