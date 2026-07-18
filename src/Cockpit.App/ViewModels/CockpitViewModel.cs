@@ -2061,7 +2061,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ShortcutAction.NewSession => NewSessionCommand,
             ShortcutAction.ManageProfiles => ManageProfilesCommand,
             ShortcutAction.McpServers => OpenMcpServersCommand,
-            ShortcutAction.PluginStore => Plugins.OpenStoreDialogCommand,
+            ShortcutAction.PluginStore => OpenPluginStoreCommand,
             ShortcutAction.Options => OptionsCommand,
             ShortcutAction.About => AboutCommand,
             ShortcutAction.ToggleZoom => ToggleZoomCommand,
