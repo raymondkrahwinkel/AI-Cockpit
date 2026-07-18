@@ -254,7 +254,10 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         try
         {
             var session = _cockpit.SelectedSession;
-            if (session is null)
+            // Nothing to do without a session, or when the utterance filtered down to nothing (a throat-clear or a
+            // bare "um" the STT noise filter removed) — injecting empty text, and auto-submitting it, is exactly
+            // what "have a normal conversation" must not do.
+            if (session is null || string.IsNullOrWhiteSpace(rawText))
             {
                 return;
             }
