@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -33,6 +34,12 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     private bool _wired;
 
+    // Finished utterances wait here to be injected one at a time, in the order they were spoken. Without this,
+    // each injection was fire-and-forget and its STT-cleanup call ran concurrently, so a shorter utterance's
+    // faster cleanup could overtake a longer one spoken before it and land out of order.
+    private readonly Channel<string> _injections =
+        Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true });
+
     /// <summary>Whether read-aloud is playing right now — the only time a loud microphone means anything to this coordinator.</summary>
     private bool _isPlaying;
 
@@ -62,6 +69,10 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         // dictation ever being enabled (the per-session toggle, the Options "Test" button), and its "speaking" pill
         // must still show. Barge-in (pausing the mic) is gated on actually listening inside the handler.
         _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
+
+        // One consumer, drains the injection queue in order. Idle until an utterance arrives, so it costs nothing
+        // when open-mic is off (and touches no dispatcher in tests, which never enqueue through it).
+        _ = _ConsumeInjectionsAsync();
     }
 
     /// <summary>True once voice is enabled — open-mic needs the mic pipeline, so the toggle is disabled until then.</summary>
@@ -239,8 +250,36 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         }
     }
 
-    private void _OnUtteranceTranscribed(object? sender, string rawText) =>
-        Dispatcher.UIThread.Post(() => _ = InjectUtteranceAsync(rawText));
+    // Queue rather than inject inline: the injection (STT cleanup + inject) is awaited one at a time by the
+    // consumer, so utterances land in spoken order.
+    private void _OnUtteranceTranscribed(object? sender, string rawText) => _injections.Writer.TryWrite(rawText);
+
+    private async Task _ConsumeInjectionsAsync()
+    {
+        await foreach (var rawText in _injections.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            // Inject on the UI thread and wait for it to finish before taking the next, so a shorter utterance's
+            // faster cleanup can never overtake a longer one spoken before it.
+            var done = new TaskCompletionSource();
+            Dispatcher.UIThread.Post(async () =>
+            {
+                try
+                {
+                    await InjectUtteranceAsync(rawText);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Voice injection failed for a dictated utterance; skipping it.");
+                }
+                finally
+                {
+                    done.TrySetResult();
+                }
+            });
+
+            await done.Task.ConfigureAwait(false);
+        }
+    }
 
     /// <summary>Test seam: the UI-thread logic that cleans (for SDK sessions) and injects an utterance into the selected session.</summary>
     /// <remarks>
