@@ -35,7 +35,13 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
     private readonly object _activeGate = new();
     private bool _isPlaybackActive;
 
+    // Whether SpeakingStarted has fired for the current active window — reset when it goes idle, so the next
+    // read-aloud announces its preparing→speaking boundary again.
+    private bool _speakingAnnounced;
+
     public event EventHandler<bool>? PlaybackActiveChanged;
+
+    public event EventHandler? SpeakingStarted;
 
     public VoicePlaybackQueue(ITextToSpeechService textToSpeech, IAudioPlaybackService audioPlayback, ILogger<VoicePlaybackQueue> logger)
     {
@@ -138,6 +144,14 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
                 continue;
             }
 
+            // The first real clip of this window is the preparing→speaking boundary: until now it was synthesizing
+            // in silence, and the overlay should switch from "preparing" to "reading aloud" exactly here.
+            if (!_speakingAnnounced)
+            {
+                _speakingAnnounced = true;
+                SpeakingStarted?.Invoke(this, EventArgs.Empty);
+            }
+
             try
             {
                 var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
@@ -182,6 +196,12 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             }
 
             _isPlaybackActive = active;
+        }
+
+        // Going idle ends the window: the next read-aloud starts preparing again before it speaks.
+        if (!active)
+        {
+            _speakingAnnounced = false;
         }
 
         PlaybackActiveChanged?.Invoke(this, active);
