@@ -250,8 +250,11 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     {
         // Set the allow-list first, then the ceiling — the ceiling being non-null is what arms the gate in
         // RequestApprovalAsync, so the list it reads is already in place by the time a decision consults it.
+        // Coerce a null ceiling to empty (not null): a caller that asked for the gate must always get it armed —
+        // an empty ceiling grades as the most restrictive (read-only only), never "unarmed" (which would fall
+        // through to a prompt that hangs a headless session).
         _delegatedGateAllowList = new HashSet<string>(allowedTools, StringComparer.Ordinal);
-        _delegatedGateCeiling = ceiling;
+        _delegatedGateCeiling = ceiling ?? string.Empty;
         return Task.CompletedTask;
     }
 

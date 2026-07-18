@@ -160,6 +160,23 @@ public class DelegationGuardTests
     }
 
     [Fact]
+    public async Task StartedTask_WithoutAutoApprove_UsesTheProfilesDefaultCeiling()
+    {
+        // The default target carries the default ceiling (acceptEdits) and no allow-list; the gate must be armed
+        // with exactly that, so the common no-config case grades tool calls rather than hanging or allowing all.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var service = _ServiceWith(driver, _Target("local"));
+
+        await service.DelegateAsync(new DelegationRequest("local", "call a tool"));
+
+        await driver.Received(1).SetDelegatedToolGateAsync(
+            DelegationPolicy.DefaultPermissionCeiling,
+            Arg.Is<IReadOnlyList<string>>(list => list.Count == 0),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task StartedTask_WithAutoApproveOn_AllowsEverything_AndDoesNotInstallTheCeilingGate()
     {
         // The operator's per-profile "Auto-Approve tool calls" is the explicit "trust this profile fully": a

@@ -239,6 +239,29 @@ public class OpenAiCompatSessionDriverTests
         events.OfType<PermissionRequested>().Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task DelegatedGate_ToolMissingFromTheClassMap_IsTreatedAsUnknownAndDenied()
+    {
+        // Fail-safe: a tool the classification map has no entry for defaults to Unknown → denied, even at the most
+        // permissive ceiling, with no prompt. Guards against a regression that dropped the explicit Unknown fallback.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+        var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
+        // Empty class map — "echo" is absent.
+        var driver = _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass>(), echo);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SetDelegatedToolGateAsync("bypassPermissions", []);
+        await driver.SendUserMessageAsync("go");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        events.OfType<PermissionRequested>().Should().BeEmpty();
+        var result = events.OfType<ToolResult>().Should().ContainSingle().Subject;
+        result.IsError.Should().BeTrue();
+        result.Content.Should().NotContain("echoed:hi");
+    }
+
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>
         _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass>(), tools);
 

@@ -80,6 +80,24 @@ public static class DelegatedToolPermissionPolicy
         };
     }
 
+    /// <summary>
+    /// The more restrictive of two classes, for reconciling the same tool name reported by two enabled servers
+    /// (AC-79). Trust is keyed on the bare tool name, so a name collision across servers is ambiguous: taking the
+    /// harder-to-run class means a rogue or over-broad server cannot shadow a safe name to widen what runs
+    /// unattended — the worst case wins. Ordered least- to most-restrained-from-auto-running:
+    /// ReadOnly &lt; Write &lt; Destructive &lt; Unknown (Unknown never auto-runs without the allow-list).
+    /// </summary>
+    public static ToolPermissionClass MoreRestrictive(ToolPermissionClass a, ToolPermissionClass b) =>
+        _Restraint(a) >= _Restraint(b) ? a : b;
+
+    private static int _Restraint(ToolPermissionClass toolClass) => toolClass switch
+    {
+        ToolPermissionClass.ReadOnly => 0,
+        ToolPermissionClass.Write => 1,
+        ToolPermissionClass.Destructive => 2,
+        _ => 3, // Unknown — denied unless allow-listed, the most restrained
+    };
+
     private static string _Describe(ToolPermissionClass toolClass) => toolClass switch
     {
         ToolPermissionClass.Write => "a state-changing tool",

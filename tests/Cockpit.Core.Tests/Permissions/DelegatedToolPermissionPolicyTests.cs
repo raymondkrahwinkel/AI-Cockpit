@@ -118,4 +118,31 @@ public class DelegatedToolPermissionPolicyTests
         decision.DenyMessage.Should().Contain("write_file");
         decision.DenyMessage.Should().Contain("plan");
     }
+
+    // --- Fail-safe defaults / collision reconciliation (security hardening) ---
+
+    [Fact]
+    public void Default_ToolPermissionClass_IsUnknown_SoAMissingClassFailsClosed()
+    {
+        // Unknown must be the zero value: a missing/uninitialised class must deny, not allow.
+        default(ToolPermissionClass).Should().Be(ToolPermissionClass.Unknown);
+        DelegatedToolPermissionPolicy.Decide("bypassPermissions", default, "x", onAllowList: false)
+            .IsAllowed.Should().BeFalse();
+    }
+
+    [Theory]
+    // Same class → unchanged.
+    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.ReadOnly, ToolPermissionClass.ReadOnly)]
+    // A safe name colliding with a riskier one takes the riskier (harder-to-run) class.
+    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.Write, ToolPermissionClass.Write)]
+    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.Destructive, ToolPermissionClass.Destructive)]
+    [InlineData(ToolPermissionClass.Write, ToolPermissionClass.Destructive, ToolPermissionClass.Destructive)]
+    // Unknown is the most restrictive of all — a collision with it can never be auto-run without the allow-list.
+    [InlineData(ToolPermissionClass.ReadOnly, ToolPermissionClass.Unknown, ToolPermissionClass.Unknown)]
+    [InlineData(ToolPermissionClass.Destructive, ToolPermissionClass.Unknown, ToolPermissionClass.Unknown)]
+    public void MoreRestrictive_TakesTheHarderToRunClass_EitherOrder(ToolPermissionClass a, ToolPermissionClass b, ToolPermissionClass expected)
+    {
+        DelegatedToolPermissionPolicy.MoreRestrictive(a, b).Should().Be(expected);
+        DelegatedToolPermissionPolicy.MoreRestrictive(b, a).Should().Be(expected, "the reconciliation is order-independent");
+    }
 }

@@ -48,7 +48,9 @@ internal sealed class DelegationPolicyEntry
         AllowedAsTarget,
         MaxConcurrent,
         AllowedWorkingDirs,
-        PermissionCeiling,
+        // A hand-edited config could carry a null/blank ceiling; coerce to the default so a delegated session is
+        // never left with no ceiling (which would disarm the gate and hang the task on a prompt nobody answers).
+        string.IsNullOrWhiteSpace(PermissionCeiling) ? DelegationPolicy.DefaultPermissionCeiling : PermissionCeiling,
         MayDelegateFurther,
         TimeoutMinutes,
         AllowedTaskTypes,

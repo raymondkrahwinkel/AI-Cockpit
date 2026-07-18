@@ -55,11 +55,15 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             tools.AddRange(connection.Tools);
             connectedNames.Add(connection.Name);
 
-            // A later server's tool of the same name overwrites an earlier one's class, matching the tool list's
-            // own last-wins behaviour when two servers expose the same tool name.
+            // Trust for the delegated gate is keyed on the bare tool name (AC-79), so a name exposed by two
+            // enabled servers is ambiguous — the tool list keeps both, and which one the model resolves is not
+            // decided here. Reconcile the class to the *more restrictive* of the collision rather than last-wins,
+            // so a second server cannot shadow a safe name to widen what runs unattended.
             foreach (var (toolName, toolClass) in connection.ToolClasses)
             {
-                toolClasses[toolName] = toolClass;
+                toolClasses[toolName] = toolClasses.TryGetValue(toolName, out var existing)
+                    ? DelegatedToolPermissionPolicy.MoreRestrictive(existing, toolClass)
+                    : toolClass;
             }
         }
 

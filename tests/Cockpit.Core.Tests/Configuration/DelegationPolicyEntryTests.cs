@@ -33,4 +33,17 @@ public class DelegationPolicyEntryTests
 
         entry.ToDomain().AllowedTools.Should().BeNull();
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ToDomain_WithABlankCeiling_CoercesToTheDefault_SoTheGateIsNeverDisarmed(string? ceiling)
+    {
+        // A hand-edited config with a null/blank ceiling must not leave a delegated session ungated (which would
+        // hang it on a prompt nobody answers) — it coerces to the default ceiling.
+        var entry = new DelegationPolicyEntry { AllowedAsTarget = true, PermissionCeiling = ceiling! };
+
+        entry.ToDomain().PermissionCeiling.Should().Be(DelegationPolicy.DefaultPermissionCeiling);
+    }
 }
