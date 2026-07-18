@@ -28,6 +28,9 @@ namespace Cockpit.App.Services;
 public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonService
 {
     private readonly Func<CancellationToken, Task<IReadOnlyList<DiscoveredPlugin>>> _getInstalledPluginsAsync;
+    // (entry id, latest version) -> whether the operator already staged that update this session (AC-76); an
+    // injectable seam over PluginManagerViewModel.IsUpdateStaged so the exclusion is unit-testable without a dispatcher.
+    private readonly Func<string, string, bool> _isUpdateStaged;
     private readonly IPluginStoreConfigStore _storeConfigStore;
     private readonly IPluginStoreClient _storeClient;
     private readonly IToastService _toastService;
@@ -61,9 +64,11 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
         IPluginStoreClient storeClient,
         IToastService toastService,
         CockpitViewModel cockpit,
-        ILogger<PluginUpdateChecker> logger)
+        ILogger<PluginUpdateChecker> logger,
+        Func<string, string, bool>? isUpdateStaged = null)
     {
         _getInstalledPluginsAsync = getInstalledPluginsAsync;
+        _isUpdateStaged = isUpdateStaged ?? ((entryId, latestVersion) => cockpit.Plugins.IsUpdateStaged(entryId, latestVersion));
         _storeConfigStore = storeConfigStore;
         _storeClient = storeClient;
         _toastService = toastService;
@@ -76,6 +81,9 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
         try
         {
             var updates = await _FindUpdatesAsync(cancellationToken).ConfigureAwait(false);
+            // AC-76: the full current set feeds the persistent sidebar badge (not just the newly-detected ones the
+            // toast dedups), so an update stays visible in the main window until it is installed.
+            _cockpit.Plugins.SetUpdateBadgeCount(updates.Count);
             _NotifyNewUpdates(updates);
         }
         catch (Exception exception)
@@ -117,7 +125,10 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
                     continue; // not installed — nothing to update
                 }
 
-                if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version))
+                // A newer version than what is installed — unless the operator already staged it this session, in
+                // which case it is up to date until the restart and must not re-inflate the badge (AC-76).
+                if (PluginVersion.IsNewer(entry.LatestVersion, plugin.Manifest.Version)
+                    && !_isUpdateStaged(entry.Id, entry.LatestVersion))
                 {
                     updates.Add(new PluginUpdateInfo(folderId, plugin.Manifest.Name, plugin.Manifest.Version, entry.LatestVersion));
                 }
