@@ -1,12 +1,15 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Plugins;
 using Cockpit.Infrastructure.Configuration;
 
 namespace Cockpit.Infrastructure.Plugins;
 
 /// <summary>
-/// Persists the <c>pluginStores</c> list of <c>cockpit.json</c> (#14) via the shared read-modify-write, so
-/// it never clobbers a sibling section. Add is idempotent (case-insensitive); remove drops the exact URL.
+/// Persists the <c>pluginStores</c> list of <c>cockpit.json</c> (#14, AC-7) via the shared read-modify-write, so
+/// it never clobbers a sibling section. A store is a <see cref="PluginStoreConfig"/> — remote (public or private)
+/// or local. Add replaces an entry at the same location (so a token can be updated) and is otherwise additive;
+/// remove drops the store at that location.
 /// </summary>
 /// <remarks>
 /// <see cref="LoadAsync"/> also owns the #43 seed-once behavior for <see cref="DefaultStoreUrl"/>: on a
@@ -33,12 +36,12 @@ internal sealed class PluginStoreConfigStore : IPluginStoreConfigStore, ISinglet
         _configFile = new CockpitConfigFileAccess(configFilePath);
     }
 
-    public async Task<IReadOnlyList<string>> LoadAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<PluginStoreConfig>> LoadAsync(CancellationToken cancellationToken = default)
     {
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (configFile is not null && configFile.PluginStoresDefaultSeeded)
         {
-            return configFile.PluginStores;
+            return _Clean(configFile.PluginStores);
         }
 
         if (configFile is not null && configFile.PluginStores.Count > 0)
@@ -46,7 +49,7 @@ internal sealed class PluginStoreConfigStore : IPluginStoreConfigStore, ISinglet
             // Predates the #43 marker but already has its own stores — mark seeded without adding anything,
             // so this install never gets the default unsolicited even if the list is emptied out later.
             await _configFile.UpdateAsync(file => file.PluginStoresDefaultSeeded = true, cancellationToken).ConfigureAwait(false);
-            return configFile.PluginStores;
+            return _Clean(configFile.PluginStores);
         }
 
         // Genuine first run: no stores configured yet and never seeded before.
@@ -54,26 +57,29 @@ internal sealed class PluginStoreConfigStore : IPluginStoreConfigStore, ISinglet
         {
             if (file.PluginStores.Count == 0)
             {
-                file.PluginStores.Add(DefaultStoreUrl);
+                file.PluginStores.Add(PluginStoreConfig.Remote(DefaultStoreUrl));
             }
 
             file.PluginStoresDefaultSeeded = true;
         }, cancellationToken).ConfigureAwait(false);
 
-        return [DefaultStoreUrl];
+        return [PluginStoreConfig.Remote(DefaultStoreUrl)];
     }
 
-    public Task AddAsync(string storeUrl, CancellationToken cancellationToken = default) =>
+    public Task AddAsync(PluginStoreConfig store, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(file =>
         {
-            if (!file.PluginStores.Any(existing => string.Equals(existing, storeUrl, StringComparison.OrdinalIgnoreCase)))
-            {
-                file.PluginStores.Add(storeUrl);
-            }
+            file.PluginStores.RemoveAll(existing => existing is not null && existing.SameStoreAs(store));
+            file.PluginStores.Add(store);
         }, cancellationToken);
 
-    public Task RemoveAsync(string storeUrl, CancellationToken cancellationToken = default) =>
+    public Task RemoveAsync(PluginStoreConfig store, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(
-            file => file.PluginStores.RemoveAll(existing => string.Equals(existing, storeUrl, StringComparison.OrdinalIgnoreCase)),
+            file => file.PluginStores.RemoveAll(existing => existing is not null && existing.SameStoreAs(store)),
             cancellationToken);
+
+    // A hand-edited config can leave a null (a malformed entry the converter could not read) — drop those rather
+    // than hand a null store to the browse loop.
+    private static IReadOnlyList<PluginStoreConfig> _Clean(IEnumerable<PluginStoreConfig> stores) =>
+        stores.Where(store => store is not null).ToList();
 }

@@ -94,9 +94,9 @@ public sealed class PluginUpdateChecker : IPluginUpdateChecker, ISingletonServic
         var updates = new List<PluginUpdateInfo>();
         var seenFolderIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var storeUrl in stores)
+        foreach (var store in stores)
         {
-            var fetch = await _storeClient.FetchIndexAsync(storeUrl, cancellationToken).ConfigureAwait(false);
+            var fetch = await _storeClient.FetchIndexAsync(store, cancellationToken).ConfigureAwait(false);
             if (!fetch.IsSuccess || fetch.Index is null)
             {
                 continue;

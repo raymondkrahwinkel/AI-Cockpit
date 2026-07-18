@@ -86,7 +86,7 @@ internal static class Screenshotter
     private static PluginStoreDialog _PluginStore()
     {
         var manager = new PluginManagerViewModel();
-        manager.Stores.Add("https://store.aicockpit.dev/index.json");
+        manager.Stores.Add(PluginStoreConfig.Remote("https://store.aicockpit.dev/index.json"));
         foreach (var row in _SampleStorePlugins())
         {
             manager.AvailablePlugins.Add(row);
@@ -100,26 +100,27 @@ internal static class Screenshotter
         return new PluginStoreDialog { DataContext = viewModel };
     }
 
-    // Renders the Manage-stores dialog (#62) with a few sample stores seeded straight into the manager's
-    // StoreInfos — a named/iconed one, one falling back to a URL-derived name and default glyph, and an
-    // unreachable one — so its layout and the icon/name/count rows can be verified headless.
+    // Renders the Manage-stores dialog (#62, AC-7) with a few sample stores seeded straight into the manager's
+    // StoreInfos — a private remote one (a token, so the lock badge shows) with a logo, a public remote falling
+    // back to a URL-derived name and default glyph, and a local-folder one (the folder badge) — so its layout and
+    // the icon/name/count/badge rows can be verified headless.
     private static ManageStoresDialog _ManageStores()
     {
         var manager = new PluginManagerViewModel();
         // A real logo image (the app icon stands in for a store's own), so the screenshot shows the fetched-image
         // path rather than only the emoji fallback.
-        manager.StoreInfos.Add(new PluginStoreInfo("https://github.com/aicockpit/plugins")
+        manager.StoreInfos.Add(new PluginStoreInfo(PluginStoreConfig.Remote("https://github.com/aicockpit/plugins", "sample-token"))
         {
             Name = "AI-Cockpit Plugins", PluginCount = 13, IsReachable = true, IsBrowsed = true,
             Logo = _LoadAssetBitmap("avares://Cockpit.App/Assets/AppIcon.png"),
         });
-        manager.StoreInfos.Add(new PluginStoreInfo("https://raw.githubusercontent.com/raymond/cockpit-extras/main/index.json")
+        manager.StoreInfos.Add(new PluginStoreInfo(PluginStoreConfig.Remote("https://raw.githubusercontent.com/raymond/cockpit-extras/main/index.json"))
         {
             PluginCount = 4, IsReachable = true, IsBrowsed = true,
         });
-        manager.StoreInfos.Add(new PluginStoreInfo("https://plugins.example.dev/")
+        manager.StoreInfos.Add(new PluginStoreInfo(PluginStoreConfig.Local("/home/you/my-plugins"))
         {
-            IsReachable = false, IsBrowsed = true,
+            PluginCount = 2, IsReachable = true, IsBrowsed = true,
         });
 
         return new ManageStoresDialog { DataContext = manager };
@@ -152,7 +153,7 @@ internal static class Screenshotter
                 featured, "2026-07-10");
             // installedVersion == latest ⇒ shown as installed and up to date (a green "Installed" pill),
             // null ⇒ available (the accent "Install" call-to-action).
-            return new StorePluginRowViewModel(entry, "https://store.aicockpit.dev/index.json",
+            return new StorePluginRowViewModel(entry, PluginStoreConfig.Remote("https://store.aicockpit.dev/index.json"),
                 installed ? version : null, isEnabled: installed, hasSettings: hasSettings);
         }
 
