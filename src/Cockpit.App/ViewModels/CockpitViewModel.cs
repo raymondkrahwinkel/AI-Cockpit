@@ -1548,6 +1548,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private TtsVoiceOption _selectedTtsVoice = TtsVoiceCatalog.Default;
 
+    /// <summary>Preferred read-aloud base language (#35): the voice leans to it and unmarked text speaks in it, keeping foreign terms in their language. English or Dutch — the two the voice handles here.</summary>
+    public IReadOnlyList<SttLanguageOption> ReadAloudLanguages { get; } =
+    [
+        new("English", "en"),
+        new("Dutch", "nl"),
+    ];
+
+    [ObservableProperty]
+    private SttLanguageOption _selectedReadAloudLanguage = new("English", "en");
+
     /// <summary>Status shown next to the read-aloud Test button — "Preparing…" while a Naturalized/Summarized preview calls the local LLM, then cleared.</summary>
     [ObservableProperty]
     private string _voiceTestStatus = string.Empty;
@@ -1570,6 +1580,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _voicePlaybackQueue.StopAll();
         _voicePlaybackQueue.NotifyPreparing();
         var speakerId = SelectedTtsVoice.Sid;
+        var language = SelectedReadAloudLanguage.Code;
         var mode = SelectedReadAloudMode.Value;
 
         VoiceTestStatus = "Preparing…";
@@ -1587,7 +1598,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 var rewritten = mode == ReadAloudMode.Summarized
                     ? await _cleanupService.SummarizeForSpeechAsync(joined)
                     : await _cleanupService.NaturalizeForSpeechAsync(joined);
-                var segments = SpeechLanguageRouter.Route(rewritten);
+                var segments = SpeechLanguageRouter.Route(rewritten, language);
                 if (segments.Count > 0)
                 {
                     _voicePlaybackQueue.Enqueue(segments, speakerId);
@@ -1595,7 +1606,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 }
             }
 
-            _voicePlaybackQueue.Enqueue(sentences, speakerId, SpeechLanguageRouter.DefaultLanguage);
+            _voicePlaybackQueue.Enqueue(sentences, speakerId, language);
         }
         finally
         {
@@ -3006,6 +3017,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
         SelectedReadAloudMode = ReadAloudModes.FirstOrDefault(mode => mode.Value == settings.ReadAloudMode) ?? ReadAloudModes[0];
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
+        SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == settings.ReadAloudLanguage) ?? ReadAloudLanguages[0];
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
 
         // Show this machine's last calibration if it has ever been run here (AC-68 slice 3).
@@ -3217,6 +3229,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
             ReadAloudMode = SelectedReadAloudMode.Value,
             TtsVoiceSid = SelectedTtsVoice.Sid,
+            ReadAloudLanguage = SelectedReadAloudLanguage.Code,
             SttLanguage = SelectedSttLanguage.Code,
             InputDeviceName = SelectedInputDevice.DeviceName ?? "",
             OutputDeviceName = SelectedOutputDevice.DeviceName ?? "",
@@ -3229,6 +3242,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             session.ReadAloudMode = SelectedReadAloudMode.Value;
             session.TtsVoiceSid = SelectedTtsVoice.Sid;
+            session.ReadAloudLanguage = SelectedReadAloudLanguage.Code;
         }
 
         VoiceSettingsStatus = "Saved";

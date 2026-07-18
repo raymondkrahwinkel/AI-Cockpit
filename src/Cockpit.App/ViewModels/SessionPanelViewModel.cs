@@ -259,6 +259,10 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private int _ttsVoiceSid = 1;
 
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudLanguage"/> — the preferred base language ("en"/"nl") for read-aloud (#35): unmarked text speaks in it and the naturalize/summarize pass leans to it.</summary>
+    [ObservableProperty]
+    private string _readAloudLanguage = "en";
+
     /// <summary>
     /// Per-session read-aloud toggle (#35/#35b): when true, completed assistant replies are extracted
     /// and enqueued for TTS playback. Shared on the base since both session kinds offer the toggle, even
@@ -320,6 +324,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         GlobalPushToTalkEnabled = settings.GlobalPushToTalk;
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
         TtsVoiceSid = settings.TtsVoiceSid;
+        ReadAloudLanguage = settings.ReadAloudLanguage;
         ReadAloudMode = settings.ReadAloudMode;
     }
 
@@ -336,7 +341,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
-        _voicePlaybackQueue?.Enqueue(sentences, TtsVoiceSid, SpeechLanguageRouter.DefaultLanguage);
+        _voicePlaybackQueue?.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage);
     }
 
     /// <summary>
@@ -364,7 +369,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             var rewritten = ReadAloudMode == ReadAloudMode.Summarized
                 ? await _cleanupService.SummarizeForSpeechAsync(joined)
                 : await _cleanupService.NaturalizeForSpeechAsync(joined);
-            var segments = SpeechLanguageRouter.Route(rewritten);
+            var segments = SpeechLanguageRouter.Route(rewritten, ReadAloudLanguage);
             if (segments.Count > 0)
             {
                 _voicePlaybackQueue?.Enqueue(segments, TtsVoiceSid);

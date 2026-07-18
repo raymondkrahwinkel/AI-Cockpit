@@ -27,25 +27,34 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         "questions. Keep the original language and meaning exactly — do not translate, summarize, or " +
         "add content. Reply with only the cleaned text, nothing else.";
 
-    private const string SpeechPrompt =
+    private static string SpeechPrompt(string readAloudLanguage) =>
         "You turn assistant text into what a person would say out loud when explaining it to someone. " +
         "Rewrite it as short, natural spoken sentences. Leave out code, file paths, URLs, command names and " +
         "markdown; mention them in plain words only when they matter. Never read symbols, brackets or " +
-        "punctuation literally, and do not spell things out. Keep the meaning and the original language. " +
+        "punctuation literally, and do not spell things out. " + _LanguageDirective(readAloudLanguage) + " " +
         "Mark the language of each part with [[nl]] before Dutch text and [[en]] before English text, and " +
         "switch the marker whenever the language changes, even for a single word or phrase. Begin with the " +
         "marker for the first language. Reply with only the marked spoken text — no preamble, no quotes, no bullet lists.";
 
-    private const string SummaryPrompt =
+    private static string SummaryPrompt(string readAloudLanguage) =>
         "You summarize assistant text so it can be heard, not read — give the listener the gist in far fewer " +
         "words. Rewrite it as short, natural spoken sentences. Leave out code, file paths, URLs, command names " +
         "and markdown; mention them in plain words only when they matter. Never read symbols, brackets or " +
         "punctuation literally. Keep it shorter than the original, but this is a hard rule: preserve every " +
         "number, name, decision, warning and action item exactly — never drop, round, soften or invent any of " +
-        "them. When in doubt, keep it. Keep the original language. Mark the language of each part with [[nl]] " +
-        "before Dutch text and [[en]] before English text, switching the marker whenever the language changes, " +
-        "even for a single word or phrase. Begin with the marker for the first language. Reply with only the " +
-        "marked spoken summary — no preamble, no quotes, no bullet lists.";
+        "them. When in doubt, keep it. " + _LanguageDirective(readAloudLanguage) + " Mark the language of each part " +
+        "with [[nl]] before Dutch text and [[en]] before English text, switching the marker whenever the language " +
+        "changes, even for a single word or phrase. Begin with the marker for the first language. Reply with only " +
+        "the marked spoken summary — no preamble, no quotes, no bullet lists.";
+
+    // The read-aloud preferred-language nudge: lean to the operator's chosen base language while keeping code,
+    // names and genuinely foreign phrases in their own language (still tagged, so they are pronounced right).
+    private static string _LanguageDirective(string readAloudLanguage) => readAloudLanguage.ToLowerInvariant() switch
+    {
+        "nl" => "Speak mainly in Dutch, but keep code, identifiers, file names, commands, quotes and genuinely English technical terms in English.",
+        "en" => "Speak mainly in English, but keep code, identifiers, file names, commands, quotes and genuinely Dutch phrases in Dutch.",
+        _ => "Keep the meaning and the original language.",
+    };
 
     private static readonly TranscriptCleanupOptions Options = new();
 
@@ -94,7 +103,7 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         try
         {
             // A little warmth for natural phrasing, but seeded so the same reply reads the same way.
-            var spoken = (await _CompleteAsync(settings, SpeechPrompt, $"Text: {text}\nSpoken:", temperature: 0.3, cancellationToken)
+            var spoken = (await _CompleteAsync(settings, SpeechPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken:", temperature: 0.3, cancellationToken)
                 .ConfigureAwait(false)).Trim();
             return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
         }
@@ -117,7 +126,7 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         try
         {
             // A little warmth for natural phrasing, but seeded so the same reply summarizes the same way.
-            var spoken = (await _CompleteAsync(settings, SummaryPrompt, $"Text: {text}\nSpoken summary:", temperature: 0.3, cancellationToken)
+            var spoken = (await _CompleteAsync(settings, SummaryPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken summary:", temperature: 0.3, cancellationToken)
                 .ConfigureAwait(false)).Trim();
             return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
         }

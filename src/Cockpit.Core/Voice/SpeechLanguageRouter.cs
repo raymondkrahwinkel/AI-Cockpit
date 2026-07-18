@@ -11,12 +11,15 @@ namespace Cockpit.Core.Voice;
 /// </summary>
 public static partial class SpeechLanguageRouter
 {
-    /// <summary>ISO-639-1 code spoken for unmarked lead-in text and unknown markers — English, the assistant's primary output language.</summary>
+    /// <summary>ISO-639-1 code spoken for unmarked lead-in text and unknown markers when a caller does not specify one — English, the assistant's primary output language.</summary>
     public const string DefaultLanguage = "en";
 
     private const string DutchLanguage = "nl";
 
-    public static IReadOnlyList<SpeechSegment> Route(string text)
+    public static IReadOnlyList<SpeechSegment> Route(string text) => Route(text, DefaultLanguage);
+
+    /// <summary>Routes with <paramref name="defaultLanguage"/> as the base for unmarked text and unknown markers, so the operator's preferred read-aloud language leads.</summary>
+    public static IReadOnlyList<SpeechSegment> Route(string text, string defaultLanguage)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -24,7 +27,7 @@ public static partial class SpeechLanguageRouter
         }
 
         var segments = new List<SpeechSegment>();
-        foreach (var (language, runText) in _SplitIntoRuns(text))
+        foreach (var (language, runText) in _SplitIntoRuns(text, defaultLanguage))
         {
             // The extractor already strips emoji/paths and splits into sentences; markers are gone by now
             // since _SplitIntoRuns consumed them, so it only ever sees the spoken text of one language run.
@@ -50,9 +53,9 @@ public static partial class SpeechLanguageRouter
         return segments;
     }
 
-    private static IEnumerable<(string Language, string Text)> _SplitIntoRuns(string text)
+    private static IEnumerable<(string Language, string Text)> _SplitIntoRuns(string text, string defaultLanguage)
     {
-        var currentLanguage = DefaultLanguage;
+        var currentLanguage = defaultLanguage;
         var lastIndex = 0;
         foreach (Match match in LanguageMarker().Matches(text))
         {
@@ -61,7 +64,7 @@ public static partial class SpeechLanguageRouter
                 yield return (currentLanguage, text[lastIndex..match.Index]);
             }
 
-            currentLanguage = _ResolveLanguage(match.Groups[1].Value);
+            currentLanguage = _ResolveLanguage(match.Groups[1].Value, defaultLanguage);
             lastIndex = match.Index + match.Length;
         }
 
@@ -71,11 +74,12 @@ public static partial class SpeechLanguageRouter
         }
     }
 
-    private static string _ResolveLanguage(string languageCode) =>
+    private static string _ResolveLanguage(string languageCode, string defaultLanguage) =>
         languageCode.ToLowerInvariant() switch
         {
             DutchLanguage => DutchLanguage,
-            _ => DefaultLanguage,
+            "en" => "en",
+            _ => defaultLanguage,
         };
 
     [GeneratedRegex(@"\[\[\s*([A-Za-z]{2})\s*\]\]")]
