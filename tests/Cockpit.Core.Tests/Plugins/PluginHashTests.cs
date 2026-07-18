@@ -66,4 +66,18 @@ public class PluginHashTests
 
         swapped.Should().NotBe(one);
     }
+
+    [Fact]
+    public void ComputeClosure_CannotBeForgedByADelimiterInAPath()
+    {
+        // A Unix path may contain a newline. A manifest that joined entries with one would render these two
+        // different closures identically ("1  a\n2  b"), letting a crafted filename forge the pin; length-prefixed
+        // framing must keep them distinct.
+        var honest = PluginHash.ComputeClosure(
+            [new PluginClosureFile("a", "1"), new PluginClosureFile("b", "2")]);
+        var forged = PluginHash.ComputeClosure(
+            [new PluginClosureFile("a\n2  b", "1")]);
+
+        forged.Should().NotBe(honest);
+    }
 }

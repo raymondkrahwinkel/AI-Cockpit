@@ -16,7 +16,7 @@ internal static class PluginClosureHash
     /// every file, recursively. This is what discovery verifies and what an install/consent pins.
     /// </summary>
     public static Task<string> OfInstalledFolderAsync(string folder, CancellationToken cancellationToken = default) =>
-        ComputeAsync(folder, EnumerateInstalledFiles(folder), cancellationToken);
+        _ComputeAsync(folder, _EnumerateInstalledFiles(folder), cancellationToken);
 
     /// <summary>
     /// The closure of a source folder as it <em>would be</em> installed — mirroring
@@ -24,7 +24,7 @@ internal static class PluginClosureHash
     /// assembly a plugin must not carry) so it can be compared against an installed folder's closure.
     /// </summary>
     public static Task<string> OfSourceFolderAsync(string folder, CancellationToken cancellationToken = default) =>
-        ComputeAsync(folder, EnumerateSourceFiles(folder), cancellationToken);
+        _ComputeAsync(folder, _EnumerateSourceFiles(folder), cancellationToken);
 
     /// <summary>Whether a source file is copied into the install (and so counts towards the closure). Kept here so
     /// <see cref="PluginSourceInstaller"/>'s copy and this hash cannot drift apart.</summary>
@@ -35,15 +35,15 @@ internal static class PluginClosureHash
     // Every file under the folder, at any depth (dependency DLLs, native libs under runtimes/, the manifest),
     // except reserved dot-prefixed markers (.remove) — discovery skips dot-prefixed folders for the same reason,
     // and these never load as code.
-    private static IEnumerable<string> EnumerateInstalledFiles(string folder) =>
+    private static IEnumerable<string> _EnumerateInstalledFiles(string folder) =>
         Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .Where(path => !Path.GetFileName(path).StartsWith('.'));
 
-    private static IEnumerable<string> EnumerateSourceFiles(string folder) =>
+    private static IEnumerable<string> _EnumerateSourceFiles(string folder) =>
         Directory.EnumerateFiles(folder)
             .Where(path => IsCopiedSourceFile(Path.GetFileName(path)));
 
-    private static async Task<string> ComputeAsync(string folder, IEnumerable<string> files, CancellationToken cancellationToken)
+    private static async Task<string> _ComputeAsync(string folder, IEnumerable<string> files, CancellationToken cancellationToken)
     {
         var closure = new List<PluginClosureFile>();
         foreach (var path in files)
