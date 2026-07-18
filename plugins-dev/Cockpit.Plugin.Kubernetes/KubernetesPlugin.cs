@@ -42,6 +42,7 @@ public sealed class KubernetesPlugin : ICockpitPlugin
         var tools = new KubernetesMcpTools(settings, gate, connections, portForwards);
 
         host.AddSettings(() => new KubernetesSettingsControl(settings));
+        host.AddToolbarAction(new ToolbarAction("Kubernetes settings", "Kubernetes", () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-k8s", tools, isEnabled: () => settings.McpEnabled);
 
         // The open tunnels appear in the status bar with an operator-only Kill (AC-82).

@@ -84,6 +84,9 @@ internal sealed class CockpitHost(
     public void AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
         contributionSink.AddSupervisedActivityProvider(source);
 
+    public void AddToolbarAction(ToolbarAction action) =>
+        contributionSink.AddToolbarAction(pluginId, action);
+
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
 

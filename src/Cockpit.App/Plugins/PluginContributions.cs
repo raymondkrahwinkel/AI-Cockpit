@@ -11,6 +11,9 @@ public sealed record PluginSideSection(string PluginId, string Title, Func<Contr
 /// <summary>A left-menu launcher button a plugin contributes: which plugin it came from (#72), its title, and the action run on click (typically opening a dialog).</summary>
 public sealed record PluginSideButton(string PluginId, string Title, Action OnInvoke);
 
+/// <summary>A Sessions-toolbar button a plugin contributes (AC-91): which plugin it came from (#72 — the operator's menu order/hide applies here too), and the action itself (icon, tooltip, on-click).</summary>
+public sealed record PluginToolbarAction(string PluginId, ToolbarAction Action);
+
 /// <summary>A control a plugin contributes to every session's header bar, built once per session from that session's own context (#: session header items).</summary>
 public sealed record PluginSessionHeaderItem(Func<IPluginSessionContext, Control> CreateView);
 
@@ -48,6 +51,9 @@ public interface IPluginContributionSink
 
     /// <summary>Registers a plugin's source of supervised background activities shown in the status bar (AC-82), with an operator-only Kill per item.</summary>
     void AddSupervisedActivityProvider(ISupervisedActivitySource source);
+
+    /// <summary>Registers a Sessions-toolbar button (AC-91) — a global quick action shown next to the workspace gear.</summary>
+    void AddToolbarAction(string pluginId, ToolbarAction action);
 
     /// <summary>Registers a plugin-contributed keyboard shortcut (#: shortcuts), dispatched alongside the app-action shortcuts.</summary>
     void AddPluginShortcut(PluginShortcut shortcut);

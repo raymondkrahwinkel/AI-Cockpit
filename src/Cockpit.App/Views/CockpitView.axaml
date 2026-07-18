@@ -766,8 +766,11 @@
 
                     <!-- Mirrors the dashboard's gear (its columns/rows/grid lines): each workspace type sets what it
                          actually has, in the same place. -->
-                    <Button DockPanel.Dock="Right" HorizontalAlignment="Right" Padding="8,4"
-                            ToolTip.Tip="How this workspace arranges its sessions">
+                    <!-- Plugin quick-actions (AC-91) sit just left of the gear; both hug the right. -->
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
+                        <controls:PluginToolbarHost VerticalAlignment="Center"/>
+                        <Button Padding="8,4"
+                                ToolTip.Tip="How this workspace arranges its sessions">
                         <materialIcons:MaterialIcon Kind="Cog" Width="14" Height="14"/>
                         <Button.Flyout>
                             <Flyout Placement="BottomEdgeAlignedRight">
@@ -788,7 +791,8 @@
                                 </StackPanel>
                             </Flyout>
                         </Button.Flyout>
-                    </Button>
+                        </Button>
+                    </StackPanel>
                 </DockPanel>
 
                 <!-- One live session grid serves both layouts: grid mode shows every panel; single-pane

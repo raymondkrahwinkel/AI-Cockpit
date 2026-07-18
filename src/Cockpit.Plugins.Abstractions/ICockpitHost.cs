@@ -78,6 +78,19 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Adds a button to the Sessions toolbar (AC-91) — a global, cockpit-wide quick action next to the workspace
+    /// gear, for something the operator reaches often regardless of which session is selected: opening this plugin's
+    /// settings (<see cref="ShowSettingsAsync"/>), say, or any other action. Keep it to an icon with a tooltip; the
+    /// strip is narrow, and when several plugins contribute the host collapses them into an overflow menu. Provider-
+    /// neutral by design — any plugin drops a quick action here the same way. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched — only
+    /// the app's own host renders it.
+    /// </summary>
+    void AddToolbarAction(ToolbarAction action)
+    {
+    }
+
+    /// <summary>
     /// Registers a way to pick an earlier conversation to resume — see <see cref="ConversationPickerRegistration"/>.
     /// The New-session dialog can resume a conversation by id; with a picker registered it also shows a search
     /// button that runs yours, so the operator chooses a conversation instead of typing an id. Default no-op so
