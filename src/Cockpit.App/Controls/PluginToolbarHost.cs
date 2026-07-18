@@ -82,9 +82,9 @@ internal sealed class PluginToolbarHost : StackPanel
 
     private static Button _IconButton(ToolbarAction action)
     {
+        // Default button chrome (like the workspace gear next to it) so it reads as a button, not a bare icon.
         var button = new Button
         {
-            Classes = { "Subtle" },
             Padding = new Thickness(8, 4),
             Content = new MaterialIcon { Kind = _Kind(action.Icon), Width = 14, Height = 14 },
         };
@@ -97,7 +97,6 @@ internal sealed class PluginToolbarHost : StackPanel
     {
         var button = new Button
         {
-            Classes = { "Subtle" },
             Padding = new Thickness(8, 4),
             Content = new MaterialIcon { Kind = MaterialIconKind.DotsHorizontal, Width = 14, Height = 14 },
         };
