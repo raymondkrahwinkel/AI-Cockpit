@@ -62,6 +62,9 @@ internal sealed class VoiceSettingsEntry
     /// </summary>
     public int TtsVoiceSid { get; set; } = 1;
 
+    /// <summary>Preferred base language for read-aloud ("en"/"nl"). New key; defaults to "en" for an existing config.</summary>
+    public string ReadAloudLanguage { get; set; } = "en";
+
     public string SttLanguage { get; set; } = "auto";
 
     public string InputDeviceName { get; set; } = "";
@@ -106,6 +109,7 @@ internal sealed class VoiceSettingsEntry
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
         TtsVoiceSid = settings.TtsVoiceSid,
+        ReadAloudLanguage = settings.ReadAloudLanguage,
         SttLanguage = settings.SttLanguage,
         InputDeviceName = settings.InputDeviceName,
         OutputDeviceName = settings.OutputDeviceName,
@@ -137,6 +141,7 @@ internal sealed class VoiceSettingsEntry
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
         TtsVoiceSid = TtsVoiceSid,
+        ReadAloudLanguage = ReadAloudLanguage,
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,

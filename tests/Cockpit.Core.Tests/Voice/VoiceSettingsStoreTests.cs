@@ -61,6 +61,7 @@ public class VoiceSettingsStoreTests : IDisposable
             AutoSubmitAfterVoice = true,
             TtsVoiceSid = 3,
             ReadAloudMode = ReadAloudMode.Summarized,
+            ReadAloudLanguage = "nl",
             SttLanguage = "nl",
             InputDeviceName = "Yeti Stereo Microphone",
             OutputDeviceName = "Built-in Speakers",
@@ -82,6 +83,7 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.AutoSubmitAfterVoice.Should().BeTrue();
         loaded.TtsVoiceSid.Should().Be(3);
         loaded.ReadAloudMode.Should().Be(ReadAloudMode.Summarized);
+        loaded.ReadAloudLanguage.Should().Be("nl");
         loaded.SttLanguage.Should().Be("nl");
         loaded.InputDeviceName.Should().Be("Yeti Stereo Microphone");
         loaded.OutputDeviceName.Should().Be("Built-in Speakers");

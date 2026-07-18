@@ -82,6 +82,13 @@ public sealed record VoiceSettings
     public int TtsVoiceSid { get; init; } = 1;
 
     /// <summary>
+    /// Preferred base language for read-aloud, as an ISO-639-1 code ("en"/"nl"). Text with no language marker
+    /// (verbatim, or a reply the naturalize/summarize pass left untagged) speaks in it, and that pass is told to
+    /// lean to it — keeping code, names and genuinely foreign terms in their own language. Default "en".
+    /// </summary>
+    public string ReadAloudLanguage { get; init; } = "en";
+
+    /// <summary>
     /// Whisper transcription language as an ISO-639-1 code ("nl", "en", …) or "auto" to let Whisper
     /// detect it. Defaults to "auto"; a fixed language is more reliable than detection when the operator
     /// always dictates in one language (auto-detect can mis-guess on short or accented utterances).

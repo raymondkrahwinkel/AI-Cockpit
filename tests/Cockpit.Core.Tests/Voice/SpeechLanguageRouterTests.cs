@@ -68,4 +68,23 @@ public class SpeechLanguageRouterTests
     {
         SpeechLanguageRouter.Route("   ").Should().BeEmpty();
     }
+
+    [Fact]
+    public void Route_WithDutchDefault_SpeaksUnmarkedTextInDutch()
+    {
+        var segments = SpeechLanguageRouter.Route("Dit is het antwoord.", "nl");
+
+        segments.Should().ContainSingle();
+        segments[0].Language.Should().Be("nl");
+    }
+
+    [Fact]
+    public void Route_WithDutchDefault_StillHonoursAnEnglishMarker()
+    {
+        var segments = SpeechLanguageRouter.Route("Dit is Dutch. [[en]]This part is English.", "nl");
+
+        segments.Should().HaveCount(2);
+        segments[0].Language.Should().Be("nl");
+        segments[1].Language.Should().Be("en");
+    }
 }
