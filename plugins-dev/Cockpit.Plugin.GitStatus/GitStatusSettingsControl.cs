@@ -21,11 +21,18 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
     private readonly GitStatusSettings _settings;
     private readonly ObservableCollection<string> _repos;
     private readonly TextBox _newRepo;
+    private readonly CheckBox _showBranchName;
 
     public GitStatusSettingsControl(GitStatusSettings settings)
     {
         _settings = settings;
         _repos = [.. settings.Repos];
+
+        _showBranchName = new CheckBox
+        {
+            Content = "Show the branch name in the session header (off = dot only, name on hover)",
+            IsChecked = settings.ShowBranchName,
+        };
 
         _newRepo = new TextBox { PlaceholderText = @"Repository path, e.g. D:\Projects\myrepo", Width = 360 };
 
@@ -86,6 +93,8 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
                 },
                 addRow,
                 list,
+                new TextBlock { Text = "Header badge", FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 8, 0, 0) },
+                _showBranchName,
             },
         };
     }
@@ -133,6 +142,7 @@ internal sealed class GitStatusSettingsControl : UserControl, IPluginSettingsVie
     public bool Save()
     {
         _settings.SaveRepos([.. _repos]);
+        _settings.ShowBranchName = _showBranchName.IsChecked ?? true;
         return true;
     }
 
