@@ -267,6 +267,14 @@
                                 </StackPanel>
                                 <TextBlock Text="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Button Content="▶ Test read-aloud" Command="{Binding PreviewReadAloudCommand}"/>
+                                    <TextBlock Text="{Binding VoiceTestStatus}"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Speaks a short sample in the selected voice and mode so you can hear it. The voice model downloads on first use, so the first test can take a few seconds."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Output device"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -564,15 +572,21 @@
                                               SelectedItem="{Binding SelectedLocalLlmPreference}"
                                               DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
+                                <TextBlock Text="{Binding VoiceLlmAutoSummary}"
+                                           IsVisible="{Binding ShowAutoLlmSummary}"
+                                           Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <TextBlock Text="Auto uses the model below when the detected server has it; otherwise it prefers an instruction-tuned model, then a small/mini one, and never an embedding model."
+                                           IsVisible="{Binding ShowAutoLlmSummary}"
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowLlmModelPicker}">
                                     <TextBlock Text="Model"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
                                     <ComboBox ItemsSource="{Binding VoiceLlmModels}"
                                               SelectedItem="{Binding VoiceLlmModel}" MinWidth="200"/>
                                 </StackPanel>
-                                <TextBlock Text="Shared by transcript cleanup and read-aloud. Populated from the server at the URL below; gemma3:4b reads Dutch best, qwen2.5:3b is a safe fallback."
-                                           IsVisible="{Binding ShowManualLlmFields}"
+                                <TextBlock Text="Shared by transcript cleanup and read-aloud. In auto-detect this is the preferred model (used when the server has it); with auto-detect off it is the exact model. gemma3:4b reads Dutch best, qwen2.5:3b is a safe fallback."
+                                           IsVisible="{Binding ShowLlmModelPicker}"
                                            Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
                                     <TextBlock Text="Local LLM URL"

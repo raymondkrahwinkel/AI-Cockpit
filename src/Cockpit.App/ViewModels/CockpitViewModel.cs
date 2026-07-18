@@ -92,6 +92,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly IModelCatalog? _modelCatalog;
+    private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
+    private readonly ITranscriptCleanupService? _cleanupService;
+    private readonly ILocalLlmEndpointResolver? _localLlmEndpointResolver;
     private readonly PluginDiagnostics? _pluginDiagnostics;
     private readonly IPluginDialogHost? _pluginDialogHost;
     private readonly List<byte> _recordedPcm = [];
@@ -1384,13 +1387,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLocalLlmServerPicker))]
     [NotifyPropertyChangedFor(nameof(ShowManualLlmFields))]
+    [NotifyPropertyChangedFor(nameof(ShowLlmModelPicker))]
+    [NotifyPropertyChangedFor(nameof(ShowAutoLlmSummary))]
     private bool _voiceCleanupEnabled = true;
 
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.AutoDetectLocalLlm"/>: auto-detect the running Ollama/LM Studio server and its model. On by default; when off, the server is set by hand below.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLocalLlmServerPicker))]
     [NotifyPropertyChangedFor(nameof(ShowManualLlmFields))]
+    [NotifyPropertyChangedFor(nameof(ShowLlmModelPicker))]
+    [NotifyPropertyChangedFor(nameof(ShowAutoLlmSummary))]
     private bool _voiceAutoDetectLocalLlm = true;
+
+    // Re-resolve the "auto will use…" summary when the operator flips auto-detect, so the line reflects the change.
+    partial void OnVoiceAutoDetectLocalLlmChanged(bool value) => _ = _RefreshVoiceLlmAsync();
 
     /// <summary>Which detected server auto-detect prefers when both are running (Options combo box).</summary>
     public IReadOnlyList<LocalLlmPreferenceOption> LocalLlmPreferences { get; } =
@@ -1403,11 +1413,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private LocalLlmPreferenceOption _selectedLocalLlmPreference = new("Auto-detect", LocalLlmPreference.Auto);
 
+    // A different preferred server can resolve to a different server + model list, so re-resolve and re-list.
+    partial void OnSelectedLocalLlmPreferenceChanged(LocalLlmPreferenceOption value) => _ = _RefreshVoiceLlmAsync();
+
     /// <summary>The server-preference combo box is only meaningful while cleanup is on and auto-detect is choosing the server.</summary>
     public bool ShowLocalLlmServerPicker => VoiceCleanupEnabled && VoiceAutoDetectLocalLlm;
 
-    /// <summary>The manual model + URL fields are shown only when cleanup is on and auto-detect is off — otherwise Cockpit decides both, and the two would contradict the picker above.</summary>
+    /// <summary>The model picker is shown whenever cleanup is on: it is the exact model in manual mode, and the preferred/override model auto-detect uses first when present in auto mode.</summary>
+    public bool ShowLlmModelPicker => VoiceCleanupEnabled;
+
+    /// <summary>The "auto will use…" summary + the pick-rule hint are shown only while auto-detect is deciding the server/model, so the operator can see what it resolves to.</summary>
+    public bool ShowAutoLlmSummary => VoiceCleanupEnabled && VoiceAutoDetectLocalLlm;
+
+    /// <summary>The manual server URL is shown only when cleanup is on and auto-detect is off — otherwise Cockpit picks the server and showing a URL field would contradict it.</summary>
     public bool ShowManualLlmFields => VoiceCleanupEnabled && !VoiceAutoDetectLocalLlm;
+
+    /// <summary>What auto-detect resolves to right now — e.g. "Auto-detected LM Studio → phi-3-mini-4k-instruct" — so the chosen server/model is visible rather than hidden. Refreshed on dialog open and when the auto-detect toggle, server preference or preferred model change.</summary>
+    [ObservableProperty]
+    private string _voiceLlmAutoSummary = string.Empty;
 
     /// <summary>Models reported by the configured local server's <c>/v1/models</c>, seeded with the current + advised models so the dropdown is never empty even when the server is unreachable. Refreshed when the Options dialog opens.</summary>
     public ObservableCollection<string> VoiceLlmModels { get; } = [];
@@ -1415,6 +1438,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Model id the shared voice-LLM step (STT cleanup + read-aloud) asks the local LLM for. Selected from <see cref="VoiceLlmModels"/> (see <see cref="VoiceCleanupEnabled"/>).</summary>
     [ObservableProperty]
     private string _voiceLlmModel = "gemma3:4b";
+
+    // The preferred model steers what auto-detect picks (it is used first when the server has it), so refresh the
+    // summary — but not the list — when it changes, to avoid disturbing the dropdown the operator is using.
+    partial void OnVoiceLlmModelChanged(string value) => _ = _RefreshVoiceLlmSummaryAsync();
 
     /// <summary>Base URL of the local OpenAI-compatible LLM server (Ollama/LM Studio) used by the shared voice-LLM step, without the <c>/v1</c> suffix.</summary>
     [ObservableProperty]
@@ -1490,6 +1517,74 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>SupertonicTTS speaker used for read-aloud (#35). One multilingual model voices both languages; the model downloads lazily on first use, the same as the Whisper model.</summary>
     [ObservableProperty]
     private TtsVoiceOption _selectedTtsVoice = TtsVoiceCatalog.Default;
+
+    /// <summary>Status shown next to the read-aloud Test button — "Preparing…" while a Naturalized/Summarized preview calls the local LLM, then cleared.</summary>
+    [ObservableProperty]
+    private string _voiceTestStatus = string.Empty;
+
+    /// <summary>
+    /// Speaks a short sample through the currently selected voice and mode (#35, AC-21) so the operator can hear how
+    /// read-aloud sounds before saving. Naturalized/Summarized run the sample through the local LLM the same way a
+    /// real reply would (falling back to the raw sample when it is unavailable); Verbatim reads it as-is. The
+    /// Supertonic model downloads on first use, so the first preview can take a few seconds. No-op without a
+    /// playback queue (design-time/tests).
+    /// </summary>
+    [RelayCommand]
+    private async Task PreviewReadAloudAsync()
+    {
+        if (_voicePlaybackQueue is null)
+        {
+            return;
+        }
+
+        _voicePlaybackQueue.StopAll();
+        var speakerId = SelectedTtsVoice.Sid;
+        var mode = SelectedReadAloudMode.Value;
+
+        VoiceTestStatus = "Preparing…";
+        try
+        {
+            var sentences = TtsProseExtractor.Extract(_SampleReadAloudText(mode));
+            if (sentences.Count == 0)
+            {
+                return;
+            }
+
+            if (_cleanupService is not null && mode is ReadAloudMode.Naturalized or ReadAloudMode.Summarized)
+            {
+                var joined = string.Join(" ", sentences);
+                var rewritten = mode == ReadAloudMode.Summarized
+                    ? await _cleanupService.SummarizeForSpeechAsync(joined)
+                    : await _cleanupService.NaturalizeForSpeechAsync(joined);
+                var segments = SpeechLanguageRouter.Route(rewritten);
+                if (segments.Count > 0)
+                {
+                    _voicePlaybackQueue.Enqueue(segments, speakerId);
+                    return;
+                }
+            }
+
+            _voicePlaybackQueue.Enqueue(sentences, speakerId, SpeechLanguageRouter.DefaultLanguage);
+        }
+        finally
+        {
+            VoiceTestStatus = string.Empty;
+        }
+    }
+
+    /// <summary>A representative preview sample: bilingual and lightly technical, so Naturalized tags the languages and Summarized has something to compress.</summary>
+    private static string _SampleReadAloudText(ReadAloudMode mode) => mode switch
+    {
+        ReadAloudMode.Summarized =>
+            "I finished the read-aloud redesign across three pillars: the engine moved to SupertonicTTS, "
+            + "read-aloud gained a three-way mode, and the local-LLM layer is now shared. All the tests pass "
+            + "with zero warnings. Dit is klaar voor je test.",
+        ReadAloudMode.Naturalized =>
+            "Read-aloud is ready. I switched the engine to SupertonicTTS in src/App.cs and every test passes. "
+            + "Dit werkt nu ook netjes in het Nederlands.",
+        _ =>
+            "Read-aloud is ready. This is how the selected voice sounds when it reads a reply out loud.",
+    };
 
     [ObservableProperty]
     private string _voiceSettingsStatus = string.Empty;
@@ -1678,7 +1773,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITranscriptionAdvisor? transcriptionAdvisor = null,
         ITranscriptionCalibrator? transcriptionCalibrator = null,
         ITranscriptionCalibrationStore? transcriptionCalibrationStore = null,
-        IModelCatalog? modelCatalog = null)
+        IModelCatalog? modelCatalog = null,
+        IVoicePlaybackQueue? voicePlaybackQueue = null,
+        ITranscriptCleanupService? cleanupService = null,
+        ILocalLlmEndpointResolver? localLlmEndpointResolver = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1705,6 +1803,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _audioDeviceProvider = audioDeviceProvider;
         _modelCatalog = modelCatalog;
+        _voicePlaybackQueue = voicePlaybackQueue;
+        _cleanupService = cleanupService;
+        _localLlmEndpointResolver = localLlmEndpointResolver;
         _pluginDiagnostics = pluginDiagnostics;
         _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;
@@ -2902,16 +3003,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>
-    /// Refreshes the voice-LLM model dropdown from the configured server's <c>/v1/models</c> when the Options
-    /// dialog opens. Seeded with the current selection and the advised models (gemma3:4b for Dutch, qwen2.5:3b as
-    /// a safe fallback) so the list is never empty and the saved model stays selected even when the server is
-    /// unreachable — the catalog fails soft to an empty list, never throwing.
+    /// Resolves what the shared voice-LLM step would actually use (for the "auto will use…" summary) and refreshes
+    /// the model dropdown from that same server's <c>/v1/models</c> when the Options dialog opens or the auto-detect
+    /// toggle / server preference change. Seeded with the current selection and the advised models (gemma3:4b for
+    /// Dutch, qwen2.5:3b as a safe fallback) so the list is never empty and the saved model stays selected even when
+    /// the server is unreachable — both the resolver and catalog fail soft, never throwing.
     /// </summary>
-    private async Task _RefreshVoiceLlmModelsAsync()
+    private async Task _RefreshVoiceLlmAsync()
     {
+        var endpoint = await _ResolveVoiceLlmEndpointAsync();
+        _UpdateAutoSummary(endpoint);
+
+        // List from the server that will actually be used — the resolved one in auto mode, the manual URL otherwise —
+        // so the dropdown offers what is really installed there.
+        var listFrom = endpoint?.BaseUrl ?? VoiceLlmBaseUrl;
         var discovered = _modelCatalog is null
             ? []
-            : await _modelCatalog.ListModelsAsync(VoiceLlmBaseUrl);
+            : await _modelCatalog.ListModelsAsync(listFrom);
 
         VoiceLlmModels.Clear();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -2929,6 +3037,28 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             VoiceLlmModel = VoiceLlmModels[0];
         }
     }
+
+    /// <summary>Re-resolves and refreshes only the "auto will use…" summary — used when the preferred model changes, without rebuilding the dropdown the operator is interacting with.</summary>
+    private async Task _RefreshVoiceLlmSummaryAsync() => _UpdateAutoSummary(await _ResolveVoiceLlmEndpointAsync());
+
+    private async Task<LocalLlmEndpoint?> _ResolveVoiceLlmEndpointAsync() =>
+        _localLlmEndpointResolver is null ? null : await _localLlmEndpointResolver.ResolveAsync(_CurrentVoiceLlmSettings());
+
+    // The LLM-relevant subset of the current (possibly unsaved) Options edits, so the resolver reflects what the
+    // operator is looking at rather than what is on disk.
+    private VoiceSettings _CurrentVoiceLlmSettings() => new()
+    {
+        AutoDetectLocalLlm = VoiceAutoDetectLocalLlm,
+        LocalLlmPreference = SelectedLocalLlmPreference.Value,
+        VoiceLlmModel = string.IsNullOrWhiteSpace(VoiceLlmModel) ? "gemma3:4b" : VoiceLlmModel.Trim(),
+        VoiceLlmBaseUrl = string.IsNullOrWhiteSpace(VoiceLlmBaseUrl) ? "http://localhost:11434" : VoiceLlmBaseUrl.Trim(),
+    };
+
+    // Only spelled out in auto mode; in manual mode the operator set the endpoint themselves, so there is nothing to reveal.
+    private void _UpdateAutoSummary(LocalLlmEndpoint? endpoint) =>
+        VoiceLlmAutoSummary = VoiceAutoDetectLocalLlm && endpoint is { } resolved
+            ? $"Cleanup will use “{resolved.Model}” at {resolved.BaseUrl}"
+            : string.Empty;
 
     private static void _PopulateDevices(ObservableCollection<AudioDeviceOption> target, IReadOnlyList<AudioDeviceInfo> devices)
     {
@@ -3296,7 +3426,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _RefreshAudioDevicesAsync();
-        await _RefreshVoiceLlmModelsAsync();
+        await _RefreshVoiceLlmAsync();
         await Plugins.LoadAsync();
         await _dialogService.ShowOptionsDialogAsync(this);
     }
