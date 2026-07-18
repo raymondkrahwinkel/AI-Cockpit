@@ -101,7 +101,23 @@ public sealed class ManagedCliConfigSection
         _installButton.Content = "Checking…";
         _installButton.IsEnabled = false;
 
-        var status = await _host.GetManagedCliStatusAsync(_cliName).ConfigureAwait(true);
+        ManagedCliStatus status;
+        try
+        {
+            status = await _host.GetManagedCliStatusAsync(_cliName).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            // The check must never leave the button stuck on "Checking…": fall back to a plain, enabled Update
+            // (unless it was removed in the meantime).
+            if (!string.IsNullOrEmpty(_host.ResolveManagedCliPath(_cliName)))
+            {
+                _installButton.Content = "Update";
+                _installButton.IsEnabled = true;
+            }
+
+            return;
+        }
 
         // The operator may have removed it while the check ran.
         if (string.IsNullOrEmpty(_host.ResolveManagedCliPath(_cliName)))
