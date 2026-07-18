@@ -69,8 +69,9 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
 
             _CopyPlugin(source, target);
 
-            var entryAssembly = Path.Combine(target, manifest.EntryAssembly);
-            var sha = PluginHash.Compute(await File.ReadAllBytesAsync(entryAssembly, cancellationToken).ConfigureAwait(false));
+            // Pin the whole installed closure, not just the entry assembly (AC-43), so a later swapped dependency
+            // DLL re-triggers consent.
+            var sha = await PluginClosureHash.OfInstalledFolderAsync(target, cancellationToken).ConfigureAwait(false);
             await registrations.SaveAsync(manifest.Id, new PluginRegistration(Enabled: true, PinnedSha256: sha), cancellationToken).ConfigureAwait(false);
 
             installed.Add(manifest.Id);
@@ -115,24 +116,19 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
 
         // Same version, which does not mean the same plugin: a rebuild never bumps one, because there is nothing
         // to bump it to. The version was standing in for "is this different" and answering for the wrong thing —
-        // so ask what the question actually meant.
-        return !await _IsSameAssemblyAsync(
-            Path.Combine(source, incoming.EntryAssembly),
-            Path.Combine(target, installed.EntryAssembly),
-            cancellationToken).ConfigureAwait(false);
+        // so ask what the question actually meant. "Different" now spans the whole closure, not just the entry
+        // assembly (AC-43): a rebuild that only changed a dependency DLL must still be re-installed and re-pinned,
+        // or discovery would later find a closure that no longer matches the pin and drop it to needs-consent.
+        return !await _IsSameClosureAsync(source, target, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<bool> _IsSameAssemblyAsync(string incomingAssembly, string installedAssembly, CancellationToken cancellationToken)
+    private static async Task<bool> _IsSameClosureAsync(string source, string target, CancellationToken cancellationToken)
     {
-        if (!File.Exists(incomingAssembly) || !File.Exists(installedAssembly))
-        {
-            return false;
-        }
+        // The source hashed as it would be installed (same file selection as _CopyPlugin), against what is on disk.
+        var incoming = await PluginClosureHash.OfSourceFolderAsync(source, cancellationToken).ConfigureAwait(false);
+        var installed = await PluginClosureHash.OfInstalledFolderAsync(target, cancellationToken).ConfigureAwait(false);
 
-        var incomingHash = PluginHash.Compute(await File.ReadAllBytesAsync(incomingAssembly, cancellationToken).ConfigureAwait(false));
-        var installedHash = PluginHash.Compute(await File.ReadAllBytesAsync(installedAssembly, cancellationToken).ConfigureAwait(false));
-
-        return string.Equals(incomingHash, installedHash, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(incoming, installed, StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<PluginManifest?> _ReadManifestAsync(string folder, CancellationToken cancellationToken)
@@ -161,11 +157,12 @@ internal sealed class PluginSourceInstaller(IPluginRegistrationStore registratio
         {
             var name = Path.GetFileName(file);
 
-            // The shared contract must load once, from the host. A copy sitting in a plugin folder gives that
-            // plugin's ICockpitPlugin a second identity, and the loader then rejects the plugin as having "no
-            // usable entry type". A plugin never carries the abstractions assembly (it references it with
-            // Private=false); refuse to copy it in even if a stray build output offers one.
-            if (name.StartsWith("Cockpit.Plugins.Abstractions.", StringComparison.OrdinalIgnoreCase))
+            // One predicate decides what counts as a copied plugin file, shared with the closure hash that later
+            // verifies the install (AC-43) so the two cannot drift. It leaves out the shared abstractions assembly
+            // — a copy in a plugin folder gives that plugin's ICockpitPlugin a second identity and the loader then
+            // rejects it as having "no usable entry type"; a plugin references it Private=false and never carries
+            // it — and reserved dot-prefixed markers.
+            if (!PluginClosureHash.IsCopiedSourceFile(name))
             {
                 continue;
             }

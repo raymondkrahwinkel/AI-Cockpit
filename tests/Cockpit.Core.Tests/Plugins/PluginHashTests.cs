@@ -25,4 +25,45 @@ public class PluginHashTests
         PluginHash.Compute(Encoding.UTF8.GetBytes("v1"))
             .Should().NotBe(PluginHash.Compute(Encoding.UTF8.GetBytes("v2")));
     }
+
+    [Fact]
+    public void ComputeClosure_IsIndependentOfFileOrder_AndPathSeparator()
+    {
+        var a = PluginHash.ComputeClosure(
+        [
+            new PluginClosureFile("Plugin.dll", "aaaa"),
+            new PluginClosureFile("runtimes/linux/native/lib.so", "bbbb"),
+        ]);
+        var reordered = PluginHash.ComputeClosure(
+        [
+            new PluginClosureFile(@"runtimes\linux\native\lib.so", "bbbb"),
+            new PluginClosureFile("Plugin.dll", "aaaa"),
+        ]);
+
+        a.Should().Be(reordered).And.MatchRegex("^[0-9a-f]{64}$");
+    }
+
+    [Fact]
+    public void ComputeClosure_AChangedDependencyHash_ChangesTheClosure()
+    {
+        var original = PluginHash.ComputeClosure(
+            [new PluginClosureFile("Plugin.dll", "entry"), new PluginClosureFile("Dep.dll", "dep-v1")]);
+        var depChanged = PluginHash.ComputeClosure(
+            [new PluginClosureFile("Plugin.dll", "entry"), new PluginClosureFile("Dep.dll", "dep-v2")]);
+
+        depChanged.Should().NotBe(original);
+    }
+
+    [Fact]
+    public void ComputeClosure_BindsEachHashToItsPath()
+    {
+        // The same two hashes on swapped paths must not collide — otherwise moving bytes between files would be a
+        // silent no-op the pin never sees.
+        var one = PluginHash.ComputeClosure(
+            [new PluginClosureFile("a.dll", "x"), new PluginClosureFile("b.dll", "y")]);
+        var swapped = PluginHash.ComputeClosure(
+            [new PluginClosureFile("a.dll", "y"), new PluginClosureFile("b.dll", "x")]);
+
+        swapped.Should().NotBe(one);
+    }
 }

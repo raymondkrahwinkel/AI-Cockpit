@@ -44,6 +44,46 @@ public class PluginSourceInstallerTests : IDisposable
         _registrations.Saved["codex"].PinnedSha256.Should().NotBe("old-pin");
     }
 
+    // AC-43: a rebuild that changed only a dependency DLL — the entry assembly byte-identical — must still be
+    // reinstalled and re-pinned. Under the old entry-only comparison it read as "same" and was left behind, so its
+    // pin (now over the whole closure) would no longer match and discovery would drop it to needs-consent.
+    [Fact]
+    public async Task RefreshOnly_ReinstallsWhenOnlyADependencyDllChanged()
+    {
+        _WriteInstalled("codex", "1.0.0", assemblyContent: "entry-bytes");
+        await File.WriteAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"), "dep-v1");
+        _registrations.Saved["codex"] = new PluginRegistration(Enabled: true, PinnedSha256: "old-pin");
+
+        var source = _WriteSource("codex", "1.0.0", assemblyContent: "entry-bytes");
+        await File.WriteAllTextAsync(Path.Combine(source, "Dep.dll"), "dep-v2");
+
+        var installed = await new PluginSourceInstaller(_registrations, null)
+            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
+
+        installed.Should().Equal("codex");
+        (await File.ReadAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"))).Should().Be("dep-v2");
+        _registrations.Saved["codex"].PinnedSha256.Should().NotBe("old-pin");
+    }
+
+    // The other side of the closure comparison: an install whose whole closure is byte-identical must be left
+    // alone, or the source sync would reinstall and re-pin on every startup.
+    [Fact]
+    public async Task RefreshOnly_LeavesAByteIdenticalInstallAlone()
+    {
+        _WriteInstalled("codex", "1.0.0", assemblyContent: "same-bytes");
+        await File.WriteAllTextAsync(Path.Combine(_plugins, "codex", "Dep.dll"), "dep");
+        _registrations.Saved["codex"] = new PluginRegistration(Enabled: true, PinnedSha256: "pinned");
+
+        var source = _WriteSource("codex", "1.0.0", assemblyContent: "same-bytes");
+        await File.WriteAllTextAsync(Path.Combine(source, "Dep.dll"), "dep");
+
+        var installed = await new PluginSourceInstaller(_registrations, null)
+            .InstallFromSourceFoldersAsync([source], _plugins, installNew: false);
+
+        installed.Should().BeEmpty("an unchanged closure must not reinstall or re-pin");
+        _registrations.Saved["codex"].PinnedSha256.Should().Be("pinned");
+    }
+
     // Refresh-only is the looseness guarantee: a build never decides, on the operator's behalf, to install a
     // first-party plugin they never chose.
     [Fact]
