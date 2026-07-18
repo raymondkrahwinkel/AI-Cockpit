@@ -142,6 +142,31 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         RateLimits.Add(new SessionRateWindow("wk", 91, null));
     }
 
+    /// <summary>
+    /// Design-time preview of a plain terminal pane (#AC-25/#AC-29) for the Screenshotter: the shared
+    /// <see cref="Controls.SessionHeaderBar"/> should render the terminal treatment — kind chip "TTY", no plugin
+    /// header host and no usage pill — with the shell name shown once (the title) and only echoed in the cwd
+    /// tooltip. Mirrors what <see cref="LaunchTerminal"/> configures, without spawning a real shell.
+    /// </summary>
+    public static TtyViewModel DesignTerminal()
+    {
+        var vm = new TtyViewModel
+        {
+            Title = "Windows PowerShell - 1",
+            ActiveProfileLabel = "Windows PowerShell",
+            Status = "pwsh 7.4",
+            IsTerminal = true,
+            ShowPluginHeaderItems = false,
+            WorkingDirectory = @"C:\Projects\dotnet\Cockpit",
+            SessionStatus = SessionStatus.Busy,
+        };
+        // A plain shell has no usage feed, so undo the parameterless ctor's SDK-style seeding: without this the
+        // ctx pill and 5h/wk windows would show on a terminal header they never have on a real one.
+        vm.ContextUsedPercent = null;
+        vm.RateLimits.Clear();
+        return vm;
+    }
+
     public TtyViewModel(
         ITtyLauncher launcher,
         ITtySessionProviderResolver providerResolver,
