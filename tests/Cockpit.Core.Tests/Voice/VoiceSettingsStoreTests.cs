@@ -54,8 +54,8 @@ public class VoiceSettingsStoreTests : IDisposable
             CleanupEnabled = false,
             AutoDetectLocalLlm = false,
             LocalLlmPreference = LocalLlmPreference.LmStudio,
-            CleanupModel = "llama3.2:3b",
-            CleanupBaseUrl = "http://localhost:12345",
+            VoiceLlmModel = "llama3.2:3b",
+            VoiceLlmBaseUrl = "http://localhost:12345",
             PushToTalkKeyName = "F10",
             GlobalPushToTalk = true,
             AutoSubmitAfterVoice = true,
@@ -75,8 +75,8 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.CleanupEnabled.Should().BeFalse();
         loaded.AutoDetectLocalLlm.Should().BeFalse();
         loaded.LocalLlmPreference.Should().Be(LocalLlmPreference.LmStudio);
-        loaded.CleanupModel.Should().Be("llama3.2:3b");
-        loaded.CleanupBaseUrl.Should().Be("http://localhost:12345");
+        loaded.VoiceLlmModel.Should().Be("llama3.2:3b");
+        loaded.VoiceLlmBaseUrl.Should().Be("http://localhost:12345");
         loaded.PushToTalkKeyName.Should().Be("F10");
         loaded.GlobalPushToTalk.Should().BeTrue();
         loaded.AutoSubmitAfterVoice.Should().BeTrue();

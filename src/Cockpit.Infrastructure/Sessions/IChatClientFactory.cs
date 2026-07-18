@@ -11,4 +11,11 @@ namespace Cockpit.Infrastructure.Sessions;
 internal interface IChatClientFactory
 {
     IChatClient Create(ProviderConfig config);
+
+    /// <summary>
+    /// Builds an <see cref="IChatClient"/> straight from a resolved OpenAI-compatible endpoint (base URL without
+    /// the <c>/v1</c> suffix, plus a model id), for callers that already know the endpoint rather than a profile
+    /// <see cref="ProviderConfig"/> — e.g. the shared voice-LLM cleanup/naturalize/summarize path.
+    /// </summary>
+    IChatClient CreateForEndpoint(string baseUrl, string model, string? apiKey = null);
 }

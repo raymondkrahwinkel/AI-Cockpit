@@ -28,26 +28,31 @@ public sealed record VoiceSettings
     public bool CleanupEnabled { get; init; } = true;
 
     /// <summary>
-    /// When true, the cleanup/naturalize step auto-detects the running local server (Ollama or LM Studio, via the
-    /// same process detection as the memory breakdown) and reads its model list, rather than using
-    /// <see cref="CleanupBaseUrl"/>/<see cref="CleanupModel"/> directly — those become the fallback when nothing is
-    /// detected. On by default so a laptop on Ollama and a desktop on LM Studio both work without per-machine setup.
+    /// When true, the shared voice-LLM step (STT cleanup + read-aloud naturalize/summarize) auto-detects the
+    /// running local server (Ollama or LM Studio, via the same process detection as the memory breakdown) and
+    /// reads its model list, rather than using <see cref="VoiceLlmBaseUrl"/>/<see cref="VoiceLlmModel"/>
+    /// directly — those become the fallback when nothing is detected. On by default so a laptop on Ollama and a
+    /// desktop on LM Studio both work without per-machine setup.
     /// </summary>
     public bool AutoDetectLocalLlm { get; init; } = true;
 
     /// <summary>Which detected server auto-detect prefers when both Ollama and LM Studio are running. Ignored when auto-detect is off.</summary>
     public LocalLlmPreference LocalLlmPreference { get; init; } = LocalLlmPreference.Auto;
 
-    /// <summary>Model id the cleanup/naturalize step asks the local server for (e.g. "qwen2.5:3b-instruct" on Ollama, or an LM Studio model id). Preferred over an auto-picked model when auto-detect finds it on the server.</summary>
-    public string CleanupModel { get; init; } = "qwen2.5:3b-instruct";
+    /// <summary>
+    /// Model id the shared voice-LLM step (STT cleanup + read-aloud naturalize/summarize) asks the local server
+    /// for. Preferred over an auto-picked model when auto-detect finds it on the server. Defaults to
+    /// <c>gemma3:4b</c> (better Dutch); <c>qwen2.5:3b</c> is a safe fallback.
+    /// </summary>
+    public string VoiceLlmModel { get; init; } = "gemma3:4b";
 
     /// <summary>
-    /// Base URL of the local OpenAI-compatible LLM server the cleanup/naturalize step calls — Ollama
+    /// Base URL of the local OpenAI-compatible LLM server the shared voice-LLM step calls — Ollama
     /// (<c>http://localhost:11434</c>) or LM Studio (<c>http://localhost:1234</c>), and any other server that
-    /// speaks the same API. Stored without the <c>/v1</c> suffix; the service appends
-    /// <c>/v1/chat/completions</c>, the endpoint both backends serve.
+    /// speaks the same API. Stored without the <c>/v1</c> suffix; the OpenAI SDK appends <c>/v1</c>. One
+    /// endpoint serves both STT cleanup and read-aloud naturalize/summarize.
     /// </summary>
-    public string CleanupBaseUrl { get; init; } = "http://localhost:11434";
+    public string VoiceLlmBaseUrl { get; init; } = "http://localhost:11434";
 
     /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
     public string PushToTalkKeyName { get; init; } = "F9";
@@ -97,7 +102,7 @@ public sealed record VoiceSettings
     /// How read-aloud (#35) renders a reply before speaking it: <see cref="Cockpit.Core.Voice.ReadAloudMode.Verbatim"/>
     /// (no LLM pass), <see cref="Cockpit.Core.Voice.ReadAloudMode.Naturalized"/> (rewrite into natural speech) or
     /// <see cref="Cockpit.Core.Voice.ReadAloudMode.Summarized"/> (summarize to the essence). The last two reuse
-    /// <see cref="CleanupModel"/>/<see cref="CleanupBaseUrl"/> and add a local LLM call per turn. A fresh install
+    /// <see cref="VoiceLlmModel"/>/<see cref="VoiceLlmBaseUrl"/> and add a local LLM call per turn. A fresh install
     /// starts on Verbatim; a config saved before this key existed migrates from the old on/off naturalize flag.
     /// </summary>
     public ReadAloudMode ReadAloudMode { get; init; } = ReadAloudMode.Verbatim;

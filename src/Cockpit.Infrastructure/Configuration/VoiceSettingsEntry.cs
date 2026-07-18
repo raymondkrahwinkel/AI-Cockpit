@@ -25,16 +25,27 @@ internal sealed class VoiceSettingsEntry
 
     public LocalLlmPreference LocalLlmPreference { get; set; } = LocalLlmPreference.Auto;
 
-    public string CleanupModel { get; set; } = "qwen2.5:3b-instruct";
+    /// <summary>Model id for the shared voice-LLM step. Null when neither this nor a legacy key was written; migrated/defaulted in <see cref="ToDomain"/>.</summary>
+    public string? VoiceLlmModel { get; set; }
 
-    /// <summary>OpenAI-compatible local LLM base URL (Ollama/LM Studio). Null when neither this nor the legacy key was written.</summary>
-    public string? CleanupBaseUrl { get; set; }
+    /// <summary>OpenAI-compatible local LLM base URL (Ollama/LM Studio) for the shared voice-LLM step. Null when neither this nor a legacy key was written.</summary>
+    public string? VoiceLlmBaseUrl { get; set; }
 
     /// <summary>
-    /// Legacy on-disk key from before the Ollama-specific cleanup was generalized to any OpenAI-compatible
-    /// server. Read to migrate an existing config; never written back (see <see cref="FromDomain"/>), so once
-    /// the file is next saved the neutral <see cref="CleanupBaseUrl"/> key is what persists.
+    /// Legacy on-disk keys from before the cleanup config was renamed to the shared, provider-neutral voice-LLM
+    /// config: <see cref="CleanupModel"/>/<see cref="CleanupBaseUrl"/> were the previous names, and
+    /// <see cref="OllamaBaseUrl"/> the Ollama-specific one before that. All are read to migrate an existing config
+    /// but never written back (see <see cref="FromDomain"/>), so once the file is next saved only the
+    /// <see cref="VoiceLlmModel"/>/<see cref="VoiceLlmBaseUrl"/> keys persist.
     /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CleanupModel { get; set; }
+
+    /// <inheritdoc cref="CleanupModel"/>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CleanupBaseUrl { get; set; }
+
+    /// <inheritdoc cref="CleanupModel"/>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? OllamaBaseUrl { get; set; }
 
@@ -85,8 +96,12 @@ internal sealed class VoiceSettingsEntry
         CleanupEnabled = settings.CleanupEnabled,
         AutoDetectLocalLlm = settings.AutoDetectLocalLlm,
         LocalLlmPreference = settings.LocalLlmPreference,
-        CleanupModel = settings.CleanupModel,
-        CleanupBaseUrl = settings.CleanupBaseUrl,
+        VoiceLlmModel = settings.VoiceLlmModel,
+        VoiceLlmBaseUrl = settings.VoiceLlmBaseUrl,
+        // Legacy keys are migration-only: never written back, so they stay null and drop out of the file.
+        CleanupModel = null,
+        CleanupBaseUrl = null,
+        OllamaBaseUrl = null,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
@@ -114,9 +129,10 @@ internal sealed class VoiceSettingsEntry
         CleanupEnabled = CleanupEnabled,
         AutoDetectLocalLlm = AutoDetectLocalLlm,
         LocalLlmPreference = LocalLlmPreference,
-        CleanupModel = CleanupModel,
-        // Prefer the neutral key; fall back to the legacy Ollama key so an existing config migrates cleanly.
-        CleanupBaseUrl = CleanupBaseUrl ?? OllamaBaseUrl ?? "http://localhost:11434",
+        // Prefer the neutral key; fall back through the renamed-cleanup key and default so an existing config migrates cleanly.
+        VoiceLlmModel = VoiceLlmModel ?? CleanupModel ?? "gemma3:4b",
+        // Prefer the neutral key; fall back through the renamed-cleanup and older Ollama keys so an existing config migrates cleanly.
+        VoiceLlmBaseUrl = VoiceLlmBaseUrl ?? CleanupBaseUrl ?? OllamaBaseUrl ?? "http://localhost:11434",
         PushToTalkKeyName = PushToTalkKeyName,
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
