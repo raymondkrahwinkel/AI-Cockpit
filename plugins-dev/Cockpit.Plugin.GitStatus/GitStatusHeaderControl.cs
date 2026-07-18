@@ -48,10 +48,6 @@ internal sealed class GitStatusHeaderControl : UserControl
         _dot = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center };
         _label = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
 
-        // Toggling "show branch name" in settings takes effect at once, not on the next git signal — the callback
-        // runs on the UI thread (AC-36). Only the label's visibility depends on the setting, so update it directly.
-        _host.OnSettingsSaved(() => _label.IsVisible = _settings.ShowBranchName);
-
         _row = new Button
         {
             Padding = new Thickness(6, 1),
@@ -80,6 +76,11 @@ internal sealed class GitStatusHeaderControl : UserControl
         base.OnAttachedToVisualTree(e);
         _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
         _session.OutputProduced += _OnSessionOutput;
+        // Toggling "show branch name" (AC-36) takes effect at once on every live header. Subscribed here and dropped
+        // on detach — symmetric with the session events — so a transient header is never left rooted (unlike
+        // ICockpitHost.OnSettingsSaved, which has no unsubscribe).
+        _settings.Changed += _OnSettingsChanged;
+        _label.IsVisible = _settings.ShowBranchName;
         _ = _LoadAsync();
         _ = _EnsureHeadWatcherAsync();
     }
@@ -89,9 +90,12 @@ internal sealed class GitStatusHeaderControl : UserControl
         base.OnDetachedFromVisualTree(e);
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
         _session.OutputProduced -= _OnSessionOutput;
+        _settings.Changed -= _OnSettingsChanged;
         _signalRefresh.Stop();
         _DisposeHeadWatcher();
     }
+
+    private void _OnSettingsChanged() => _label.IsVisible = _settings.ShowBranchName;
 
     private void _OnWorkingDirectoryChanged(object? sender, EventArgs e)
     {
