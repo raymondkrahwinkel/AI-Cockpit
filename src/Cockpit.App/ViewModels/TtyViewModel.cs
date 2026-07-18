@@ -253,6 +253,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     {
         _configuredProviderOverride = new ShellTtySessionProvider(shell);
         IsTerminal = true;
+        // A plain shell is not an agent session, so a plugin session indicator has nothing to say about it (AC-25):
+        // hide the shared header's plugin-header host for a terminal pane.
+        ShowPluginHeaderItems = false;
         _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
         if (_configuredWorkingDirectory is not null)
         {

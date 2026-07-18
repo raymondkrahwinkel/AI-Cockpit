@@ -115,7 +115,13 @@ public sealed record SessionLimits(
         DateTimeOffset? resetsAt = null;
         if (window.TryGetProperty("resets_at", out var resets))
         {
-            if (resets.ValueKind == JsonValueKind.Number && resets.TryGetInt64(out var epochSeconds))
+            // Range-guard the epoch: DateTimeOffset.FromUnixTimeSeconds throws ArgumentOutOfRangeException outside
+            // year 1..9999, and that would escape this method's JsonException-only catch — a crafted/garbled
+            // resets_at must leave the reset time null (and keep the used_percentage), not throw and stall the poll.
+            const long minEpochSeconds = -62135596800; // 0001-01-01
+            const long maxEpochSeconds = 253402300799;  // 9999-12-31
+            if (resets.ValueKind == JsonValueKind.Number && resets.TryGetInt64(out var epochSeconds)
+                && epochSeconds is >= minEpochSeconds and <= maxEpochSeconds)
             {
                 resetsAt = DateTimeOffset.FromUnixTimeSeconds(epochSeconds);
             }
