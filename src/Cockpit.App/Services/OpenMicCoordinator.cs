@@ -57,6 +57,11 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _playbackQueue = playbackQueue;
         _overlay = overlay;
         _logger = logger;
+
+        // Subscribed for the singleton's whole life, not only while open-mic is on: read-aloud can play without
+        // dictation ever being enabled (the per-session toggle, the Options "Test" button), and its "speaking" pill
+        // must still show. Barge-in (pausing the mic) is gated on actually listening inside the handler.
+        _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
     }
 
     /// <summary>True once voice is enabled — open-mic needs the mic pipeline, so the toggle is disabled until then.</summary>
@@ -129,7 +134,6 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
             _listener.SpeechStarted += _OnSpeechStarted;
             _listener.SpeechEnded += _OnSpeechEnded;
             _listener.AudioLevelSampled += _OnAudioLevelSampled;
-            _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
             _wired = true;
         }
 
@@ -148,7 +152,6 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _listener.SpeechStarted -= _OnSpeechStarted;
         _listener.SpeechEnded -= _OnSpeechEnded;
         _listener.AudioLevelSampled -= _OnAudioLevelSampled;
-        _playbackQueue.PlaybackActiveChanged -= _OnPlaybackActiveChanged;
         _wired = false;
     }
 
@@ -166,16 +169,21 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _overlay.SetOpenMic(null);
     }
 
-    // Barge-in: pause the mic while read-aloud plays, resume once the queue goes idle.
+    // Barge-in: pause the mic while read-aloud plays, resume once the queue goes idle — but only while actually
+    // listening. The overlay's "speaking" pill is surfaced unconditionally (HandlePlaybackActiveChanged), so it
+    // shows for read-aloud even when open-mic is off.
     private void _OnPlaybackActiveChanged(object? sender, bool active)
     {
-        if (active)
+        if (IsListening)
         {
-            _listener.Pause();
-        }
-        else
-        {
-            _listener.Resume();
+            if (active)
+            {
+                _listener.Pause();
+            }
+            else
+            {
+                _listener.Resume();
+            }
         }
 
         Dispatcher.UIThread.Post(() => HandlePlaybackActiveChanged(active));
