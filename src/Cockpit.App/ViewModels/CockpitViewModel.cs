@@ -141,6 +141,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>Plugin-registered sources of supervised background activities (AC-82) — the status bar shows a counter per source (only while it has activities) and a panel with a Kill per item.</summary>
     public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
 
+    /// <summary>Sessions-toolbar buttons contributed by plugins (AC-91) — global quick actions shown next to the workspace gear. Empty = nothing rendered.</summary>
+    public ObservableCollection<PluginToolbarAction> PluginToolbarActions { get; } = [];
+
     /// <summary>
     /// The operator's left-menu preference per plugin (#72): where it sits, and whether it shows there at all.
     /// Read from the plugin registrations at startup and refreshed when the manager changes one. A plugin the
@@ -167,6 +170,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // OrderBy is stable, and the buttons come first above — so a plugin contributing both keeps its button
             // above its own section, where a launcher belongs.
             .OrderBy(entry => _MenuOrderOf(entry.PluginId))
+            .ToList();
+
+    /// <summary>The plugin Sessions-toolbar buttons in the operator's chosen order/visibility (#72) — the same hide/order rules as the left menu, so a plugin hidden there does not surface a toolbar button either.</summary>
+    public IReadOnlyList<PluginToolbarAction> VisibleToolbarActions =>
+        PluginToolbarActions
+            .Where(action => !_IsHiddenInMenu(action.PluginId))
+            .OrderBy(action => _MenuOrderOf(action.PluginId))
             .ToList();
 
     /// <summary>Applies a menu preference the plugin manager just persisted, and tells the sidebar to rebuild (#72).</summary>
@@ -359,6 +369,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     void IPluginContributionSink.AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
         _OnUiThread(() => PluginSupervisedActivities.Add(source));
+
+    void IPluginContributionSink.AddToolbarAction(string pluginId, ToolbarAction action) =>
+        _OnUiThread(() => PluginToolbarActions.Add(new PluginToolbarAction(pluginId, action)));
 
     void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
         _OnUiThread(() => PluginShortcuts.Add(shortcut));

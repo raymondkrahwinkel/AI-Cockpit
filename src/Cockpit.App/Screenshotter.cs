@@ -44,6 +44,7 @@ internal static class Screenshotter
             // headless — the SDK-only 'session' scene is exactly what let the earlier TTY-header miss slip through.
             "terminal" => new Window { Width = width, Height = height, Content = new Views.TtyView { DataContext = ViewModels.TtyViewModel.DesignTerminal() } },
             "plugin-update-badge" => _PluginUpdateBadge(),
+            "toolbar-actions" => _ToolbarActions(),
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
 
@@ -83,6 +84,19 @@ internal static class Screenshotter
             ?? throw new InvalidOperationException($"The Options dialog has no '{header}' tab.");
 
         return dialog;
+    }
+
+    // Renders the sessions workspace with a couple of plugin toolbar actions seeded (AC-91) so the quick-action
+    // buttons next to the workspace gear are verifiable headless.
+    private static MainWindow _ToolbarActions()
+    {
+        var cockpit = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true };
+        cockpit.PluginToolbarActions.Add(new Plugins.PluginToolbarAction(
+            "docker", new Cockpit.Plugins.Abstractions.ToolbarAction("Docker settings", "Docker", () => Task.CompletedTask)));
+        cockpit.PluginToolbarActions.Add(new Plugins.PluginToolbarAction(
+            "kubernetes", new Cockpit.Plugins.Abstractions.ToolbarAction("Kubernetes settings", "Kubernetes", () => Task.CompletedTask)));
+
+        return new MainWindow { DataContext = cockpit };
     }
 
     // Renders the full window with a plugin-update count seeded (AC-76) so the sidebar "Plugin store" button's

@@ -45,6 +45,7 @@ public sealed class DockerPlugin : ICockpitPlugin
         var tools = new DockerMcpTools(settings, gate, engine, compose, running);
 
         host.AddSettings(() => new DockerSettingsControl(settings));
+        host.AddToolbarAction(new ToolbarAction("Docker settings", "Docker", () => host.ShowSettingsAsync()));
         _ = host.AddMcpEndpoint("cockpit-docker", tools, isEnabled: () => settings.McpEnabled);
 
         // Detached containers this plugin started show in the status bar with an operator-only Kill (AC-82).
