@@ -1550,24 +1550,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            _micTestCancellation = new CancellationTokenSource();
+            var cts = new CancellationTokenSource();
+            _micTestCancellation = cts;
             MicTestLevel = 0;
-            _ = _RunMicTestAsync(_micTestCancellation.Token);
+
+            // The run loop owns the CTS and disposes it in its own finally — we only Cancel here, never Dispose,
+            // so the capture stream can never register a callback on a token source disposed out from under it.
+            _ = _RunMicTestAsync(cts);
         }
         else
         {
             _micTestCancellation?.Cancel();
-            _micTestCancellation?.Dispose();
             _micTestCancellation = null;
             MicTestLevel = 0;
         }
     }
 
-    private async Task _RunMicTestAsync(CancellationToken cancellationToken)
+    private async Task _RunMicTestAsync(CancellationTokenSource cancellation)
     {
         try
         {
-            await foreach (var frame in _audioCapture!.CaptureAsync(new AudioFormat(), cancellationToken).ConfigureAwait(false))
+            await foreach (var frame in _audioCapture!.CaptureAsync(new AudioFormat(), cancellation.Token).ConfigureAwait(false))
             {
                 var level = AudioLevelMeter.NormalizedRms(frame.Span);
                 Dispatcher.UIThread.Post(() => MicTestLevel = level);
@@ -1583,6 +1586,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
         finally
         {
+            cancellation.Dispose();
             Dispatcher.UIThread.Post(() => MicTestLevel = 0);
         }
     }
@@ -1652,36 +1656,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
+        // Stop any current playback first (this is a preview the operator triggered), then render + enqueue the
+        // sample through the one shared read-aloud path so the Test button can never drift from a real turn.
         _voicePlaybackQueue.StopAll();
-        _voicePlaybackQueue.NotifyPreparing();
-        var speakerId = SelectedTtsVoice.Sid;
-        var language = SelectedReadAloudLanguage.Code;
         var mode = SelectedReadAloudMode.Value;
 
         VoiceTestStatus = "Preparing…";
         try
         {
-            var sentences = TtsProseExtractor.Extract(_SampleReadAloudText(mode));
-            if (sentences.Count == 0)
-            {
-                return;
-            }
-
-            if (_cleanupService is not null && mode is ReadAloudMode.Naturalized or ReadAloudMode.Summarized)
-            {
-                var joined = string.Join(" ", sentences);
-                var rewritten = mode == ReadAloudMode.Summarized
-                    ? await _cleanupService.SummarizeForSpeechAsync(joined)
-                    : await _cleanupService.NaturalizeForSpeechAsync(joined);
-                var segments = SpeechLanguageRouter.Route(rewritten, language);
-                if (segments.Count > 0)
-                {
-                    _voicePlaybackQueue.Enqueue(segments, speakerId);
-                    return;
-                }
-            }
-
-            _voicePlaybackQueue.Enqueue(sentences, speakerId, language);
+            await ReadAloudPipeline.SpeakAsync(
+                _voicePlaybackQueue, _cleanupService, _SampleReadAloudText(mode), mode, SelectedTtsVoice.Sid, SelectedReadAloudLanguage.Code);
         }
         finally
         {
@@ -3277,7 +3261,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var preferred = _VoiceLlmModelSetting();
         VoiceLlmAutoSummary = string.IsNullOrEmpty(preferred) || string.Equals(preferred, resolved.Model, StringComparison.OrdinalIgnoreCase)
-            ? $"Cleanup will use “{resolved.Model}” at {resolved.BaseUrl}"
+            ? $"The voice LLM will use “{resolved.Model}” at {resolved.BaseUrl}"
             : $"“{preferred}” isn't on the detected server — using “{resolved.Model}” at {resolved.BaseUrl}";
     }
 

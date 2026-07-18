@@ -32,13 +32,6 @@ public sealed class MicLevelMeter : Control
         set => SetValue(ThresholdProperty, value);
     }
 
-    // Cockpit palette (Theme.axaml): hairline track, "done" green while below the threshold, accent once it would
-    // trip barge-in, and a near-white marker line at the threshold.
-    private static readonly IBrush TrackBrush = new SolidColorBrush(Color.Parse("#2C2F37"));
-    private static readonly IBrush QuietBrush = new SolidColorBrush(Color.Parse("#5AA576"));
-    private static readonly IBrush LoudBrush = new SolidColorBrush(Color.Parse("#D97757"));
-    private static readonly Pen MarkerPen = new(new SolidColorBrush(Color.Parse("#E6E8EC")), 1.5);
-
     public override void Render(DrawingContext context)
     {
         var width = Bounds.Width;
@@ -52,15 +45,24 @@ public sealed class MicLevelMeter : Control
         var level = Math.Clamp(Level, 0, 1);
         var threshold = Math.Clamp(Threshold, 0, 1);
 
-        context.DrawRectangle(TrackBrush, null, new RoundedRect(new Rect(0, 0, width, height), radius));
+        // Cockpit palette resolved from Theme.axaml at render so a future light/alt theme swap is followed: hairline
+        // track, "done" green while below the threshold, accent once it would trip barge-in, near-white marker line.
+        context.DrawRectangle(_Resource("CockpitHairlineBrush", "#2C2F37"), null, new RoundedRect(new Rect(0, 0, width, height), radius));
 
         var fillWidth = level * width;
         if (fillWidth > 0)
         {
-            context.DrawRectangle(level >= threshold ? LoudBrush : QuietBrush, null, new RoundedRect(new Rect(0, 0, fillWidth, height), radius));
+            var fill = level >= threshold ? _Resource("CockpitAccentBrush", "#D97757") : _Resource("CockpitStatusDoneBrush", "#5AA576");
+            context.DrawRectangle(fill, null, new RoundedRect(new Rect(0, 0, fillWidth, height), radius));
         }
 
         var markerX = threshold * width;
-        context.DrawLine(MarkerPen, new Point(markerX, 0), new Point(markerX, height));
+        context.DrawLine(new Pen(_Resource("CockpitTextPrimaryBrush", "#E6E7EA"), 1.5), new Point(markerX, 0), new Point(markerX, height));
     }
+
+    // Theme brush by key, falling back to the literal only when no Application resources exist (design-time/tests).
+    private static IBrush _Resource(string key, string fallbackHex) =>
+        Application.Current is { } app && app.TryGetResource(key, null, out var value) && value is IBrush brush
+            ? brush
+            : new SolidColorBrush(Color.Parse(fallbackHex));
 }

@@ -329,56 +329,18 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     }
 
     /// <summary>
-    /// Enqueues sentences for read-aloud playback (turn-completion trigger or the on-demand per-row
-    /// button, both SDK-only) — a no-op when the playback queue was never wired (design-time/tests) or
-    /// there is nothing to say. Verbatim (non-naturalized) text carries no language markers, so it speaks
-    /// in the default language.
-    /// </summary>
-    protected void EnqueueReadAloud(IReadOnlyList<string> sentences)
-    {
-        if (sentences.Count == 0)
-        {
-            return;
-        }
-
-        _voicePlaybackQueue?.Enqueue(sentences, TtsVoiceSid, ReadAloudLanguage);
-    }
-
-    /// <summary>
     /// Extracts the prose from assistant text and enqueues it for read-aloud (#35), first rewriting it into
-    /// natural spoken sentences via the local LLM when <see cref="NaturalizeReadAloud"/> is on (falling back
-    /// to the plain extracted prose if the LLM is unavailable). The extractor already strips code/tables and
-    /// swaps paths/URLs for spoken words; the LLM pass smooths the rest and tags language runs
-    /// (<c>[[nl]]</c>/<c>[[en]]</c>) so mixed Dutch/English replies speak each segment in its own language.
+    /// natural spoken sentences via the local LLM when <see cref="ReadAloudMode"/> is Naturalized or Summarized
+    /// (falling back to the plain extracted prose if the LLM is unavailable). The extractor already strips
+    /// code/tables and swaps paths/URLs for spoken words; the LLM pass smooths the rest and tags language runs
+    /// (<c>[[nl]]</c>/<c>[[en]]</c>) so mixed Dutch/English replies speak each segment in its own language. A no-op
+    /// when the playback queue was never wired (design-time/tests) or there is nothing to say. Shares the one
+    /// rendering path with the Options "Test" button via <see cref="ReadAloudPipeline"/>.
     /// </summary>
-    protected async Task EnqueueReadAloudAsync(string text)
-    {
-        var sentences = TtsProseExtractor.Extract(text);
-        if (sentences.Count == 0)
-        {
-            return;
-        }
-
-        // Show the overlay now: the local-LLM rewrite and the first synthesis (and any first-use model download)
-        // run before a word is heard, and that gap otherwise reads as nothing happening.
-        _voicePlaybackQueue?.NotifyPreparing();
-
-        if (_cleanupService is not null && ReadAloudMode is ReadAloudMode.Naturalized or ReadAloudMode.Summarized)
-        {
-            var joined = string.Join(" ", sentences);
-            var rewritten = ReadAloudMode == ReadAloudMode.Summarized
-                ? await _cleanupService.SummarizeForSpeechAsync(joined)
-                : await _cleanupService.NaturalizeForSpeechAsync(joined);
-            var segments = SpeechLanguageRouter.Route(rewritten, ReadAloudLanguage);
-            if (segments.Count > 0)
-            {
-                _voicePlaybackQueue?.Enqueue(segments, TtsVoiceSid);
-                return;
-            }
-        }
-
-        EnqueueReadAloud(sentences);
-    }
+    protected Task EnqueueReadAloudAsync(string text) =>
+        _voicePlaybackQueue is null
+            ? Task.CompletedTask
+            : ReadAloudPipeline.SpeakAsync(_voicePlaybackQueue, _cleanupService, text, ReadAloudMode, TtsVoiceSid, ReadAloudLanguage);
 
     /// <summary>
     /// Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the

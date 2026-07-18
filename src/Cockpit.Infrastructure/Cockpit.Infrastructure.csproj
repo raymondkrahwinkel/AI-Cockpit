@@ -27,13 +27,13 @@
     <!-- #26 tools/MCP: the MCP client (namespace ModelContextProtocol.Client) that connects the local-LLM
          tool-loop to the user's MCP servers. Kept on the same 1.4.x line as the AspNetCore server package. -->
     <PackageReference Include="ModelContextProtocol" Version="1.4.1" />
-    <!-- Read-aloud TTS (#35): sherpa-onnx (Apache-2.0) running Piper VITS voices in-proc — no Python,
-         no subprocess. OfflineTts.Generate returns normalized float32 mono PCM plus the voice's own
+    <!-- Read-aloud TTS (#35): sherpa-onnx (Apache-2.0) running the multilingual SupertonicTTS model in-proc —
+         no Python, no subprocess. OfflineTts.Generate returns normalized float32 mono PCM plus the model's own
          sample rate; playback plays at that rate (SoundFlowAudioPlaybackService opens the device on
          whatever AudioFormat.SampleRate is handed in), so no resampling step is needed. -->
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.4" />
-    <!-- Extracts the .tar.bz2 Piper-voice archives sherpa-onnx's model releases ship as (model.onnx +
-         tokens.txt + espeak-ng-data/) — .NET's built-in System.Formats.Tar has no bzip2 decompressor. -->
+    <!-- Extracts the .tar.bz2 SupertonicTTS model archive sherpa-onnx's model releases ship as (the ONNX graphs +
+         tts.json + unicode_indexer.bin) — .NET's built-in System.Formats.Tar has no bzip2 decompressor. -->
     <PackageReference Include="SharpCompress" Version="0.49.1" />
     <!-- Linux/macOS pty host for TTY mode (#9): forkpty()+execvp() run entirely in a native shim
          (avoids the .NET 7+ W^X/fork pitfall of forking from managed code), env injection via

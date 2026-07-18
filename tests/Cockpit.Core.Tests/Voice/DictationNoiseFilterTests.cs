@@ -64,6 +64,15 @@ public class DictationNoiseFilterTests
     }
 
     [Fact]
+    public void Strip_MultiWordParenthetical_IsKept_AsLikelyRealSpeech()
+    {
+        // Whisper's parenthesised cues are single words ("(coughs)"); a multi-word parenthesis is a person actually
+        // speaking, so it must survive — only the single-token form is treated as noise.
+        DictationNoiseFilter.Strip("the result (about ten percent) is fine")
+            .Should().Be("the result (about ten percent) is fine");
+    }
+
+    [Fact]
     public void Strip_DutchWordEr_IsNotTreatedAsAFiller()
     {
         // "er" is a real Dutch word ("there") — the filler set deliberately excludes it.

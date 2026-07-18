@@ -45,4 +45,12 @@ public interface IVoicePlaybackQueue
 
     /// <summary>Cancels whatever is currently synthesizing/playing and discards anything still queued.</summary>
     void StopAll();
+
+    /// <summary>
+    /// A counter bumped by every <see cref="StopAll"/>. A caller that awaits a slow step (the local-LLM rewrite)
+    /// between <see cref="NotifyPreparing"/> and enqueuing reads this before the await and again after: if it
+    /// changed, a barge-in (or a newer turn) cancelled read-aloud while it was preparing, so the now-stale batch
+    /// must be dropped instead of spoken over the interrupt.
+    /// </summary>
+    int Generation { get; }
 }

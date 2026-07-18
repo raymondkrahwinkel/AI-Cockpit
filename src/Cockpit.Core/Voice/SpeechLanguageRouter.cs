@@ -11,10 +11,12 @@ namespace Cockpit.Core.Voice;
 /// </summary>
 public static partial class SpeechLanguageRouter
 {
-    /// <summary>ISO-639-1 code spoken for unmarked lead-in text and unknown markers when a caller does not specify one — English, the assistant's primary output language.</summary>
-    public const string DefaultLanguage = "en";
+    private const string EnglishLanguage = "en";
 
     private const string DutchLanguage = "nl";
+
+    /// <summary>ISO-639-1 code spoken for unmarked lead-in text and unknown markers when a caller does not specify one — English, the assistant's primary output language.</summary>
+    public const string DefaultLanguage = EnglishLanguage;
 
     public static IReadOnlyList<SpeechSegment> Route(string text) => Route(text, DefaultLanguage);
 
@@ -78,7 +80,7 @@ public static partial class SpeechLanguageRouter
         languageCode.ToLowerInvariant() switch
         {
             DutchLanguage => DutchLanguage,
-            "en" => "en",
+            EnglishLanguage => EnglishLanguage,
             _ => defaultLanguage,
         };
 
