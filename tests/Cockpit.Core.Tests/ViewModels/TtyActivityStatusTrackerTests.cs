@@ -108,4 +108,53 @@ public class TtyActivityStatusTrackerTests
 
         tracker.OnActivity(SessionActivity.Busy, T0 + TimeSpan.FromSeconds(2)).Should().Be(SessionStatus.Busy);
     }
+
+    [Fact]
+    public void OnAlive_KeepsAVisiblyWorkingBusyTurnOffDonePastTheSafetyTimeout()
+    {
+        // AC-75: a long silent think/plan phase writes no transcript line, but the pty keeps drawing (the spinner
+        // ticks), so a liveness keep-alive from that output must keep the turn Busy past the safety timeout — the
+        // same rescue a live sub-agent's BackgroundBusy keep-alives already give a background run.
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout);
+        tracker.OnActivity(SessionActivity.Busy, T0);
+
+        SessionStatus status = SessionStatus.Idle;
+        for (var t = TimeSpan.FromSeconds(5); t <= TimeSpan.FromSeconds(600); t += TimeSpan.FromSeconds(5))
+        {
+            status = tracker.OnAlive(T0 + t);
+        }
+
+        status.Should().Be(SessionStatus.Busy);
+    }
+
+    [Fact]
+    public void OnAlive_AfterATurnCompleted_DoesNotResurrectItToBusy()
+    {
+        // A liveness signal (e.g. the prompt redrawing) must not flip a genuinely completed turn back to Busy.
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout);
+        tracker.OnActivity(SessionActivity.TurnComplete, T0);
+
+        tracker.OnAlive(T0 + TimeSpan.FromSeconds(1)).Should().Be(SessionStatus.Done);
+    }
+
+    [Fact]
+    public void OnAlive_BeforeAnySignal_StaysIdle()
+    {
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout);
+
+        tracker.OnAlive(T0).Should().Be(SessionStatus.Idle);
+    }
+
+    [Fact]
+    public void OnAlive_ThatStopsComing_LetsTheTurnFallToDone()
+    {
+        // The safety net is intact: once the pty goes truly silent (no output, no keep-alive), the busy turn still
+        // times out to Done — a stalled or killed CLI is not shown busy forever.
+        var tracker = new TtyActivityStatusTracker(SafetyTimeout);
+        tracker.OnActivity(SessionActivity.Busy, T0);
+        tracker.OnAlive(T0 + TimeSpan.FromSeconds(30));
+
+        // Last liveness signal at T0+30s; nothing after → times out 120s later.
+        tracker.Poll(T0 + TimeSpan.FromSeconds(30) + SafetyTimeout).Should().Be(SessionStatus.Done);
+    }
 }
