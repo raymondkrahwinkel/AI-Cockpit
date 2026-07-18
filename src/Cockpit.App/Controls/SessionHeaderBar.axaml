@@ -1,0 +1,94 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:controls="using:Cockpit.App.Controls"
+             xmlns:conv="using:Cockpit.App.Converters"
+             xmlns:sessions="using:Cockpit.Core.Sessions"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.SessionHeaderBar"
+             x:DataType="vm:SessionPanelViewModel">
+
+    <!-- AC-37 V1 identity strip, shared by every session kind. The activity column is the one that gives way
+         (ellipsis) when the pane is narrow, so name, cwd, branch and the pill keep their place instead of
+         colliding. Every column is Auto or star — no fixed widths — so it scales with its content. -->
+    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
+
+        <!-- Status as a colour, not a word: the dot carries running/waiting/done/background at a glance. -->
+        <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+                 Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+
+        <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
+                   VerticalAlignment="Center" Margin="7,0,0,0"
+                   TextTrimming="CharacterEllipsis" MaxWidth="220"
+                   Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+
+        <!-- Kind chip (TTY / SDK / provider tag); hidden when the session reports none. -->
+        <Border Grid.Column="2" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
+                CornerRadius="4" Padding="5,1" Margin="7,0,0,0"
+                IsVisible="{Binding KindLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding KindLabel}" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+        </Border>
+
+        <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status. -->
+        <Panel Grid.Column="3" VerticalAlignment="Center" Margin="8,0,0,0">
+            <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="{Binding Status}" FontSize="11" TextTrimming="CharacterEllipsis"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+        </Panel>
+
+        <!-- cwd as an icon; profile + full path on hover, freeing the path's width. -->
+        <materialIcons:MaterialIcon Grid.Column="4" Kind="FolderOutline" Width="14" Height="14"
+                                    VerticalAlignment="Center" Margin="8,0,0,0"
+                                    Foreground="{StaticResource CockpitTextFaintBrush}"
+                                    IsVisible="{Binding WorkingDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <ToolTip.Tip>
+                <MultiBinding StringFormat="{}{0} · {1}">
+                    <Binding Path="ActiveProfileLabel"/>
+                    <Binding Path="WorkingDirectory"/>
+                </MultiBinding>
+            </ToolTip.Tip>
+        </materialIcons:MaterialIcon>
+
+        <!-- Branch (plugin-contributed, e.g. git-status): width-capped; takes no space when none contributes. -->
+        <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0" MaxWidth="160"/>
+
+        <!-- Usage pill (AC-37): "ctx NN%" on the bar; click opens ctx/5h/wk with each window's reset time. Hidden
+             until the provider reports a context figure (a local model / plain terminal shows nothing). -->
+        <Button Grid.Column="6" VerticalAlignment="Center" Margin="8,0,0,0" Padding="8,2"
+                MinWidth="0" MinHeight="0"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                CornerRadius="20"
+                IsVisible="{Binding ContextUsedPercent, Converter={x:Static ObjectConverters.IsNotNull}}"
+                ToolTip.Tip="Usage — click for the 5h / weekly windows and reset times">
+            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ContextUsedPercent, StringFormat='ctx {0:0}%'}" FontSize="10"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10"
+                                            Foreground="{StaticResource CockpitTextFaintBrush}"/>
+            </StackPanel>
+            <Button.Flyout>
+                <Flyout Placement="Bottom">
+                    <StackPanel Spacing="6" MinWidth="190">
+                        <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
+                        <ItemsControl ItemsSource="{Binding RateLimits}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="sessions:SessionRateWindow">
+                                    <StackPanel Spacing="1" Margin="0,4,0,0">
+                                        <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" FontSize="10" Height="14"/>
+                                        <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
+                                                   FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Flyout>
+            </Button.Flyout>
+        </Button>
+    </Grid>
+</UserControl>

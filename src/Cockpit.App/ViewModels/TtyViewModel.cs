@@ -83,8 +83,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     public event Action<string>? VoiceTranscriptReady;
 
-    [ObservableProperty]
-    private string _status = "Not started.";
+    // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
     /// <summary>One-line render diagnostics (OS, terminal grid, display scale, locale) shown in the TTY header — surfaced so a remote/misrendering machine can be inspected without shell access. Set by the view, which owns the terminal/pty.</summary>
     [ObservableProperty]
@@ -126,34 +125,9 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private bool _isTerminal;
 
-    /// <summary>
-    /// What this session is spending, each drawn as a small bar in the header: how full the context window is, and
-    /// how much of the five-hour and weekly allowance is gone. Null until Claude has said — it reports none of it
-    /// before the first response, and a bar reading "0%" would be a claim rather than a silence. Fed by the
-    /// statusline relay the provider plugin installs, which is the only place the allowances are readable at all.
-    /// </summary>
-    [ObservableProperty]
-    private double? _contextUsedPercent;
-
-    /// <inheritdoc cref="ContextUsedPercent"/>
-    [ObservableProperty]
-    private double? _fiveHourUsedPercent;
-
-    /// <inheritdoc cref="ContextUsedPercent"/>
-    [ObservableProperty]
-    private double? _sevenDayUsedPercent;
-
-    /// <summary>When the five-hour / weekly window rolls over (AC-37: shown in the usage-pill hover); null until the provider reports it.</summary>
-    [ObservableProperty]
-    private DateTimeOffset? _fiveHourResetsAt;
-
-    /// <inheritdoc cref="FiveHourResetsAt"/>
-    [ObservableProperty]
-    private DateTimeOffset? _sevenDayResetsAt;
-
-    /// <summary>The whole story on hover, including when each window rolls over — which is the thing a bar cannot say.</summary>
-    [ObservableProperty]
-    private string _limitsTooltip = string.Empty;
+    // ContextUsedPercent, RateLimits and LimitsTooltip now live on the shared SessionPanelViewModel base (AC-37):
+    // the TTY session feeds the base ContextUsedPercent and rebuilds the base RateLimits (5h/wk with reset times)
+    // from the statusline relay, so the one SessionHeaderBar control renders its usage pill the same as the SDK one.
 
     private CancellationTokenSource? _limitsPollCancellation;
 
@@ -162,9 +136,10 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     {
         ActiveProfileLabel = "work";
         Status = "TTY mode (experiment).";
+        KindLabel = "TTY";
         ContextUsedPercent = 42;
-        FiveHourUsedPercent = 64;
-        SevenDayUsedPercent = 91;
+        RateLimits.Add(new SessionRateWindow("5h", 64, null));
+        RateLimits.Add(new SessionRateWindow("wk", 91, null));
     }
 
     public TtyViewModel(
@@ -180,6 +155,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         _launcher = launcher;
         _providerResolver = providerResolver;
         _transcriptReader = transcriptReader;
+        KindLabel = "TTY";
         WorkingPath = ResolveWorkingPath(options);
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
         // TTY working dir is known up front (unlike an SDK session, which learns it from its init event).
@@ -590,10 +566,17 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                             await Dispatcher.UIThread.InvokeAsync(() =>
                             {
                                 ContextUsedPercent = limits.ContextUsedPercent;
-                                FiveHourUsedPercent = limits.FiveHourUsedPercent;
-                                SevenDayUsedPercent = limits.SevenDayUsedPercent;
-                                FiveHourResetsAt = limits.FiveHourResetsAt;
-                                SevenDayResetsAt = limits.SevenDayResetsAt;
+                                RateLimits.Clear();
+                                if (limits.FiveHourUsedPercent is { } fiveHour)
+                                {
+                                    RateLimits.Add(new SessionRateWindow("5h", fiveHour, limits.FiveHourResetsAt));
+                                }
+
+                                if (limits.SevenDayUsedPercent is { } sevenDay)
+                                {
+                                    RateLimits.Add(new SessionRateWindow("wk", sevenDay, limits.SevenDayResetsAt));
+                                }
+
                                 LimitsTooltip = DescribeLimits(limits);
                             });
                         }

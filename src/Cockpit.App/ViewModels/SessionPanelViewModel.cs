@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
@@ -34,6 +35,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     [ObservableProperty]
     private string _statusline = string.Empty;
+
+    /// <summary>
+    /// The session's own connection/activity line (e.g. "Connected (12 tools, …)", "Running", "TTY mode") — the
+    /// header's activity text when no <see cref="Statusline"/> is set. On the shared base so the one SessionHeaderBar
+    /// reads it for every session kind.
+    /// </summary>
+    [ObservableProperty]
+    private string _status = "Not started.";
 
     /// <summary>
     /// Mirrors <see cref="Cockpit.Core.Debugging.DebugSettings.ShowDebugControls"/> (#73): whether this
@@ -193,6 +202,32 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     [ObservableProperty]
     private string? _workingDirectory;
+
+    /// <summary>
+    /// How full the context window is (#45 D7 / AC-37), the header's "ctx" figure. Null until the provider reports
+    /// it — a bar reading "0%" would be a claim rather than a silence. On the shared base so the one header control
+    /// (SessionHeaderBar) reads it for every session kind.
+    /// </summary>
+    [ObservableProperty]
+    private double? _contextUsedPercent;
+
+    /// <summary>
+    /// The provider's usage windows (5h / wk / …), each self-labelled with its used-percent and reset time (AC-37);
+    /// empty when the provider reports none. Feeds the shared header's usage pill and its flyout, so both the SDK and
+    /// TTY sessions render the same pill from one place.
+    /// </summary>
+    public ObservableCollection<SessionRateWindow> RateLimits { get; } = [];
+
+    /// <summary>The whole usage story for the pill's flyout, including when each window rolls over — the thing a bar cannot say.</summary>
+    [ObservableProperty]
+    private string _limitsTooltip = string.Empty;
+
+    /// <summary>
+    /// The short "kind" chip on the header (AC-37): "TTY" for a terminal session, the provider tag ("SDK", a plugin
+    /// name) for an SDK one. Empty hides the chip. On the base so the one SessionHeaderBar renders it for every kind.
+    /// </summary>
+    [ObservableProperty]
+    private string? _kindLabel;
 
     /// <summary>
     /// Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the

@@ -38,80 +38,9 @@
                             ToolTip.Tip="Force the terminal to repaint from scratch — recovers the TUI if a resize/focus change left it misaligned or stacked at the top"/>
                 </StackPanel>
 
-                <!-- V1 identity strip (AC-37): dot · name · TTY chip · activity (flex, truncates) · cwd icon · branch ·
-                     usage pill. The activity column is the one that gives way when narrow, so the rest keeps its place. -->
-                <Grid x:Name="StatusRow" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
-                    <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
-                             Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
-                    <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
-                               VerticalAlignment="Center" Margin="7,0,0,0" Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
-                    <!-- Kind chip (TTY) with render diagnostics on hover. -->
-                    <Border Grid.Column="2" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
-                            CornerRadius="4" Padding="5,1" Margin="7,0,0,0"
-                            ToolTip.Tip="{Binding Diagnostics}">
-                        <TextBlock Text="TTY" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                    </Border>
-                    <!-- Activity (flex, truncates): the AC-13 statusline, falling back to the plain session status. -->
-                    <Panel Grid.Column="3" VerticalAlignment="Center" Margin="8,0,0,0">
-                        <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                   IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                        <TextBlock Text="{Binding Status}" FontSize="11" TextTrimming="CharacterEllipsis"
-                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                                   IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
-                    </Panel>
-                    <!-- cwd as an icon (AC-37); profile + full path on hover, freeing the path's width. -->
-                    <materialIcons:MaterialIcon Grid.Column="4" Kind="FolderOutline" Width="14" Height="14"
-                                                VerticalAlignment="Center" Margin="8,0,0,0"
-                                                Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                IsVisible="{Binding WorkingPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                        <ToolTip.Tip>
-                            <MultiBinding StringFormat="{}{0} · {1}">
-                                <Binding Path="ActiveProfileLabel"/>
-                                <Binding Path="WorkingPath"/>
-                            </MultiBinding>
-                        </ToolTip.Tip>
-                    </materialIcons:MaterialIcon>
-                    <!-- Branch (plugin-contributed, e.g. git-status): width-capped; hidden for a plain terminal. -->
-                    <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0" MaxWidth="160" IsVisible="{Binding !IsTerminal}"/>
-
-                    <!-- Usage pill (AC-37): the three meters fold into one "ctx NN%" pill; hover reveals ctx/5h/wk,
-                         each usage window with its reset time (relative + absolute). Hidden for a terminal / before
-                         the provider reports a context figure, exactly like the bars it replaces. -->
-                    <Button Grid.Column="6" VerticalAlignment="Center" Margin="8,0,0,0" Padding="8,2"
-                            MinWidth="0" MinHeight="0"
-                            Background="{StaticResource CockpitSecondaryBgBrush}"
-                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
-                            CornerRadius="20"
-                            IsVisible="{Binding ContextUsedPercent, Converter={x:Static ObjectConverters.IsNotNull}}"
-                            ToolTip.Tip="Usage — click for the 5h / weekly windows and reset times">
-                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding ContextUsedPercent, StringFormat='ctx {0:0}%'}" FontSize="10"
-                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10"
-                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                        </StackPanel>
-                        <Button.Flyout>
-                            <Flyout Placement="Bottom">
-                                <StackPanel Spacing="6" MinWidth="190">
-                                    <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
-                                    <StackPanel Spacing="1" Margin="0,4,0,0">
-                                        <controls:LimitBar Label="5h" Percent="{Binding FiveHourUsedPercent}" FontSize="10" Height="14"/>
-                                        <TextBlock Text="{Binding FiveHourResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                   FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                   IsVisible="{Binding FiveHourResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                    </StackPanel>
-                                    <StackPanel Spacing="1" Margin="0,4,0,0">
-                                        <controls:LimitBar Label="wk" Percent="{Binding SevenDayUsedPercent}" FontSize="10" Height="14"/>
-                                        <TextBlock Text="{Binding SevenDayResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
-                                                   FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                   IsVisible="{Binding SevenDayResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
-                </Grid>
+                <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · usage
+                     pill — SessionHeaderBar, the same control the SDK header uses. The controls above dock right. -->
+                <controls:SessionHeaderBar VerticalAlignment="Center"/>
             </DockPanel>
         </Border>
 

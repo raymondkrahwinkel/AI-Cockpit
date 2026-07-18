@@ -141,8 +141,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _inputText = string.Empty;
 
-    [ObservableProperty]
-    private string _status = "Not started.";
+    // Status now lives on the shared SessionPanelViewModel base (AC-37), read by the one SessionHeaderBar.
 
     /// <summary>
     /// What the status line says on hover about the session's tools: the count, or why there are none. The names
@@ -196,24 +195,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _usageTooltip = string.Empty;
 
-    /// <summary>
-    /// How full the context window is (#45 D7), drawn as the header's "ctx" bar. Null until the provider reports
-    /// it — a bar reading "0%" would be a claim rather than a silence. Fed from the driver's status feed (Codex's
-    /// app-server usage); a provider with no feed leaves it null and the bar stays hidden.
-    /// </summary>
-    [ObservableProperty]
-    private double? _contextUsedPercent;
-
-    /// <summary>
-    /// The provider's usage windows, each a self-labelled header bar (#45 D7) — the provider chooses the label
-    /// ("5h", "wk", …), so the header renders whatever it reports without baking in window vocabulary. Empty when
-    /// the provider reports none.
-    /// </summary>
-    public ObservableCollection<SessionRateWindow> RateLimits { get; } = [];
-
-    /// <summary>The whole story on hover, including when each window rolls over — the thing a bar cannot say.</summary>
-    [ObservableProperty]
-    private string _limitsTooltip = string.Empty;
+    // ContextUsedPercent, RateLimits and LimitsTooltip now live on the shared SessionPanelViewModel base (AC-37),
+    // so the one SessionHeaderBar control reads the same usage data for every session kind.
 
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
@@ -223,6 +206,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         Status = "Connected (12 tools, cwd=D:/Projects/dotnet/Cockpit).";
         ActiveProfileLabel = "raymond@work";
+        KindLabel = "SDK";
 
         // Sample status bars (#45 D7) so the previewer/Screenshotter renders the header's ctx bar and the
         // provider-labelled window bars.
@@ -369,6 +353,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         ProviderBadge = profile?.Provider is null or SessionProvider.ClaudeCli
             ? string.Empty
             : SessionProviderCatalog.Resolve(profile.Provider).Label;
+        // The shared header's kind chip (AC-37): the provider tag, or "SDK" for a plain Claude SDK session.
+        KindLabel = string.IsNullOrEmpty(ProviderBadge) ? "SDK" : ProviderBadge;
 
         // A per-session working directory override reflects immediately on the shared base (so the header and
         // the read/observe surface show where this session runs) even before the CLI's own init event confirms
