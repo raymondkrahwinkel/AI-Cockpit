@@ -73,6 +73,28 @@ public class PluginDiscoveryTests : IDisposable
     }
 
     [Fact]
+    public async Task DiscoverAsync_EnabledWithALegacyEntryOnlyPin_ReConsentsOnceThenLoads()
+    {
+        // The AC-43 migration, exactly as an operator meets it: a plugin consented before this change carries a pin
+        // over only the entry assembly's bytes (PluginHash.Compute of the entry). On the first launch after the
+        // update the closure no longer matches, so a store-installed plugin re-prompts once...
+        var folder = WritePlugin("weather", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Dependency.dll"), "dependency-bytes");
+        var legacyEntryOnlyPin = PluginHash.Compute(await File.ReadAllBytesAsync(Path.Combine(folder, "Plugin.dll")));
+        var beforeConsent = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: legacyEntryOnlyPin) };
+
+        var found = await new PluginDiscovery().DiscoverAsync(_root, beforeConsent, HostMajor);
+        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.NeedsConsent);
+
+        // ...and once re-consented (the pin becomes the closure), it loads and stays put on the next launch.
+        var closurePin = await PluginClosureHash.OfInstalledFolderAsync(folder);
+        var afterConsent = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: closurePin) };
+
+        var reloaded = await new PluginDiscovery().DiscoverAsync(_root, afterConsent, HostMajor);
+        reloaded.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.Load);
+    }
+
+    [Fact]
     public async Task DiscoverAsync_AbstractionsMajorMismatch_DecidesMismatch()
     {
         WritePlugin("future", entryAssembly: "Plugin.dll", abstractionsVersion: 2);
