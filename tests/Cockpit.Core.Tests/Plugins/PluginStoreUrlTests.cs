@@ -75,4 +75,62 @@ public class PluginStoreUrlTests
     {
         PluginStoreUrl.DeriveDisplayName("not a url").Should().Be("not a url");
     }
+
+    [Fact]
+    public void TryParseGitHubRepo_RepoUrl_ExtractsOwnerRepoAndDefaultBranch()
+    {
+        PluginStoreUrl.TryParseGitHubRepo("https://github.com/octocat/hello-world", out var owner, out var repo, out var branch).Should().BeTrue();
+        owner.Should().Be("octocat");
+        repo.Should().Be("hello-world");
+        branch.Should().Be("main");
+    }
+
+    [Fact]
+    public void TryParseGitHubRepo_WithBranch_UsesThatBranch()
+    {
+        PluginStoreUrl.TryParseGitHubRepo("https://github.com/octocat/hello-world/tree/dev", out _, out _, out var branch).Should().BeTrue();
+        branch.Should().Be("dev");
+    }
+
+    [Theory]
+    [InlineData("https://example.com/store/index.json")]
+    [InlineData("https://raw.githubusercontent.com/o/r/main/index.json")]
+    [InlineData("not a url")]
+    public void TryParseGitHubRepo_NonGitHub_Rejected(string url)
+    {
+        PluginStoreUrl.TryParseGitHubRepo(url, out _, out _, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void GitHubContentsUrl_BuildsAuthenticatedContentsApiUrl()
+    {
+        PluginStoreUrl.GitHubContentsUrl("octocat", "hello-world", "github-issues/github-issues-1.0.0.zip", "main")
+            .Should().Be("https://api.github.com/repos/octocat/hello-world/contents/github-issues/github-issues-1.0.0.zip?ref=main");
+    }
+
+    [Fact]
+    public void GitHubContentsUrl_EncodesEachSegment_SoAPathCannotInjectAQuery()
+    {
+        PluginStoreUrl.GitHubContentsUrl("octocat", "hello-world", "dir/a b.zip?ref=evil", "main")
+            .Should().Be("https://api.github.com/repos/octocat/hello-world/contents/dir/a%20b.zip%3Fref%3Devil?ref=main");
+    }
+
+    [Theory]
+    [InlineData("github-issues/github-issues-1.0.0.zip")]
+    [InlineData("plugin.zip")]
+    public void IsSafeRelativePath_PlainRelativePath_IsSafe(string path)
+    {
+        PluginStoreUrl.IsSafeRelativePath(path).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("../../other/repo/secret.zip")]
+    [InlineData("a/../../b.zip")]
+    [InlineData("//evil.example/x.zip")]
+    [InlineData("https://evil.example/x.zip")]
+    [InlineData("")]
+    public void IsSafeRelativePath_EscapingOrAbsolutePath_IsUnsafe(string path)
+    {
+        PluginStoreUrl.IsSafeRelativePath(path).Should().BeFalse();
+    }
 }

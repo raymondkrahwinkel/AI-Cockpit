@@ -12,12 +12,12 @@ namespace Cockpit.App.ViewModels;
 /// operator's own check, and the app does not pretend to have made it for them.
 /// </para>
 /// </summary>
-public partial class StoreTemplateRowViewModel(WorkflowTemplateStoreEntry entry, string indexUrl, bool isInstalled) : ObservableObject
+public partial class StoreTemplateRowViewModel(WorkflowTemplateStoreEntry entry, PluginStoreConfig store, bool isInstalled) : ObservableObject
 {
     public WorkflowTemplateStoreEntry Entry { get; } = entry;
 
-    /// <summary>Where the index that offered it lives, so its flow can be fetched relative to that.</summary>
-    public string IndexUrl { get; } = indexUrl;
+    /// <summary>The store that offered it (AC-7), so its flow is fetched the same way — through that store's auth or local path.</summary>
+    public PluginStoreConfig Store { get; } = store;
 
     public string Id => Entry.Id;
 

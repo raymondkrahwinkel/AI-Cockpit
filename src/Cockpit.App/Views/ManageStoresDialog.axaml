@@ -34,16 +34,37 @@
         <StackPanel DockPanel.Dock="Top" Margin="18,16,18,10" Spacing="10">
             <StackPanel Spacing="3">
                 <TextBlock Text="Plugin stores" FontSize="16" FontWeight="SemiBold"/>
-                <TextBlock Text="A store is a public index.json listing plugins and workflow templates. Add one to browse and install what it offers; already-installed plugins stay installed if you remove it."
+                <TextBlock Text="A store is an index.json listing plugins and workflow templates — a public or private repo, or a folder on this machine. Add one to browse and install what it offers; already-installed plugins stay installed if you remove it."
                            FontSize="11.5" TextWrapping="Wrap"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
             </StackPanel>
 
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <TextBox Grid.Column="0" Text="{Binding NewStoreUrl}"
-                         PlaceholderText="github.com/owner/repo  ·  or an index.json URL"/>
-                <Button Grid.Column="1" Content="Add store" Classes="Accent" Command="{Binding AddStoreCommand}"/>
-            </Grid>
+            <!-- Remote (public or private) vs. a local folder — the fields below follow the choice. -->
+            <StackPanel Orientation="Horizontal" Spacing="18">
+                <RadioButton GroupName="StoreKind" Content="Remote" IsChecked="{Binding !NewStoreIsLocal}"/>
+                <RadioButton GroupName="StoreKind" Content="Local folder" IsChecked="{Binding NewStoreIsLocal}"/>
+            </StackPanel>
+
+            <!-- Remote store: a URL, plus an optional token for a private one. -->
+            <StackPanel Spacing="6" IsVisible="{Binding !NewStoreIsLocal}">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <TextBox Grid.Column="0" Text="{Binding NewStoreUrl}"
+                             PlaceholderText="github.com/owner/repo  ·  or an index.json URL"/>
+                    <Button Grid.Column="1" Content="Add store" Classes="Accent" Command="{Binding AddStoreCommand}"/>
+                </Grid>
+                <TextBox Text="{Binding NewStoreToken}" PasswordChar="•"
+                         PlaceholderText="Access token for a private store (optional)"/>
+            </StackPanel>
+
+            <!-- Local store: a folder holding an index.json. -->
+            <StackPanel Spacing="6" IsVisible="{Binding NewStoreIsLocal}">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                    <TextBox Grid.Column="0" Text="{Binding NewStoreFolder}" IsReadOnly="True"
+                             PlaceholderText="Choose a folder holding an index.json"/>
+                    <Button Grid.Column="1" Content="Browse…" Command="{Binding PickStoreFolderCommand}"/>
+                    <Button Grid.Column="2" Content="Add store" Classes="Accent" Command="{Binding AddStoreCommand}"/>
+                </Grid>
+            </StackPanel>
         </StackPanel>
 
         <!-- Store list, or an empty state when none are configured. -->
@@ -85,8 +106,21 @@
                                     </Border>
 
                                     <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Spacing="2">
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13.5"
-                                                   TextTrimming="CharacterEllipsis"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13.5"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <!-- A private (token) or local store says so, so a glance tells them apart. -->
+                                            <materialIcons:MaterialIcon Kind="Lock" Width="13" Height="13"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       IsVisible="{Binding IsPrivate}"
+                                                       ToolTip.Tip="Private store — reached with a token"/>
+                                            <materialIcons:MaterialIcon Kind="FolderOutline" Width="13" Height="13"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       IsVisible="{Binding IsLocal}"
+                                                       ToolTip.Tip="Local folder store"/>
+                                        </StackPanel>
                                         <TextBlock Text="{Binding Url}" FontSize="11"
                                                    FontFamily="{StaticResource CockpitMonoFont}"
                                                    TextTrimming="CharacterEllipsis"
@@ -99,7 +133,7 @@
                                             VerticalAlignment="Center"
                                             Foreground="{StaticResource CockpitTextFaintBrush}"
                                             Command="{Binding $parent[ItemsControl].((vm:PluginManagerViewModel)DataContext).RemoveStoreCommand}"
-                                            CommandParameter="{Binding Url}"
+                                            CommandParameter="{Binding}"
                                             ToolTip.Tip="Remove this store from the catalogue"/>
                                 </Grid>
                             </Border>

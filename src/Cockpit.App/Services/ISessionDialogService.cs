@@ -43,6 +43,9 @@ public interface ISessionDialogService
     /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
     Task<string?> PickPluginZipAsync();
 
+    /// <summary>Opens a folder picker for choosing a local plugin store's folder (AC-7); returns the chosen path or null if cancelled.</summary>
+    Task<string?> PickPluginStoreFolderAsync();
+
     /// <summary>Picks a dashboard file to import; returns the chosen path or null if cancelled.</summary>
     Task<string?> PickDashboardToImportAsync();
 
