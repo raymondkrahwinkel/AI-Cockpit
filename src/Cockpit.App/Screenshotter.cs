@@ -38,6 +38,7 @@ internal static class Screenshotter
             "tasks" => new DelegatedTasksDialog { DataContext = new ViewModels.DelegatedTasksViewModel() },
             "set-status" => new SetStatusDialog { DataContext = new ViewModels.SetStatusDialogViewModel("AC-32 — manual status") },
             "session" => new MainWindow { DataContext = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true } },
+            "plugin-update-badge" => _PluginUpdateBadge(),
             _ => new MainWindow { DataContext = new ViewModels.CockpitViewModel() },
         };
 
@@ -77,6 +78,16 @@ internal static class Screenshotter
             ?? throw new InvalidOperationException($"The Options dialog has no '{header}' tab.");
 
         return dialog;
+    }
+
+    // Renders the full window with a plugin-update count seeded (AC-76) so the sidebar "Plugin store" button's
+    // coral update badge is verifiable headless.
+    private static MainWindow _PluginUpdateBadge()
+    {
+        var cockpit = new ViewModels.CockpitViewModel { GlobalSingleSessionLayout = true };
+        cockpit.Plugins.SetUpdateBadgeCount(3);
+
+        return new MainWindow { DataContext = cockpit };
     }
 
     // Renders the plugin store (#62) with a sample catalogue seeded straight into the manager's collections
