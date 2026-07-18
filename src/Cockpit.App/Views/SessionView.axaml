@@ -135,27 +135,40 @@
                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                     </Border>
 
-                    <!-- What the session is spending, one bar each (#45 D7): how full the context window is, and the
-                         provider's own usage windows — the provider labels each ("5h", "wk", …), so the header
-                         renders whatever it reports without baking in window vocabulary. Fed by the provider's
-                         status feed (Codex's app-server usage); each bar hides until the provider reports it, so a
-                         provider with no feed (a local model) shows nothing rather than a bar sitting at "0%". -->
-                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center"
-                                Margin="8,0,0,0" ToolTip.Tip="{Binding LimitsTooltip}">
-                        <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
-                        <ItemsControl ItemsSource="{Binding RateLimits}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="10"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="sessions:SessionRateWindow">
-                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" FontSize="10" Height="14"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                    <!-- Usage pill (AC-37): the three meters (ctx/5h/wk) fold into one pill — "ctx NN%" stays on the
+                         bar (the most actionable meter), and hovering reveals the full set, each usage window with
+                         its reset time (relative + absolute). This is where the most width is freed. Hidden when the
+                         provider reports no context figure (a local model), exactly like the bars it replaces. -->
+                    <Border Grid.Column="4" VerticalAlignment="Center" Margin="8,0,0,0"
+                            Background="{StaticResource CockpitSecondaryBgBrush}"
+                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                            CornerRadius="20" Padding="8,2"
+                            IsVisible="{Binding ContextUsedPercent, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ContextUsedPercent, StringFormat='ctx {0:0}%'}" FontSize="10"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                            <materialIcons:MaterialIcon Kind="ChevronDown" Width="10" Height="10"
+                                                        Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        </StackPanel>
+                        <ToolTip.Tip>
+                            <StackPanel Spacing="6" MinWidth="190">
+                                <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"/>
+                                <ItemsControl ItemsSource="{Binding RateLimits}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="sessions:SessionRateWindow">
+                                            <StackPanel Spacing="1" Margin="0,4,0,0">
+                                                <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" FontSize="10" Height="14"/>
+                                                <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
+                                                           FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                           Margin="0,0,0,0"
+                                                           IsVisible="{Binding ResetsAt, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ToolTip.Tip>
+                    </Border>
 
                     <!-- Plugin-contributed header items (#: session header items): status belonging to this
                          session — the git state of the repo it works in, say. Takes no space when no plugin
