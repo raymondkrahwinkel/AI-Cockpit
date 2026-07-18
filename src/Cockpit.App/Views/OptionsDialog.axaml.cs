@@ -33,6 +33,10 @@ public partial class OptionsDialog : Window
                 cockpit.Diagnostics.Refresh();
             }
         };
+
+        // However the dialog closes (Save, Close, the window chrome, Escape), release the microphone if a level
+        // test was left running.
+        Closed += (_, _) => (DataContext as CockpitViewModel)?.StopMicTest();
     }
 
     /// <summary>Opens straight to the Plugins tab. Looked up by header text rather than a hardcoded index, so a future tab reorder can't silently select the wrong one.</summary>

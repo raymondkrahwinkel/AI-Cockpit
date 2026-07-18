@@ -121,8 +121,9 @@ calling agent cannot delegate to what it cannot see.
 - **Push-to-talk:** a configurable key (default `F9`); optionally a **global hotkey** that works even when the
   cockpit isn't focused (a low-level keyboard hook on Windows, the XDG global-shortcuts portal on Wayland/Linux),
   paired with a small **desktop overlay** showing listening/transcribing state and a live waveform.
-- **TTS (read-aloud):** replies can be read aloud via sherpa-onnx running Piper voices, with separate Dutch/English
-  voices and automatic language routing within a single reply.
+- **TTS (read-aloud):** replies can be read aloud via sherpa-onnx running **SupertonicTTS** — one multilingual voice
+  speaks both Dutch and English, with automatic per-language pronunciation within a single reply, and a choice of
+  reading verbatim, rewritten into natural speech, or summarized to the essence.
 - All voice features are **opt-in and fully local** — no audio leaves the machine.
 
 ## Plugins & plugin store
@@ -393,3 +394,14 @@ but you may not sell it — see [`LICENSE`](LICENSE). Copyright © 2026 Raymond 
 The plugin SDK — the `Cockpit.Plugins.Abstractions` project — is licensed separately under the **MIT License** with no
 Commons Clause, so anyone may build, distribute and sell plugins that depend on it. See
 [`src/Cockpit.Plugins.Abstractions/LICENSE`](src/Cockpit.Plugins.Abstractions/LICENSE).
+
+### Third-party model licences
+
+Voice models are downloaded on first use and are **not** covered by AI-Cockpit's own licence:
+
+- **SupertonicTTS** read-aloud weights (`sherpa-onnx-supertonic-3-tts-int8-*`) are released under the
+  **OpenRAIL-M License**. Commercial use is permitted **with attribution** and subject to the licence's
+  use-restrictions — read them before any commercial release. The sherpa-onnx runtime itself is Apache-2.0.
+- **Whisper** (dictation) ggml models and the **Whisper.net** runtime carry their own upstream licences.
+
+See [`NOTICE`](NOTICE) for the full third-party attribution list (models, runtimes and libraries).

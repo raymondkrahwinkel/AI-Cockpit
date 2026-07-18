@@ -28,26 +28,32 @@ public sealed record VoiceSettings
     public bool CleanupEnabled { get; init; } = true;
 
     /// <summary>
-    /// When true, the cleanup/naturalize step auto-detects the running local server (Ollama or LM Studio, via the
-    /// same process detection as the memory breakdown) and reads its model list, rather than using
-    /// <see cref="CleanupBaseUrl"/>/<see cref="CleanupModel"/> directly — those become the fallback when nothing is
-    /// detected. On by default so a laptop on Ollama and a desktop on LM Studio both work without per-machine setup.
+    /// When true, the shared voice-LLM step (STT cleanup + read-aloud naturalize/summarize) auto-detects the
+    /// running local server (Ollama or LM Studio, via the same process detection as the memory breakdown) and
+    /// reads its model list, rather than using <see cref="VoiceLlmBaseUrl"/>/<see cref="VoiceLlmModel"/>
+    /// directly — those become the fallback when nothing is detected. On by default so a laptop on Ollama and a
+    /// desktop on LM Studio both work without per-machine setup.
     /// </summary>
     public bool AutoDetectLocalLlm { get; init; } = true;
 
     /// <summary>Which detected server auto-detect prefers when both Ollama and LM Studio are running. Ignored when auto-detect is off.</summary>
     public LocalLlmPreference LocalLlmPreference { get; init; } = LocalLlmPreference.Auto;
 
-    /// <summary>Model id the cleanup/naturalize step asks the local server for (e.g. "qwen2.5:3b-instruct" on Ollama, or an LM Studio model id). Preferred over an auto-picked model when auto-detect finds it on the server.</summary>
-    public string CleanupModel { get; init; } = "qwen2.5:3b-instruct";
+    /// <summary>
+    /// Model id the shared voice-LLM step (STT cleanup + read-aloud naturalize/summarize) asks the local server
+    /// for. Preferred over an auto-picked model when auto-detect finds it on the server. Empty means "Auto" — no
+    /// explicit choice, let the server's model list decide (the default). <c>gemma3:4b</c> reads Dutch best and
+    /// <c>qwen2.5:3b</c> is a safe fallback if you pick one by hand.
+    /// </summary>
+    public string VoiceLlmModel { get; init; } = "";
 
     /// <summary>
-    /// Base URL of the local OpenAI-compatible LLM server the cleanup/naturalize step calls — Ollama
+    /// Base URL of the local OpenAI-compatible LLM server the shared voice-LLM step calls — Ollama
     /// (<c>http://localhost:11434</c>) or LM Studio (<c>http://localhost:1234</c>), and any other server that
-    /// speaks the same API. Stored without the <c>/v1</c> suffix; the service appends
-    /// <c>/v1/chat/completions</c>, the endpoint both backends serve.
+    /// speaks the same API. Stored without the <c>/v1</c> suffix; the OpenAI SDK appends <c>/v1</c>. One
+    /// endpoint serves both STT cleanup and read-aloud naturalize/summarize.
     /// </summary>
-    public string CleanupBaseUrl { get; init; } = "http://localhost:11434";
+    public string VoiceLlmBaseUrl { get; init; } = "http://localhost:11434";
 
     /// <summary>Avalonia <c>Key</c> enum name for the push-to-talk hotkey, e.g. "F9".</summary>
     public string PushToTalkKeyName { get; init; } = "F9";
@@ -69,19 +75,19 @@ public sealed record VoiceSettings
     public bool AutoSubmitAfterVoice { get; init; }
 
     /// <summary>
-    /// Piper voice id for read-aloud (#35), e.g. "en_US-lessac-medium" or "nl_NL-ronnie-medium" — also
-    /// the sherpa-onnx model archive name (<c>vits-piper-{id}.tar.bz2</c>), downloaded and cached on
-    /// first use the same way the Whisper model is. This is the English/primary voice; mixed Dutch/English
-    /// read-aloud routes Dutch segments to <see cref="TtsVoiceIdDutch"/> instead.
+    /// SupertonicTTS speaker id (sid) for read-aloud (#35). One multilingual model voices every language, so
+    /// this single speaker choice (the timbre) is used for both Dutch and English — mixed replies pass the
+    /// language per segment rather than switching voice. The model downloads and caches on first use the same
+    /// way the Whisper model does. Defaults to sid 1, the first offered voice.
     /// </summary>
-    public string TtsVoiceId { get; init; } = "en_US-lessac-medium";
+    public int TtsVoiceSid { get; init; } = 1;
 
     /// <summary>
-    /// Piper voice id for the Dutch segments of a read-aloud reply. No single sherpa-onnx voice covers both
-    /// Dutch and English, so when read-aloud naturalization tags language runs (<c>[[nl]]</c>/<c>[[en]]</c>),
-    /// the Dutch runs are synthesized with this voice and the English runs with <see cref="TtsVoiceId"/>.
+    /// Preferred base language for read-aloud, as an ISO-639-1 code ("en"/"nl"). Text with no language marker
+    /// (verbatim, or a reply the naturalize/summarize pass left untagged) speaks in it, and that pass is told to
+    /// lean to it — keeping code, names and genuinely foreign terms in their own language. Default "en".
     /// </summary>
-    public string TtsVoiceIdDutch { get; init; } = "nl_NL-ronnie-medium";
+    public string ReadAloudLanguage { get; init; } = "en";
 
     /// <summary>
     /// Whisper transcription language as an ISO-639-1 code ("nl", "en", …) or "auto" to let Whisper
@@ -101,11 +107,13 @@ public sealed record VoiceSettings
     public string OutputDeviceName { get; init; } = "";
 
     /// <summary>
-    /// When true, read-aloud (#35) first rewrites the assistant text into natural spoken sentences via the
-    /// local LLM (reusing <see cref="CleanupModel"/>/<see cref="CleanupBaseUrl"/>) before synthesis,
-    /// so paths, code and markdown read as natural speech. Off by default (adds a local LLM call per turn).
+    /// How read-aloud (#35) renders a reply before speaking it: <see cref="Cockpit.Core.Voice.ReadAloudMode.Verbatim"/>
+    /// (no LLM pass), <see cref="Cockpit.Core.Voice.ReadAloudMode.Naturalized"/> (rewrite into natural speech) or
+    /// <see cref="Cockpit.Core.Voice.ReadAloudMode.Summarized"/> (summarize to the essence). The last two reuse
+    /// <see cref="VoiceLlmModel"/>/<see cref="VoiceLlmBaseUrl"/> and add a local LLM call per turn. A fresh install
+    /// starts on Verbatim; a config saved before this key existed migrates from the old on/off naturalize flag.
     /// </summary>
-    public bool NaturalizeReadAloud { get; init; }
+    public ReadAloudMode ReadAloudMode { get; init; } = ReadAloudMode.Verbatim;
 
     /// <summary>
     /// When true, open-mic dictation listens continuously and detects speech start/stop itself (VAD

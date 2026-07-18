@@ -25,16 +25,27 @@ internal sealed class VoiceSettingsEntry
 
     public LocalLlmPreference LocalLlmPreference { get; set; } = LocalLlmPreference.Auto;
 
-    public string CleanupModel { get; set; } = "qwen2.5:3b-instruct";
+    /// <summary>Model id for the shared voice-LLM step. Null when neither this nor a legacy key was written; migrated/defaulted in <see cref="ToDomain"/>.</summary>
+    public string? VoiceLlmModel { get; set; }
 
-    /// <summary>OpenAI-compatible local LLM base URL (Ollama/LM Studio). Null when neither this nor the legacy key was written.</summary>
-    public string? CleanupBaseUrl { get; set; }
+    /// <summary>OpenAI-compatible local LLM base URL (Ollama/LM Studio) for the shared voice-LLM step. Null when neither this nor a legacy key was written.</summary>
+    public string? VoiceLlmBaseUrl { get; set; }
 
     /// <summary>
-    /// Legacy on-disk key from before the Ollama-specific cleanup was generalized to any OpenAI-compatible
-    /// server. Read to migrate an existing config; never written back (see <see cref="FromDomain"/>), so once
-    /// the file is next saved the neutral <see cref="CleanupBaseUrl"/> key is what persists.
+    /// Legacy on-disk keys from before the cleanup config was renamed to the shared, provider-neutral voice-LLM
+    /// config: <see cref="CleanupModel"/>/<see cref="CleanupBaseUrl"/> were the previous names, and
+    /// <see cref="OllamaBaseUrl"/> the Ollama-specific one before that. All are read to migrate an existing config
+    /// but never written back (see <see cref="FromDomain"/>), so once the file is next saved only the
+    /// <see cref="VoiceLlmModel"/>/<see cref="VoiceLlmBaseUrl"/> keys persist.
     /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CleanupModel { get; set; }
+
+    /// <inheritdoc cref="CleanupModel"/>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CleanupBaseUrl { get; set; }
+
+    /// <inheritdoc cref="CleanupModel"/>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? OllamaBaseUrl { get; set; }
 
@@ -44,9 +55,15 @@ internal sealed class VoiceSettingsEntry
 
     public bool AutoSubmitAfterVoice { get; set; }
 
-    public string TtsVoiceId { get; set; } = "en_US-lessac-medium";
+    /// <summary>
+    /// SupertonicTTS speaker id for read-aloud. The pre-Supertonic <c>TtsVoiceId</c>/<c>TtsVoiceIdDutch</c>
+    /// Piper-voice keys have no meaningful mapping onto a Supertonic sid, so a config written before this key
+    /// existed is simply read at the default sid (the old keys are ignored) rather than migrated.
+    /// </summary>
+    public int TtsVoiceSid { get; set; } = 1;
 
-    public string TtsVoiceIdDutch { get; set; } = "nl_NL-ronnie-medium";
+    /// <summary>Preferred base language for read-aloud ("en"/"nl"). New key; defaults to "en" for an existing config.</summary>
+    public string ReadAloudLanguage { get; set; } = "en";
 
     public string SttLanguage { get; set; } = "auto";
 
@@ -54,7 +71,16 @@ internal sealed class VoiceSettingsEntry
 
     public string OutputDeviceName { get; set; } = "";
 
-    public bool NaturalizeReadAloud { get; set; }
+    /// <summary>How read-aloud renders a reply (#35). Null when neither this nor the legacy naturalize flag was written.</summary>
+    public ReadAloudMode? ReadAloudMode { get; set; }
+
+    /// <summary>
+    /// Legacy on-disk on/off naturalize flag from before read-aloud gained the three-way mode. Read to migrate an
+    /// existing config (<c>true</c> → Naturalized, otherwise Verbatim); never written back (see <see cref="FromDomain"/>),
+    /// so once the file is next saved the <see cref="ReadAloudMode"/> key is what persists.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? NaturalizeReadAloud { get; set; }
 
     public bool OpenMicEnabled { get; set; }
 
@@ -73,21 +99,27 @@ internal sealed class VoiceSettingsEntry
         CleanupEnabled = settings.CleanupEnabled,
         AutoDetectLocalLlm = settings.AutoDetectLocalLlm,
         LocalLlmPreference = settings.LocalLlmPreference,
-        CleanupModel = settings.CleanupModel,
-        CleanupBaseUrl = settings.CleanupBaseUrl,
+        VoiceLlmModel = settings.VoiceLlmModel,
+        VoiceLlmBaseUrl = settings.VoiceLlmBaseUrl,
+        // Legacy keys are migration-only: never written back, so they stay null and drop out of the file.
+        CleanupModel = null,
+        CleanupBaseUrl = null,
+        OllamaBaseUrl = null,
         PushToTalkKeyName = settings.PushToTalkKeyName,
         GlobalPushToTalk = settings.GlobalPushToTalk,
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice,
-        TtsVoiceId = settings.TtsVoiceId,
-        TtsVoiceIdDutch = settings.TtsVoiceIdDutch,
+        TtsVoiceSid = settings.TtsVoiceSid,
+        ReadAloudLanguage = settings.ReadAloudLanguage,
         SttLanguage = settings.SttLanguage,
         InputDeviceName = settings.InputDeviceName,
         OutputDeviceName = settings.OutputDeviceName,
-        NaturalizeReadAloud = settings.NaturalizeReadAloud,
         OpenMicEnabled = settings.OpenMicEnabled,
         OpenMicSilenceTimeoutMs = settings.OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = settings.StopReadAloudLevelThreshold,
+        ReadAloudMode = settings.ReadAloudMode,
+        // Legacy naturalize flag is migration-only: never written back, so it stays null and drops out of the file.
+        NaturalizeReadAloud = null,
     };
 
     public VoiceSettings ToDomain() => new()
@@ -101,18 +133,22 @@ internal sealed class VoiceSettingsEntry
         CleanupEnabled = CleanupEnabled,
         AutoDetectLocalLlm = AutoDetectLocalLlm,
         LocalLlmPreference = LocalLlmPreference,
-        CleanupModel = CleanupModel,
-        // Prefer the neutral key; fall back to the legacy Ollama key so an existing config migrates cleanly.
-        CleanupBaseUrl = CleanupBaseUrl ?? OllamaBaseUrl ?? "http://localhost:11434",
+        // Prefer the neutral key; fall back through the renamed-cleanup key. Neither present = "Auto" (empty).
+        VoiceLlmModel = VoiceLlmModel ?? CleanupModel ?? "",
+        // Prefer the neutral key; fall back through the renamed-cleanup and older Ollama keys so an existing config migrates cleanly.
+        VoiceLlmBaseUrl = VoiceLlmBaseUrl ?? CleanupBaseUrl ?? OllamaBaseUrl ?? "http://localhost:11434",
         PushToTalkKeyName = PushToTalkKeyName,
         GlobalPushToTalk = GlobalPushToTalk,
         AutoSubmitAfterVoice = AutoSubmitAfterVoice,
-        TtsVoiceId = TtsVoiceId,
-        TtsVoiceIdDutch = TtsVoiceIdDutch,
+        TtsVoiceSid = TtsVoiceSid,
+        ReadAloudLanguage = ReadAloudLanguage,
         SttLanguage = SttLanguage,
         InputDeviceName = InputDeviceName,
         OutputDeviceName = OutputDeviceName,
-        NaturalizeReadAloud = NaturalizeReadAloud,
+        // Prefer the three-way key; fall back to the legacy on/off naturalize flag so an existing config keeps its
+        // behaviour (naturalize on → Naturalized, otherwise Verbatim) rather than silently resetting to Verbatim.
+        ReadAloudMode = ReadAloudMode
+            ?? (NaturalizeReadAloud == true ? Cockpit.Core.Voice.ReadAloudMode.Naturalized : Cockpit.Core.Voice.ReadAloudMode.Verbatim),
         OpenMicEnabled = OpenMicEnabled,
         OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = StopReadAloudWhenSpeaking,

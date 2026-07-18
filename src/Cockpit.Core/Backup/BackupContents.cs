@@ -4,7 +4,7 @@ namespace Cockpit.Core.Backup;
 /// What a backup of the cockpit is made of (#70). The whole setup lives in one directory, which makes this simple —
 /// but two things in it must never be swept up thoughtlessly.
 /// <para>
-/// <b>The models are not backed up.</b> Whisper and Piper put gigabytes in <c>models/</c>, and they can be downloaded
+/// <b>The models are not backed up.</b> Whisper and SupertonicTTS put gigabytes in <c>models/</c>, and they can be downloaded
 /// again in minutes. A 2 GB archive is not a backup: it is a thing you never make twice.
 /// </para>
 /// <para>
@@ -19,7 +19,7 @@ public static class BackupContents
     /// <summary>Directories under the cockpit folder that never go into a backup, and why.</summary>
     public static IReadOnlyList<string> Excluded { get; } =
     [
-        // Gigabytes of Whisper/Piper weights, downloadable again. This is the difference between a backup you make
+        // Gigabytes of Whisper/SupertonicTTS weights, downloadable again. This is the difference between a backup you make
         // weekly and one you make once.
         "models",
 

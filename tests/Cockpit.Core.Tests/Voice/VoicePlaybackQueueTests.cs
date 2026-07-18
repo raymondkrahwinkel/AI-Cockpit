@@ -20,13 +20,13 @@ public class VoicePlaybackQueueTests
         var audioPlayback = new FakeAudioPlaybackService { OnPlay = _ => Task.Delay(30) };
         var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
 
-        queue.Enqueue(["First sentence.", "Second sentence."], "en_US-lessac-medium");
+        queue.Enqueue(["First sentence.", "Second sentence."], speakerId: 1, language: "en");
 
         await _WaitUntilAsync(() => audioPlayback.CallCount >= 2);
 
         audioPlayback.MaxConcurrentCalls.Should().Be(1);
         textToSpeech.Calls.Select(call => call.Text).Should().Equal("First sentence.", "Second sentence.");
-        textToSpeech.Calls.Should().OnlyContain(call => call.VoiceId == "en_US-lessac-medium");
+        textToSpeech.Calls.Should().OnlyContain(call => call.SpeakerId == 1 && call.Language == "en");
     }
 
     [Fact]
@@ -36,7 +36,7 @@ public class VoicePlaybackQueueTests
         var audioPlayback = new FakeAudioPlaybackService();
         var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
 
-        queue.Enqueue([], "en_US-lessac-medium");
+        queue.Enqueue([], speakerId: 1, language: "en");
         await Task.Delay(30);
 
         textToSpeech.Calls.Should().BeEmpty();
@@ -59,7 +59,7 @@ public class VoicePlaybackQueueTests
         };
         var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
 
-        queue.Enqueue(["First sentence."], "en_US-lessac-medium");
+        queue.Enqueue(["First sentence."], speakerId: 1, language: "en");
         await playbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         queue.StopAll();
@@ -86,9 +86,9 @@ public class VoicePlaybackQueueTests
         };
         var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
 
-        queue.Enqueue(["First sentence."], "en_US-lessac-medium");
+        queue.Enqueue(["First sentence."], speakerId: 1, language: "en");
         await playbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        queue.Enqueue(["Never played."], "en_US-lessac-medium");
+        queue.Enqueue(["Never played."], speakerId: 1, language: "en");
 
         queue.StopAll();
         await Task.Delay(100);
@@ -105,7 +105,7 @@ public class VoicePlaybackQueueTests
         var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
 
         queue.StopAll();
-        queue.Enqueue(["After a stop."], "en_US-lessac-medium");
+        queue.Enqueue(["After a stop."], speakerId: 1, language: "en");
 
         await _WaitUntilAsync(() => audioPlayback.CallCount >= 1);
 
@@ -113,7 +113,7 @@ public class VoicePlaybackQueueTests
     }
 
     [Fact]
-    public async Task Enqueue_SegmentsWithDifferentVoices_PlaysEachVoiceAndInsertsSilenceBetween()
+    public async Task Enqueue_SegmentsInDifferentLanguages_UsesOneSpeaker_AndInsertsNoSilence()
     {
         var textToSpeech = new FakeTextToSpeechService();
         var audioPlayback = new FakeAudioPlaybackService();
@@ -121,30 +121,16 @@ public class VoicePlaybackQueueTests
 
         queue.Enqueue(
         [
-            new SpeechSegment(["Here is the answer."], "en_US-lessac-medium"),
-            new SpeechSegment(["Dit is het antwoord."], "nl_NL-ronnie-medium"),
-        ]);
+            new SpeechSegment(["Here is the answer."], "en"),
+            new SpeechSegment(["Dit is het antwoord."], "nl"),
+        ], speakerId: 2);
 
         await _WaitUntilAsync(() => textToSpeech.Calls.Count >= 2);
 
-        textToSpeech.Calls.Select(call => call.VoiceId).Should().Equal("en_US-lessac-medium", "nl_NL-ronnie-medium");
-        // The language switch is separated by an inserted all-zero (silent) buffer; the spoken sentences
-        // are non-zero (FakeTextToSpeechService returns a small non-zero waveform).
-        audioPlayback.PlayedBuffers.Should().Contain(buffer => buffer.Length > 0 && buffer.All(sample => sample == 0));
-    }
-
-    [Fact]
-    public async Task Enqueue_SentencesInOneVoice_InsertsNoSilence()
-    {
-        var textToSpeech = new FakeTextToSpeechService();
-        var audioPlayback = new FakeAudioPlaybackService();
-        var queue = new VoicePlaybackQueue(textToSpeech, audioPlayback, NullLogger<VoicePlaybackQueue>.Instance);
-
-        queue.Enqueue(["First sentence.", "Second sentence."], "en_US-lessac-medium");
-
-        await _WaitUntilAsync(() => audioPlayback.CallCount >= 2);
-
-        // No language switch means no inserted silence — every played buffer is a spoken sentence.
+        // One multilingual voice: the same speaker synthesizes both segments, each in its own language.
+        textToSpeech.Calls.Select(call => call.Language).Should().Equal("en", "nl");
+        textToSpeech.Calls.Should().OnlyContain(call => call.SpeakerId == 2);
+        // No voice switch means no bridging silence — every played buffer is a spoken sentence.
         audioPlayback.PlayedBuffers.Should().OnlyContain(buffer => buffer.Any(sample => sample != 0));
     }
 
@@ -163,7 +149,7 @@ public class VoicePlaybackQueueTests
             }
         };
 
-        queue.Enqueue(["A sentence."], "en_US-lessac-medium");
+        queue.Enqueue(["A sentence."], speakerId: 1, language: "en");
 
         await _WaitUntilAsync(() =>
         {
