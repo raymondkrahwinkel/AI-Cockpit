@@ -36,6 +36,28 @@ public class SessionLimitsTests
     }
 
     [Fact]
+    public void ResetsAt_AsAUnixEpochNumber_IsParsed()
+    {
+        // The real statusline (2.1.209) sends resets_at as a Unix-epoch-seconds number, not an ISO string — the
+        // parser must read it, or the header shows the windows without their reset time (AC-37).
+        const long fiveHourEpoch = 1784415000;   // 2026-07-16T18:30:00Z
+        const long sevenDayEpoch = 1784970000;
+        var limits = SessionLimits.TryParse($$"""
+            {
+              "context_window": { "used_percentage": 86 },
+              "rate_limits": {
+                "five_hour": { "used_percentage": 7, "resets_at": {{fiveHourEpoch}} },
+                "seven_day": { "used_percentage": 18, "resets_at": {{sevenDayEpoch}} }
+              }
+            }
+            """);
+
+        limits.Should().NotBeNull();
+        limits!.FiveHourResetsAt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(fiveHourEpoch));
+        limits.SevenDayResetsAt.Should().Be(DateTimeOffset.FromUnixTimeSeconds(sevenDayEpoch));
+    }
+
+    [Fact]
     public void BeforeTheFirstResponse_NothingIsClaimed()
     {
         // Claude reports no rate_limits until it has spoken to the API, and none at all on a plan that has no
