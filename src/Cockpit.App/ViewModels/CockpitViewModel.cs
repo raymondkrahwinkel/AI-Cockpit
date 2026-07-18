@@ -1576,18 +1576,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    /// <summary>A representative preview sample: bilingual and lightly technical, so Naturalized tags the languages and Summarized has something to compress.</summary>
+    /// <summary>A representative preview sample: bilingual and, for the two LLM modes, shaped so Naturalized has symbols to phrase and Summarized has details to compress.</summary>
     private static string _SampleReadAloudText(ReadAloudMode mode) => mode switch
     {
         ReadAloudMode.Summarized =>
-            "I finished the read-aloud redesign across three pillars: the engine moved to SupertonicTTS, "
-            + "read-aloud gained a three-way mode, and the local-LLM layer is now shared. All the tests pass "
-            + "with zero warnings. Dit is klaar voor je test.",
+            "This is a longer sample so you can hear summarizing. Imagine a reply that lists three steps, "
+            + "mentions a deadline in five days, and warns about one risk. Summarized keeps the numbers, the "
+            + "decision and the warning, but says it in fewer words. En dit werkt ook in het Nederlands.",
         ReadAloudMode.Naturalized =>
-            "Read-aloud is ready. I switched the engine to SupertonicTTS in src/App.cs and every test passes. "
-            + "Dit werkt nu ook netjes in het Nederlands.",
+            "This is a preview of read-aloud. It can mention a file or a folder path in plain words instead of "
+            + "reading the symbols out loud. En het schakelt netjes over naar het Nederlands waar dat nodig is.",
         _ =>
-            "Read-aloud is ready. This is how the selected voice sounds when it reads a reply out loud.",
+            "This is a preview of read-aloud. The selected voice reads replies out loud, one sentence at a time.",
     };
 
     [ObservableProperty]

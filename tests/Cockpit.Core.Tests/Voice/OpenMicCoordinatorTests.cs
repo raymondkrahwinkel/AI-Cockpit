@@ -71,6 +71,21 @@ public class OpenMicCoordinatorTests
     }
 
     [Fact]
+    public async Task ReadAloudPlays_WithOpenMicOff_StillReportsButDoesNotPauseTheListener()
+    {
+        // The playback subscription is always on so the overlay's "speaking" pill shows for read-aloud even
+        // without open-mic; but barge-in must not pause a microphone that is not listening.
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out var listener, out var playbackQueue,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = false });
+        await coordinator.StartAsync();
+
+        playbackQueue.PlaybackActiveChanged += Raise.Event<EventHandler<bool>>(playbackQueue, true);
+
+        listener.DidNotReceiveWithAnyArgs().Pause();
+    }
+
+    [Fact]
     public async Task StartAsync_OpenMicDisabled_NeverStartsTheListener()
     {
         var coordinator = _CreateCoordinator(
