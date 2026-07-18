@@ -18,11 +18,10 @@
 
     <DockPanel Margin="12">
 
-        <!-- Compact one-row session header, same build-up as the TTY header: the session data (provider tag,
-             status, profile, usage meter) is left-aligned, its controls follow on the same row, and the session
-             title is docked right. The session is started from the New-session dialog (#31), so there is no
-             Start button — only Stop plus the live mode/model/effort selectors, each shown only when the
-             provider supports it. -->
+        <!-- Compact one-row session header (AC-37): the shared SessionHeaderBar (identity · activity · cwd · branch
+             · token meter · usage pill) flexes, and this view's live controls dock right. The session is started
+             from the New-session dialog (#31), so there is no Start button — only Stop plus the live
+             mode/model/effort selectors, each shown only when the provider supports it. -->
         <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
@@ -71,10 +70,36 @@
                                   ToolTip.Tip="Run this local model's tool calls without an Allow prompt each time (they still show as tool rows)"/>
                 </StackPanel>
 
-                <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · usage
-                     pill — defined once in SessionHeaderBar for every session kind, so the SDK and TTY headers can
-                     no longer diverge. The live controls above dock right and stay on the bar. -->
-                <controls:SessionHeaderBar VerticalAlignment="Center"/>
+                <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · token
+                     meter · usage pill — defined once in SessionHeaderBar for every session kind, so the SDK and
+                     TTY headers can no longer diverge. The live controls above dock right and stay on the bar. The
+                     kind chip's hover is this view's own connected-tools card (a scannable list of the session's
+                     MCP tools, not a comma wall). -->
+                <controls:SessionHeaderBar VerticalAlignment="Center">
+                    <controls:SessionHeaderBar.KindChipTooltip>
+                        <StackPanel Spacing="8" MaxWidth="440">
+                            <TextBlock Text="{Binding ConnectedToolsHeading}" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <ItemsControl ItemsSource="{Binding ConnectedTools}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Background="{StaticResource CockpitSecondaryBgBrush}"
+                                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                                                CornerRadius="4" Padding="5,1" Margin="0,0,4,4">
+                                            <TextBlock Text="{Binding}" FontSize="10.5"
+                                                       FontFamily="{StaticResource CockpitMonoFont}"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </controls:SessionHeaderBar.KindChipTooltip>
+                </controls:SessionHeaderBar>
             </DockPanel>
         </Border>
 

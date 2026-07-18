@@ -38,9 +38,14 @@
                             ToolTip.Tip="Force the terminal to repaint from scratch — recovers the TUI if a resize/focus change left it misaligned or stacked at the top"/>
                 </StackPanel>
 
-                <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · usage
-                     pill — SessionHeaderBar, the same control the SDK header uses. The controls above dock right. -->
-                <controls:SessionHeaderBar VerticalAlignment="Center"/>
+                <!-- The one shared header strip (AC-37): dot · name · kind chip · activity · cwd · branch · token
+                     meter · usage pill — SessionHeaderBar, the same control the SDK header uses. The controls above
+                     dock right. The kind chip's hover is this view's own render diagnostics. -->
+                <controls:SessionHeaderBar VerticalAlignment="Center">
+                    <controls:SessionHeaderBar.KindChipTooltip>
+                        <TextBlock Text="{Binding Diagnostics}" MaxWidth="440" TextWrapping="Wrap" FontSize="11"/>
+                    </controls:SessionHeaderBar.KindChipTooltip>
+                </controls:SessionHeaderBar>
             </DockPanel>
         </Border>
 

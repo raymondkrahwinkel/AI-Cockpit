@@ -183,17 +183,8 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Running token/cost total for the session (#8), folded from each completed turn's result usage.</summary>
     private readonly SessionUsageMeter _usage = new();
 
-    /// <summary>True once any usage/cost has accrued, so the meter shows only when there is something to show.</summary>
-    [ObservableProperty]
-    private bool _hasUsage;
-
-    /// <summary>Compact token/cost meter shown next to the status, e.g. "45.2k tok · $0.0123" (#8).</summary>
-    [ObservableProperty]
-    private string _usageSummary = string.Empty;
-
-    /// <summary>Per-bucket usage breakdown for the meter's hover text (#8).</summary>
-    [ObservableProperty]
-    private string _usageTooltip = string.Empty;
+    // HasUsage, UsageSummary and UsageTooltip now live on the shared SessionPanelViewModel base (AC-37), rendered by
+    // the one SessionHeaderBar; _usage still folds each turn's usage into them here.
 
     // ContextUsedPercent, RateLimits and LimitsTooltip now live on the shared SessionPanelViewModel base (AC-37),
     // so the one SessionHeaderBar control reads the same usage data for every session kind.

@@ -229,6 +229,18 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string? _kindLabel;
 
+    /// <summary>True once any usage/cost has accrued (#8), so the header's token/cost meter shows only when there is something to show. On the base so the one SessionHeaderBar renders it (a session kind with no usage feed leaves it false).</summary>
+    [ObservableProperty]
+    private bool _hasUsage;
+
+    /// <summary>Compact token/cost meter text next to the pill, e.g. "45.2k tok · $0.0123" (#8).</summary>
+    [ObservableProperty]
+    private string _usageSummary = string.Empty;
+
+    /// <summary>Per-bucket usage breakdown for the meter's hover (#8).</summary>
+    [ObservableProperty]
+    private string _usageTooltip = string.Empty;
+
     /// <summary>
     /// Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the
     /// TTY session — a tailed transcript line), surfaced to plugins via the read/observe surface so a watcher
