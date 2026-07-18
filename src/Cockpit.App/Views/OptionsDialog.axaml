@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -244,9 +245,11 @@
                         <!-- Read-aloud -->
                         <ScrollViewer>
                             <StackPanel Spacing="8" Margin="16">
-                                <TextBlock Text="Read aloud" FontWeight="SemiBold"/>
-                                <TextBlock Text="Per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Read aloud" FontWeight="SemiBold"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="A per-session toggle in the session's top bar reads Claude's replies aloud, sentence by sentence, as each turn finishes. The voice model downloads on first use."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Mode"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -254,9 +257,9 @@
                                     <ComboBox ItemsSource="{Binding ReadAloudModes}"
                                               SelectedItem="{Binding SelectedReadAloudMode}"
                                               DisplayMemberBinding="{Binding Label}" MinWidth="260"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Verbatim reads the reply as-is. Naturalized and Summarized use the same local LLM as transcript cleanup to phrase (or shorten) it naturally before speaking — Summarized keeps every number, decision, warning and action item. Both add a short local LLM call per turn."/>
                                 </StackPanel>
-                                <TextBlock Text="Verbatim reads the reply as-is. Naturalized and Summarized use the same local LLM as transcript cleanup to phrase (or shorten) it naturally before speaking — Summarized keeps every number, decision, warning and action item. Both add a short local LLM call per turn."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Voice"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -264,17 +267,17 @@
                                     <ComboBox ItemsSource="{Binding TtsVoices}"
                                               SelectedItem="{Binding SelectedTtsVoice}"
                                               DisplayMemberBinding="{Binding Label}" MinWidth="150"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."/>
                                 </StackPanel>
-                                <TextBlock Text="One multilingual voice speaks both Dutch and English — mixed replies are spoken by the same voice, with each part pronounced in its own language."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                     <Button Content="▶ Test read-aloud" Command="{Binding PreviewReadAloudCommand}"/>
                                     <TextBlock Text="{Binding VoiceTestStatus}"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Speaks a short sample in the selected voice and mode so you can hear it. The voice model downloads on first use, so the first test can take a few seconds."/>
                                 </StackPanel>
-                                <TextBlock Text="Speaks a short sample in the selected voice and mode so you can hear it. The voice model downloads on first use, so the first test can take a few seconds."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Output device"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -282,22 +285,19 @@
                                     <ComboBox ItemsSource="{Binding OutputDevices}"
                                               SelectedItem="{Binding SelectedOutputDevice}"
                                               DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Which speaker/headset read-aloud plays to. 'System default' follows your OS setting."/>
                                 </StackPanel>
-                                <TextBlock Text="Which speaker/headset read-aloud plays to. 'System default' follows your OS setting."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                                 <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,6"/>
 
                                 <TextBlock Text="While you're talking" FontWeight="SemiBold"/>
-                                <!-- AC-9's microphone half. Off by default and it says why on the row: a threshold filters
-                                     the room, not the cockpit's own voice, so on speakers this stops read-aloud the moment
-                                     it starts. Needs the open microphone, so its silence tuning sits with it. -->
-                                <CheckBox Content="Stop read-aloud when I start talking"
-                                          IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"
-                                          IsVisible="{Binding VoiceEnabled}"/>
-                                <TextBlock Text="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops read-aloud and needs neither. Use headphones: on speakers the microphone hears the read-aloud itself and stops it straight away."
-                                           IsVisible="{Binding VoiceEnabled}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
+                                    <CheckBox Content="Stop read-aloud when I start talking"
+                                              IsChecked="{Binding VoiceStopReadAloudWhenSpeaking}"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Needs open mic — without it there is no microphone listening. Holding the push-to-talk key already stops read-aloud and needs neither. Use headphones: on speakers the microphone hears the read-aloud itself and stops it straight away."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                                             IsVisible="{Binding VoiceStopReadAloudWhenSpeaking}">
                                     <TextBlock Text="…when the microphone is louder than"
@@ -306,14 +306,14 @@
                                     <NumericUpDown Value="{Binding VoiceStopReadAloudLevelThreshold}" Minimum="0.02" Maximum="0.9"
                                                    Increment="0.01" FormatString="0.00" Width="120" HorizontalContentAlignment="Center"/>
                                 </StackPanel>
-                                <!-- Open mic is turned on/off at runtime from the sidebar mic button, not here; this
-                                     is only its tuning. -->
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
                                     <TextBlock Text="Open-mic: end utterance after (silence ms)"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
                                     <NumericUpDown Value="{Binding VoiceOpenMicSilenceTimeoutMs}" Minimum="300" Maximum="3000"
                                                    Increment="100" FormatString="0" Width="130" HorizontalContentAlignment="Center"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Open mic is turned on/off at runtime from the sidebar mic button, not here — this is only its tuning."/>
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>
