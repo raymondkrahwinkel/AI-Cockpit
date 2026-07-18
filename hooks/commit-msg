@@ -1,0 +1,23 @@
+#!/usr/bin/env sh
+# Strip AI-attribution "Co-Authored-By: Claude/Anthropic" trailers from commit messages.
+#
+# Commits here go out under the maintainer's name; AI assistants are tools, not co-authors
+# (see CONTRIBUTING.md). Some assistants add a Co-Authored-By trailer by default, which makes
+# them show up as repository contributors. This hook removes that trailer on every commit,
+# regardless of which tool or session produced it.
+#
+# Wire it once per clone with: scripts/install-hooks.sh
+
+msg_file="$1"
+pat='^[[:space:]]*co-authored-by:.*(claude|anthropic)'
+
+if grep -qiE "$pat" "$msg_file" 2>/dev/null; then
+  tmp="$msg_file.hook.tmp"
+  grep -viE "$pat" "$msg_file" > "$tmp"
+  # collapse trailing blank lines left behind by the removed trailer
+  awk 'NF{last=NR} {line[NR]=$0} END{for(i=1;i<=last;i++) print line[i]}' "$tmp" > "$msg_file"
+  rm -f "$tmp"
+  echo "commit-msg hook: removed AI-attribution Co-Authored-By trailer" >&2
+fi
+
+exit 0

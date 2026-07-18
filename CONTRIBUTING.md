@@ -42,6 +42,19 @@ it keeps a one-person project alive.
    in [`CHANGELOG.md`](CHANGELOG.md) — see *Changelog* below. A finished item that leaves no trace
    there is not finished.
 
+## Git hooks
+
+After cloning, wire the repo's git hooks once:
+
+```
+scripts/install-hooks.sh
+```
+
+This points `core.hooksPath` at the tracked [`hooks/`](hooks/) directory (no copying, no symlinks;
+re-run it any time). The `commit-msg` hook strips AI-attribution `Co-Authored-By: Claude/Anthropic`
+trailers from every commit: assistants are tools here, not co-authors, and the trailer would
+otherwise list them as repository contributors.
+
 ## Commit style
 
 Bullet-list commit messages, one bullet per changed concern, written in English:
