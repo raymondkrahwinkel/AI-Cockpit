@@ -200,6 +200,18 @@ internal sealed class YouTrackSessionHeaderControl : UserControl
         open.Click += (_, _) => _OpenInBrowser(link);
         items.Add(open);
 
+        // AC-14: while this is on, an image the operator sends with a message in this session is also attached to
+        // the tracked issue. Off by default, per session, and a checkable item rather than a header control so an
+        // untracked session shows nothing extra.
+        var attachImages = new MenuItem
+        {
+            Header = "Attach sent images to this issue",
+            ToggleType = MenuItemToggleType.CheckBox,
+            IsChecked = _links.AttachesImages(_session.PaneId),
+        };
+        attachImages.Click += (_, _) => _links.SetAttachesImages(_session.PaneId, !_links.AttachesImages(_session.PaneId));
+        items.Add(attachImages);
+
         var unlink = new MenuItem { Header = "Unlink from this session" };
         unlink.Click += (_, _) => _links.Unlink(_session.PaneId);
         items.Add(unlink);
