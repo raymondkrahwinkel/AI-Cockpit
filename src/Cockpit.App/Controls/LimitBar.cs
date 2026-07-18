@@ -49,10 +49,24 @@ public sealed class LimitBar : TemplatedControl
         set => SetValue(PercentProperty, value);
     }
 
+    public static readonly StyledProperty<bool> StretchTrackProperty =
+        AvaloniaProperty.Register<LimitBar, bool>(nameof(StretchTrack));
+
+    /// <summary>
+    /// When true the track fills the control's width and the percentage right-aligns, instead of the fixed 34px
+    /// track — for the roomy usage flyout (AC-37), where three short bars in a wide panel looked lost. The compact
+    /// header strip leaves it false.
+    /// </summary>
+    public bool StretchTrack
+    {
+        get => GetValue(StretchTrackProperty);
+        set => SetValue(StretchTrackProperty, value);
+    }
+
     static LimitBar()
     {
-        AffectsRender<LimitBar>(PercentProperty, LabelProperty);
-        AffectsMeasure<LimitBar>(PercentProperty, LabelProperty);
+        AffectsRender<LimitBar>(PercentProperty, LabelProperty, StretchTrackProperty);
+        AffectsMeasure<LimitBar>(PercentProperty, LabelProperty, StretchTrackProperty);
 
         // Nothing to report, nothing to draw: Claude says nothing about the rate limits before the first response,
         // and a bar sitting at zero would be a claim rather than a silence.
@@ -71,10 +85,16 @@ public sealed class LimitBar : TemplatedControl
 
         var label = Text(Label, Brushes.Gray);
         var value = Text(Format(percent), Brushes.Gray);
+        var height = Math.Max(label.Height, value.Height);
 
-        return new Size(
-            label.Width + Gap + TrackWidth + Gap + value.Width,
-            Math.Max(label.Height, value.Height));
+        // Stretch mode: take the width the panel offers (finite in the flyout), so the track can fill it. Falls
+        // back to the fixed layout when the width is unconstrained (nothing to stretch into).
+        if (StretchTrack && !double.IsInfinity(availableSize.Width))
+        {
+            return new Size(availableSize.Width, height);
+        }
+
+        return new Size(label.Width + Gap + TrackWidth + Gap + value.Width, height);
     }
 
     public override void Render(DrawingContext context)
@@ -92,17 +112,27 @@ public sealed class LimitBar : TemplatedControl
         context.DrawText(label, new Point(0, middle - label.Height / 2));
 
         var trackLeft = label.Width + Gap;
-        context.DrawRectangle(TrackBrush, null, new RoundedRect(new Rect(trackLeft, middle - 2, TrackWidth, 4), 2));
+
+        // Stretch mode fills the width and right-aligns the percentage; otherwise the fixed 34px track with the
+        // percentage just after it.
+        var trackWidth = StretchTrack
+            ? Math.Max(TrackWidth, Bounds.Width - label.Width - value.Width - (Gap * 2))
+            : TrackWidth;
+        var valueLeft = StretchTrack
+            ? Bounds.Width - value.Width
+            : trackLeft + TrackWidth + Gap;
+
+        context.DrawRectangle(TrackBrush, null, new RoundedRect(new Rect(trackLeft, middle - 2, trackWidth, 4), 2));
 
         // Never a sliver of nothing: a limit that has been touched at all draws at least a visible tip, or a 1%
         // context window looks exactly like an untouched one.
         if (percent > 0)
         {
-            var filled = Math.Max(2, TrackWidth * Math.Clamp(percent, 0, 100) / 100);
+            var filled = Math.Max(2, trackWidth * Math.Clamp(percent, 0, 100) / 100);
             context.DrawRectangle(fill, null, new RoundedRect(new Rect(trackLeft, middle - 2, filled, 4), 2));
         }
 
-        context.DrawText(value, new Point(trackLeft + TrackWidth + Gap, middle - value.Height / 2));
+        context.DrawText(value, new Point(valueLeft, middle - value.Height / 2));
     }
 
     private static string Format(double percent) => $"{Math.Round(percent, MidpointRounding.AwayFromZero)}%";
