@@ -34,11 +34,59 @@ internal static class ClaudeMcpConfig
         }
 
         var root = new JsonObject { ["mcpServers"] = mcpServers };
+        return _WritePrivate(root.ToJsonString());
+    }
+
+    /// <summary>
+    /// Writes the mcp-config owner-only (AC-63). The user-API-key branch in <see cref="_ToEntry"/> puts a literal
+    /// <c>Authorization: Bearer &lt;token&gt;</c> in this file; it used to land in a world-readable temp file at the
+    /// umask's permissions, so any local account could read a third-party token for the file's lifetime. The file
+    /// (and its directory) are now 0600/0700 on Unix, set at create time so there is no window at the umask; on
+    /// Windows the per-user temp profile is the protection, exactly as the host's <c>TtyMcpConfigFile</c> /
+    /// <c>CockpitConfigPath</c> treat it (this plugin cannot reference Infrastructure, so it mirrors the pattern).
+    /// </summary>
+    private static string _WritePrivate(string json)
+    {
         var directory = Path.Combine(Path.GetTempPath(), "cockpit-claude-mcp");
         Directory.CreateDirectory(directory);
+        _Restrict(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
         var path = Path.Combine(directory, $"{Guid.NewGuid():N}.json");
-        File.WriteAllText(path, root.ToJsonString());
+        var options = new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write };
+        if (!OperatingSystem.IsWindows())
+        {
+            // Set at create time, so the file never exists at the umask's permissions with the token already in it.
+            options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        }
+
+        using (var stream = new FileStream(path, options))
+        using (var writer = new StreamWriter(stream))
+        {
+            writer.Write(json);
+        }
+
+        _Restrict(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         return path;
+    }
+
+    // A no-op on Windows, which has no Unix mode bits — there the per-user temp profile is the protection. Guarding
+    // inside the method (not at the call site) is what keeps the SetUnixFileMode call off the Windows analysis path.
+    private static void _Restrict(string path, UnixFileMode mode)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(path, mode);
+        }
+        catch (Exception)
+        {
+            // A filesystem that carries no Unix permissions (a mounted share, a container volume) is not a reason to
+            // fail the launch — the write is what matters, and UnixCreateMode already set the mode where it is honoured.
+        }
     }
 
     private static JsonObject? _ToEntry(PluginMcpServer server)
