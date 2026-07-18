@@ -1,0 +1,11 @@
+{
+  "id": "github-actions",
+  "name": "GitHub Actions",
+  "version": "0.1.0",
+  "entryAssembly": "Cockpit.Plugin.GitHubActions.dll",
+  "entryType": "Cockpit.Plugin.GitHubActions.GitHubActionsPlugin",
+  "abstractionsVersion": 1,
+  "minHostVersion": "0.1.0",
+  "description": "The GitHub Actions status of the branch a session is working in, shown in that session's header: a coloured dot (green pass, red fail, amber running) for the latest workflow run on the current branch, with the workflow, event and time on hover — click to open the run on GitHub. Completes the GitHub set alongside Issues, Pull Requests and Git status. Uses your existing gh CLI login (no token to paste); requires the GitHub CLI installed and authenticated.",
+  "author": "Cockpit"
+}

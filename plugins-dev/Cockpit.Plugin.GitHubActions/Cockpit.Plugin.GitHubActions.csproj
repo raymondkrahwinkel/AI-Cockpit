@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- GitHub Actions CI-status plugin (AC-52): the workflow-run status of the branch a session is working in, shown
+       in that session's header — a coloured dot (green pass / red fail / amber running) with the run's details on
+       hover, click to open it on GitHub. Completes the GitHub trio (issues + PRs + git status → + CI). Built OUTSIDE
+       the main solution like the other example plugins; package bin/<config>/net10.0 into a .zip for the store.
+       EnableDynamicLoading emits the .deps.json the host's AssemblyDependencyResolver needs. Shared assemblies
+       (Abstractions, Avalonia, Material.Icons, the DI abstractions) are compile-only (Private=false /
+       ExcludeAssets=runtime) so the host's copies load and shared types keep one identity. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.GitHubActions.Tests" />
+  </ItemGroup>
+
+</Project>
