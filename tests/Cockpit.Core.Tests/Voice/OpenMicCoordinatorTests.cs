@@ -71,6 +71,21 @@ public class OpenMicCoordinatorTests
     }
 
     [Fact]
+    public async Task ReadAloudPlays_WithOpenMicOff_StillReportsButDoesNotPauseTheListener()
+    {
+        // The playback subscription is always on so the overlay's "speaking" pill shows for read-aloud even
+        // without open-mic; but barge-in must not pause a microphone that is not listening.
+        var coordinator = _CreateCoordinator(
+            _CreateSdkSession(), Substitute.For<ITranscriptCleanupService>(), out var listener, out var playbackQueue,
+            new VoiceSettings { IsEnabled = true, OpenMicEnabled = false });
+        await coordinator.StartAsync();
+
+        playbackQueue.PlaybackActiveChanged += Raise.Event<EventHandler<bool>>(playbackQueue, true);
+
+        listener.DidNotReceiveWithAnyArgs().Pause();
+    }
+
+    [Fact]
     public async Task StartAsync_OpenMicDisabled_NeverStartsTheListener()
     {
         var coordinator = _CreateCoordinator(
@@ -180,7 +195,12 @@ public class OpenMicCoordinatorTests
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
         await coordinator.StartAsync();
 
+        // Active but no audio yet = preparing (the local-LLM rewrite + text-to-sound synthesis).
         coordinator.HandlePlaybackActiveChanged(true);
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Preparing);
+
+        // The first clip plays: now it is actually reading aloud.
+        coordinator.HandleSpeakingStarted();
         overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Speaking);
 
         coordinator.HandlePlaybackActiveChanged(false);
@@ -202,6 +222,7 @@ public class OpenMicCoordinatorTests
         coordinator.HandlePlaybackActiveChanged(true);
 
         coordinator.HandleAudioLevel(0.4);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.Received().StopAll();
     }
@@ -216,6 +237,7 @@ public class OpenMicCoordinatorTests
         coordinator.HandlePlaybackActiveChanged(true);
 
         coordinator.HandleAudioLevel(0.05);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.DidNotReceive().StopAll();
     }
@@ -231,6 +253,7 @@ public class OpenMicCoordinatorTests
         coordinator.HandlePlaybackActiveChanged(true);
 
         coordinator.HandleAudioLevel(0.9);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.DidNotReceive().StopAll();
     }
@@ -245,6 +268,7 @@ public class OpenMicCoordinatorTests
         await coordinator.StartAsync();
 
         coordinator.HandleAudioLevel(0.9);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.DidNotReceive().StopAll();
     }

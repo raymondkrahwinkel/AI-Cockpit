@@ -381,7 +381,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         {
             await foreach (var assistantText in _transcriptReader.ReadAssistantTextAsync(profile, transcriptBaseline, cancellationToken))
             {
-                _ = EnqueueReadAloudAsync(assistantText, TtsVoiceId);
+                _ = EnqueueReadAloudAsync(assistantText);
             }
         }
         catch (OperationCanceledException)

@@ -25,7 +25,7 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
 {
     private VoiceOverlayState? _pushToTalk;
     private VoiceOverlayState? _openMic;
-    private bool _isSpeaking;
+    private VoiceOverlayState? _readAloud;
     private string _status = string.Empty;
     private double? _progress;
 
@@ -53,10 +53,15 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
         _Apply();
     }
 
-    /// <summary>Whether read-aloud is playing. Shown only when no dictation is in progress — see the class remarks.</summary>
-    public void SetSpeaking(bool speaking)
+    /// <summary>
+    /// What read-aloud has to say, or null when it is idle: <see cref="VoiceOverlayState.Preparing"/> while it is
+    /// synthesizing (text-to-sound, before any audio — with a status word), <see cref="VoiceOverlayState.Speaking"/>
+    /// once audio is actually playing. Shown only when no dictation is in progress — see the class remarks.
+    /// </summary>
+    public void SetReadAloud(VoiceOverlayState? state, string? status = null)
     {
-        _isSpeaking = speaking;
+        _readAloud = state;
+        _Remember(state, status, progress: null);
         _Apply();
     }
 
@@ -83,7 +88,8 @@ public sealed class VoiceOverlayCoordinator(VoiceOverlayViewModel overlay, IVoic
     {
         var state = _pushToTalk
             ?? _openMic
-            ?? (_isSpeaking ? VoiceOverlayState.Speaking : VoiceOverlayState.Hidden);
+            ?? _readAloud
+            ?? VoiceOverlayState.Hidden;
 
         if (state == VoiceOverlayState.Hidden)
         {

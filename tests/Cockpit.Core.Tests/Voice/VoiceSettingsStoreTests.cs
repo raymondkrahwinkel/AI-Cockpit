@@ -33,8 +33,7 @@ public class VoiceSettingsStoreTests : IDisposable
         settings.PushToTalkKeyName.Should().Be("F9");
         settings.GlobalPushToTalk.Should().BeFalse();
         settings.AutoSubmitAfterVoice.Should().BeFalse();
-        settings.TtsVoiceId.Should().Be("en_US-lessac-medium");
-        settings.TtsVoiceIdDutch.Should().Be("nl_NL-ronnie-medium");
+        settings.TtsVoiceSid.Should().Be(1);
         settings.SttLanguage.Should().Be("auto");
         settings.InputDeviceName.Should().BeEmpty();
         settings.OutputDeviceName.Should().BeEmpty();
@@ -55,13 +54,14 @@ public class VoiceSettingsStoreTests : IDisposable
             CleanupEnabled = false,
             AutoDetectLocalLlm = false,
             LocalLlmPreference = LocalLlmPreference.LmStudio,
-            CleanupModel = "llama3.2:3b",
-            CleanupBaseUrl = "http://localhost:12345",
+            VoiceLlmModel = "llama3.2:3b",
+            VoiceLlmBaseUrl = "http://localhost:12345",
             PushToTalkKeyName = "F10",
             GlobalPushToTalk = true,
             AutoSubmitAfterVoice = true,
-            TtsVoiceId = "nl_NL-ronnie-medium",
-            TtsVoiceIdDutch = "nl_BE-nathalie-medium",
+            TtsVoiceSid = 3,
+            ReadAloudMode = ReadAloudMode.Summarized,
+            ReadAloudLanguage = "nl",
             SttLanguage = "nl",
             InputDeviceName = "Yeti Stereo Microphone",
             OutputDeviceName = "Built-in Speakers",
@@ -76,18 +76,46 @@ public class VoiceSettingsStoreTests : IDisposable
         loaded.CleanupEnabled.Should().BeFalse();
         loaded.AutoDetectLocalLlm.Should().BeFalse();
         loaded.LocalLlmPreference.Should().Be(LocalLlmPreference.LmStudio);
-        loaded.CleanupModel.Should().Be("llama3.2:3b");
-        loaded.CleanupBaseUrl.Should().Be("http://localhost:12345");
+        loaded.VoiceLlmModel.Should().Be("llama3.2:3b");
+        loaded.VoiceLlmBaseUrl.Should().Be("http://localhost:12345");
         loaded.PushToTalkKeyName.Should().Be("F10");
         loaded.GlobalPushToTalk.Should().BeTrue();
         loaded.AutoSubmitAfterVoice.Should().BeTrue();
-        loaded.TtsVoiceId.Should().Be("nl_NL-ronnie-medium");
-        loaded.TtsVoiceIdDutch.Should().Be("nl_BE-nathalie-medium");
+        loaded.TtsVoiceSid.Should().Be(3);
+        loaded.ReadAloudMode.Should().Be(ReadAloudMode.Summarized);
+        loaded.ReadAloudLanguage.Should().Be("nl");
         loaded.SttLanguage.Should().Be("nl");
         loaded.InputDeviceName.Should().Be("Yeti Stereo Microphone");
         loaded.OutputDeviceName.Should().Be("Built-in Speakers");
         loaded.OpenMicEnabled.Should().BeTrue();
         loaded.OpenMicSilenceTimeoutMs.Should().Be(1200);
+    }
+
+    [Fact]
+    public async Task LoadAsync_DefaultConfig_ReadAloudModeIsVerbatim()
+    {
+        var store = new VoiceSettingsStore(_configFilePath);
+
+        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Verbatim);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyNaturalizeFlagOn_MigratesToNaturalizedMode()
+    {
+        // A config written before read-aloud gained the three-way mode carries only the old on/off flag.
+        await File.WriteAllTextAsync(_configFilePath, """{ "Voice": { "NaturalizeReadAloud": true } }""");
+        var store = new VoiceSettingsStore(_configFilePath);
+
+        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Naturalized);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacyNaturalizeFlagOff_MigratesToVerbatimMode()
+    {
+        await File.WriteAllTextAsync(_configFilePath, """{ "Voice": { "NaturalizeReadAloud": false } }""");
+        var store = new VoiceSettingsStore(_configFilePath);
+
+        (await store.LoadAsync()).ReadAloudMode.Should().Be(ReadAloudMode.Verbatim);
     }
 
     [Fact]

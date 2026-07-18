@@ -216,9 +216,9 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private ITranscriptCleanupService? _cleanupService;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.NaturalizeReadAloud"/>: rewrite assistant text into natural spoken form via the local LLM before read-aloud synthesis (#35).</summary>
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudMode"/>: how a reply is rendered before read-aloud synthesis (verbatim / naturalized / summarized) (#35).</summary>
     [ObservableProperty]
-    private bool _naturalizeReadAloud;
+    private ReadAloudMode _readAloudMode = ReadAloudMode.Verbatim;
 
     /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
     [ObservableProperty]
@@ -255,13 +255,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private bool _autoSubmitAfterVoice;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TtsVoiceId"/> — the Piper voice used for read-aloud (#35). Loaded on the shared base even though only the SDK session kind triggers synthesis, the same "load every voice field once" approach as the other voice settings here.</summary>
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TtsVoiceSid"/> — the SupertonicTTS speaker used for read-aloud (#35). Loaded on the shared base even though only the SDK session kind triggers synthesis, the same "load every voice field once" approach as the other voice settings here.</summary>
     [ObservableProperty]
-    private string _ttsVoiceId = "en_US-lessac-medium";
+    private int _ttsVoiceSid = 1;
 
-    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TtsVoiceIdDutch"/> — the Piper voice the Dutch segments of a mixed-language read-aloud reply route to when naturalization tags the languages (#35).</summary>
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudLanguage"/> — the preferred base language ("en"/"nl") for read-aloud (#35): unmarked text speaks in it and the naturalize/summarize pass leans to it.</summary>
     [ObservableProperty]
-    private string _dutchTtsVoiceId = "nl_NL-ronnie-medium";
+    private string _readAloudLanguage = "en";
 
     /// <summary>
     /// Per-session read-aloud toggle (#35/#35b): when true, completed assistant replies are extracted
@@ -323,54 +323,24 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         PushToTalkKeyName = settings.PushToTalkKeyName;
         GlobalPushToTalkEnabled = settings.GlobalPushToTalk;
         AutoSubmitAfterVoice = settings.AutoSubmitAfterVoice;
-        TtsVoiceId = settings.TtsVoiceId;
-        DutchTtsVoiceId = settings.TtsVoiceIdDutch;
-        NaturalizeReadAloud = settings.NaturalizeReadAloud;
-    }
-
-    /// <summary>
-    /// Enqueues sentences for read-aloud playback (turn-completion trigger or the on-demand per-row
-    /// button, both SDK-only) — a no-op when the playback queue was never wired (design-time/tests) or
-    /// there is nothing to say.
-    /// </summary>
-    protected void EnqueueReadAloud(IReadOnlyList<string> sentences, string voiceId)
-    {
-        if (sentences.Count == 0)
-        {
-            return;
-        }
-
-        _voicePlaybackQueue?.Enqueue(sentences, voiceId);
+        TtsVoiceSid = settings.TtsVoiceSid;
+        ReadAloudLanguage = settings.ReadAloudLanguage;
+        ReadAloudMode = settings.ReadAloudMode;
     }
 
     /// <summary>
     /// Extracts the prose from assistant text and enqueues it for read-aloud (#35), first rewriting it into
-    /// natural spoken sentences via the local LLM when <see cref="NaturalizeReadAloud"/> is on (falling back
-    /// to the plain extracted prose if the LLM is unavailable). The extractor already strips code/tables and
-    /// swaps paths/URLs for spoken words; the LLM pass smooths the rest and tags language runs
-    /// (<c>[[nl]]</c>/<c>[[en]]</c>) so mixed Dutch/English replies route each segment to the matching voice.
+    /// natural spoken sentences via the local LLM when <see cref="ReadAloudMode"/> is Naturalized or Summarized
+    /// (falling back to the plain extracted prose if the LLM is unavailable). The extractor already strips
+    /// code/tables and swaps paths/URLs for spoken words; the LLM pass smooths the rest and tags language runs
+    /// (<c>[[nl]]</c>/<c>[[en]]</c>) so mixed Dutch/English replies speak each segment in its own language. A no-op
+    /// when the playback queue was never wired (design-time/tests) or there is nothing to say. Shares the one
+    /// rendering path with the Options "Test" button via <see cref="ReadAloudPipeline"/>.
     /// </summary>
-    protected async Task EnqueueReadAloudAsync(string text, string voiceId)
-    {
-        var sentences = TtsProseExtractor.Extract(text);
-        if (sentences.Count == 0)
-        {
-            return;
-        }
-
-        if (NaturalizeReadAloud && _cleanupService is not null)
-        {
-            var natural = await _cleanupService.NaturalizeForSpeechAsync(string.Join(" ", sentences));
-            var segments = SpeechLanguageRouter.Route(natural, voiceId, DutchTtsVoiceId);
-            if (segments.Count > 0)
-            {
-                _voicePlaybackQueue?.Enqueue(segments);
-                return;
-            }
-        }
-
-        EnqueueReadAloud(sentences, voiceId);
-    }
+    protected Task EnqueueReadAloudAsync(string text) =>
+        _voicePlaybackQueue is null
+            ? Task.CompletedTask
+            : ReadAloudPipeline.SpeakAsync(_voicePlaybackQueue, _cleanupService, text, ReadAloudMode, TtsVoiceSid, ReadAloudLanguage);
 
     /// <summary>
     /// Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the
