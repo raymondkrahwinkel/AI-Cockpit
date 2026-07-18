@@ -61,7 +61,11 @@
          config view can offer "Update to X" only when a newer version actually exists and a background check can toast
          when an installed managed CLI is outdated. Additive API — still a minor; the major and abstractionsVersion
          stay 1. -->
-    <Version>1.10.0</Version>
+    <!-- 1.11.0 (#AC-14): added the session-image sink contract — SessionImageAttachment/SessionImageDispatch/
+         SessionImageSinkRegistration (records) and ICockpitHost.AddSessionImageSink (default-implemented), so the host
+         can route the images an operator sends with a message to any plugin, provider-agnostic (a tracker attaches
+         them to the issue its session tracks). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.11.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

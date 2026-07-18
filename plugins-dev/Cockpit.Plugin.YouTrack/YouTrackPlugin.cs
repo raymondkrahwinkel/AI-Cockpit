@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Material.Icons;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Mcp;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Plugin.YouTrack;
@@ -26,7 +27,7 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
     public PluginMetadata Metadata { get; } = new(
         Id: "youtrack",
         DisplayName: "YouTrack",
-        Version: "1.13.1",
+        Version: "1.14.0",
         Author: "Cockpit",
         Description: "Browse open issues across one or more configured YouTrack instances (over HTTP with a permanent token per instance — YouTrack has no CLI), with instance/project/state filters and an \"Assigned to me\" filter, and drop a prompt asking the agent to work on one. Opens from the left menu or the Shift+Y shortcut. Run the ticket workflow from the cockpit: Start an issue (move it to in progress, assign it to you, tie it to the session you work in), move it to any state the board itself allows — including workflow-governed boards, whose allowed transitions are read rather than assumed — and see the linked issue with its status in that session's header, with quick actions. The prompt template is editable in settings. Also registers each instance's JetBrains remote MCP server so sessions can query YouTrack directly as tools, and contributes three workflow steps — a ticket picked for a session, a ticket whose status you moved, and a step that moves one — so a flow can run the ticket half of your working day.");
 
@@ -100,6 +101,11 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 
         host.AddSessionHeaderItem(session => new YouTrackSessionHeaderControl(host, session, links, settings, stateChanges));
 
+        // AC-14: when a session tracks an issue and the operator turned the option on (the header menu's checkable
+        // "Attach sent images to this issue"), an image sent with a message is also attached to that issue. The host
+        // routes the images generically; this handler does the YouTrack-specific upload.
+        host.AddSessionImageSink(new SessionImageSinkRegistration(dispatch => _AttachSentImagesAsync(host, links, dispatch)));
+
         // Picking a ticket is an action, so it lives in the header's one menu rather than in a button of its own — two
         // issue trackers meant two buttons asking the same question of a strip with room for neither.
         host.AddSessionHeaderAction(new PluginSessionAction(
@@ -128,6 +134,38 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
     /// </summary>
     public IReadOnlyList<McpServerContribution> GetMcpServers() =>
         _settings is null ? [] : YouTrackMcpRegistration.BuildContributions(_settings.Instances);
+
+    // Attaches the images from one message to the pane's tracked issue (AC-14), when that pane opted in. A no-op
+    // when the pane tracks nothing or the option is off; each image is uploaded independently, so one failure does
+    // not stop the rest, and the operator is told either way.
+    private static async Task _AttachSentImagesAsync(ICockpitHost host, SessionIssueLinks links, SessionImageDispatch dispatch)
+    {
+        if (!links.AttachesImages(dispatch.PaneId) || links.For(dispatch.PaneId) is not { } link)
+        {
+            return;
+        }
+
+        var client = new YouTrackClient();
+        var attached = 0;
+        foreach (var image in dispatch.Images)
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(image.Base64Data);
+                await client.AttachFileAsync(link.Instance.InstanceUrl, link.Instance.Token, link.Issue.IdReadable, image.SuggestedFileName, bytes, image.MediaType, CancellationToken.None);
+                attached++;
+            }
+            catch (Exception exception)
+            {
+                host.ShowToast($"{link.Issue.IdReadable}: could not attach an image — {exception.Message}", PluginToastSeverity.Error);
+            }
+        }
+
+        if (attached > 0)
+        {
+            host.ShowToast($"Attached {attached} image{(attached == 1 ? "" : "s")} to {link.Issue.IdReadable}.", PluginToastSeverity.Success);
+        }
+    }
 
     public void Dispose()
     {

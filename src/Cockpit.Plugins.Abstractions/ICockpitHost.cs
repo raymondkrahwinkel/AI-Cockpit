@@ -75,6 +75,18 @@ public interface ICockpitHost
     }
 
     /// <summary>
+    /// Registers a handler for images the operator sends with a user message (AC-14) — see
+    /// <see cref="SessionImageSinkRegistration"/>. The host invokes it for every image-bearing message, with the
+    /// session's pane id and the images, so a tracker plugin can attach them to the issue that session tracks. This
+    /// lives on the host, provider-agnostic, rather than in any one tracker plugin, so every provider reaches it the
+    /// same way. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin
+    /// builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void AddSessionImageSink(SessionImageSinkRegistration sink)
+    {
+    }
+
+    /// <summary>
     /// Contributes a step to the workflow editor (#69) — "Move a ticket to In Progress", "Comment on a pull request".
     /// The step appears in the picker under its own category and runs like any other. Without this, what a flow can do
     /// is limited to what the workflows plugin itself was built to do, and every integration the cockpit ever grows
