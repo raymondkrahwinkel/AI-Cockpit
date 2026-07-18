@@ -232,9 +232,23 @@
                     <!-- The plugin store sits in the menu column rather than inside the menu: it is where the plugins
                          and the workflow templates come from, and it is the one thing in that menu people go looking
                          for. A door you have to open a drawer to find is a door most people never open. -->
-                    <Button Content="Plugin store" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Command="{Binding Plugins.OpenStoreDialogCommand}"
-                            ToolTip.Tip="Browse, install and update plugins — and the workflow templates they ship with"/>
+                    <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                            Command="{Binding OpenPluginStoreCommand}"
+                            ToolTip.Tip="Browse, install and update plugins — and the workflow templates they ship with">
+                        <DockPanel>
+                            <!-- AC-76: a persistent coral count-pill on the right when plugin updates are waiting, so
+                                 an update shows in the main window rather than only a transient toast. The button
+                                 opens the store on the Updates filter while the badge is showing. -->
+                            <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasUpdateBadge}"
+                                    Background="{StaticResource CockpitAccentBrush}" CornerRadius="20" Padding="7,1"
+                                    VerticalAlignment="Center" Margin="6,0,0,0"
+                                    ToolTip.Tip="Plugin updates available — click to review them">
+                                <TextBlock Text="{Binding Plugins.UpdateBadgeCount}" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="White"/>
+                            </Border>
+                            <TextBlock Text="Plugin store" VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Button>
 
                     <!-- Everything you configure or look up once, behind one menu: the sidebar is for sessions,
                          and six permanent text rows of setup drowned that out. Styled like the plugin rows above

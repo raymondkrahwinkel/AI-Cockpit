@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.App.Plugins;
@@ -58,7 +60,17 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Plugins updated this session, keyed by plugin id → the version just staged. An update is only swapped live
     // on restart, so the live manifest still reports the old version; treating the staged version as installed
     // keeps a just-updated plugin from lingering in "Available updates" until the restart.
-    private readonly Dictionary<string, string> _pendingUpdateVersions = new(StringComparer.OrdinalIgnoreCase);
+    // Concurrent because the background PluginUpdateChecker reads it (via IsUpdateStaged) off the UI thread while the
+    // install commands mutate it on the UI thread (AC-76).
+    private readonly ConcurrentDictionary<string, string> _pendingUpdateVersions = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// How many plugin updates the background checker found waiting (AC-76) — bound by the sidebar "Plugin store"
+    /// button's badge, so an update is a persistent indicator in the main window rather than only a transient toast.
+    /// Fed by <see cref="SetUpdateBadgeCount"/> from the checker, and counted down as the operator stages each update.
+    /// </summary>
+    [ObservableProperty]
+    private int _updateBadgeCount;
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -561,6 +573,12 @@ public partial class PluginManagerViewModel : ViewModelBase
             StatusMessage = AvailablePlugins.Count == 0
                 ? (problems.Count > 0 ? $"No plugins found ({problems[0]})." : "No plugins found in the configured stores.")
                 : $"{AvailablePlugins.Count} plugin(s) available." + (problems.Count > 0 ? $" ({problems.Count} store(s) unreachable.)" : string.Empty);
+
+            // Reconcile the sidebar badge to the just-browsed truth (AC-76): browsing (opening the store, or the
+            // refresh after an install/update/rollback) recomputes the real available-update count — staged updates
+            // already excluded — so the badge counts down on a consumed update and up on a rollback, without an
+            // ad-hoc per-install decrement that could not tell a fresh install or a rollback apart (review).
+            UpdateBadgeCount = AvailableUpdateCount;
         }
         finally
         {
@@ -687,6 +705,34 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     /// <summary>How many installed plugins have a newer version available — shown on the "Update all" button.</summary>
     public int AvailableUpdateCount => AvailablePlugins.Count(row => row.UpdateAvailable);
+
+    /// <summary>Whether the sidebar "Plugin store" badge shows — true while the background checker's last count found updates (AC-76).</summary>
+    public bool HasUpdateBadge => UpdateBadgeCount > 0;
+
+    partial void OnUpdateBadgeCountChanged(int value) => OnPropertyChanged(nameof(HasUpdateBadge));
+
+    /// <summary>Sets the sidebar badge count from the background update checker (AC-76); marshaled to the UI thread since the checker runs off it, or set directly when already on it.</summary>
+    public void SetUpdateBadgeCount(int count)
+    {
+        var clamped = Math.Max(0, count);
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            UpdateBadgeCount = clamped;
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => UpdateBadgeCount = clamped);
+        }
+    }
+
+    /// <summary>
+    /// Whether an update to <paramref name="latestVersion"/> for the plugin id <paramref name="entryId"/> has already
+    /// been staged this session (AC-76). The background checker compares store versions against the on-disk manifest,
+    /// which does not change until restart, so without this a just-installed update would re-inflate the badge on the
+    /// next 15-minute pass — a staged update is up to date until the restart applies it.
+    /// </summary>
+    public bool IsUpdateStaged(string entryId, string latestVersion) =>
+        _pendingUpdateVersions.TryGetValue(entryId, out var staged) && !PluginVersion.IsNewer(latestVersion, staged);
 
     [RelayCommand]
     private async Task UpdateAllAsync()

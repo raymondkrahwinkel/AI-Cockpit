@@ -171,11 +171,46 @@ public class PluginUpdateCheckerTests
             Arg.Any<Action?>());
     }
 
+    [Fact]
+    public async Task CheckNowAsync_AStagedUpdate_IsExcluded_SoNothingSurfaces()
+    {
+        // The operator already installed (staged) this update this session — it is up to date until restart, so the
+        // background check must not surface it again (AC-76). It is the only available update, so nothing toasts.
+        var toastService = Substitute.For<IToastService>();
+        var checker = _CreateChecker(
+            installed: [_Plugin("youtrack", "YouTrack", "1.0.0")],
+            storeClient: _StoreClientReturning(_Entry("youtrack", "1.1.0")),
+            toastService: toastService,
+            isStaged: (id, version) => id == "youtrack" && version == "1.1.0");
+
+        await checker.CheckNowAsync();
+
+        toastService.DidNotReceiveWithAnyArgs().Show(default!, default, default, default);
+    }
+
+    [Fact]
+    public async Task CheckNowAsync_AnUnstagedUpdate_StillSurfaces()
+    {
+        // The counterpart: the same update, not staged, still surfaces — so the exclusion is the staged flag, not a
+        // blanket suppression.
+        var toastService = Substitute.For<IToastService>();
+        var checker = _CreateChecker(
+            installed: [_Plugin("youtrack", "YouTrack", "1.0.0")],
+            storeClient: _StoreClientReturning(_Entry("youtrack", "1.1.0")),
+            toastService: toastService,
+            isStaged: (_, _) => false);
+
+        await checker.CheckNowAsync();
+
+        toastService.Received(1).Show(Arg.Any<string>(), ToastSeverity.Information, Arg.Any<string?>(), Arg.Any<Action?>());
+    }
+
     private static PluginUpdateChecker _CreateChecker(
         IReadOnlyList<DiscoveredPlugin> installed,
         IPluginStoreClient storeClient,
         IToastService toastService,
-        CockpitViewModel? cockpit = null)
+        CockpitViewModel? cockpit = null,
+        Func<string, string, bool>? isStaged = null)
     {
         var storeConfigStore = Substitute.For<IPluginStoreConfigStore>();
         storeConfigStore.LoadAsync(Arg.Any<CancellationToken>()).Returns<IReadOnlyList<PluginStoreConfig>>([PluginStoreConfig.Remote(StoreUrl)]);
@@ -186,7 +221,8 @@ public class PluginUpdateCheckerTests
             storeClient,
             toastService,
             cockpit ?? TestCockpit.NewViewModel(),
-            NullLogger<PluginUpdateChecker>.Instance);
+            NullLogger<PluginUpdateChecker>.Instance,
+            isUpdateStaged: isStaged);
     }
 
     private static IPluginStoreClient _StoreClientReturning(PluginStoreEntry entry)
