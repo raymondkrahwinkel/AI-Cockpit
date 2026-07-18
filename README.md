@@ -403,3 +403,5 @@ Voice models are downloaded on first use and are **not** covered by AI-Cockpit's
   **OpenRAIL-M License**. Commercial use is permitted **with attribution** and subject to the licence's
   use-restrictions — read them before any commercial release. The sherpa-onnx runtime itself is Apache-2.0.
 - **Whisper** (dictation) ggml models and the **Whisper.net** runtime carry their own upstream licences.
+
+See [`NOTICE`](NOTICE) for the full third-party attribution list (models, runtimes and libraries).
