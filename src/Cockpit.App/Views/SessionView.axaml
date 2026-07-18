@@ -26,9 +26,11 @@
         <Border DockPanel.Dock="Top" Background="{StaticResource CockpitPanelBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}" Padding="8,4" Margin="0,0,0,6">
-            <!-- Grid, not a StackPanel: the status column is the one that gives way (ellipsis) when the pane is
-                 narrow, so the controls and the title keep their place instead of being pushed out. -->
-            <Grid ColumnDefinitions="*,Auto,Auto">
+            <!-- V1 header (AC-37): a single identity/activity/usage strip that flexes, with the live controls
+                 docked right. The activity column is the one that gives way (ellipsis) when the pane is narrow,
+                 so name, cwd, branch and the usage pill keep their place instead of colliding — the half-width
+                 overflow this redesign fixes. Same bar height as before (hard constraint). -->
+            <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Content="Stop" Command="{Binding StopCommand}" Classes="Compact"
                             VerticalAlignment="Center"
@@ -69,24 +71,32 @@
                                   ToolTip.Tip="Run this local model's tool calls without an Allow prompt each time (they still show as tool rows)"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="8,0,2,0" Spacing="1">
-                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Right"/>
-                    <!-- AC-13: the agent/workflow statusline, under the title; hidden when blank. -->
-                    <TextBlock Text="{Binding Statusline}" FontSize="10" Opacity="0.65" HorizontalAlignment="Right"
-                               TextTrimming="CharacterEllipsis"
-                               IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                </StackPanel>
-
-                <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,8,0">
-                    <Border Grid.Column="0" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
-                            CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1" Margin="0,0,8,0"
+                <Grid Grid.Column="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto" Margin="0,0,8,0">
+                    <!-- Status as a colour, not a word (AC-37): the dot carries running/waiting/done/background at
+                         a glance, freeing the width the status text took; the word is one hover away on the activity. -->
+                    <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+                             Fill="{Binding SessionStatusBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
+                               VerticalAlignment="Center" Margin="7,0,0,0"
+                               Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                    <!-- Kind chip (TTY/SDK). -->
+                    <Border Grid.Column="2" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
+                            CornerRadius="4" Padding="5,1" Margin="7,0,0,0"
                             IsVisible="{Binding ProviderBadge, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                         <TextBlock Text="{Binding ProviderBadge}" FontSize="10"
                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
                     </Border>
-                    <TextBlock Grid.Column="1" Text="{Binding Status}" VerticalAlignment="Center" FontSize="11"
+                    <!-- Activity (flex, truncates): the AC-13 statusline (the work line); falls back to the plain
+                         session status when no statusline is set, so the bar is never blank about what is going on.
+                         The connected-tools card hangs on the status text, reachable whenever it shows. -->
+                    <Panel Grid.Column="3" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <TextBlock Text="{Binding Statusline}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                   IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <TextBlock Text="{Binding Status}" VerticalAlignment="Center" FontSize="11"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis">
+                               TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}">
                         <!-- The tools, as a card rather than fifty-five names run together with commas: a heading that
                              says how many there are, and the names themselves as chips that wrap into columns — a list
                              you look something up in ("does it have write_file?") has to be scannable, and a paragraph
@@ -121,13 +131,23 @@
                             </StackPanel>
                         </ToolTip.Tip>
                     </TextBlock>
-                    <TextBlock Grid.Column="2" Text="{Binding ActiveProfileLabel, StringFormat='· {0}'}"
-                               VerticalAlignment="Center" FontSize="11" Margin="8,0,0,0"
-                               Foreground="{StaticResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding ActiveProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </Panel>
+
+                    <!-- cwd as an icon; the profile and the full path are the tooltip, freeing the path's width. -->
+                    <materialIcons:MaterialIcon Grid.Column="4" Kind="FolderOutline" Width="14" Height="14"
+                                                VerticalAlignment="Center" Margin="8,0,0,0"
+                                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                IsVisible="{Binding WorkingDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <ToolTip.Tip>
+                            <MultiBinding StringFormat="{}{0} · {1}">
+                                <Binding Path="ActiveProfileLabel"/>
+                                <Binding Path="WorkingDirectory"/>
+                            </MultiBinding>
+                        </ToolTip.Tip>
+                    </materialIcons:MaterialIcon>
                     <!-- Token/cost meter (#8): the session's running token and cost total, folded from each
                          completed turn's result usage. Hidden until anything has accrued. -->
-                    <Border Grid.Column="3" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
+                    <Border Grid.Column="6" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
                             CornerRadius="{StaticResource CockpitControlRadius}" Padding="5,1" Margin="8,0,0,0"
                             IsVisible="{Binding HasUsage}"
                             ToolTip.Tip="{Binding UsageTooltip}">
@@ -139,7 +159,7 @@
                          bar (the most actionable meter), and hovering reveals the full set, each usage window with
                          its reset time (relative + absolute). This is where the most width is freed. Hidden when the
                          provider reports no context figure (a local model), exactly like the bars it replaces. -->
-                    <Border Grid.Column="4" VerticalAlignment="Center" Margin="8,0,0,0"
+                    <Border Grid.Column="7" VerticalAlignment="Center" Margin="8,0,0,0"
                             Background="{StaticResource CockpitSecondaryBgBrush}"
                             BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
                             CornerRadius="20" Padding="8,2"
@@ -173,7 +193,7 @@
                     <!-- Plugin-contributed header items (#: session header items): status belonging to this
                          session — the git state of the repo it works in, say. Takes no space when no plugin
                          contributes one. -->
-                    <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0"/>
+                    <controls:PluginSessionHeaderHost Grid.Column="5" Margin="8,0,0,0" MaxWidth="160"/>
                 </Grid>
             </Grid>
         </Border>
