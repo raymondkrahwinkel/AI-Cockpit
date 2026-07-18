@@ -1925,6 +1925,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _cleanupService = cleanupService;
         _localLlmEndpointResolver = localLlmEndpointResolver;
         _audioCapture = audioCapture;
+        // Seed the model dropdown synchronously so it is never empty before the first async probe runs — "Auto"
+        // plus the advised models, always. The probe adds the server's models on top when the dialog opens.
+        _PopulateVoiceLlmModels([]);
         _pluginDiagnostics = pluginDiagnostics;
         _pluginDialogHost = pluginDialogHost;
         _shortcutSettingsStore = shortcutSettingsStore;
@@ -3096,6 +3099,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == settings.ReadAloudLanguage) ?? ReadAloudLanguages[0];
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
+
+        // Re-seed the dropdown against the just-loaded model so it holds "Auto" + the saved model (even a
+        // server-specific one) before the async probe returns — the box is never empty, not even for a blink.
+        _PopulateVoiceLlmModels([]);
 
         // Show this machine's last calibration if it has ever been run here (AC-68 slice 3).
         if (_transcriptionCalibrationStore is not null && await _transcriptionCalibrationStore.LoadAsync() is { } calibration)
