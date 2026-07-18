@@ -60,6 +60,42 @@ public static class PluginStoreUrl
         new Uri(new Uri(indexUrl), relativePath).ToString();
 
     /// <summary>
+    /// Parses a <c>github.com/owner/repo</c> URL (optionally <c>/tree/branch</c>) into its parts (AC-7). A
+    /// private store is fetched through the authenticated Contents API rather than <c>raw.githubusercontent.com</c>,
+    /// which does not serve a private repo with a bearer token; this is how the client knows it is a GitHub repo
+    /// and on which branch.
+    /// </summary>
+    public static bool TryParseGitHubRepo(string entered, out string owner, out string repo, out string branch)
+    {
+        owner = string.Empty;
+        repo = string.Empty;
+        branch = "main";
+
+        if (string.IsNullOrWhiteSpace(entered)
+            || !Uri.TryCreate(entered.Trim(), UriKind.Absolute, out var uri)
+            || !uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 2)
+        {
+            return false;
+        }
+
+        owner = segments[0];
+        repo = segments[1];
+        branch = segments.Length >= 4 && segments[2] == "tree" ? segments[3] : "main";
+
+        return true;
+    }
+
+    /// <summary>The GitHub Contents API URL for a repo-relative file (AC-7), fetched with an Authorization header and <c>Accept: application/vnd.github.raw</c> so it returns the raw bytes rather than the metadata envelope.</summary>
+    public static string GitHubContentsUrl(string owner, string repo, string relativePath, string branch) =>
+        $"https://api.github.com/repos/{owner}/{repo}/contents/{relativePath.TrimStart('/')}?ref={Uri.EscapeDataString(branch)}";
+
+    /// <summary>
     /// A short, human-readable name for a store URL, for showing it before — or when — its <c>index.json</c>
     /// advertises no <see cref="PluginStoreIndex.Name"/>: <c>owner/repo</c> for a GitHub repo URL or its raw
     /// <c>index.json</c>, otherwise the host. Never throws: an unparseable value falls back to itself.

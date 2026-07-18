@@ -34,7 +34,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     public ObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
-    public ObservableCollection<string> Stores { get; } = [];
+    public ObservableCollection<PluginStoreConfig> Stores { get; } = [];
 
     /// <summary>
     /// The configured stores as display rows for the Manage-stores dialog (#62): the same URLs as
@@ -68,6 +68,18 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _newStoreUrl = string.Empty;
+
+    /// <summary>Whether the add-store form is set to a local folder rather than a remote URL (AC-7) — flips which fields the Manage-stores dialog shows.</summary>
+    [ObservableProperty]
+    private bool _newStoreIsLocal;
+
+    /// <summary>An optional bearer token for a private remote store (AC-7) — sent as an Authorization header, and encrypted at rest when secret protection is on.</summary>
+    [ObservableProperty]
+    private string _newStoreToken = string.Empty;
+
+    /// <summary>The chosen local store folder (AC-7), set by the folder picker.</summary>
+    [ObservableProperty]
+    private string _newStoreFolder = string.Empty;
 
     [ObservableProperty]
     private bool _isBusy;
@@ -357,6 +369,21 @@ public partial class PluginManagerViewModel : ViewModelBase
         NeedsRestart = true;
     }
 
+    /// <summary>Opens a folder picker for a local store (AC-7) and puts the chosen path in the add-store form.</summary>
+    [RelayCommand]
+    private async Task PickStoreFolderAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        if (await _dialogService.PickPluginStoreFolderAsync() is { } folder)
+        {
+            NewStoreFolder = folder;
+        }
+    }
+
     [RelayCommand]
     private async Task AddStoreAsync()
     {
@@ -365,21 +392,60 @@ public partial class PluginManagerViewModel : ViewModelBase
             return;
         }
 
-        var url = NewStoreUrl.Trim();
-        if (!PluginStoreUrl.TryResolveIndexUrl(url, out _, out var error))
+        if (!_TryBuildNewStore(out var store, out var error))
         {
-            StatusMessage = error ?? "That store URL is not valid.";
+            StatusMessage = error;
             return;
         }
 
-        await _storeConfigStore.AddAsync(url);
+        await _storeConfigStore.AddAsync(store);
         NewStoreUrl = string.Empty;
+        NewStoreToken = string.Empty;
+        NewStoreFolder = string.Empty;
         await _LoadStoresAsync();
         StatusMessage = "Store added. Use Browse to see its plugins.";
     }
 
+    // Builds a store from the add-store form — a local folder, or a remote URL with an optional token. Validation
+    // matches how the client resolves it: a local folder must exist, a remote URL must parse to an index.
+    private bool _TryBuildNewStore(out PluginStoreConfig store, out string error)
+    {
+        store = null!;
+        error = string.Empty;
+
+        if (NewStoreIsLocal)
+        {
+            var folder = NewStoreFolder.Trim();
+            if (folder.Length == 0)
+            {
+                error = "Choose a folder for the local store.";
+                return false;
+            }
+
+            if (!Directory.Exists(folder))
+            {
+                error = "That folder does not exist.";
+                return false;
+            }
+
+            store = PluginStoreConfig.Local(folder);
+            return true;
+        }
+
+        var url = NewStoreUrl.Trim();
+        if (!PluginStoreUrl.TryResolveIndexUrl(url, out _, out var urlError))
+        {
+            error = urlError ?? "That store URL is not valid.";
+            return false;
+        }
+
+        var token = NewStoreToken.Trim();
+        store = PluginStoreConfig.Remote(url, token.Length == 0 ? null : token);
+        return true;
+    }
+
     [RelayCommand]
-    private async Task RemoveStoreAsync(string storeUrl)
+    private async Task RemoveStoreAsync(PluginStoreInfo info)
     {
         if (_storeConfigStore is null)
         {
@@ -389,13 +455,13 @@ public partial class PluginManagerViewModel : ViewModelBase
         if (_dialogService is not null &&
             !await _dialogService.ShowConfirmationDialogAsync(
                 "Remove store",
-                $"Remove the plugin store '{storeUrl}'? Its plugins will no longer appear in the catalogue. Already-installed plugins stay installed.",
+                $"Remove the plugin store '{info.Name}'? Its plugins will no longer appear in the catalogue. Already-installed plugins stay installed.",
                 "Remove"))
         {
             return;
         }
 
-        await _storeConfigStore.RemoveAsync(storeUrl);
+        await _storeConfigStore.RemoveAsync(info.Store);
         await _LoadStoresAsync();
     }
 
@@ -418,11 +484,11 @@ public partial class PluginManagerViewModel : ViewModelBase
             // Store logos are fetched after the catalogue is in — plugins show at once, the logos pop in when
             // they arrive, and a slow or broken image never delays the list.
             var logoLoads = new List<Task>();
-            foreach (var storeUrl in Stores)
+            foreach (var store in Stores)
             {
-                var info = StoreInfos.FirstOrDefault(candidate => string.Equals(candidate.Url, storeUrl, StringComparison.OrdinalIgnoreCase));
+                var info = StoreInfos.FirstOrDefault(candidate => candidate.Store.SameStoreAs(store));
 
-                var fetch = await _storeClient.FetchIndexAsync(storeUrl);
+                var fetch = await _storeClient.FetchIndexAsync(store);
                 if (!fetch.IsSuccess || fetch.Index is null || fetch.IndexUrl is null)
                 {
                     problems.Add(fetch.Error ?? "unreachable store");
@@ -447,7 +513,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
                     if (!string.IsNullOrWhiteSpace(fetch.Index.IconUrl))
                     {
-                        logoLoads.Add(_LoadStoreLogoAsync(info, fetch.IndexUrl, fetch.Index.IconUrl!));
+                        logoLoads.Add(_LoadStoreLogoAsync(info, store, fetch.Index.IconUrl!));
                     }
                 }
 
@@ -467,7 +533,7 @@ public partial class PluginManagerViewModel : ViewModelBase
                         : installedRow?.Discovered.Manifest.Version;
                     AvailablePlugins.Add(new StorePluginRowViewModel(
                         entry,
-                        fetch.IndexUrl,
+                        store,
                         installedVersion,
                         isEnabled: installedRow?.CanDisable ?? false,
                         hasSettings: installedRow?.HasSettings ?? false));
@@ -483,7 +549,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
                     AvailableTemplates.Add(new StoreTemplateRowViewModel(
                         template,
-                        fetch.IndexUrl,
+                        store,
                         isInstalled: _templateLibrary?.IsInstalled(template.Id) ?? false));
                 }
             }
@@ -505,7 +571,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     // Fetches a store's logo image and hands it to its row as a Bitmap. Best-effort: an http error, an oversize
     // image or an undecodable one leaves Logo null, and the row keeps its emoji/default glyph — a store's logo is
     // never allowed to break browsing.
-    private async Task _LoadStoreLogoAsync(PluginStoreInfo info, string indexUrl, string iconUrl)
+    private async Task _LoadStoreLogoAsync(PluginStoreInfo info, PluginStoreConfig store, string iconUrl)
     {
         if (_storeClient is null)
         {
@@ -514,7 +580,7 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         try
         {
-            var image = await _storeClient.DownloadImageAsync(indexUrl, iconUrl);
+            var image = await _storeClient.DownloadImageAsync(store, iconUrl);
             if (image.IsSuccess && image.Bytes is { Length: > 0 } bytes)
             {
                 using var stream = new MemoryStream(bytes);
@@ -543,7 +609,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         IsBusy = true;
         try
         {
-            var download = await _storeClient.DownloadTemplateAsync(row.IndexUrl, row.Entry.Path, row.Entry.Sha256);
+            var download = await _storeClient.DownloadTemplateAsync(row.Store, row.Entry.Path, row.Entry.Sha256);
             if (!download.IsSuccess || download.Json is null)
             {
                 StatusMessage = download.Error ?? $"Could not install '{row.Name}'.";
@@ -745,7 +811,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         }
 
         StatusMessage = $"Downloading '{row.Name}' v{version.Version}…";
-        var download = await _storeClient!.DownloadZipAsync(row.IndexUrl, version.Path, version.Sha256);
+        var download = await _storeClient!.DownloadZipAsync(row.Store, version.Path, version.Sha256);
         if (!download.IsSuccess || download.ZipPath is null)
         {
             StatusMessage = download.Error ?? "Download failed.";

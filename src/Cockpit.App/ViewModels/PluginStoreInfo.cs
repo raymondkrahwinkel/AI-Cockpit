@@ -5,13 +5,18 @@ using Cockpit.Core.Plugins;
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
-/// One configured plugin store as shown in the Manage-stores dialog (#62): its URL plus the display
-/// fields — name, icon and plugin count. These are enriched from the store's <c>index.json</c> once it has
-/// been browsed (<see cref="PluginManagerViewModel.BrowseStoresAsync"/>), and derived from the URL until
-/// then, so a freshly added store still reads as "owner/repo" rather than a raw link before its first fetch.
+/// One configured plugin store as shown in the Manage-stores dialog (#62, AC-7): the store itself plus the
+/// display fields — name, icon and plugin count. These are enriched from the store's <c>index.json</c> once it
+/// has been browsed (<see cref="PluginManagerViewModel.BrowseStoresAsync"/>), and derived from the location
+/// until then, so a freshly added store still reads as "owner/repo" (or a folder name) rather than a raw link
+/// before its first fetch.
 /// </summary>
 public sealed partial class PluginStoreInfo : ObservableObject
 {
+    /// <summary>The store this row represents — what the Remove command acts on.</summary>
+    public PluginStoreConfig Store { get; }
+
+    /// <summary>The store's location — its URL, or a local folder path — shown under the name.</summary>
     public string Url { get; }
 
     /// <summary>The store's display name — its <c>index.json</c> name once browsed, else derived from the URL.</summary>
@@ -38,10 +43,28 @@ public sealed partial class PluginStoreInfo : ObservableObject
     [ObservableProperty]
     private Bitmap? _logo;
 
-    public PluginStoreInfo(string url)
+    public PluginStoreInfo(PluginStoreConfig store)
     {
-        Url = url;
-        _name = PluginStoreUrl.DeriveDisplayName(url);
+        Store = store;
+        Url = store.Location;
+        _name = store.IsLocal
+            ? _LocalName(store.Location)
+            : PluginStoreUrl.DeriveDisplayName(store.Location);
+    }
+
+    /// <summary>Whether this is a local-folder store (AC-7) — the row shows a folder badge rather than a link.</summary>
+    public bool IsLocal => Store.IsLocal;
+
+    /// <summary>Whether this is a private remote store reached with a token (AC-7) — the row shows a lock badge.</summary>
+    public bool IsPrivate => !Store.IsLocal && Store.HasToken;
+
+    // The folder's own name reads better than the full path as a title; the path still shows underneath.
+    private static string _LocalName(string path)
+    {
+        var trimmed = path.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+        var name = System.IO.Path.GetFileName(trimmed);
+
+        return string.IsNullOrWhiteSpace(name) ? path : name;
     }
 
     /// <summary>Whether a real logo image has been fetched — the row shows it in place of the glyph.</summary>

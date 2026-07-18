@@ -78,6 +78,6 @@ public class PluginStoreTemplatesViewTests
     private static StoreTemplateRowViewModel _Template(string id, string name, string description = "A flow.") =>
         new(
             new WorkflowTemplateStoreEntry(id, name, description, "Cockpit", "1.0", $"templates/{id}.json"),
-            "https://example.com/index.json",
+            PluginStoreConfig.Remote("https://example.com/index.json"),
             isInstalled: false);
 }

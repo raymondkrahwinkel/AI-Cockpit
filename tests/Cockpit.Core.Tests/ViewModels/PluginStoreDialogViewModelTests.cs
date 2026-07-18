@@ -32,7 +32,7 @@ public class PluginStoreDialogViewModelTests
             Category: category,
             Featured: featured,
             Published: published),
-        "https://store/index.json",
+        PluginStoreConfig.Remote("https://store/index.json"),
         installedVersion);
 
     /// <summary>
@@ -115,7 +115,7 @@ public class PluginStoreDialogViewModelTests
     private static PluginManagerViewModel _ManagerWith(params StorePluginRowViewModel[] rows)
     {
         var manager = new PluginManagerViewModel();
-        manager.Stores.Add("github.com/example/plugins");
+        manager.Stores.Add(PluginStoreConfig.Remote("github.com/example/plugins"));
         foreach (var row in rows)
         {
             manager.AvailablePlugins.Add(row);
@@ -307,7 +307,7 @@ public class PluginStoreDialogViewModelTests
 
         vm.IsLoadingCatalogue.Should().BeFalse("no stores are configured yet");
 
-        manager.Stores.Add("github.com/example/plugins");
+        manager.Stores.Add(PluginStoreConfig.Remote("github.com/example/plugins"));
         manager.IsBusy = true;
         vm.IsLoadingCatalogue.Should().BeTrue();
 
@@ -323,7 +323,7 @@ public class PluginStoreDialogViewModelTests
 
         vm.HasNoStores.Should().BeTrue();
 
-        manager.Stores.Add("github.com/example/plugins");
+        manager.Stores.Add(PluginStoreConfig.Remote("github.com/example/plugins"));
 
         vm.HasNoStores.Should().BeFalse();
     }

@@ -36,7 +36,7 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void Category_WhenEntryHasNone_FallsBackToOther()
     {
-        var row = new StorePluginRowViewModel(_Entry(category: null), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(category: null), PluginStoreConfig.Remote("url"),null);
 
         row.Category.Should().Be(StorePluginRowViewModel.OtherCategory);
         row.HasCategory.Should().BeFalse();
@@ -45,7 +45,7 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void Category_WhenEntryHasOne_IsUsedAsIs()
     {
-        var row = new StorePluginRowViewModel(_Entry(category: "Issue trackers"), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(category: "Issue trackers"), PluginStoreConfig.Remote("url"),null);
 
         row.Category.Should().Be("Issue trackers");
         row.HasCategory.Should().BeTrue();
@@ -57,7 +57,7 @@ public class StorePluginRowViewModelTests
     [InlineData(null)]
     public void Category_TreatsBlankAsNoCategory(string? category)
     {
-        var row = new StorePluginRowViewModel(_Entry(category: category!), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(category: category!), PluginStoreConfig.Remote("url"),null);
 
         row.Category.Should().Be(StorePluginRowViewModel.OtherCategory);
         row.HasCategory.Should().BeFalse();
@@ -66,7 +66,7 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void IconGlyphOrNull_WhenEntryHasAnIcon_ReturnsIt()
     {
-        var row = new StorePluginRowViewModel(_Entry(icon: "🐛"), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(icon: "🐛"), PluginStoreConfig.Remote("url"),null);
 
         row.IconGlyphOrNull.Should().Be("🐛");
     }
@@ -74,7 +74,7 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void IconGlyphOrNull_WhenEntryHasNone_IsNull_AndMonogramFallsBackToFirstLetter()
     {
-        var row = new StorePluginRowViewModel(_Entry(name: "gemini provider", icon: null), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(name: "gemini provider", icon: null), PluginStoreConfig.Remote("url"),null);
 
         row.IconGlyphOrNull.Should().BeNull();
         row.MonogramLetter.Should().Be("G");
@@ -83,8 +83,8 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void HasHomepageAndRepository_ReflectWhetherTheFieldsAreSet()
     {
-        var withLinks = new StorePluginRowViewModel(_Entry(homepage: "https://x", repository: "https://y"), "url", null);
-        var withoutLinks = new StorePluginRowViewModel(_Entry(), "url", null);
+        var withLinks = new StorePluginRowViewModel(_Entry(homepage: "https://x", repository: "https://y"), PluginStoreConfig.Remote("url"),null);
+        var withoutLinks = new StorePluginRowViewModel(_Entry(), PluginStoreConfig.Remote("url"),null);
 
         withLinks.HasHomepage.Should().BeTrue();
         withLinks.HasRepository.Should().BeTrue();
@@ -95,14 +95,14 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void IsFeatured_ReflectsTheEntryFlag()
     {
-        new StorePluginRowViewModel(_Entry(featured: true), "url", null).IsFeatured.Should().BeTrue();
-        new StorePluginRowViewModel(_Entry(featured: false), "url", null).IsFeatured.Should().BeFalse();
+        new StorePluginRowViewModel(_Entry(featured: true), PluginStoreConfig.Remote("url"),null).IsFeatured.Should().BeTrue();
+        new StorePluginRowViewModel(_Entry(featured: false), PluginStoreConfig.Remote("url"),null).IsFeatured.Should().BeFalse();
     }
 
     [Fact]
     public void PublishedDate_ParsesAValidIsoDate()
     {
-        var row = new StorePluginRowViewModel(_Entry(published: "2026-05-12"), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(published: "2026-05-12"), PluginStoreConfig.Remote("url"),null);
 
         row.PublishedDate.Should().Be(new DateOnly(2026, 5, 12));
     }
@@ -113,7 +113,7 @@ public class StorePluginRowViewModelTests
     [InlineData("not-a-date")]
     public void PublishedDate_WhenMissingOrInvalid_IsNull_NeverThrows(string? published)
     {
-        var row = new StorePluginRowViewModel(_Entry(published: published), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(published: published), PluginStoreConfig.Remote("url"),null);
 
         row.PublishedDate.Should().BeNull();
     }
@@ -121,7 +121,7 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void PrimaryActionLabel_NotInstalled_IsInstall()
     {
-        var row = new StorePluginRowViewModel(_Entry(), "url", null);
+        var row = new StorePluginRowViewModel(_Entry(), PluginStoreConfig.Remote("url"),null);
 
         row.PrimaryActionLabel.Should().Be("Install");
         row.CanTakePrimaryAction.Should().BeTrue();
@@ -130,7 +130,7 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void PrimaryActionLabel_InstalledWithNewerStoreVersion_IsUpdate()
     {
-        var row = new StorePluginRowViewModel(_Entry(latestVersion: "2.0.0"), "url", "1.0.0");
+        var row = new StorePluginRowViewModel(_Entry(latestVersion: "2.0.0"), PluginStoreConfig.Remote("url"),"1.0.0");
 
         row.PrimaryActionLabel.Should().Be("Update");
         row.CanTakePrimaryAction.Should().BeTrue();
@@ -139,7 +139,7 @@ public class StorePluginRowViewModelTests
     [Fact]
     public void PrimaryActionLabel_InstalledUpToDate_IsDisabledBadge()
     {
-        var row = new StorePluginRowViewModel(_Entry(latestVersion: "1.0.0"), "url", "1.0.0");
+        var row = new StorePluginRowViewModel(_Entry(latestVersion: "1.0.0"), PluginStoreConfig.Remote("url"),"1.0.0");
 
         row.PrimaryActionLabel.Should().Be("Installed");
         row.CanTakePrimaryAction.Should().BeFalse();
