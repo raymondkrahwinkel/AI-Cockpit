@@ -91,9 +91,35 @@ public static class PluginStoreUrl
         return true;
     }
 
-    /// <summary>The GitHub Contents API URL for a repo-relative file (AC-7), fetched with an Authorization header and <c>Accept: application/vnd.github.raw</c> so it returns the raw bytes rather than the metadata envelope.</summary>
-    public static string GitHubContentsUrl(string owner, string repo, string relativePath, string branch) =>
-        $"https://api.github.com/repos/{owner}/{repo}/contents/{relativePath.TrimStart('/')}?ref={Uri.EscapeDataString(branch)}";
+    /// <summary>
+    /// The GitHub Contents API URL for a repo-relative file (AC-7), fetched with an Authorization header and
+    /// <c>Accept: application/vnd.github.raw</c> so it returns the raw bytes rather than the metadata envelope.
+    /// Each path segment is URL-encoded so a store-index path cannot inject a query (<c>?</c>/<c>#</c>) or otherwise
+    /// escape the <c>contents/</c> route; validate the path with <see cref="IsSafeRelativePath"/> first.
+    /// </summary>
+    public static string GitHubContentsUrl(string owner, string repo, string relativePath, string branch)
+    {
+        var encoded = string.Join('/', relativePath.TrimStart('/').Split('/').Select(Uri.EscapeDataString));
+
+        return $"https://api.github.com/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repo)}/contents/{encoded}?ref={Uri.EscapeDataString(branch)}";
+    }
+
+    /// <summary>
+    /// Whether a path taken from a store's <c>index.json</c> is a safe repo-relative path (AC-7): no scheme, no
+    /// protocol-relative host, and no parent-directory escape. A store index is untrusted input, so a version's
+    /// zip/template path must not be able to reach another repo (on the GitHub Contents API) or a foreign host.
+    /// </summary>
+    public static bool IsSafeRelativePath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath)
+            || relativePath.StartsWith("//", StringComparison.Ordinal)
+            || relativePath.Contains("://", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return !relativePath.Split('/', '\\').Contains("..");
+    }
 
     /// <summary>
     /// A short, human-readable name for a store URL, for showing it before — or when — its <c>index.json</c>

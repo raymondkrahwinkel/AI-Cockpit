@@ -29,9 +29,15 @@ public sealed record PluginStoreConfig(PluginStoreKind Kind, string Location, st
     [JsonIgnore]
     public bool HasToken => !string.IsNullOrWhiteSpace(Token);
 
-    /// <summary>Whether this and <paramref name="other"/> point at the same store — identity is kind + location, case-insensitive.</summary>
+    /// <summary>
+    /// Whether this and <paramref name="other"/> point at the same store — identity is kind + location. A remote
+    /// location (a URL) compares case-insensitively as before; a local location is a filesystem path, compared
+    /// case-sensitively, so two genuinely different folders on a case-sensitive filesystem are never mistaken for
+    /// one — otherwise adding one could silently drop the other.
+    /// </summary>
     public bool SameStoreAs(PluginStoreConfig other) =>
-        Kind == other.Kind && string.Equals(Location, other.Location, StringComparison.OrdinalIgnoreCase);
+        Kind == other.Kind
+        && string.Equals(Location, other.Location, IsLocal ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Overrides the record's auto-generated <c>ToString()</c>, which would otherwise print <see cref="Token"/> — a credential has no business in a log line (Iron Law #8).</summary>
     public override string ToString() =>

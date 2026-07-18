@@ -73,6 +73,18 @@ public class PluginStoreConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task AddAsync_LocalStoresDifferingOnlyByCase_AreDistinct()
+    {
+        // Filesystem paths are case-sensitive on Linux: two folders differing only by case are two stores, and
+        // adding one must not silently replace the other.
+        var store = new PluginStoreConfigStore(_configFilePath);
+        await store.AddAsync(PluginStoreConfig.Local("/home/me/Plugins"));
+        await store.AddAsync(PluginStoreConfig.Local("/home/me/plugins"));
+
+        (await store.LoadAsync()).Should().HaveCount(2);
+    }
+
+    [Fact]
     public async Task RemoveAsync_DropsOnlyThatStore()
     {
         var store = new PluginStoreConfigStore(_configFilePath);
