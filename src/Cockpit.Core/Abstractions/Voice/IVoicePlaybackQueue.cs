@@ -29,11 +29,19 @@ public interface IVoicePlaybackQueue
     void NotifyPreparing();
 
     /// <summary>
-    /// Raised when read-aloud playback becomes active (a batch starts) or goes idle (the queue drains),
-    /// so open-mic dictation can pause itself while the cockpit is speaking and never transcribe its own
-    /// text-to-speech. Fires on the playback consumer thread — subscribers marshal as needed.
+    /// Raised when read-aloud playback becomes active (a batch starts, or <see cref="NotifyPreparing"/> is called)
+    /// or goes idle (the queue drains), so open-mic dictation can pause itself while the cockpit is speaking and
+    /// never transcribe its own text-to-speech. "Active" spans both the preparing and speaking phases. Fires on the
+    /// playback consumer thread — subscribers marshal as needed.
     /// </summary>
     event EventHandler<bool>? PlaybackActiveChanged;
+
+    /// <summary>
+    /// Raised the moment the first synthesized clip actually starts playing, once per active window — the boundary
+    /// between "preparing" (the local-LLM rewrite + text-to-sound synthesis, still silent) and "speaking". Lets the
+    /// overlay show a distinct status while it is getting ready rather than claiming to read aloud before a word.
+    /// </summary>
+    event EventHandler? SpeakingStarted;
 
     /// <summary>Cancels whatever is currently synthesizing/playing and discards anything still queued.</summary>
     void StopAll();

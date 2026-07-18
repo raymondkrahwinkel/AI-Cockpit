@@ -195,7 +195,12 @@ public class OpenMicCoordinatorTests
             new VoiceSettings { IsEnabled = true, OpenMicEnabled = true }, overlayCoordinator);
         await coordinator.StartAsync();
 
+        // Active but no audio yet = preparing (the local-LLM rewrite + text-to-sound synthesis).
         coordinator.HandlePlaybackActiveChanged(true);
+        overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Preparing);
+
+        // The first clip plays: now it is actually reading aloud.
+        coordinator.HandleSpeakingStarted();
         overlayCoordinator.Overlay.State.Should().Be(VoiceOverlayState.Speaking);
 
         coordinator.HandlePlaybackActiveChanged(false);
@@ -217,6 +222,7 @@ public class OpenMicCoordinatorTests
         coordinator.HandlePlaybackActiveChanged(true);
 
         coordinator.HandleAudioLevel(0.4);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.Received().StopAll();
     }
@@ -231,6 +237,7 @@ public class OpenMicCoordinatorTests
         coordinator.HandlePlaybackActiveChanged(true);
 
         coordinator.HandleAudioLevel(0.05);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.DidNotReceive().StopAll();
     }
@@ -246,6 +253,7 @@ public class OpenMicCoordinatorTests
         coordinator.HandlePlaybackActiveChanged(true);
 
         coordinator.HandleAudioLevel(0.9);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.DidNotReceive().StopAll();
     }
@@ -260,6 +268,7 @@ public class OpenMicCoordinatorTests
         await coordinator.StartAsync();
 
         coordinator.HandleAudioLevel(0.9);
+        coordinator.HandleSpeechStarted();
 
         playbackQueue.DidNotReceive().StopAll();
     }

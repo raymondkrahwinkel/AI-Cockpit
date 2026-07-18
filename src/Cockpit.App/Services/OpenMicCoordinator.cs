@@ -34,6 +34,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
 
     private bool _wired;
 
+    /// <summary>What the overlay shows while read-aloud is synthesizing (text-to-sound) but not yet playing a word.</summary>
+    private const string PreparingStatus = "Preparing…";
+
     // Finished utterances wait here to be injected one at a time, in the order they were spoken. Without this,
     // each injection was fire-and-forget and its STT-cleanup call ran concurrently, so a shorter utterance's
     // faster cleanup could overtake a longer one spoken before it and land out of order.
@@ -47,6 +50,9 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     // timeout next to these is read once at the same point for the same reason.
     private bool _stopReadAloudWhenSpeaking;
     private double _stopReadAloudThreshold;
+
+    // The most recent microphone level, so the barge-in check in HandleSpeechStarted can gate on loudness.
+    private double _lastLevel;
 
     public OpenMicCoordinator(
         IOpenMicListener listener,
@@ -66,9 +72,10 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _logger = logger;
 
         // Subscribed for the singleton's whole life, not only while open-mic is on: read-aloud can play without
-        // dictation ever being enabled (the per-session toggle, the Options "Test" button), and its "speaking" pill
-        // must still show. Barge-in (pausing the mic) is gated on actually listening inside the handler.
+        // dictation ever being enabled (the per-session toggle, the Options "Test" button), and its overlay must
+        // still show. Barge-in (pausing the mic) is gated on actually listening inside the handler.
         _playbackQueue.PlaybackActiveChanged += _OnPlaybackActiveChanged;
+        _playbackQueue.SpeakingStarted += _OnSpeakingStarted;
 
         // One consumer, drains the injection queue in order. Idle until an utterance arrives, so it costs nothing
         // when open-mic is off (and touches no dispatcher in tests, which never enqueue through it).
@@ -180,12 +187,12 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         _overlay.SetOpenMic(null);
     }
 
-    // Barge-in: pause the mic while read-aloud plays, resume once the queue goes idle — but only while actually
-    // listening. The overlay's "speaking" pill is surfaced unconditionally (HandlePlaybackActiveChanged), so it
-    // shows for read-aloud even when open-mic is off.
+    // Pause the mic while read-aloud plays so it never transcribes the cockpit's own speech — UNLESS the operator
+    // asked to interrupt by talking (AC-9), in which case the mic stays open so the VAD can actually hear them
+    // (headphones assumed; the setting says so). Only while listening; the overlay is surfaced unconditionally.
     private void _OnPlaybackActiveChanged(object? sender, bool active)
     {
-        if (IsListening)
+        if (IsListening && !_stopReadAloudWhenSpeaking)
         {
             if (active)
             {
@@ -200,6 +207,8 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
         Dispatcher.UIThread.Post(() => HandlePlaybackActiveChanged(active));
     }
 
+    private void _OnSpeakingStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeakingStarted);
+
     private void _OnSpeechStarted(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeechStarted);
 
     private void _OnSpeechEnded(object? sender, EventArgs e) => Dispatcher.UIThread.Post(HandleSpeechEnded);
@@ -211,43 +220,41 @@ public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonSer
     /// <see cref="StartAsync"/> — is the moment there is something to show: a pill that appeared when you
     /// switched open-mic on and sat there would only be saying the feature is on.
     /// </summary>
-    internal void HandleSpeechStarted() => _overlay.SetOpenMic(VoiceOverlayState.Listening);
+    internal void HandleSpeechStarted()
+    {
+        // Barge-in (AC-9): real speech — the VAD said so, not just any noise — over read-aloud, loud enough to mean
+        // it (the threshold, which the mic-level meter helps set), stops the read-aloud. Tying it to detected speech
+        // rather than a raw level is why a cough or a door no longer cuts the cockpit off mid-sentence.
+        if (_isPlaying && _stopReadAloudWhenSpeaking && _lastLevel >= _stopReadAloudThreshold)
+        {
+            _playbackQueue.StopAll();
+        }
+
+        _overlay.SetOpenMic(VoiceOverlayState.Listening);
+    }
 
     /// <summary>Test seam: the utterance is over and about to be transcribed — the part worth a spinner.</summary>
     internal void HandleSpeechEnded() => _overlay.SetOpenMic(VoiceOverlayState.Transcribing);
 
-    /// <summary>Test seam: read-aloud started or stopped. The pill is how the operator sees why their microphone just went quiet.</summary>
+    /// <summary>Test seam: read-aloud became active or went idle. Active means it is preparing (synthesizing, still silent) — <see cref="HandleSpeakingStarted"/> flips it to speaking once audio actually plays.</summary>
     internal void HandlePlaybackActiveChanged(bool active)
     {
         _isPlaying = active;
-        _overlay.SetSpeaking(active);
+        _overlay.SetReadAloud(active ? VoiceOverlayState.Preparing : null, active ? PreparingStatus : null);
     }
 
+    /// <summary>Test seam: the first synthesized clip started playing, so the overlay moves from "preparing" to "reading aloud".</summary>
+    internal void HandleSpeakingStarted() => _overlay.SetReadAloud(VoiceOverlayState.Speaking);
+
     /// <summary>
-    /// Test seam: one microphone level. Feeds the pill's waveform, and — when the operator asked for it — stops
-    /// read-aloud the moment they start talking over it (AC-9).
+    /// Test seam: one microphone level. Feeds the pill's waveform and remembers the latest level, which
+    /// <see cref="HandleSpeechStarted"/> checks against the threshold — the barge-in stop fires on detected speech,
+    /// not on this raw level, so a loud noise that is not speech no longer interrupts read-aloud (AC-9).
     /// </summary>
-    /// <remarks>
-    /// The level arrives even while the listener is paused for playback: the capture loop keeps reading and only
-    /// the VAD is skipped, which is what makes hearing the operator during read-aloud possible at all without a
-    /// second microphone path.
-    /// <para>
-    /// A hold already stops playback the same way (<c>SessionPanelViewModel.BeginVoiceHold</c>) and needs no
-    /// threshold, because a key being held is not something a room does by accident. This is the half that has to
-    /// guess, which is why it is off unless asked for — see <see cref="Cockpit.Core.Voice.VoiceSettings.StopReadAloudWhenSpeaking"/>.
-    /// </para>
-    /// </remarks>
     internal void HandleAudioLevel(double level)
     {
+        _lastLevel = level;
         _overlay.PushLevel(level);
-
-        if (_isPlaying && _stopReadAloudWhenSpeaking && level >= _stopReadAloudThreshold)
-        {
-            // Stopping flips playback to idle, which resumes the listener — so what you said next is dictated
-            // rather than talked over. The frames until that lands are a repeat of this call and StopAll's own
-            // no-op, not a second interruption.
-            _playbackQueue.StopAll();
-        }
     }
 
     // Queue rather than inject inline: the injection (STT cleanup + inject) is awaited one at a time by the

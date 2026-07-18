@@ -27,10 +27,21 @@ public class VoiceOverlayCoordinatorTests
     {
         var coordinator = _Create(out var overlay, out var presenter);
 
-        coordinator.SetSpeaking(true);
+        coordinator.SetReadAloud(VoiceOverlayState.Speaking);
 
         overlay.State.Should().Be(VoiceOverlayState.Speaking);
         presenter.ShowCallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void ReadAloudPreparing_ShowsThePillWithAStatus_BeforeItSpeaks()
+    {
+        var coordinator = _Create(out var overlay, out _);
+
+        coordinator.SetReadAloud(VoiceOverlayState.Preparing, "Preparing…");
+
+        overlay.State.Should().Be(VoiceOverlayState.Preparing);
+        overlay.StatusText.Should().Be("Preparing…");
     }
 
     /// <summary>Raymond's rule: what you are saying outranks what the cockpit is saying.</summary>
@@ -38,7 +49,7 @@ public class VoiceOverlayCoordinatorTests
     public void AHoldDuringReadAloud_TakesThePill_BecauseSpeechToTextOutranksTextToSpeech()
     {
         var coordinator = _Create(out var overlay, out _);
-        coordinator.SetSpeaking(true);
+        coordinator.SetReadAloud(VoiceOverlayState.Speaking);
 
         coordinator.SetPushToTalk(VoiceOverlayState.Listening);
 
@@ -49,7 +60,7 @@ public class VoiceOverlayCoordinatorTests
     public void OpenMicSpeech_AlsoOutranksReadAloud()
     {
         var coordinator = _Create(out var overlay, out _);
-        coordinator.SetSpeaking(true);
+        coordinator.SetReadAloud(VoiceOverlayState.Speaking);
 
         coordinator.SetOpenMic(VoiceOverlayState.Listening);
 
@@ -91,7 +102,7 @@ public class VoiceOverlayCoordinatorTests
     public void DictationEndingWhileReadAloudPlays_HandsThePillBack_RatherThanHidingIt()
     {
         var coordinator = _Create(out var overlay, out var presenter);
-        coordinator.SetSpeaking(true);
+        coordinator.SetReadAloud(VoiceOverlayState.Speaking);
         coordinator.SetPushToTalk(VoiceOverlayState.Listening);
 
         coordinator.SetPushToTalk(null);
@@ -122,7 +133,7 @@ public class VoiceOverlayCoordinatorTests
         var coordinator = _Create(out var overlay, out _);
         coordinator.SetPushToTalk(VoiceOverlayState.Preparing, "Downloading speech model — 41%", 0.41);
 
-        coordinator.SetSpeaking(true);
+        coordinator.SetReadAloud(VoiceOverlayState.Speaking);
 
         overlay.State.Should().Be(VoiceOverlayState.Preparing);
         overlay.StatusText.Should().Be("Downloading speech model — 41%");

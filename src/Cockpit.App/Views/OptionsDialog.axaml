@@ -331,7 +331,7 @@
                                     <controls:MicLevelMeter Level="{Binding MicTestLevel}" Threshold="{Binding VoiceStopReadAloudThresholdValue}"
                                                             Width="200" Height="12" VerticalAlignment="Center"/>
                                     <materialIcons:MaterialIcon Classes="hint"
-                                        ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). Set the threshold so normal speech crosses it but the room does not."/>
+                                        ToolTip.Tip="Talk and watch the bar — it turns orange once you cross the marker (the threshold above). Read-aloud only stops when it hears real speech above this level, not on a stray noise. Set the threshold so normal speech crosses it but the room does not."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding VoiceEnabled}">
                                     <TextBlock Text="Open-mic: end utterance after (silence ms)"
