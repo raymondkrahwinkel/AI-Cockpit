@@ -95,6 +95,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
     private readonly ITranscriptCleanupService? _cleanupService;
     private readonly ILocalLlmEndpointResolver? _localLlmEndpointResolver;
+
+    // How long the Options dialog waits on a local-LLM probe (resolve + /v1/models) before giving up and keeping
+    // the seeded model list — a stopped server refuses fast, but a running-but-busy one can otherwise stall.
+    private static readonly TimeSpan LlmProbeTimeout = TimeSpan.FromSeconds(3);
     private readonly PluginDiagnostics? _pluginDiagnostics;
     private readonly IPluginDialogHost? _pluginDialogHost;
     private readonly List<byte> _recordedPcm = [];
@@ -3011,15 +3015,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     private async Task _RefreshVoiceLlmAsync()
     {
-        var endpoint = await _ResolveVoiceLlmEndpointAsync();
-        _UpdateAutoSummary(endpoint);
+        using var cts = new CancellationTokenSource(LlmProbeTimeout);
+        IReadOnlyList<string> discovered = [];
+        try
+        {
+            var endpoint = await _ResolveVoiceLlmEndpointAsync(cts.Token);
+            _UpdateAutoSummary(endpoint);
 
-        // List from the server that will actually be used — the resolved one in auto mode, the manual URL otherwise —
-        // so the dropdown offers what is really installed there.
-        var listFrom = endpoint?.BaseUrl ?? VoiceLlmBaseUrl;
-        var discovered = _modelCatalog is null
-            ? []
-            : await _modelCatalog.ListModelsAsync(listFrom);
+            // List from the server that will actually be used — the resolved one in auto mode, the manual URL
+            // otherwise — so the dropdown offers what is really installed there.
+            var listFrom = endpoint?.BaseUrl ?? VoiceLlmBaseUrl;
+            if (_modelCatalog is not null)
+            {
+                discovered = await _modelCatalog.ListModelsAsync(listFrom, cancellationToken: cts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // A slow/hung local server: keep the seeded list below rather than blocking on it.
+        }
 
         VoiceLlmModels.Clear();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -3039,10 +3053,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     }
 
     /// <summary>Re-resolves and refreshes only the "auto will use…" summary — used when the preferred model changes, without rebuilding the dropdown the operator is interacting with.</summary>
-    private async Task _RefreshVoiceLlmSummaryAsync() => _UpdateAutoSummary(await _ResolveVoiceLlmEndpointAsync());
+    private async Task _RefreshVoiceLlmSummaryAsync()
+    {
+        using var cts = new CancellationTokenSource(LlmProbeTimeout);
+        try
+        {
+            _UpdateAutoSummary(await _ResolveVoiceLlmEndpointAsync(cts.Token));
+        }
+        catch (OperationCanceledException)
+        {
+            // Slow server — leave the last summary rather than hanging on the probe.
+        }
+    }
 
-    private async Task<LocalLlmEndpoint?> _ResolveVoiceLlmEndpointAsync() =>
-        _localLlmEndpointResolver is null ? null : await _localLlmEndpointResolver.ResolveAsync(_CurrentVoiceLlmSettings());
+    private async Task<LocalLlmEndpoint?> _ResolveVoiceLlmEndpointAsync(CancellationToken cancellationToken) =>
+        _localLlmEndpointResolver is null ? null : await _localLlmEndpointResolver.ResolveAsync(_CurrentVoiceLlmSettings(), cancellationToken);
 
     // The LLM-relevant subset of the current (possibly unsaved) Options edits, so the resolver reflects what the
     // operator is looking at rather than what is on disk.
@@ -3426,7 +3451,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _RefreshAudioDevicesAsync();
-        await _RefreshVoiceLlmAsync();
+        // Fire-and-forget: probing the local LLM server (resolve + /v1/models) is a network round-trip that must
+        // not hold the dialog open. The model dropdown + "auto will use…" summary are observable, so they fill in
+        // a moment later without blocking; a timeout inside keeps a slow/hung server from lingering.
+        _ = _RefreshVoiceLlmAsync();
         await Plugins.LoadAsync();
         await _dialogService.ShowOptionsDialogAsync(this);
     }
