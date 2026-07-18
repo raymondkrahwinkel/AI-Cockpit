@@ -3257,11 +3257,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ? ""
             : VoiceLlmModel.Trim();
 
-    // Only spelled out in auto mode; in manual mode the operator set the endpoint themselves, so there is nothing to reveal.
-    private void _UpdateAutoSummary(LocalLlmEndpoint? endpoint) =>
-        VoiceLlmAutoSummary = VoiceAutoDetectLocalLlm && endpoint is { } resolved
+    // Only spelled out in auto mode; in manual mode the operator set the endpoint themselves, so there is nothing to
+    // reveal. When a preferred model is set but the detected server does not have it, the line says so — otherwise
+    // the dropdown (the preference) and this line (what is actually used) look like they disagree for no reason.
+    private void _UpdateAutoSummary(LocalLlmEndpoint? endpoint)
+    {
+        if (!VoiceAutoDetectLocalLlm || endpoint is not { } resolved)
+        {
+            VoiceLlmAutoSummary = string.Empty;
+            return;
+        }
+
+        var preferred = _VoiceLlmModelSetting();
+        VoiceLlmAutoSummary = string.IsNullOrEmpty(preferred) || string.Equals(preferred, resolved.Model, StringComparison.OrdinalIgnoreCase)
             ? $"Cleanup will use “{resolved.Model}” at {resolved.BaseUrl}"
-            : string.Empty;
+            : $"“{preferred}” isn't on the detected server — using “{resolved.Model}” at {resolved.BaseUrl}";
+    }
 
     private static void _PopulateDevices(ObservableCollection<AudioDeviceOption> target, IReadOnlyList<AudioDeviceInfo> devices)
     {
