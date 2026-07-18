@@ -4,6 +4,7 @@ using ModelContextProtocol.Client;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Mcp;
+using Cockpit.Core.Sessions.Permissions;
 
 namespace Cockpit.Infrastructure.Mcp;
 
@@ -26,6 +27,7 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         var clients = new List<McpClient>();
         var tools = new List<AIFunction>();
         var connectedNames = new List<string>();
+        var toolClasses = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
 
         // Local models host the built-in defaults (filesystem etc.) plus every enabled registry server not
         // scoped to Claude only (#26). A registry entry overrides the built-in of the same name — including a
@@ -52,9 +54,16 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             clients.Add(connection.Client);
             tools.AddRange(connection.Tools);
             connectedNames.Add(connection.Name);
+
+            // A later server's tool of the same name overwrites an earlier one's class, matching the tool list's
+            // own last-wins behaviour when two servers expose the same tool name.
+            foreach (var (toolName, toolClass) in connection.ToolClasses)
+            {
+                toolClasses[toolName] = toolClass;
+            }
         }
 
-        return new McpToolSession(clients, tools, connectedNames);
+        return new McpToolSession(clients, tools, connectedNames, toolClasses);
     }
 
     private async Task<ServerConnection?> _ConnectServerAsync(McpServerConfig server, CancellationToken cancellationToken)
@@ -63,7 +72,18 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         {
             var client = await McpClient.CreateAsync(_BuildTransport(server), cancellationToken: cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-            return new ServerConnection(client, [.. serverTools], server.Name);
+
+            // Classify each tool from its MCP annotations (AC-79) at connect, while we still have the typed
+            // McpClientTool — the delegated gate later reads these by tool name. Annotations are advisory hints,
+            // so an absent readOnlyHint stays Unknown (trusted only via the profile allow-list), not "safe".
+            var classes = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
+            foreach (var tool in serverTools)
+            {
+                var annotations = tool.ProtocolTool.Annotations;
+                classes[tool.Name] = DelegatedToolPermissionPolicy.Classify(annotations?.ReadOnlyHint, annotations?.DestructiveHint);
+            }
+
+            return new ServerConnection(client, [.. serverTools], server.Name, classes);
         }
         catch (Exception ex)
         {
@@ -72,8 +92,8 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         }
     }
 
-    /// <summary>One server's successful connect result: the live client (kept for disposal), its tools, and its name.</summary>
-    private sealed record ServerConnection(McpClient Client, IReadOnlyList<AIFunction> Tools, string Name);
+    /// <summary>One server's successful connect result: the live client (kept for disposal), its tools, their permission classes, and its name.</summary>
+    private sealed record ServerConnection(McpClient Client, IReadOnlyList<AIFunction> Tools, string Name, IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses);
 
     // Built-in local defaults, overlaid with the registry: a registry server (that is not Claude-only)
     // replaces the built-in of the same name, so the user can retarget filesystem or drop a default by
@@ -118,12 +138,14 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         _ => throw new NotSupportedException($"Unsupported MCP transport {server.Transport}."),
     };
 
-    private sealed class McpToolSession(IReadOnlyList<McpClient> clients, IReadOnlyList<AIFunction> tools, IReadOnlyList<string> names)
+    private sealed class McpToolSession(IReadOnlyList<McpClient> clients, IReadOnlyList<AIFunction> tools, IReadOnlyList<string> names, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses)
         : IMcpToolSession
     {
         public IReadOnlyList<AIFunction> Tools => tools;
 
         public IReadOnlyList<string> ConnectedServerNames => names;
+
+        public IReadOnlyDictionary<string, ToolPermissionClass> ToolClasses => toolClasses;
 
         public async ValueTask DisposeAsync()
         {

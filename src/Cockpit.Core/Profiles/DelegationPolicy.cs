@@ -40,6 +40,14 @@ namespace Cockpit.Core.Profiles;
 /// <param name="AllowedTaskTypes">The task categories this profile accepts; empty accepts any.</param>
 /// <param name="Purpose">Free text telling a calling agent what this profile is good for.</param>
 /// <param name="Tags">Capability tags (<c>code</c>, <c>summarize</c>, <c>cheap</c>, <c>local</c>, …) for selection.</param>
+/// <param name="AllowedTools">
+/// Tool names a delegated session on this profile may run unattended even when its class or the ceiling would
+/// otherwise block it (AC-79). A delegated local-model session has no human to answer a permission prompt, and an
+/// MCP tool's read-only/destructive annotation is only an advisory, server-supplied hint — so a tool the operator
+/// explicitly listed here is the trust anchor: it runs, and an unclassifiable tool that is <em>not</em> listed
+/// does not. Empty/null means only the ceiling grades tool calls. Ignored when the profile runs tools with
+/// "Auto-Approve tool calls" on, which already allows everything.
+/// </param>
 public sealed record DelegationPolicy(
     bool AllowedAsTarget = false,
     int MaxConcurrent = 1,
@@ -49,7 +57,8 @@ public sealed record DelegationPolicy(
     int TimeoutMinutes = DelegationPolicy.DefaultTimeoutMinutes,
     IReadOnlyList<string>? AllowedTaskTypes = null,
     string? Purpose = null,
-    IReadOnlyList<string>? Tags = null)
+    IReadOnlyList<string>? Tags = null,
+    IReadOnlyList<string>? AllowedTools = null)
 {
     /// <summary>Delegated tasks run under this mode unless the profile allows a more permissive one.</summary>
     public const string DefaultPermissionCeiling = "acceptEdits";

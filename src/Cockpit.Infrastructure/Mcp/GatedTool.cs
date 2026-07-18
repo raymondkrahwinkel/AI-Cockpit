@@ -17,10 +17,12 @@ internal sealed class GatedTool(AIFunction inner, IToolApprovalGate gate) : Dele
         var toolUseId = Guid.NewGuid().ToString("N");
         var inputJson = _SerializeArguments(arguments);
 
-        var approved = await gate.RequestApprovalAsync(toolUseId, Name, inputJson, cancellationToken).ConfigureAwait(false);
-        if (!approved)
+        var approval = await gate.RequestApprovalAsync(toolUseId, Name, inputJson, cancellationToken).ConfigureAwait(false);
+        if (!approval.Approved)
         {
-            const string refusal = "Tool call was denied by the user.";
+            // The gate owns the reason: an operator's deny is generic, a delegated policy deny explains the ceiling
+            // so the model can adapt instead of retrying. Reported once, here, for both the UI and the model.
+            var refusal = approval.DenyReason ?? "Tool call was denied.";
             gate.ReportToolResult(toolUseId, refusal, isError: true);
             return refusal;
         }

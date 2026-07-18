@@ -111,6 +111,9 @@ internal sealed class SessionRuntime : ISessionRuntime
     public Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default) =>
         _driver?.SetAutoApproveToolsAsync(autoApprove, cancellationToken) ?? Task.CompletedTask;
 
+    public Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default) =>
+        _driver?.SetDelegatedToolGateAsync(ceiling, allowedTools, cancellationToken) ?? Task.CompletedTask;
+
     public Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default) =>
         _driver?.RespondToPermissionAsync(toolUseId, allow, cancellationToken) ?? Task.CompletedTask;
 

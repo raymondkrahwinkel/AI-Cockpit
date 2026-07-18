@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Mcp;
@@ -104,7 +105,80 @@ public class OpenAiCompatSessionDriverTests
         events.Should().Contain(evt => evt is ToolUseRequested);
 
         await driver.RespondToPermissionAsync("tool_1", allow: true);
-        (await approval).Should().BeTrue();
+        (await approval).Approved.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DelegatedGate_RunsAToolWithinTheCeiling_WithoutAPrompt()
+    {
+        // AC-79: a delegated session decides tool calls against the ceiling — a read-only tool runs under any
+        // ceiling, non-interactively, with no PermissionRequested.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+        var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
+        var driver = _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.ReadOnly }, echo);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SetDelegatedToolGateAsync("plan", []);
+        await driver.SendUserMessageAsync("go");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        events.OfType<PermissionRequested>().Should().BeEmpty();
+        events.OfType<ToolResult>().Should().ContainSingle().Which.IsError.Should().BeFalse();
+        events.OfType<ToolResult>().Single().Content.Should().Contain("echoed:hi");
+    }
+
+    [Fact]
+    public async Task DelegatedGate_DeniesAToolAboveTheCeiling_WithReasonAndNoPrompt()
+    {
+        // A destructive tool is denied under acceptEdits: no prompt (nobody to answer), and the denial is fed back
+        // as the tool result so the model can adapt rather than hang.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+        var echo = AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo");
+        var driver = _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Destructive }, echo);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SetDelegatedToolGateAsync("acceptEdits", []);
+        await driver.SendUserMessageAsync("go");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        events.OfType<PermissionRequested>().Should().BeEmpty();
+        var result = events.OfType<ToolResult>().Should().ContainSingle().Subject;
+        result.IsError.Should().BeTrue();
+        result.Content.Should().NotContain("echoed:hi", "the denied tool must not actually run");
+    }
+
+    [Fact]
+    public async Task DelegatedGate_DeniesAnUnknownTool_UnlessOnTheAllowList()
+    {
+        // An unclassifiable tool is denied even at bypassPermissions when not allow-listed...
+        var deniedClient = Substitute.For<IChatClient>();
+        deniedClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+        var denied = _CreateDriver(deniedClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown }, AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo"));
+        await denied.StartAsync(LocalProfile);
+        await denied.SetDelegatedToolGateAsync("bypassPermissions", []);
+        await denied.SendUserMessageAsync("go");
+        var deniedEvents = await _CollectUntilTurnCompletedAsync(denied);
+
+        deniedEvents.OfType<PermissionRequested>().Should().BeEmpty();
+        deniedEvents.OfType<ToolResult>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+
+        // ...but runs when the operator listed it, even under the most restrictive ceiling.
+        var allowedClient = Substitute.For<IChatClient>();
+        allowedClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ToolCall("echo", ("text", "hi")), _Stream("done"));
+        var allowed = _CreateDriver(allowedClient, new Dictionary<string, ToolPermissionClass> { ["echo"] = ToolPermissionClass.Unknown }, AIFunctionFactory.Create((string text) => $"echoed:{text}", "echo"));
+        await allowed.StartAsync(LocalProfile);
+        await allowed.SetDelegatedToolGateAsync("plan", ["echo"]);
+        await allowed.SendUserMessageAsync("go");
+        var allowedEvents = await _CollectUntilTurnCompletedAsync(allowed);
+
+        allowedEvents.OfType<PermissionRequested>().Should().BeEmpty();
+        allowedEvents.OfType<ToolResult>().Should().ContainSingle().Which.Content.Should().Contain("echoed:hi");
     }
 
     [Fact]
@@ -165,7 +239,10 @@ public class OpenAiCompatSessionDriverTests
         events.OfType<PermissionRequested>().Should().BeEmpty();
     }
 
-    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools)
+    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>
+        _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass>(), tools);
+
+    private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, IReadOnlyDictionary<string, ToolPermissionClass> toolClasses, params AIFunction[] tools)
     {
         var factory = Substitute.For<IChatClientFactory>();
         factory.Create(Arg.Any<ProviderConfig>()).Returns(chatClient);
@@ -173,6 +250,7 @@ public class OpenAiCompatSessionDriverTests
         var toolSession = Substitute.For<IMcpToolSession>();
         toolSession.Tools.Returns(tools);
         toolSession.ConnectedServerNames.Returns(tools.Length == 0 ? Array.Empty<string>() : new[] { "test-server" });
+        toolSession.ToolClasses.Returns(toolClasses);
         var toolProvider = Substitute.For<IMcpToolProvider>();
         toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<CancellationToken>()).Returns(toolSession);
 

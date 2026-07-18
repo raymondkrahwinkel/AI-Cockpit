@@ -26,6 +26,8 @@ internal sealed class DelegationPolicyEntry
 
     public List<string>? Tags { get; set; }
 
+    public List<string>? AllowedTools { get; set; }
+
     public static DelegationPolicyEntry? FromDomain(DelegationPolicy? policy) => policy is null
         ? null
         : new DelegationPolicyEntry
@@ -39,6 +41,7 @@ internal sealed class DelegationPolicyEntry
             AllowedTaskTypes = policy.AllowedTaskTypes?.ToList(),
             Purpose = policy.Purpose,
             Tags = policy.Tags?.ToList(),
+            AllowedTools = policy.AllowedTools?.ToList(),
         };
 
     public DelegationPolicy ToDomain() => new(
@@ -50,5 +53,6 @@ internal sealed class DelegationPolicyEntry
         TimeoutMinutes,
         AllowedTaskTypes,
         Purpose,
-        Tags);
+        Tags,
+        AllowedTools);
 }

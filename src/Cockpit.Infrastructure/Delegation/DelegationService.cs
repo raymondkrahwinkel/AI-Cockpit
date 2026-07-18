@@ -490,11 +490,24 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             // (OpenAiCompatSessionDriver) treats permissionMode as a no-op and gates every MCP tool call through
             // the interactive PermissionRequested flow. With no human to answer it, the task would hang on its
             // first tool call until the timeout — the "block waiting for a click that cannot come" the ceiling is
-            // meant to prevent (AC-78). A delegated session is non-interactive by definition, so put it in
-            // auto-approve: tool calls run without a prompt, bounded by the policy-restricted set of enabled MCP
-            // servers (_ToolsForAsync) — the real boundary for a headless session — rather than a prompt nobody
-            // will see. Harmless for a CLI driver, which forwards it to its own session-scoped auto-approve.
-            await runtime.SetAutoApproveToolsAsync(true);
+            // meant to prevent (AC-78). A delegated session is non-interactive by definition, so it must decide
+            // tool calls itself, never prompt. Two ways, by what the operator chose for the profile:
+            //   - "Auto-Approve tool calls" on → the operator trusts this profile fully, so allow everything
+            //     (still bounded by the policy-restricted enabled-server set).
+            //   - otherwise → gate each tool call against the ceiling + the profile's tool allow-list (AC-79):
+            //     read-only runs, a write runs only at acceptEdits/bypass, a destructive only at bypass, and an
+            //     unclassifiable tool runs only if allow-listed — anything else is denied with a reason, not hung.
+            // Harmless for a CLI driver: both are default no-ops there, since it gates through its own CLI mode.
+            if (entry.Profile.Defaults?.AutoApproveTools == true)
+            {
+                await runtime.SetAutoApproveToolsAsync(true);
+            }
+            else
+            {
+                await runtime.SetDelegatedToolGateAsync(
+                    entry.Profile.DelegationPolicy.PermissionCeiling,
+                    entry.Profile.DelegationPolicy.AllowedTools ?? []);
+            }
 
             await runtime.SendUserMessageAsync(entry.Prompt);
             _ArmTimeout(entry);

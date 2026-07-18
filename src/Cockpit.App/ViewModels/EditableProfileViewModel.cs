@@ -85,6 +85,17 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private int _delegationTimeoutMinutes;
 
+    /// <summary>The most permissive class of tool a delegated session on this profile may run unattended (AC-79): plan/default = read-only only, acceptEdits = also non-destructive writes, bypassPermissions = everything. Ignored when "Auto-Approve tool calls" is on (that allows everything).</summary>
+    [ObservableProperty]
+    private string _permissionCeiling;
+
+    /// <summary>Tool names a delegated session may run unattended regardless of class/ceiling, one per line (AC-79) — the trust anchor for a tool whose MCP server gives no reliable read-only hint.</summary>
+    [ObservableProperty]
+    private string _allowedTools;
+
+    /// <summary>The permission-ceiling values offered in the delegation dropdown (AC-79), least- to most-permissive.</summary>
+    public IReadOnlyList<string> PermissionCeilingChoices { get; } = ["plan", "default", "acceptEdits", "bypassPermissions"];
+
     [ObservableProperty]
     private SessionProviderOption _selectedProvider;
 
@@ -333,6 +344,8 @@ public partial class EditableProfileViewModel : ViewModelBase
         _maxConcurrentTasks = delegation.MaxConcurrent;
         _mayDelegateFurther = delegation.MayDelegateFurther;
         _delegationTimeoutMinutes = delegation.TimeoutMinutes;
+        _permissionCeiling = delegation.PermissionCeiling;
+        _allowedTools = delegation.AllowedTools is { Count: > 0 } allowedTools ? string.Join(Environment.NewLine, allowedTools) : string.Empty;
 
         _canChooseProvider = canChooseProvider;
         _isLoggedIn = isLoggedIn;
@@ -432,16 +445,26 @@ public partial class EditableProfileViewModel : ViewModelBase
             .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
 
+        // One tool name per line, same reasoning as working dirs (a tool name is free-form text).
+        var allowedTools = AllowedTools
+            .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        // An empty/unrecognised ceiling falls back to the default rather than persisting a blank the decider would
+        // read as the most restrictive.
+        var ceiling = PermissionCeilingChoices.Contains(PermissionCeiling) ? PermissionCeiling : DelegationPolicy.DefaultPermissionCeiling;
+
         return new DelegationPolicy(
             AllowedAsTarget: true,
             MaxConcurrent: Math.Max(1, MaxConcurrentTasks),
             AllowedWorkingDirs: workingDirs.Count > 0 ? workingDirs : null,
-            PermissionCeiling: DelegationPolicy.DefaultPermissionCeiling,
+            PermissionCeiling: ceiling,
             MayDelegateFurther: MayDelegateFurther,
             TimeoutMinutes: Math.Max(0, DelegationTimeoutMinutes),
             AllowedTaskTypes: taskTypes.Count > 0 ? taskTypes : null,
             Purpose: string.IsNullOrWhiteSpace(DelegationPurpose) ? null : DelegationPurpose.Trim(),
-            Tags: null);
+            Tags: null,
+            AllowedTools: allowedTools.Count > 0 ? allowedTools : null);
     }
 
     private ProviderConfig _ToProviderConfig()

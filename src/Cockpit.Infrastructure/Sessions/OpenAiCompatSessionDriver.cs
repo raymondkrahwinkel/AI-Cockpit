@@ -32,6 +32,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     private readonly ConcurrentDictionary<string, byte> _alwaysAllowedTools = new();
     private volatile bool _autoApproveTools;
 
+    // Non-interactive delegated gate (AC-79): when a ceiling is set, this session has no human to prompt, so a
+    // tool call is decided against the ceiling + allow-list rather than raising PermissionRequested. Null for an
+    // ordinary interactive session.
+    private volatile string? _delegatedGateCeiling;
+    private volatile IReadOnlySet<string>? _delegatedGateAllowList;
+
     private IChatClient? _agent;
     private IMcpToolSession? _toolSession;
     private List<AITool> _gatedTools = [];
@@ -145,26 +151,38 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         }
     }
 
-    async Task<bool> IToolApprovalGate.RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken)
+    async Task<ToolApprovalResult> IToolApprovalGate.RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken)
     {
-        // Surface the call in the transcript, then either auto-allow (an always-allow rule this session) or
-        // prompt and await the operator's decision on the shared PermissionRequested flow.
+        // Surface the call in the transcript, then either auto-allow (an always-allow rule this session), decide
+        // it non-interactively (a delegated session), or prompt and await the operator's decision.
         _events.Writer.TryWrite(new ToolUseRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
 
         // Auto-approve mode (the session's "allow all tools" toggle) or a per-tool always-allow rule runs the
         // call without prompting — the tool row is still emitted above, so it stays visible either way.
         if (_autoApproveTools || _alwaysAllowedTools.ContainsKey(toolName))
         {
-            return true;
+            return ToolApprovalResult.Allow;
         }
 
-        var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingApprovals[toolUseId] = decision;
+        // A delegated session has no human to answer a prompt (AC-79): decide non-interactively against the
+        // profile's permission ceiling and tool allow-list instead of raising PermissionRequested. A denial
+        // carries its reason to the model (via GatedTool) and never blocks — no PermissionRequested is emitted.
+        if (_delegatedGateCeiling is { } ceiling)
+        {
+            var toolClass = _toolSession?.ToolClasses.GetValueOrDefault(toolName, ToolPermissionClass.Unknown) ?? ToolPermissionClass.Unknown;
+            var onAllowList = _delegatedGateAllowList?.Contains(toolName) == true;
+            var decision = DelegatedToolPermissionPolicy.Decide(ceiling, toolClass, toolName, onAllowList);
+            return decision.IsAllowed ? ToolApprovalResult.Allow : ToolApprovalResult.Deny(decision.DenyMessage);
+        }
+
+        var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingApprovals[toolUseId] = pending;
         _events.Writer.TryWrite(new PermissionRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
 
-        using (cancellationToken.Register(() => decision.TrySetResult(false)))
+        using (cancellationToken.Register(() => pending.TrySetResult(false)))
         {
-            return await decision.Task.ConfigureAwait(false);
+            var approved = await pending.Task.ConfigureAwait(false);
+            return approved ? ToolApprovalResult.Allow : ToolApprovalResult.Deny(null);
         }
     }
 
@@ -225,6 +243,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
             }
         }
 
+        return Task.CompletedTask;
+    }
+
+    public Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default)
+    {
+        // Set the allow-list first, then the ceiling — the ceiling being non-null is what arms the gate in
+        // RequestApprovalAsync, so the list it reads is already in place by the time a decision consults it.
+        _delegatedGateAllowList = new HashSet<string>(allowedTools, StringComparer.Ordinal);
+        _delegatedGateCeiling = ceiling;
         return Task.CompletedTask;
     }
 

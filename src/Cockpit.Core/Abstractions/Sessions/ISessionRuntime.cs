@@ -94,6 +94,9 @@ public interface ISessionRuntime : IAsyncDisposable
 
     Task SetAutoApproveToolsAsync(bool autoApprove, CancellationToken cancellationToken = default);
 
+    /// <summary>Non-interactive delegated tool-gating (AC-79): tool calls are decided against the ceiling + allow-list rather than prompted. See <see cref="ISessionDriver.SetDelegatedToolGateAsync"/>.</summary>
+    Task SetDelegatedToolGateAsync(string ceiling, IReadOnlyList<string> allowedTools, CancellationToken cancellationToken = default);
+
     Task RespondToPermissionAsync(string toolUseId, bool allow, CancellationToken cancellationToken = default);
 
     Task AllowPermissionAlwaysAsync(string toolUseId, string toolName, string inputJson, PermissionRuleScope scope, CancellationToken cancellationToken = default);
