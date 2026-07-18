@@ -340,10 +340,12 @@
                         <ScrollViewer>
                             <StackPanel Spacing="8" Margin="16">
                                 <TextBlock Text="Dictation" FontWeight="SemiBold"/>
-                                <CheckBox Content="Enable push-to-talk dictation"
-                                          IsChecked="{Binding VoiceEnabled}"/>
-                                <TextBlock Text="Off by default: the Whisper model only downloads once you turn this on."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <CheckBox Content="Enable push-to-talk dictation"
+                                              IsChecked="{Binding VoiceEnabled}"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Off by default: the Whisper model only downloads once you turn this on."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Microphone"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -351,18 +353,18 @@
                                     <ComboBox ItemsSource="{Binding InputDevices}"
                                               SelectedItem="{Binding SelectedInputDevice}"
                                               DisplayMemberBinding="{Binding Label}" MinWidth="220"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Which microphone the dictation captures from. 'System default' follows your OS setting."/>
                                 </StackPanel>
-                                <TextBlock Text="Which microphone the dictation captures from. 'System default' follows your OS setting."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Push-to-talk key"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
                                     <controls:ShortcutCaptureControl Gesture="{Binding VoicePushToTalkKeyName, Mode=TwoWay}"
                                                                      Mode="SingleKey" MinWidth="110"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."/>
                                 </StackPanel>
-                                <TextBlock Text="Held to dictate. In the cockpit's own windows this is the key; the global hotkey below may not get it — see there."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <!-- What the hotkey is really triggered by, which the cockpit does not always decide: a
                                      Wayland compositor owns the binding and takes the key above only as a hint, and macOS
                                      has no global hotkey at all. Reported rather than assumed — the field above looked
@@ -378,11 +380,15 @@
                                     <ComboBox ItemsSource="{Binding SttLanguages}"
                                               SelectedItem="{Binding SelectedSttLanguage}"
                                               DisplayMemberBinding="{Binding Label}" MinWidth="120"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Set a fixed language for more reliable transcription than auto-detect."/>
                                 </StackPanel>
-                                <TextBlock Text="Set a fixed language for more reliable transcription than auto-detect."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                <CheckBox Content="Global push-to-talk (works without focus)"
-                                          IsChecked="{Binding VoiceGlobalPushToTalk}"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <CheckBox Content="Global push-to-talk (works without focus)"
+                                              IsChecked="{Binding VoiceGlobalPushToTalk}"/>
+                                    <materialIcons:MaterialIcon Classes="hint" IsVisible="{Binding IsLinuxPlatform}"
+                                        ToolTip.Tip="On Linux, the physical key is assigned via System Settings → Shortcuts — this field is only a hint."/>
+                                </StackPanel>
                                 <!-- Linux only: the global hotkey is a desktop-portal binding the compositor takes at
                                      startup, so a change to it applies on the next launch, not live (Windows re-arms it
                                      live and has no such line). The Restart-now button appears once a change is saved. -->
@@ -395,19 +401,20 @@
                                             Command="{Binding RestartAppCommand}"
                                             IsVisible="{Binding VoiceGlobalPushToTalkNeedsRestart}"/>
                                 </StackPanel>
-                                <TextBlock Text="On Linux, the physical key is assigned via System Settings → Shortcuts — this field is only a hint."
-                                           IsVisible="{Binding IsLinuxPlatform}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                <CheckBox Content="Send automatically after dictation (press Enter)"
-                                          IsChecked="{Binding VoiceAutoSubmit}"/>
-                                <TextBlock Text="On: the transcript is submitted straight away. Off: it is placed in the input for you to review first."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <CheckBox Content="Send automatically after dictation (press Enter)"
+                                              IsChecked="{Binding VoiceAutoSubmit}"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="On: the transcript is submitted straight away. Off: it is placed in the input for you to review first."/>
+                                </StackPanel>
 
                                 <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
-                                <TextBlock Text="Transcription" FontWeight="SemiBold"/>
-                                <TextBlock Text="Turns your speech into text with Whisper, on-device. This is the speech-to-text model — separate from the local LLM that tidies the text on the Cleanup page."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Transcription" FontWeight="SemiBold"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Turns your speech into text with Whisper, on-device. This is the speech-to-text model — separate from the local LLM that tidies the text on the Cleanup page."/>
+                                </StackPanel>
                                 <!-- AC-68: detected acceleration, so the choices below read as host-aware rather than generic. -->
                                 <Border Background="{StaticResource CockpitSecondaryBgBrush}"
                                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
@@ -468,14 +475,16 @@
                                 <StackPanel Spacing="8" IsVisible="{Binding ShowCalibration}" Margin="0,6,0,0">
                                     <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,2"/>
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Text="First-use calibration" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="First-use calibration" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <materialIcons:MaterialIcon Classes="hint"
+                                                ToolTip.Tip="Times a sentence on every backend this machine can use and measures how much each one hitches the desktop, then picks the one Auto uses — preferring the CPU unless the GPU is meaningfully faster. Remembered for this machine."/>
+                                        </StackPanel>
                                         <TextBlock Grid.Column="1" Text="{Binding CalibrationStatus}"
                                                    IsVisible="{Binding CalibrationStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    VerticalAlignment="Center"
                                                    Foreground="{StaticResource CockpitAccentBrush}" FontSize="11" FontWeight="SemiBold"/>
                                     </Grid>
-                                    <TextBlock Text="Times a sentence on every backend this machine can use and measures how much each one hitches the desktop, then picks the one Auto uses — preferring the CPU unless the GPU is meaningfully faster. Remembered for this machine."
-                                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
 
                                     <StackPanel Spacing="6" IsVisible="{Binding HasCalibration}">
                                         <ItemsControl ItemsSource="{Binding CalibrationResults}">
@@ -571,17 +580,19 @@
                         <!-- Cleanup -->
                         <ScrollViewer>
                             <StackPanel Spacing="8" Margin="16">
-                                <TextBlock Text="Cleanup" FontWeight="SemiBold"/>
-                                <TextBlock Text="Tidies the raw transcript with a local LLM. Sends it to a local OpenAI-compatible server (Ollama or LM Studio) and falls back to the raw transcript automatically when it is unavailable or its output looks unreliable."
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Cleanup" FontWeight="SemiBold"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Tidies the raw transcript with a local LLM. Sends it to a local OpenAI-compatible server (Ollama or LM Studio) and falls back to the raw transcript automatically when it is unavailable or its output looks unreliable."/>
+                                </StackPanel>
                                 <CheckBox Content="Clean up transcript with local LLM"
                                           IsChecked="{Binding VoiceCleanupEnabled}"/>
-                                <CheckBox Content="Auto-detect the local server (Ollama / LM Studio)"
-                                          IsChecked="{Binding VoiceAutoDetectLocalLlm}"
-                                          IsVisible="{Binding VoiceCleanupEnabled}"/>
-                                <TextBlock Text="Detects whichever server is running and picks a model from it, so the same setting works on a laptop with Ollama and a desktop with LM Studio. Turn it off to set the server and model by hand."
-                                           IsVisible="{Binding VoiceCleanupEnabled}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding VoiceCleanupEnabled}">
+                                    <CheckBox Content="Auto-detect the local server (Ollama / LM Studio)"
+                                              IsChecked="{Binding VoiceAutoDetectLocalLlm}"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Detects whichever server is running and picks a model from it, so the same setting works on a laptop with Ollama and a desktop with LM Studio. Turn it off to set the server and model by hand."/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowLocalLlmServerPicker}">
                                     <TextBlock Text="Prefer server"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
@@ -593,19 +604,15 @@
                                 <TextBlock Text="{Binding VoiceLlmAutoSummary}"
                                            IsVisible="{Binding ShowAutoLlmSummary}"
                                            Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
-                                <TextBlock Text="Auto uses the model below when the detected server has it; otherwise it prefers an instruction-tuned model, then a small/mini one, and never an embedding model."
-                                           IsVisible="{Binding ShowAutoLlmSummary}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowLlmModelPicker}">
                                     <TextBlock Text="Model"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>
                                     <ComboBox ItemsSource="{Binding VoiceLlmModels}"
                                               SelectedItem="{Binding VoiceLlmModel}" MinWidth="200"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Shared by transcript cleanup and read-aloud. In auto-detect this is the preferred model, used when the detected server has it; otherwise auto prefers an instruction-tuned model, then a small/mini one, and never an embedding model. With auto-detect off it is the exact model. gemma3:4b reads Dutch best, qwen2.5:3b is a safe fallback."/>
                                 </StackPanel>
-                                <TextBlock Text="Shared by transcript cleanup and read-aloud. In auto-detect this is the preferred model (used when the server has it); with auto-detect off it is the exact model. gemma3:4b reads Dutch best, qwen2.5:3b is a safe fallback."
-                                           IsVisible="{Binding ShowLlmModelPicker}"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding ShowManualLlmFields}">
                                     <TextBlock Text="Local LLM URL"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
