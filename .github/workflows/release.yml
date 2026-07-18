@@ -11,7 +11,33 @@ permissions:
   contents: write
 
 jobs:
+  # The release notes are the changelog, not the commit list: pull the [Unreleased] section out before
+  # anything is built, so every platform's publish attaches the same curated body. Read-only here — the
+  # changelog is only *rolled* into a version (the finalize job below) once the release has gone out.
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Extract the release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          bash scripts/changelog.sh notes > release-notes.md
+          if [ -s release-notes.md ]; then
+            echo "Release notes taken from the changelog's [Unreleased] section:"
+            cat release-notes.md
+          else
+            echo "No [Unreleased] entries — the release will fall back to the auto-generated commit list."
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+          retention-days: 2
+
   publish:
+    needs: changelog
     strategy:
       fail-fast: false
       matrix:
@@ -111,9 +137,49 @@ jobs:
             "artifacts/ai-cockpit-${{ steps.version.outputs.version }}-x86_64.AppImage"
           rm -rf artifacts/appimage
 
+      # The curated notes built once in the changelog job. body_path is the changelog's [Unreleased]
+      # section; generate_release_notes then appends the full commit list beneath it, so the release
+      # page reads as "what changed, in prose" followed by "every commit, in full". Each platform's
+      # job sets the same body — the action replaces rather than accumulates, so it stays idempotent.
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
+          body_path: release-notes.md
           draft: false
           prerelease: false
           generate_release_notes: true
+
+  # Only now that every platform has published: move the [Unreleased] entries under the version that
+  # just shipped and open a fresh empty section, committed back to the default branch. After the
+  # release, not before — a build that failed should never leave the changelog claiming it shipped.
+  finalize:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ github.token }}
+
+      - name: Resolve the version from the tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Roll [Unreleased] into this version and commit it back
+        shell: bash
+        run: |
+          bash scripts/changelog.sh roll "${{ steps.version.outputs.version }}" "$(date -u +%Y-%m-%d)"
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "- changed: rolled the changelog's [Unreleased] entries under ${GITHUB_REF_NAME}"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
