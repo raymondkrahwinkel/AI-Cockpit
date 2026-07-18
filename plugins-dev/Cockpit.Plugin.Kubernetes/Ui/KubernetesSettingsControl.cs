@@ -47,21 +47,20 @@ internal sealed class KubernetesSettingsControl : UserControl, IPluginSettingsVi
 
         _mcpEnabled = new CheckBox { Content = "Let sessions use the Kubernetes MCP tools", IsChecked = settings.McpEnabled };
 
-        Content = new ScrollViewer
+        // No ScrollViewer here: the host dialog already wraps every settings view in one (with the window inset).
+        // A ScrollViewer nested inside that one is measured with unbounded height and never scrolls, so its tail —
+        // the MCP toggle — rendered under the Save/Close footer. The host owns the scroll; the view is just content.
+        Content = new StackPanel
         {
-            Content = new StackPanel
+            Spacing = 8,
+            Children =
             {
-                Margin = new Thickness(16),
-                Spacing = 8,
-                Children =
-                {
-                    _Label("Kubernetes clusters"),
-                    _Hint("Each cluster is a kubeconfig kept under the secret layer. An agent never gets the kubeconfig — it reaches the cluster only through the gated MCP tools. Namespaces you list here are free to read; anything outside asks each session, and every change asks each time."),
-                    _clustersPanel,
-                    addCluster,
-                    _Label("MCP"),
-                    _mcpEnabled,
-                },
+                _Label("Kubernetes clusters"),
+                _Hint("Each cluster is a kubeconfig kept under the secret layer. An agent never gets the kubeconfig — it reaches the cluster only through the gated MCP tools. Namespaces you list here are free to read; anything outside asks each session, and every change asks each time."),
+                _clustersPanel,
+                addCluster,
+                _Label("MCP"),
+                _mcpEnabled,
             },
         };
     }

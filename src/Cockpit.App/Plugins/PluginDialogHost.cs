@@ -74,8 +74,10 @@ internal sealed class PluginDialogHost : IPluginDialogHost, ISingletonService
 
         // The view gets the same inset as the footer already had. Without it a plugin's settings sat flush
         // against the window edge — every plugin would otherwise have to remember its own margin, and they did
-        // not, so the padding belongs here where the host owns the chrome.
-        root.Children.Add(new ScrollViewer { Content = view, Padding = new Thickness(14, 12) });
+        // not, so the padding belongs here where the host owns the chrome. The inset is a Border *inside* the
+        // scrolled content, not Padding on the ScrollViewer: Avalonia leaves a ScrollViewer's own padding out of
+        // the scroll extent, so a tall view could not scroll its last ~24px clear and it stayed under the footer.
+        root.Children.Add(new ScrollViewer { Content = new Border { Padding = new Thickness(14, 12), Child = view } });
         window.Content = _WithToasts(root, owner);
 
         CockpitWindowChrome.Apply(window, title);
