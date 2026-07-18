@@ -87,40 +87,7 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
         await foreach (var utterance in _channel.Reader.ReadAllAsync())
         {
             _SetPlaybackActive(true);
-            var cancellationToken = _playbackCancellation.Token;
-
-            foreach (var segment in utterance.Segments)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
-                foreach (var sentence in segment.Sentences)
-                {
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    try
-                    {
-                        _logger.LogDebug("Read-aloud playing sentence: \"{Sentence}\"", sentence);
-                        var audio = await _textToSpeech.SynthesizeAsync(sentence, utterance.SpeakerId, segment.Language, cancellationToken).ConfigureAwait(false);
-                        var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
-                        await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "TTS playback failed for a queued sentence; skipping it.");
-                    }
-                }
-            }
+            await _PlayUtteranceAsync(utterance, _playbackCancellation.Token).ConfigureAwait(false);
 
             // Only go idle once nothing is waiting behind this batch, so back-to-back read-aloud turns do
             // not flap the barge-in guard off and on between them.
@@ -128,6 +95,72 @@ internal sealed class VoicePlaybackQueue : IVoicePlaybackQueue, ISingletonServic
             {
                 _SetPlaybackActive(false);
             }
+        }
+    }
+
+    private async Task _PlayUtteranceAsync(QueuedUtterance utterance, CancellationToken cancellationToken)
+    {
+        // One sentence plays at a time, but the next is synthesized while the current one plays: sherpa-onnx
+        // synthesis is a CPU-bound call, and doing it strictly between plays left an audible gap (the synth time)
+        // between sentences, which read as unnatural. Prefetching one ahead overlaps synth with playback so the
+        // sentences run together.
+        var items = utterance.Segments
+            .SelectMany(segment => segment.Sentences.Select(sentence => (Text: sentence, segment.Language)))
+            .ToList();
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var pending = _TrySynthesizeAsync(items[0].Text, utterance.SpeakerId, items[0].Language, cancellationToken);
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var audio = await pending.ConfigureAwait(false);
+
+            // Kick off the next synthesis before playing the current clip, so the two overlap and no silence opens up.
+            pending = i + 1 < items.Count
+                ? _TrySynthesizeAsync(items[i + 1].Text, utterance.SpeakerId, items[i + 1].Language, cancellationToken)
+                : Task.FromResult<TtsAudio?>(null);
+
+            if (audio is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                var pcmBytes = PcmSampleConverter.ToInt16Bytes(audio.Samples);
+                await _audioPlayback.PlayAsync(pcmBytes, new AudioFormat(audio.SampleRate, Channels: 1), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>Synthesizes one sentence, swallowing a failure to null so a single bad sentence neither kills the utterance nor faults the prefetch task waiting behind it.</summary>
+    private async Task<TtsAudio?> _TrySynthesizeAsync(string text, int speakerId, string language, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogDebug("Read-aloud synthesizing sentence: \"{Sentence}\"", text);
+            return await _textToSpeech.SynthesizeAsync(text, speakerId, language, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "TTS synthesis failed for a queued sentence; skipping it.");
+            return null;
         }
     }
 
