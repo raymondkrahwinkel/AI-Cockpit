@@ -86,6 +86,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Dialog | `host.ShowDialogAsync(title, () => control)` | A modal dialog over the main window hosting your control. The host provides the **DataGrid** (control + theme) app-wide, so you can use it. |
 | Left-menu section | `host.AddSideMenuSection(title, () => control)` | An inline accordion under the session list — for small, always-visible content. |
 | Session header item | `host.AddSessionHeaderItem(session => control)` | A small control in **every session's header bar**, built once per session and handed that session's own [`IPluginSessionContext`](API-REFERENCE.md#ipluginsessioncontext) — for status that belongs to one session. See [Session header items](#session-header-items--status-that-belongs-to-one-session). |
+| Supervised activity | `host.AddSupervisedActivityProvider(source)` | A **status-bar counter** for long-running, agent-started background work (an open tunnel, a watch), shown only while something runs, opening a panel with the details and an **operator-only Kill per item**. The host owns the Kill — the agent cannot reach it. See [`AddSupervisedActivityProvider`](API-REFERENCE.md#void-addsupervisedactivityprovideisupervisedactivitysource-source). |
 | Conversation picker | `host.AddConversationPicker(registration)` | Lends your history-browsing to the **New-session dialog**: it grows a **Search…** button next to "resume by session id", which runs your picker. See [Conversation pickers](#conversation-pickers--let-the-operator-choose-a-conversation-to-resume). |
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
@@ -124,6 +125,7 @@ public interface ICockpitHost
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
     void OnSettingsSaved(Action callback);                      // re-run after your settings are saved
     void AddSessionHeaderItem(Func<IPluginSessionContext, Control> createView); // a control in every session's header
+    void AddSupervisedActivityProvider(ISupervisedActivitySource source);      // a status-bar counter + operator-only Kill panel
     void AddConversationPicker(ConversationPickerRegistration picker);          // browse history for the New-session dialog
     void AddShortcut(PluginShortcut shortcut);                  // a gesture + command-palette entry
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,

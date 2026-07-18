@@ -48,6 +48,7 @@ using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Sessions;
+using Cockpit.Plugins.Abstractions.StatusBar;
 
 namespace Cockpit.App.ViewModels;
 
@@ -136,6 +137,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>What plugins can *do* to one session (#: session actions) — gathered into the single menu in every session's header, rather than a button each.</summary>
     public ObservableCollection<PluginSessionAction> PluginSessionHeaderActions { get; } = [];
+
+    /// <summary>Plugin-registered sources of supervised background activities (AC-82) — the status bar shows a counter per source (only while it has activities) and a panel with a Kill per item.</summary>
+    public ObservableCollection<ISupervisedActivitySource> PluginSupervisedActivities { get; } = [];
 
     /// <summary>
     /// The operator's left-menu preference per plugin (#72): where it sits, and whether it shows there at all.
@@ -352,6 +356,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     void IPluginContributionSink.AddPluginSessionHeaderAction(PluginSessionAction action) =>
         _OnUiThread(() => PluginSessionHeaderActions.Add(action));
+
+    void IPluginContributionSink.AddSupervisedActivityProvider(ISupervisedActivitySource source) =>
+        _OnUiThread(() => PluginSupervisedActivities.Add(source));
 
     void IPluginContributionSink.AddPluginShortcut(PluginShortcut shortcut) =>
         _OnUiThread(() => PluginShortcuts.Add(shortcut));

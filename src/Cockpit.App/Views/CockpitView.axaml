@@ -1053,6 +1053,12 @@
                                VerticalAlignment="Center"/>
                 </Button>
 
+                <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
+                     shown only while it has activities, opening a panel with a Kill per item. -->
+                <controls:PluginStatusBarHost DockPanel.Dock="Right"
+                                              Margin="0,0,8,0"
+                                              VerticalAlignment="Center"/>
+
                 <TextBlock Text="{Binding ResourceSessions}"
                            FontSize="11"
                            Foreground="{StaticResource CockpitTextFaintBrush}"
