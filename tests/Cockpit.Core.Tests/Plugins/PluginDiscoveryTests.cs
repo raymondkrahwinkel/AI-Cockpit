@@ -45,13 +45,31 @@ public class PluginDiscoveryTests : IDisposable
     public async Task DiscoverAsync_EnabledWithMatchingHash_DecidesLoad()
     {
         var folder = WritePlugin("weather", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
-        var hash = PluginHash.Compute(await File.ReadAllBytesAsync(Path.Combine(folder, "Plugin.dll")));
+        var hash = await PluginClosureHash.OfInstalledFolderAsync(folder);
         var saved = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: hash) };
         var discovery = new PluginDiscovery();
 
         var found = await discovery.DiscoverAsync(_root, saved, HostMajor);
 
         found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.Load);
+    }
+
+    [Fact]
+    public async Task DiscoverAsync_EnabledButADependencyDllWasSwapped_DecidesNeedsConsent()
+    {
+        // The heart of AC-43: the pin used to cover only the entry assembly, so a swapped dependency DLL loaded
+        // unconsented. The pin is now over the whole closure, so tampering with any sibling file re-triggers consent.
+        var folder = WritePlugin("weather", entryAssembly: "Plugin.dll", abstractionsVersion: 1);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Dependency.dll"), "original-dependency-bytes");
+        var pinned = await PluginClosureHash.OfInstalledFolderAsync(folder);
+        var saved = new Dictionary<string, PluginRegistration> { ["weather"] = new(Enabled: true, PinnedSha256: pinned) };
+
+        // Entry assembly untouched; only a dependency it loads is swapped.
+        await File.WriteAllTextAsync(Path.Combine(folder, "Dependency.dll"), "tampered-dependency-bytes");
+
+        var found = await new PluginDiscovery().DiscoverAsync(_root, saved, HostMajor);
+
+        found.Should().ContainSingle().Which.Decision.Should().Be(PluginLoadDecision.NeedsConsent);
     }
 
     [Fact]

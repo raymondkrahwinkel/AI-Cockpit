@@ -81,10 +81,11 @@ internal sealed class PluginInstaller : IPluginInstaller, ISingletonService
             }
 
             var folderId = _ResolveFolderId(manifest.Id);
-            // Hash of the newly installed entry assembly (computed from staging, before the move). The caller
-            // pins this so an updated plugin — whose new bytes only go live after the next restart — stays
-            // enabled instead of dropping to needs-consent when the pending copy is swapped in.
-            var newSha256 = PluginHash.Compute(await File.ReadAllBytesAsync(Path.Combine(stagingDir, manifest.EntryAssembly), cancellationToken).ConfigureAwait(false));
+            // Hash of the newly installed plugin's whole load closure (computed from staging, before the move):
+            // the entry assembly plus every dependency it ships (AC-43), so the pin covers a swapped dependency
+            // DLL too. The caller pins this so an updated plugin — whose new bytes only go live after the next
+            // restart — stays enabled instead of dropping to needs-consent when the pending copy is swapped in.
+            var newSha256 = await PluginClosureHash.OfInstalledFolderAsync(stagingDir, cancellationToken).ConfigureAwait(false);
             var finalDir = Path.Combine(_pluginsRoot, folderId);
             if (Directory.Exists(finalDir))
             {

@@ -5,7 +5,7 @@ namespace Cockpit.Infrastructure.Plugins;
 
 /// <summary>
 /// Scans the plugins root (a <c>plugins/</c> folder next to <c>cockpit.json</c>) for plugin subfolders,
-/// parses each <c>plugin.json</c>, hashes its entry assembly and runs the pure <see cref="PluginLoadPolicy"/>
+/// parses each <c>plugin.json</c>, hashes its whole load closure and runs the pure <see cref="PluginLoadPolicy"/>
 /// to decide what should happen with it. Pure discovery — it loads no assemblies; the loader acts on the
 /// results. A folder with a missing/invalid manifest or a missing entry assembly is skipped silently
 /// (it is not a valid plugin).
@@ -61,7 +61,9 @@ internal sealed class PluginDiscovery : ISingletonService
                 continue;
             }
 
-            var hash = PluginHash.Compute(await File.ReadAllBytesAsync(entryPath, cancellationToken).ConfigureAwait(false));
+            // Hash the whole load closure, not just the entry assembly (AC-43): a swapped dependency DLL must
+            // re-trigger consent too, since the loader runs it in-process with full trust.
+            var hash = await PluginClosureHash.OfInstalledFolderAsync(folder, cancellationToken).ConfigureAwait(false);
             var folderId = Path.GetFileName(folder);
             saved.TryGetValue(folderId, out var registration);
             var decision = PluginLoadPolicy.Decide(manifest, hostAbstractionsMajor, registration, hash, HostVersion);
