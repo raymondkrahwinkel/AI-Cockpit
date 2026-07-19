@@ -57,10 +57,10 @@ internal sealed class CockpitMcpEndpointHost
             try
             {
                 // Built the tools instance from the application's own services, so a tool can depend on any
-                // registered service (the statusline sink, etc.). A registered endpoint is always enabled — a plugin
-                // that wants an on/off toggle passes its own isEnabled to MountAsync.
+                // registered service (the statusline sink, etc.). An endpoint with no gate is always enabled; one that
+                // carries an IsEnabled (AC-34's master switch) is hosted but only advertised to a session while it is on.
                 var tools = ActivatorUtilities.CreateInstance(_services, endpoint.ToolsType);
-                await MountAsync(endpoint.ServerName, tools, isEnabled: null, cancellationToken).ConfigureAwait(false);
+                await MountAsync(endpoint.ServerName, tools, isEnabled: endpoint.IsEnabled, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
