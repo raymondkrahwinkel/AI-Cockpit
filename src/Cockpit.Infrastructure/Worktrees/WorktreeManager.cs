@@ -165,8 +165,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     public async Task<bool> IsCleanAsync(WorktreeRecord record, CancellationToken cancellationToken = default)
     {
-        var status = await GitCli.RunCheckedAsync(record.Path, ["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
-        if (status.Length > 0)
+        if (await _PorcelainDirtyAsync(record.Path, cancellationToken).ConfigureAwait(false))
         {
             return false;
         }
@@ -177,6 +176,32 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             cancellationToken).ConfigureAwait(false);
 
         return aheadOfBase == "0";
+    }
+
+    public Task<bool> HasUncommittedChangesAsync(WorktreeRecord record, CancellationToken cancellationToken = default) =>
+        _PorcelainDirtyAsync(record.Path, cancellationToken);
+
+    // The porcelain "does the working tree still hold uncommitted changes or untracked files" check — the exact
+    // content a force-remove would discard — shared by the teardown clean-gate and the agent-facing dirty-removal
+    // consent gate so the rule lives in one place. A folder that is gone holds nothing; a folder git cannot read
+    // (corrupt, mid-delete) is treated as holding changes, the safe direction — a state we cannot prove clean is
+    // never silently discarded.
+    private static async Task<bool> _PorcelainDirtyAsync(string path, CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var status = await GitCli.RunCheckedAsync(path, ["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
+            return status.Length > 0;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 
     public async Task RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default)

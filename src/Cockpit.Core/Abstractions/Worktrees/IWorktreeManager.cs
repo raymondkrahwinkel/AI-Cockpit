@@ -47,6 +47,16 @@ public interface IWorktreeManager
     Task<bool> IsCleanAsync(WorktreeRecord record, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Whether the worktree still holds uncommitted changes or untracked files right now (a non-empty
+    /// <c>git status --porcelain</c>) — the exact content a force-remove would discard; committed history stays on the
+    /// branch. The agent-facing remove tool gates a dirty removal behind operator consent on this, not on
+    /// <see cref="IsCleanAsync"/>: a worktree that only has commits ahead — which a force-remove keeps on the branch —
+    /// is not prompted for. Untracked files count deliberately: a force-remove deletes them too, and they may be work
+    /// the agent has not committed, so their loss is the operator's call, not a silent one.
+    /// </summary>
+    Task<bool> HasUncommittedChangesAsync(WorktreeRecord record, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Removes the worktree and its registry entry. Without <paramref name="force"/> git itself refuses a worktree
     /// with uncommitted work, which is the safety net; <paramref name="force"/> is the operator's explicit override.
     /// </summary>
