@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -10,10 +11,14 @@ public interface ISessionDialogService
 {
     /// <summary>
     /// Shows the New-session dialog — SDK vs TTY is chosen inside it (#32) — and returns the confirmed
-    /// choices, or null if cancelled. <paramref name="initialWorkingDirectory"/> pre-fills the folder (AC-85
-    /// reattach: starting a session in an existing worktree), blank leaves it to the operator.
+    /// choices, or null if cancelled. <paramref name="prefill"/> (#AC-96) seeds the dialog's fields — a profile
+    /// by label, a working directory, a session name, a resume id — so a caller that knows some of them offers
+    /// them ready while the operator still confirms and can change every one; null opens it on its own defaults.
+    /// <paramref name="isolateInWorktree"/> additionally turns worktree isolation on for the pre-filled folder —
+    /// the AC-85 reattach case (starting a session in an existing worktree so starting re-owns it), separate from
+    /// <paramref name="prefill"/> because it is a host reattach concern, not one of the plugin-facing prefill fields.
     /// </summary>
-    Task<NewSessionResult?> ShowNewSessionDialogAsync(string? initialWorkingDirectory = null);
+    Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false);
 
     /// <summary>
     /// Opens the managed-worktrees dialog (AC-85): the git worktrees the cockpit created, their state and owner, with

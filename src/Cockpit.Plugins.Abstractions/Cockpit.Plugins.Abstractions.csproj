@@ -87,7 +87,13 @@
          Existing plugins keep compiling (the members are default no-op / null). Additive API — still a minor; the
          major and abstractionsVersion stay 1. (1.14.0/1.15.0 were skipped — AC-96/AC-54 renumbered past AC-116's
          1.13.0 to avoid a version collision.) -->
-    <Version>1.16.0</Version>
+    <!-- 1.17.0 (#AC-96): added the NewSessionPrefill record and ICockpitHost.ShowNewSessionDialogAsync (default-
+         implemented), so a plugin can open the cockpit's New-session dialog pre-filled and get the started session's
+         pane id back through an onStarted callback (or an onCancelled signal) — the operator still confirms every
+         field. Existing plugins keep compiling (the member is default no-op). Additive API — still a minor; the major
+         and abstractionsVersion stay 1. (Renumbered past AC-116's 1.13.0 to avoid a version collision; 1.14.0/1.15.0
+         skipped.) -->
+    <Version>1.17.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

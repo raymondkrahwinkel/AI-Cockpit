@@ -254,6 +254,47 @@ internal sealed class CockpitHost(
             ? managedCli.GetStatusAsync(cliName, cancellationToken)
             : Task.FromResult(new ManagedCliStatus(null, null));
 
+    /// <summary>
+    /// Opens the cockpit's New-session dialog (#AC-96) pre-filled from <paramref name="prefill"/>, on the UI thread,
+    /// and — once the operator confirms — reports the started session's pane id through <paramref name="onStarted"/>,
+    /// or fires <paramref name="onCancelled"/> when they dismiss it or no session started. Exactly one callback runs.
+    /// Routed through <see cref="CockpitViewModel"/> so the session is minted by the app's own launch path (worktree
+    /// isolation, the launch-result recorded for Duplicate) rather than a second, divergent one; a host with no cockpit
+    /// view model reports cancellation, never a silent nothing.
+    /// </summary>
+    public async Task ShowNewSessionDialogAsync(
+        NewSessionPrefill? prefill = null,
+        Action<string>? onStarted = null,
+        Action? onCancelled = null)
+    {
+        string? paneId;
+        try
+        {
+            paneId = await Dispatcher.UIThread.InvokeAsync(() =>
+                services.GetService<CockpitViewModel>() is { } cockpit
+                    ? cockpit.ShowNewSessionDialogForPluginAsync(prefill)
+                    : Task.FromResult<string?>(null));
+        }
+        catch (Exception ex)
+        {
+            // The exactly-one-callback contract has to hold even when the dialog or the launch throws: a plugin that
+            // bridges these callbacks to a TaskCompletionSource would otherwise wait forever. A failure is "nothing
+            // started" — log it and fall through to onCancelled rather than letting the exception drop both callbacks.
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>()
+                .LogError(ex, "Opening the New-session dialog for plugin '{PluginId}' failed", pluginId);
+            paneId = null;
+        }
+
+        if (paneId is not null)
+        {
+            onStarted?.Invoke(paneId);
+        }
+        else
+        {
+            onCancelled?.Invoke();
+        }
+    }
+
     public Task SetSessionStatusline(string paneId, string statusline) =>
         _MutateSessionAsync(paneId, session => session.Statusline = statusline ?? string.Empty);
 
