@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Material.Icons;
@@ -492,10 +493,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
-        // Act as a picker, not a persistent selection: fill the field, then clear the selection so the same
-        // entry can be re-picked and the ComboBox shows its placeholder again.
+        // Act as a picker, not a persistent selection: fill the field, then clear the selection so the same entry can
+        // be re-picked and the dropdown shows its placeholder again. Cleared on the next dispatcher tick, not inline:
+        // setting SelectedItem to null synchronously inside the ComboBox's own selection-changed pass is dropped by
+        // the control, so the pick would stay shown — and after a Browse to another folder it would then be unclear
+        // which path the session uses. Deferring lets the control settle the selection, then empties it.
         WorkingDirectory = value.Path;
-        SelectedRememberedPath = null;
+        Dispatcher.UIThread.Post(() => SelectedRememberedPath = null);
     }
 
     /// <summary>Clears the working directory back to the global default for this session.</summary>
