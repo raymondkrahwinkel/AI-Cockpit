@@ -107,4 +107,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Git worktrees the cockpit created to isolate sessions (AC-85); owned by the worktree-registry store. The source of truth for cleanup, so it outlives the process that made them.</summary>
     public List<WorktreeRegistryEntry> Worktrees { get; set; } = [];
+
+    /// <summary>Worktree settings (AC-85) — the operator's root-location override; owned by the worktree-settings store. Separate from the <see cref="Worktrees"/> registry above.</summary>
+    public WorktreeSettingsEntry? WorktreeSettings { get; set; }
 }

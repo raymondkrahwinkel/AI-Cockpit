@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
 using FluentAssertions;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
 
@@ -273,6 +276,20 @@ public sealed class WorktreeManagerTests : IDisposable
         var reattached = await _manager.ReattachAsync(Path.Combine(_tempRoot, "nope"), Guid.NewGuid().ToString("n"));
 
         reattached.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_PlacesTheWorktreeUnderTheConfiguredRootOverride()
+    {
+        var customRoot = Path.Combine(_tempRoot, "custom-worktree-root");
+        var settings = Substitute.For<IWorktreeSettingsStore>();
+        settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new WorktreeSettings { Root = customRoot });
+        var manager = new WorktreeManager(new WorktreeRegistryStore(Path.Combine(_tempRoot, "override.json")), settings);
+
+        var record = await manager.CreateAsync(_sessionId, "wt", _repo);
+
+        record.Path.Should().StartWith(Path.GetFullPath(customRoot));
+        Directory.Exists(record.Path).Should().BeTrue();
     }
 
     public void Dispose()

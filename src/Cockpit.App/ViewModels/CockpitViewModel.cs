@@ -94,6 +94,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ResourceMonitor? _resourceMonitor;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
+    private readonly IWorktreeSettingsStore? _worktreeSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly IModelCatalog? _modelCatalog;
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
@@ -717,6 +718,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _terminalSettingsStatus = string.Empty;
+
+    /// <summary>The worktree-root override (AC-85); blank uses the default. Bound in Options → Sessions.</summary>
+    [ObservableProperty]
+    private string _worktreeRoot = string.Empty;
+
+    [ObservableProperty]
+    private string _worktreeSettingsStatus = string.Empty;
+
+    /// <summary>The default worktree root, shown as the folder field's placeholder so a blank value clearly means "use the default".</summary>
+    public string WorktreeRootPlaceholder { get; private set; } = string.Empty;
 
     /// <summary>Sentinel item in the font-family dropdown (#40) that switches to a free-text box for any font not in the curated list.</summary>
     public const string CustomFontChoice = "Custom…";
@@ -1925,7 +1936,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ILocalLlmEndpointResolver? localLlmEndpointResolver = null,
         IAudioCaptureService? audioCapture = null,
         IWorktreeManager? worktreeManager = null,
-        WorktreesViewModel? worktrees = null)
+        WorktreesViewModel? worktrees = null,
+        IWorktreeSettingsStore? worktreeSettingsStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1955,6 +1967,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Worktrees.LiveSessionIds = () => Sessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
         Worktrees.ReattachRequested += record => _ = _ReattachSessionAsync(record);
         _ = Worktrees.RefreshCountAsync();
+        _worktreeSettingsStore = worktreeSettingsStore;
+        WorktreeRootPlaceholder = worktreeSettingsStore?.DefaultRoot ?? string.Empty;
+        _ = LoadWorktreeSettingsAsync();
         _audioDeviceProvider = audioDeviceProvider;
         _modelCatalog = modelCatalog;
         _voicePlaybackQueue = voicePlaybackQueue;
@@ -3022,6 +3037,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         });
     }
 
+    private async Task LoadWorktreeSettingsAsync()
+    {
+        if (_worktreeSettingsStore is null)
+        {
+            return;
+        }
+
+        WorktreeRoot = (await _worktreeSettingsStore.LoadAsync()).Root ?? string.Empty;
+    }
+
+    /// <summary>Persists the worktree-root override (AC-85); a blank field clears the override, keeping the default.</summary>
+    [RelayCommand]
+    private async Task SaveWorktreeSettingsAsync()
+    {
+        if (_worktreeSettingsStore is null)
+        {
+            return;
+        }
+
+        var root = string.IsNullOrWhiteSpace(WorktreeRoot) ? null : WorktreeRoot.Trim();
+        await _worktreeSettingsStore.SaveAsync(new WorktreeSettings { Root = root });
+        WorktreeRoot = root ?? string.Empty;
+        WorktreeSettingsStatus = "Saved";
+    }
+
     private async Task LoadTerminalSettingsAsync()
     {
         if (_terminalSettingsStore is null)
@@ -3955,6 +3995,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
         await SaveDebugSettingsCommand.ExecuteAsync(null);
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
+        await SaveWorktreeSettingsCommand.ExecuteAsync(null);
         AllSettingsStatus = "Saved";
     }
 

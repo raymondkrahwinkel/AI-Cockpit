@@ -17,18 +17,26 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private readonly IWorktreeRegistry _registry;
-    private readonly string _worktreesRoot;
+    private readonly Func<CancellationToken, Task<string>> _resolveRoot;
 
-    public WorktreeManager(IWorktreeRegistry registry)
-        : this(registry, CockpitConfigPath.WorktreesRoot)
+    public WorktreeManager(IWorktreeRegistry registry, IWorktreeSettingsStore settings)
     {
+        _registry = registry;
+
+        // Resolved per create, so an override the operator changes in Options takes effect on the next worktree
+        // rather than only on a restart. A blank override keeps the default under the app state root.
+        _resolveRoot = async cancellationToken =>
+        {
+            var root = (await settings.LoadAsync(cancellationToken).ConfigureAwait(false)).Root;
+            return string.IsNullOrWhiteSpace(root) ? CockpitConfigPath.WorktreesRoot : Path.GetFullPath(root);
+        };
     }
 
-    /// <summary>Test seam: place the worktrees under an arbitrary root instead of the app state directory.</summary>
+    /// <summary>Test seam: place the worktrees under an arbitrary fixed root instead of the app state directory.</summary>
     internal WorktreeManager(IWorktreeRegistry registry, string worktreesRoot)
     {
         _registry = registry;
-        _worktreesRoot = worktreesRoot;
+        _resolveRoot = _ => Task.FromResult(worktreesRoot);
     }
 
     public async Task<GitRepositoryInfo?> DetectRepositoryAsync(string directory, CancellationToken cancellationToken = default)
@@ -67,7 +75,8 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             ?? throw new InvalidOperationException(
                 $"'{directory}' is not inside a git repository with a commit, so it cannot be isolated in a worktree.");
 
-        var worktreePath = _ResolveWorktreePath(repository.Root, sessionId, branch);
+        var worktreesRoot = await _resolveRoot(cancellationToken).ConfigureAwait(false);
+        var worktreePath = _ResolveWorktreePath(worktreesRoot, repository.Root, sessionId, branch);
 
         // The worktree must never live inside the repository it checks out — that pollutes the working tree it is
         // meant to keep clean and risks git tracking its own worktree. The state root is always elsewhere, so this
@@ -264,7 +273,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         }
     }
 
-    private string _ResolveWorktreePath(string repositoryRoot, string sessionId, string branch)
+    private static string _ResolveWorktreePath(string worktreesRoot, string repositoryRoot, string sessionId, string branch)
     {
         // Grouped per repository (a short stable hash of its root) so one repository's worktrees stay together and a
         // `git worktree list` cleanup is simple; the leaf carries a readable branch fragment plus the session id, so
@@ -274,7 +283,7 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         var shortId = _ShortId(sessionId);
         var leaf = slug.Length > 0 ? $"{slug}-{shortId}" : shortId;
 
-        return Path.GetFullPath(Path.Combine(_worktreesRoot, repositoryFolder, leaf));
+        return Path.GetFullPath(Path.Combine(worktreesRoot, repositoryFolder, leaf));
     }
 
     // No ticket is bound to a session at start yet, so the branch is a readable slug plus the session's own short id
