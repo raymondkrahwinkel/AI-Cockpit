@@ -254,12 +254,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         : "Pick a Git repository to enable isolation";
 
     /// <summary>
-    /// Whether to show the isolation control — for any session that runs in a working directory (SDK or TTY alike;
-    /// isolation is resolved once for both kinds). Hidden only for a local HTTP provider (Ollama/LM Studio), which
-    /// spawns no process and so has no working tree to isolate. Shown greyed with a hint until the folder is a git
-    /// repository (§4), so the option is discoverable rather than appearing only once a repo is picked.
+    /// Whether to show the isolation control — only once the chosen folder is actually a git repository (Raymond
+    /// 2026-07-19: appear when it applies, not greyed-out beforehand). Also gated to a process-spawning provider: a
+    /// local HTTP provider (Ollama/LM Studio) spawns no process and so has no working tree to isolate.
     /// </summary>
-    public bool ShowWorktreeIsolation => SelectedProfile is not null && !IsLocalProfile;
+    public bool ShowWorktreeIsolation => SelectedProfile is not null && !IsLocalProfile && IsWorkingDirectoryGitRepo;
 
     // Each working-directory change supersedes the last detection. A manager-less design-time VM reports no repo, so
     // the option simply never enables in the previewer.
@@ -306,6 +305,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanIsolateInWorktree));
         OnPropertyChanged(nameof(WorktreeStatusText));
+        OnPropertyChanged(nameof(ShowWorktreeIsolation));
     }
 
     [ObservableProperty]
