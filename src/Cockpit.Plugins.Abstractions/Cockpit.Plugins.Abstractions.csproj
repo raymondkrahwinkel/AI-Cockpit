@@ -70,13 +70,13 @@
          the plugin's own settings (ShowSettingsAsync) or runs any action it assigns. The icon names a bundled
          MaterialIconKind (like PluginSessionAction's IconKind, AC-33). Existing plugins keep compiling (the member is
          default no-op). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <!-- 1.15.0 (#AC-54): added SessionUsageSnapshot (the selected session's ctx/5h/wk figures plus its profile label)
+    <!-- 1.18.0 (#AC-54): added SessionUsageSnapshot (the selected session's ctx/5h/wk figures plus its profile label)
          and ICockpitSessionObserver.ActiveSessionUsage/ActiveSessionUsageChanged — the plugin-facing read surface over
          a session's live usage, so a widget can chart it over time. Both are default-implemented (the property returns
          null, the event is a no-op add/remove), so existing observers and test fakes keep compiling. Jumps from 1.12.0
          past the in-flight 1.13.0/1.14.0 (AC-95/AC-96) to the next free minor above them; a merge-time collision is
          reconciled then. Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.15.0</Version>
+    <Version>1.18.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
