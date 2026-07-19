@@ -18,6 +18,19 @@ internal sealed class FakeDockerEngine : IDockerEngine
 
     public IReadOnlyList<DockerImage> Images { get; set; } = [];
 
+    public ContainerInspection InspectValue { get; set; } =
+        new("id", "web", "nginx:latest", "running", 0, "healthy", ["A=1"], [], []);
+
+    public ContainerStats StatsValue { get; set; } = new(12.5, 1000, 2000, 10, 20, 30, 40);
+
+    public ContainerProcesses TopValue { get; set; } = new(["PID", "CMD"], [["1", "nginx"]]);
+
+    public IReadOnlyList<DockerVolume> Volumes { get; set; } = [];
+
+    public IReadOnlyList<DockerNetwork> Networks { get; set; } = [];
+
+    public PruneResult PruneValue { get; set; } = new(4096, ["abc"]);
+
     /// <summary>When set, every call throws it — to exercise the sanitized-error path.</summary>
     public Exception? Throw { get; set; }
 
@@ -29,6 +42,9 @@ internal sealed class FakeDockerEngine : IDockerEngine
     public List<RunSpec> Runs { get; } = [];
     public List<(string Id, int Tail)> LogReads { get; } = [];
     public List<string> Pulled { get; } = [];
+    public List<(string Name, bool Force)> RemovedVolumes { get; } = [];
+    public List<PruneTarget> Pruned { get; } = [];
+    public List<(string Source, string Target)> Tagged { get; } = [];
 
     public Task<DockerDaemonInfo> GetInfoAsync(CancellationToken cancellationToken)
     {
@@ -101,6 +117,57 @@ internal sealed class FakeDockerEngine : IDockerEngine
     {
         _Guard();
         Pulled.Add(image);
+        return Task.CompletedTask;
+    }
+
+    public Task<ContainerInspection> InspectContainerAsync(string id, CancellationToken cancellationToken)
+    {
+        _Guard();
+        return Task.FromResult(InspectValue);
+    }
+
+    public Task<ContainerStats> GetContainerStatsAsync(string id, CancellationToken cancellationToken)
+    {
+        _Guard();
+        return Task.FromResult(StatsValue);
+    }
+
+    public Task<ContainerProcesses> TopContainerAsync(string id, CancellationToken cancellationToken)
+    {
+        _Guard();
+        return Task.FromResult(TopValue);
+    }
+
+    public Task<IReadOnlyList<DockerVolume>> ListVolumesAsync(CancellationToken cancellationToken)
+    {
+        _Guard();
+        return Task.FromResult(Volumes);
+    }
+
+    public Task RemoveVolumeAsync(string name, bool force, CancellationToken cancellationToken)
+    {
+        _Guard();
+        RemovedVolumes.Add((name, force));
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<DockerNetwork>> ListNetworksAsync(CancellationToken cancellationToken)
+    {
+        _Guard();
+        return Task.FromResult(Networks);
+    }
+
+    public Task<PruneResult> PruneAsync(PruneTarget target, CancellationToken cancellationToken)
+    {
+        _Guard();
+        Pruned.Add(target);
+        return Task.FromResult(PruneValue);
+    }
+
+    public Task TagImageAsync(string source, string target, CancellationToken cancellationToken)
+    {
+        _Guard();
+        Tagged.Add((source, target));
         return Task.CompletedTask;
     }
 
