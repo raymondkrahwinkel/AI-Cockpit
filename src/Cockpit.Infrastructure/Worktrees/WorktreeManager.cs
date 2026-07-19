@@ -91,6 +91,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
         // -b, never -B: an already-existing branch is a hard failure, not a silent reset of that branch's history
         // onto a new base. --lock holds the worktree against a prune sweep for as long as the session owns it.
+        // Submodules are not auto-populated here: `git worktree add` has no --recurse-submodules option (verified
+        // against git 2.55, contrary to the design note), so a repository that uses submodules needs a
+        // `git submodule update --init` inside the worktree — a documented limitation, not a common case.
         await GitCli.RunCheckedAsync(
             repository.Root,
             ["worktree", "add", "--lock", "--reason", $"cockpit session {sessionId}", "-b", branch, worktreePath, repository.HeadCommit],
@@ -182,6 +185,26 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         await GitCli.RunCheckedAsync(record.RepositoryRoot, arguments, cancellationToken).ConfigureAwait(false);
 
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
+        _TryRemoveEmptyParentDirectory(record.Path);
+    }
+
+    // The per-repository grouping folder (<worktreesRoot>/<repo-hash>/) is left behind empty once its last worktree
+    // is removed; git removes the worktree leaf, not the folder above it. Sweep it so finished repositories do not
+    // accumulate empty directories. Best-effort and only when empty — never touches a folder still holding a sibling.
+    private static void _TryRemoveEmptyParentDirectory(string worktreePath)
+    {
+        try
+        {
+            var parent = Path.GetDirectoryName(worktreePath);
+            if (parent is not null && Directory.Exists(parent) && !Directory.EnumerateFileSystemEntries(parent).Any())
+            {
+                Directory.Delete(parent);
+            }
+        }
+        catch (Exception)
+        {
+            // An empty folder we could not remove is untidy, not dangerous.
+        }
     }
 
     public async Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default)
