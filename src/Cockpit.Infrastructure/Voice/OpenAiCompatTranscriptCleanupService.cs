@@ -17,6 +17,13 @@ namespace Cockpit.Infrastructure.Voice;
 /// Cockpit-DotNet-Voice-Stack-2026-07-07.md §4): too-short input skips the call entirely, and any failure or
 /// suspicious-looking output falls back to the raw transcript rather than surfacing an error or risking a
 /// hallucinated result reaching the session.
+/// <para>
+/// The call is bounded on three axes so a local server can never stall the voice pipeline (measured against LM
+/// Studio 2026-07-19): a hard <c>MaxOutputTokens</c> cap (one uncapped generation held the server's single
+/// generation slot for 84s while everything queued behind it — and cancelling the client does not stop the
+/// server generating, so capping is the real fix), a per-call timeout that falls back to the raw text, and a
+/// single-flight gate so the app never fires overlapping calls that just pile up in the server's queue.
+/// </para>
 /// </summary>
 internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory chatClientFactory, IVoiceSettingsStore settingsStore, ILocalLlmEndpointResolver endpointResolver, ILogger<OpenAiCompatTranscriptCleanupService> logger)
     : ITranscriptCleanupService, ISingletonService
@@ -26,6 +33,21 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         "where a pause implies it, remove filler words (uh, um, you know), add a question mark for " +
         "questions. Keep the original language and meaning exactly — do not translate, summarize, or " +
         "add content. Reply with only the cleaned text, nothing else.";
+
+    // STT cleanup blocks the transcript reaching the input box, so it runs on a tighter leash than read-aloud,
+    // which the operator is only listening to. Both are generous enough for a warm generation plus a one-off
+    // just-in-time model load, and short enough that a wedged server degrades to the fallback quickly.
+    private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan SpeechTimeout = TimeSpan.FromSeconds(20);
+
+    // A turn-start acknowledgement is only worth speaking if it is near-instant; past a few seconds the preset
+    // phrase would have been the better call, so time out fast and let the caller fall back.
+    private static readonly TimeSpan AckTimeout = TimeSpan.FromSeconds(4);
+
+    // One shared local server serves every voice-LLM call and generates one response at a time; overlapping
+    // calls only stack in its queue. Serializing here keeps the app from adding to that pile-up — a timeout or
+    // barge-in on the in-flight call frees the slot for the next.
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     private static string SpeechPrompt(string readAloudLanguage) =>
         "You turn assistant text into what a person would say out loud when explaining it to someone. " +
@@ -46,6 +68,12 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         "with [[nl]] before Dutch text and [[en]] before English text, switching the marker whenever the language " +
         "changes, even for a single word or phrase. Begin with the marker for the first language. Reply with only " +
         "the marked spoken summary — no preamble, no quotes, no bullet lists.";
+
+    private static string AckPrompt(string readAloudLanguage) =>
+        "You briefly acknowledge, in one short spoken sentence, that you are about to start on the user's request — " +
+        "like \"Let me take a look\" or \"I'll figure that out\". Do not answer the request, ask anything, restate it, " +
+        "or explain; only acknowledge that you are starting. " + _LanguageDirective(readAloudLanguage) + " Reply with " +
+        "only the one sentence — no preamble, no quotes.";
 
     // The read-aloud preferred-language nudge: lean to the operator's chosen base language while keeping code,
     // names and genuinely foreign phrases in their own language (still tagged, so they are pronounced right).
@@ -70,7 +98,7 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         try
         {
             // Temperature 0 + a fixed seed: cleanup must be deterministic, so the same utterance is typed the same way.
-            var cleaned = (await _CompleteAsync(settings, SystemPrompt, $"Input: {rawText}\nOutput:", temperature: 0, cancellationToken)
+            var cleaned = (await _CompleteAsync(settings, SystemPrompt, $"Input: {rawText}\nOutput:", temperature: 0, _EstimateOutputCap(rawText.Length, divisor: 3, min: 64, max: 1024), CleanupTimeout, cancellationToken)
                 .ConfigureAwait(false)).Trim();
 
             if (TranscriptCleanupGuard.IsSuspicious(rawText, cleaned, Options))
@@ -81,11 +109,17 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
 
             return cleaned;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or ClientResultException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Server down/unreachable/timed out or returned malformed JSON — the documented fallback is
-            // the raw transcript, never an error surfaced to the operator (spec: "bij twijfel/down →
-            // rauwe transcript"). LM Studio answering 404 to a path it does not serve lands here too.
+            // The caller cancelled (a barge-in / the session going away) — propagate rather than pass off the
+            // raw transcript as a completed cleanup.
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
+        {
+            // Server down/unreachable, our own timeout, or malformed JSON — the documented fallback is the raw
+            // transcript, never an error surfaced to the operator (spec: "bij twijfel/down → rauwe transcript").
+            // LM Studio answering 404 to a path it does not serve lands here too.
             logger.LogWarning(ex, "Transcript cleanup unavailable; using raw transcript");
             return rawText;
         }
@@ -103,11 +137,15 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         try
         {
             // A little warmth for natural phrasing, but seeded so the same reply reads the same way.
-            var spoken = (await _CompleteAsync(settings, SpeechPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken:", temperature: 0.3, cancellationToken)
+            var spoken = (await _CompleteAsync(settings, SpeechPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken:", temperature: 0.3, _EstimateOutputCap(text.Length, divisor: 3, min: 64, max: 1024), SpeechTimeout, cancellationToken)
                 .ConfigureAwait(false)).Trim();
             return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or ClientResultException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
         {
             logger.LogWarning(ex, "Read-aloud naturalization unavailable; using the original text");
             return text;
@@ -126,36 +164,85 @@ internal sealed class OpenAiCompatTranscriptCleanupService(IChatClientFactory ch
         try
         {
             // A little warmth for natural phrasing, but seeded so the same reply summarizes the same way.
-            var spoken = (await _CompleteAsync(settings, SummaryPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken summary:", temperature: 0.3, cancellationToken)
+            var spoken = (await _CompleteAsync(settings, SummaryPrompt(settings.ReadAloudLanguage), $"Text: {text}\nSpoken summary:", temperature: 0.3, _EstimateOutputCap(text.Length, divisor: 6, min: 48, max: 512), SpeechTimeout, cancellationToken)
                 .ConfigureAwait(false)).Trim();
             return string.IsNullOrWhiteSpace(spoken) ? text : spoken;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or ClientResultException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
         {
             logger.LogWarning(ex, "Read-aloud summarization unavailable; using the original text");
             return text;
         }
     }
 
+    public async Task<string> AcknowledgeForSpeechAsync(string userMessage, CancellationToken cancellationToken = default)
+    {
+        var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            // A little warmth so it does not read robotically; capped tiny and timed out fast — a preset phrase is
+            // the fallback, so there is no reason to wait on a slow server for a nicety.
+            return (await _CompleteAsync(settings, AckPrompt(settings.ReadAloudLanguage), $"Request: {userMessage}\nAcknowledgement:", temperature: 0.6, maxOutputTokens: 24, AckTimeout, cancellationToken)
+                .ConfigureAwait(false)).Trim();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or ClientResultException)
+        {
+            logger.LogWarning(ex, "Turn acknowledgement generation unavailable; falling back to a preset phrase");
+            return "";
+        }
+    }
+
     /// <summary>
     /// One non-streaming chat completion against the configured local server's OpenAI-compatible endpoint via the
     /// shared <see cref="IChatClientFactory"/> (the OpenAI SDK, which Ollama and LM Studio both accept). The
-    /// resolver auto-detects the running server + a model on it, or hands back the configured fallback.
+    /// resolver auto-detects the running server + a model on it, or hands back the configured fallback. Serialized
+    /// behind <see cref="_gate"/> and bounded by <paramref name="timeout"/> and <paramref name="maxOutputTokens"/>
+    /// so a slow or runaway generation can neither stall the pipeline nor pin the server's single slot.
     /// </summary>
-    private async Task<string> _CompleteAsync(VoiceSettings settings, string systemPrompt, string userPrompt, double temperature, CancellationToken cancellationToken)
+    private async Task<string> _CompleteAsync(VoiceSettings settings, string systemPrompt, string userPrompt, double temperature, int maxOutputTokens, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var endpoint = await endpointResolver.ResolveAsync(settings, cancellationToken).ConfigureAwait(false);
-        var chatClient = chatClientFactory.CreateForEndpoint(endpoint.BaseUrl, endpoint.Model);
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        var messages = new List<ChatMessage>
+        // The gate wait shares the linked token, so a call that only ever waits behind a slow one still gives up
+        // at the timeout (and falls back) instead of queuing unboundedly.
+        await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
+        try
         {
-            new(ChatRole.System, systemPrompt),
-            new(ChatRole.User, userPrompt),
-        };
-        // Seeded so the same input reads the same way; temperature is 0 for cleanup, a little warmth for speech.
-        var options = new ChatOptions { Temperature = (float)temperature, Seed = 42 };
+            var endpoint = await endpointResolver.ResolveAsync(settings, linked.Token).ConfigureAwait(false);
+            var chatClient = chatClientFactory.CreateForEndpoint(endpoint.BaseUrl, endpoint.Model);
 
-        var response = await chatClient.GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
-        return response.Text;
+            var messages = new List<ChatMessage>
+            {
+                new(ChatRole.System, systemPrompt),
+                new(ChatRole.User, userPrompt),
+            };
+            // Seeded so the same input reads the same way; temperature is 0 for cleanup, a little warmth for speech.
+            var options = new ChatOptions { Temperature = (float)temperature, Seed = 42, MaxOutputTokens = maxOutputTokens };
+
+            var response = await chatClient.GetResponseAsync(messages, options, linked.Token).ConfigureAwait(false);
+            return response.Text;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
+
+    /// <summary>
+    /// A token ceiling for one voice-LLM call: roughly four characters per token, scaled by <paramref name="divisor"/>
+    /// (cleanup/naturalize track the input length, a summary is shorter), then clamped. The clamp is the point —
+    /// it caps generation regardless of input so a model that ignores "reply with only…" cannot run for minutes.
+    /// </summary>
+    private static int _EstimateOutputCap(int inputChars, int divisor, int min, int max)
+        => Math.Clamp(inputChars / divisor, min, max);
 }
