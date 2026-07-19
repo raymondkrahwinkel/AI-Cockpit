@@ -1,3 +1,4 @@
+using System.Text;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugin.Kubernetes.Model;
@@ -202,17 +203,34 @@ internal sealed class ClusterAccessGate(ICockpitHost host)
             : GateResult.Deny($"The operator did not approve this action on cluster \"{cluster.Label}\".");
     }
 
-    // Neutralize control characters (newlines, tabs, other C0/C1) in an operation string built partly from
-    // agent-supplied, untrusted fields, so the verbatim consent Action stays a single readable line.
-    private static string _SingleLine(string operation) =>
-        string.Create(operation.Length, operation, static (span, source) =>
+    // Rendered verbatim to the operator; parts (a pod name, a command, a patch) are agent-supplied. Escape line
+    // breaks and tabs VISIBLY (so a multi-line command reads as multi-line and cannot be disguised as commented-out
+    // — echo hi #harmless\nrm -rf /data must not collapse to one reassuring line) and neutralize every other control
+    // character, keeping the consent body a single bounded line. Mirrors the Docker plugin's DockerAccessGate (AC-92).
+    private static string _SingleLine(string operation)
+    {
+        var builder = new StringBuilder(operation.Length);
+        foreach (var character in operation)
         {
-            for (var i = 0; i < source.Length; i++)
+            switch (character)
             {
-                var character = source[i];
-                span[i] = char.IsControl(character) ? ' ' : character;
+                case '\n':
+                    builder.Append("\\n");
+                    break;
+                case '\r':
+                    builder.Append("\\r");
+                    break;
+                case '\t':
+                    builder.Append("\\t");
+                    break;
+                default:
+                    builder.Append(char.IsControl(character) ? ' ' : character);
+                    break;
             }
-        });
+        }
+
+        return builder.ToString();
+    }
 
     private static bool _IsCapabilityEnabled(ClusterRegistration cluster, DangerCapability capability) => capability switch
     {

@@ -149,7 +149,7 @@ public class ClusterAccessGateTests
     }
 
     [Fact]
-    public async Task ConsentAction_FlattensControlCharacters_SoAgentFieldsCannotForgeExtraLines()
+    public async Task ConsentAction_EscapesControlCharactersVisibly_SoAgentFieldsCannotForgeExtraLines()
     {
         var host = _Host(ConsentOutcome.Approved, out var asked);
         var gate = new ClusterAccessGate(host);
@@ -158,8 +158,25 @@ public class ClusterAccessGateTests
 
         var danger = _WithScopePrefix(asked, "k8s.exec:");
         danger.Should().NotBeNull();
-        danger!.Action.Should().NotContain("\n").And.NotContain("\r", "the verbatim Action must stay a single line an agent cannot pad");
-        danger.Action.Should().Contain("routine health-check", "the text is kept, only flattened onto one line");
+        danger!.Action.Should().NotContain("\n").And.NotContain("\r", "the verbatim Action must stay a single line an agent cannot pad with raw breaks");
+        danger.Action.Should().Contain("\\n", "a line break is shown visibly, not collapsed to a space");
+        danger.Action.Should().Contain("routine health-check", "the text is kept, only the breaks are escaped");
+    }
+
+    [Fact]
+    public async Task ConsentAction_DoesNotLetASecondLineMasqueradeAsAComment()
+    {
+        // AC-92: a raw newline flattened to a space turns "echo hi #harmless\nrm -rf /data" into one line that reads
+        // as commented-out while the apiserver still runs line 2. Visibly escaping the break keeps that impossible.
+        var host = _Host(ConsentOutcome.Approved, out var asked);
+        var gate = new ClusterAccessGate(host);
+
+        await gate.AuthorizeDangerAsync(_Cluster(["default"], exec: true), DangerCapability.Exec, "default", "echo hi #harmless\nrm -rf /data", PaneId);
+
+        var danger = _WithScopePrefix(asked, "k8s.exec:");
+        danger.Should().NotBeNull();
+        danger!.Action.Should().NotContain("#harmless rm -rf /data", "the newline must not collapse to a space that reads the destructive line as a comment");
+        danger.Action.Should().Contain("#harmless\\nrm -rf /data", "the break is shown so the operator sees a second, real command line");
     }
 
     [Fact]
