@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions;
 /// switch, always-allow rule persistence) have no equivalent in the narrow interface and are deliberate no-ops
 /// here, gated off in the UI by <see cref="Capabilities"/> reporting them unsupported.
 /// </summary>
-internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null) : ISessionDriver
+internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, PluginSessionCapabilities pluginCapabilities, McpAuthKey authKey, IMcpServerCatalog? mcpServerCatalog = null, ILogger<PluginSessionDriverAdapter>? logger = null, SessionMcpKeyring? keyring = null) : ISessionDriver
 {
     // Live model switch / plan mode / thinking budget have no equivalent on the narrow IPluginSessionDriver
     // surface (no members could back them — see PluginSessionCapabilities) — always unsupported here rather
@@ -96,7 +96,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
         // choice is what let a profile's stale default run a write tool ungated.
         var options = _MergePermissionMode(launchOptions, permissionMode);
-        var environment = _SpawnEnvironment(profile);
+        var environment = _SpawnEnvironment(profile, launchOptions);
         await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken).ConfigureAwait(false);
     }
 
@@ -107,11 +107,18 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     /// dropped here, the same rule the TTY route applies, so no plugin has to be trusted to apply it. Dropping is
     /// logged by name, never by value.
     /// </summary>
-    private IReadOnlyDictionary<string, string> _SpawnEnvironment(SessionProfile? profile)
+    private IReadOnlyDictionary<string, string> _SpawnEnvironment(SessionProfile? profile, IReadOnlyDictionary<string, string>? launchOptions)
     {
+        // AC-89: hand a session that has a pane id (the App passes it as the cockpit.pane-id launch option) its own
+        // per-session token as COCKPIT_MCP_KEY instead of the shared app key, so the consent broker can attribute a
+        // request to the real session rather than trust the id the agent declares. No pane id (or no keyring in a test
+        // graph) falls back to the shared key.
+        var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
+        var mcpKey = keyring is not null && !string.IsNullOrEmpty(paneId) ? keyring.TokenFor(paneId) : authKey.Value;
+
         var environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [WellKnownSessionEnvironment.CockpitMcpKey] = authKey.Value,
+            [WellKnownSessionEnvironment.CockpitMcpKey] = mcpKey,
         };
 
         if (profile?.EnvironmentVariables is not { Count: > 0 } variables)

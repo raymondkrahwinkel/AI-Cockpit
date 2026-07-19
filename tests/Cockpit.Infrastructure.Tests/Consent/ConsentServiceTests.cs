@@ -1,5 +1,6 @@
 using Cockpit.Core.Abstractions.Consent;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 using FluentAssertions;
 using NSubstitute;
@@ -246,5 +247,62 @@ public sealed class ConsentServiceTests
 
         entries.Should().ContainSingle();
         entries[0].Action.Should().Be(ConsentAuditAction.Denied);
+    }
+
+    /// <summary>
+    /// AC-89: the remember scope keys on the transport-verified session, not the id the agent declares. Another pane's
+    /// agent that forges a remembered pane's id in the request is re-prompted anyway, because the broker overrides the
+    /// declared id with the pane the request actually came from (the ambient <c>McpRequestContext</c>).
+    /// </summary>
+    [Fact]
+    public async Task RequestConsentAsync_ScopesRememberOnTheVerifiedSession_NotTheAgentDeclaredId()
+    {
+        var broker = CreateBroker();
+        var prompts = new List<ConsentPrompt>();
+        broker.PromptOpened += (_, prompt) =>
+        {
+            prompts.Add(prompt);
+            broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: true);
+        };
+
+        // The agent always declares the same id ("P1") in the request — the exploit is a second pane claiming it.
+        var request = Request(ConsentRisk.LowRisk, allowRemember: true, paneId: "P1", scope: "k8s.namespace:prod:kube-system");
+        try
+        {
+            McpRequestContext.Set("P1");
+            await broker.RequestConsentAsync(request);            // real P1: approved and remembered under P1
+            McpRequestContext.Set("P1");
+            await broker.RequestConsentAsync(request);            // real P1 again: rides its own remembered approval
+
+            McpRequestContext.Set("P2");
+            var forged = await broker.RequestConsentAsync(request); // P2 forging session:"P1" — must be asked afresh
+
+            prompts.Should().HaveCount(2, "P1 was remembered once; the P2 request cannot ride it, so it prompts again");
+            forged.IsApproved.Should().BeTrue("it was approved — but only after asking, not silently on P1's remember");
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
+    /// <summary>Off the verified path (the in-process tool loop, UI-side consent), the identity is null and the request is used as declared — the previous behaviour.</summary>
+    [Fact]
+    public async Task RequestConsentAsync_WithNoVerifiedIdentity_UsesTheDeclaredId()
+    {
+        var broker = CreateBroker();
+        var prompts = new List<ConsentPrompt>();
+        broker.PromptOpened += (_, prompt) =>
+        {
+            prompts.Add(prompt);
+            broker.Respond(prompt.Id, ConsentOutcome.Approved, remember: true);
+        };
+
+        var request = Request(ConsentRisk.LowRisk, allowRemember: true, paneId: "P1", scope: "k8s.namespace:prod:kube-system");
+        McpRequestContext.Set(null);
+        await broker.RequestConsentAsync(request);
+        await broker.RequestConsentAsync(request);
+
+        prompts.Should().ContainSingle("with no verified identity the declared id keys the remember, so the second is skipped");
     }
 }

@@ -34,6 +34,7 @@ public class CockpitInternalMcpProviderTests
             endpoints: [],
             services: new ServiceCollection().BuildServiceProvider(),
             authKey: new McpAuthKey(),
+            keyring: new SessionMcpKeyring(),
             loggerFactory: NullLoggerFactory.Instance);
 
         // Nothing mounted yet: the fan-out sees no cockpit-hosted server.
@@ -62,6 +63,7 @@ public class CockpitInternalMcpProviderTests
         var server = new OrchestratorMcpServer(
             Substitute.For<IDelegationService>(),
             new McpAuthKey(),
+            new SessionMcpKeyring(),
             store,
             NullLoggerFactory.Instance);
 
