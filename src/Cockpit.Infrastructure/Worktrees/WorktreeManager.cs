@@ -99,6 +99,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         return record;
     }
 
+    public Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, CancellationToken cancellationToken = default) =>
+        CreateAsync(sessionId, _BuildBranchName(sessionLabel, sessionId), directory, cancellationToken);
+
     public Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default) =>
         _registry.ListAsync(cancellationToken);
 
@@ -144,6 +147,16 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         var leaf = slug.Length > 0 ? $"{slug}-{shortId}" : shortId;
 
         return Path.GetFullPath(Path.Combine(_worktreesRoot, repositoryFolder, leaf));
+    }
+
+    // No ticket is bound to a session at start yet, so the branch is a readable slug plus the session's own short id
+    // (§10.5.4) — the id, not a timestamp, because two sessions started in the same second under one label would
+    // otherwise collide on the name and git's -b would refuse the second. Ticket-based naming lands when a session
+    // carries a linked ticket.
+    private static string _BuildBranchName(string? sessionLabel, string sessionId)
+    {
+        var slug = _Slug(sessionLabel ?? string.Empty);
+        return $"cockpit/{(slug.Length > 0 ? slug : "session")}-{_ShortId(sessionId)}";
     }
 
     private static string _ShortHash(string value)

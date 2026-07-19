@@ -24,6 +24,13 @@ public interface IWorktreeManager
     /// </summary>
     Task<WorktreeRecord> CreateAsync(string sessionId, string branch, string directory, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates a worktree for a session, generating a collision-free branch name from <paramref name="sessionLabel"/>
+    /// and <paramref name="sessionId"/> (AC-85) — the convenience both the SDK/headless start path and the TTY launch
+    /// path use, so branch naming lives in one place rather than each caller inventing its own.
+    /// </summary>
+    Task<WorktreeRecord> CreateForSessionAsync(string sessionId, string? sessionLabel, string directory, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
