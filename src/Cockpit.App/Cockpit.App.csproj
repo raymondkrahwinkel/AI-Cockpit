@@ -89,6 +89,11 @@
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.Clock\Cockpit.Plugin.Clock.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The usage-trend widget (AC-54): bundled beside the clock so the ctx/5h/wk trend is there out of the box,
+         and it exercises the AC-54 read surface (ICockpitSessionObserver.ActiveSessionUsage) from a real plugin. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.UsageTrend\Cockpit.Plugin.UsageTrend.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
     <!-- Claude as a provider plugin (Fase 4): Claude used to be a core feature and is now a plugin like the
          others here, so an operator gets it out of the box. Both its routes register — the interactive TUI (TTY)
          and the headless SDK route, whose tool approvals ride the control protocol in-band. -->
@@ -139,6 +144,16 @@
         <LogicalName>bundled-plugins/clock/plugin.json</LogicalName>
       </EmbeddedResource>
 
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.dll">
+        <LogicalName>bundled-plugins/usage-trend/Cockpit.Plugin.UsageTrend.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.deps.json">
+        <LogicalName>bundled-plugins/usage-trend/Cockpit.Plugin.UsageTrend.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\plugin.json">
+        <LogicalName>bundled-plugins/usage-trend/plugin.json</LogicalName>
+      </EmbeddedResource>
+
       <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll">
         <LogicalName>bundled-plugins/claude-provider/Cockpit.Plugin.ClaudeProvider.dll</LogicalName>
       </EmbeddedResource>
@@ -162,6 +177,9 @@
       <ClockFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.dll;
                            $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.Clock.deps.json;
                            $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.Clock\plugin.json" />
+      <UsageTrendFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.dll;
+                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.deps.json;
+                               $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\plugin.json" />
       <ClaudeProviderFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.deps.json;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\plugin.json" />
@@ -169,6 +187,7 @@
     <Copy SourceFiles="@(TranscriptSearchFiles)" DestinationFolder="$(OutDir)bundled-plugins\transcript-search" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(OutDir)bundled-plugins\git-status" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(OutDir)bundled-plugins\clock" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(OutDir)bundled-plugins\usage-trend" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(OutDir)bundled-plugins\claude-provider" SkipUnchangedFiles="true" />
 
     <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a
@@ -178,6 +197,8 @@
     <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(PublishDir)bundled-plugins\git-status"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(PublishDir)bundled-plugins\clock"
+          SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
+    <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(PublishDir)bundled-plugins\usage-trend"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(PublishDir)bundled-plugins\claude-provider"
           SkipUnchangedFiles="true" Condition="'$(PublishDir)' != ''" />

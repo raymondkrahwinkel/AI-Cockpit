@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The usage-trend widget for a Dashboard workspace (AC-54): charts the ctx / 5h / wk usage the session header
+       shows as now-values, but over time and per profile, from history it samples and keeps itself. Bundled like
+       the clock so the trend is there out of the box, and it proves the AC-54 read surface end to end from outside
+       the host — a widget reads a session's live usage through ICockpitSessionObserver.ActiveSessionUsage.
+       Built OUTSIDE Cockpit.slnx (plugins-dev/) like the other example plugins. Shared assemblies are
+       compile-only (Private=false / ExcludeAssets=runtime) so the host's copies load and shared types keep one
+       identity — the plugin folder ships only its own DLL + plugin.json. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cockpit.Plugin.UsageTrend.Tests" />
+  </ItemGroup>
+
+</Project>

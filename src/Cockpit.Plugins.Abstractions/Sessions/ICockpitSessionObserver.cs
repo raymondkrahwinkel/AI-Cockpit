@@ -25,10 +25,31 @@ public interface ICockpitSessionObserver
     string? ActivePaneId => null;
 
     /// <summary>
+    /// The selected session's current usage — how full its context window is, the windows it reports, and its
+    /// profile label (AC-54) — or <see langword="null"/> when nothing is selected, or on a host that predates this
+    /// member. The plugin-facing mirror of the header's usage pill: a widget reads it (and re-reads it on
+    /// <see cref="ActiveSessionUsageChanged"/>) to chart usage over time without the host knowing what the widget
+    /// shows. A snapshot with all-null figures (<see cref="SessionUsageSnapshot.HasAny"/> false) means the session
+    /// has not reported usage yet — a silence to skip, not a zero to record.
+    /// </summary>
+    SessionUsageSnapshot? ActiveSessionUsage => null;
+
+    /// <summary>
     /// Raised when the selected session changes, or when the selected session's working directory first
     /// becomes known — the cue to re-read <see cref="ActiveSessionWorkingDirectory"/> and re-scope.
     /// </summary>
     event EventHandler? ActiveSessionChanged;
+
+    /// <summary>
+    /// Raised when <see cref="ActiveSessionUsage"/> moves — the selection changed, or the selected session's
+    /// context/rate-limit figures updated — so a usage widget re-reads and samples. A no-op add/remove on a host
+    /// that predates this member, so a subscribing plugin keeps compiling and simply never hears from it.
+    /// </summary>
+    event EventHandler? ActiveSessionUsageChanged
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>
     /// Raised for each chunk of text a session produces (assistant text and tool output), carrying the

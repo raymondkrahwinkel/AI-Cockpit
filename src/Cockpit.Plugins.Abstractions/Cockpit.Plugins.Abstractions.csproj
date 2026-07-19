@@ -93,7 +93,13 @@
          field. Existing plugins keep compiling (the member is default no-op). Additive API — still a minor; the major
          and abstractionsVersion stay 1. (Renumbered past AC-116's 1.13.0 to avoid a version collision; 1.14.0/1.15.0
          skipped.) -->
-    <Version>1.17.0</Version>
+    <!-- 1.18.0 (#AC-54): added SessionUsageSnapshot (the selected session's ctx/5h/wk figures plus its profile label)
+         and ICockpitSessionObserver.ActiveSessionUsage/ActiveSessionUsageChanged — the plugin-facing read surface over
+         a session's live usage, so a widget can chart it over time. Both are default-implemented (the property returns
+         null, the event is a no-op add/remove), so existing observers and test fakes keep compiling. Renumbered past
+         AC-116's 1.13.0 and AC-95 (1.16.0)/AC-96 (1.17.0) to the next free minor; 1.14.0/1.15.0 skipped.
+         Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.18.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
