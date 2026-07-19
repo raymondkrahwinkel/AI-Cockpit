@@ -104,4 +104,7 @@ internal sealed class CockpitConfigFile
     /// measurement from one machine says nothing about another's.
     /// </summary>
     public Dictionary<string, TranscriptionCalibrationEntry> TranscriptionCalibrations { get; set; } = [];
+
+    /// <summary>Git worktrees the cockpit created to isolate sessions (AC-85); owned by the worktree-registry store. The source of truth for cleanup, so it outlives the process that made them.</summary>
+    public List<WorktreeRegistryEntry> Worktrees { get; set; } = [];
 }
