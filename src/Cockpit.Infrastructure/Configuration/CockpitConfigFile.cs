@@ -48,6 +48,9 @@ internal sealed class CockpitConfigFile
 
     public TranscriptDisplaySettingsEntry? TranscriptDisplay { get; set; }
 
+    /// <summary>Which metrics the session header's usage pill shows (AC-105); owned by the usage-pill-settings store.</summary>
+    public UsagePillSettingsEntry? UsagePill { get; set; }
+
     public SessionBehaviorSettingsEntry? SessionBehavior { get; set; }
 
     public LayoutSettingsEntry? Layout { get; set; }
