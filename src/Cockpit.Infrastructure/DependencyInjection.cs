@@ -31,6 +31,15 @@ public static class DependencyInjection
         // it up when done. Its own server, like cockpit-session, so a delegated sub-agent has it too.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-worktrees", typeof(Worktrees.WorktreeTools)));
 
+        // cockpit-terminal (AC-34, phase 1): lets an agent read a terminal pane the operator has open, live and gated
+        // by an Approve/Deny consent. Behind the master switch — while it is off (the default) the endpoint is hosted
+        // but not advertised to any session, so for an agent the feature does not exist. Registered via a factory so
+        // the IsEnabled gate can read the live TerminalAccessState singleton.
+        services.AddSingleton(provider => new CockpitMcpEndpoint(
+            "cockpit-terminal",
+            typeof(Terminal.TerminalMcpTools),
+            () => provider.GetRequiredService<Terminal.TerminalAccessState>().Enabled));
+
         AddDiagnostics(services);
         AddNotifications(services);
         AddPtyHost(services);

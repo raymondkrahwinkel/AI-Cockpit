@@ -28,6 +28,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Shortcuts;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
+using Cockpit.Core.Abstractions.UsagePill;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -47,6 +48,7 @@ using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Shortcuts;
 using Cockpit.Core.Terminal;
 using Cockpit.Core.TranscriptDisplay;
+using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
@@ -94,6 +96,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ISecretKeyHolder _secretKeyHolder = SecretKeyHolder.Shared;
     private ShortcutSettings _shortcutSettings = ShortcutSettings.Default;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
+    private readonly IUsagePillSettingsStore? _usagePillSettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
     private readonly ILayoutSettingsStore? _layoutSettingsStore;
     private readonly IDebugSettingsStore? _debugSettingsStore;
@@ -1026,6 +1029,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private string _transcriptDisplaySettingsStatus = string.Empty;
 
+    /// <summary>Which metrics the header's usage pill shows (AC-105), as four toggles composed into the saved field list. Applied to all open sessions.</summary>
+    [ObservableProperty]
+    private bool _showUsagePillContext = true;
+
+    [ObservableProperty]
+    private bool _showUsagePillSessionUsage;
+
+    [ObservableProperty]
+    private bool _showUsagePillFiveHour;
+
+    [ObservableProperty]
+    private bool _showUsagePillWeekly;
+
+    [ObservableProperty]
+    private string _usagePillSettingsStatus = string.Empty;
+
     /// <summary>When true, sending "exit" closes the session after its turn completes (T10). Applied to all open sessions.</summary>
     [ObservableProperty]
     private bool _autoCloseOnExit;
@@ -1780,6 +1799,51 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    partial void OnShowUsagePillContextChanged(bool value) => ApplyUsagePillFields();
+
+    partial void OnShowUsagePillSessionUsageChanged(bool value) => ApplyUsagePillFields();
+
+    partial void OnShowUsagePillFiveHourChanged(bool value) => ApplyUsagePillFields();
+
+    partial void OnShowUsagePillWeeklyChanged(bool value) => ApplyUsagePillFields();
+
+    /// <summary>The chosen usage-pill fields in display order, composed from the four toggles.</summary>
+    private IReadOnlyList<UsagePillField> ComposeUsagePillFields()
+    {
+        var fields = new List<UsagePillField>();
+        if (ShowUsagePillContext)
+        {
+            fields.Add(UsagePillField.Context);
+        }
+
+        if (ShowUsagePillSessionUsage)
+        {
+            fields.Add(UsagePillField.SessionUsage);
+        }
+
+        if (ShowUsagePillFiveHour)
+        {
+            fields.Add(UsagePillField.FiveHourWindow);
+        }
+
+        if (ShowUsagePillWeekly)
+        {
+            fields.Add(UsagePillField.WeeklyWindow);
+        }
+
+        return fields;
+    }
+
+    /// <summary>Pushes the usage-pill field selection to every open session as a toggle changes, so it takes effect live.</summary>
+    private void ApplyUsagePillFields()
+    {
+        var fields = ComposeUsagePillFields();
+        foreach (var session in Sessions)
+        {
+            session.UsagePillVisibleFields = fields;
+        }
+    }
+
     /// <summary>Pushes the auto-close-on-exit toggle to every open session as it changes.</summary>
     partial void OnAutoCloseOnExitChanged(bool value)
     {
@@ -1987,7 +2051,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorktreeManager? worktreeManager = null,
         WorktreesViewModel? worktrees = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
-        LiveSessionRegistry? liveSessions = null)
+        LiveSessionRegistry? liveSessions = null,
+        IUsagePillSettingsStore? usagePillSettingsStore = null,
+        ITerminalAccessSwitch? terminalAccessSwitch = null,
+        ITerminalAccessSettingsStore? terminalAccessSettingsStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2000,7 +2067,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
-        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets());
+        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets(), terminalAccessSwitch, terminalAccessSettingsStore);
         _ = Security.RefreshAsync();
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
@@ -2060,6 +2127,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _attentionNotifier = attentionNotifier;
         _notificationSettingsStore = notificationSettingsStore;
         _transcriptDisplaySettingsStore = transcriptDisplaySettingsStore;
+        _usagePillSettingsStore = usagePillSettingsStore;
         _sessionBehaviorSettingsStore = sessionBehaviorSettingsStore;
         _layoutSettingsStore = layoutSettingsStore;
         _voiceSettingsStore = voiceSettingsStore;
@@ -2093,6 +2161,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         _ = LoadNotificationSettingsAsync();
         _ = LoadTranscriptDisplaySettingsAsync();
+        _ = LoadUsagePillSettingsAsync();
         _ = LoadSessionBehaviorSettingsAsync();
         _ = LoadLayoutSettingsAsync();
         _ = LoadVoiceSettingsAsync();
@@ -2438,6 +2507,33 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         await _transcriptDisplaySettingsStore.SaveAsync(new TranscriptDisplaySettings { ShowTimestamps = ShowTimestamps });
         TranscriptDisplaySettingsStatus = "Saved";
+    }
+
+    private async Task LoadUsagePillSettingsAsync()
+    {
+        if (_usagePillSettingsStore is null)
+        {
+            return;
+        }
+
+        var settings = await _usagePillSettingsStore.LoadAsync();
+        ShowUsagePillContext = settings.VisibleFields.Contains(UsagePillField.Context);
+        ShowUsagePillSessionUsage = settings.VisibleFields.Contains(UsagePillField.SessionUsage);
+        ShowUsagePillFiveHour = settings.VisibleFields.Contains(UsagePillField.FiveHourWindow);
+        ShowUsagePillWeekly = settings.VisibleFields.Contains(UsagePillField.WeeklyWindow);
+    }
+
+    /// <summary>Persists the usage-pill field selection edited in the Options dialog to <c>cockpit.json</c>.</summary>
+    [RelayCommand]
+    private async Task SaveUsagePillSettingsAsync()
+    {
+        if (_usagePillSettingsStore is null)
+        {
+            return;
+        }
+
+        await _usagePillSettingsStore.SaveAsync(new UsagePillSettings { VisibleFields = ComposeUsagePillFields() });
+        UsagePillSettingsStatus = "Saved";
     }
 
     private async Task LoadSessionBehaviorSettingsAsync()
@@ -4118,6 +4214,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     {
         await SaveNotificationSettingsCommand.ExecuteAsync(null);
         await SaveTranscriptDisplaySettingsCommand.ExecuteAsync(null);
+        await SaveUsagePillSettingsCommand.ExecuteAsync(null);
         await SaveSessionBehaviorSettingsCommand.ExecuteAsync(null);
         await SaveLayoutSettingsCommand.ExecuteAsync(null);
         await SaveVoiceSettingsCommand.ExecuteAsync(null);
@@ -4142,6 +4239,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Start the session on the current transcript-display preference; OnShowTimestampsChanged keeps
         // it live afterwards (T7).
         session.ShowTimestamps = ShowTimestamps;
+        // Same for the usage-pill field selection (AC-105); ApplyUsagePillFields keeps it live afterwards.
+        session.UsagePillVisibleFields = ComposeUsagePillFields();
         // Same for the auto-close-on-exit behaviour (T10); the session raises CloseRequested when an
         // "exit" turn completes and the cockpit runs its normal close flow.
         session.AutoCloseOnExit = AutoCloseOnExit;

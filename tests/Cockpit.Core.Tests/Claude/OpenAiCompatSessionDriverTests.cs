@@ -275,7 +275,7 @@ public class OpenAiCompatSessionDriverTests
         toolSession.ConnectedServerNames.Returns(tools.Length == 0 ? Array.Empty<string>() : new[] { "test-server" });
         toolSession.ToolClasses.Returns(toolClasses);
         var toolProvider = Substitute.For<IMcpToolProvider>();
-        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<CancellationToken>()).Returns(toolSession);
+        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(toolSession);
 
         return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
     }

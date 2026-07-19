@@ -19,12 +19,6 @@ namespace Cockpit.App.Controls;
 /// </summary>
 public sealed class LimitBar : TemplatedControl
 {
-    /// <summary>Above this, the bar warns. Chosen because a session past two-thirds is one worth noticing, not one worth interrupting.</summary>
-    private const double WarnAbove = 60;
-
-    /// <summary>Above this, the bar is red: close enough that the operator should decide something rather than discover it mid-turn.</summary>
-    private const double CriticalAbove = 85;
-
     private const double TrackWidth = 34;
 
     private const double Gap = 5;
@@ -142,8 +136,8 @@ public sealed class LimitBar : TemplatedControl
             new Typeface(FontFamily), FontSize, brush);
 
     private IBrush FillFor(double percent) =>
-        percent >= CriticalAbove ? CriticalBrush
-        : percent >= WarnAbove ? WarnBrush
+        percent >= UsageSeverity.CriticalAbove ? CriticalBrush
+        : percent >= UsageSeverity.WarnAbove ? WarnBrush
         : NormalBrush;
 
     // Resolved from the theme so a palette change carries: the same tokens the session status dots use.

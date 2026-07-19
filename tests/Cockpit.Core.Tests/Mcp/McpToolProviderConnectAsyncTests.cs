@@ -99,6 +99,6 @@ public class McpToolProviderConnectAsyncTests
     {
         var catalog = Substitute.For<IMcpServerCatalog>();
         catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
-        return new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), NullLogger<McpToolProvider>.Instance);
+        return new McpToolProvider(catalog, Substitute.For<IMcpOAuthAuthorizer>(), new McpAuthKey(), new SessionMcpKeyring(), NullLogger<McpToolProvider>.Instance);
     }
 }

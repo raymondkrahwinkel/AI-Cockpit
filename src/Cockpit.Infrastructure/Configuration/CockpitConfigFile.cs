@@ -48,9 +48,15 @@ internal sealed class CockpitConfigFile
 
     public TranscriptDisplaySettingsEntry? TranscriptDisplay { get; set; }
 
+    /// <summary>Which metrics the session header's usage pill shows (AC-105); owned by the usage-pill-settings store.</summary>
+    public UsagePillSettingsEntry? UsagePill { get; set; }
+
     public SessionBehaviorSettingsEntry? SessionBehavior { get; set; }
 
     public LayoutSettingsEntry? Layout { get; set; }
+
+    /// <summary>The terminal-access master switch (AC-34); owned by the terminal-access settings store. Absent/false means the cockpit-terminal MCP is not advertised to any session.</summary>
+    public TerminalAccessSettingsEntry? TerminalAccess { get; set; }
 
     /// <summary>The workspaces and which one is active; owned by the workspace-settings store.</summary>
     public WorkspaceSettingsEntry? Workspaces { get; set; }

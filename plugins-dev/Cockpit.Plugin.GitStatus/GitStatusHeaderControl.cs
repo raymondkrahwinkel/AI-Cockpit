@@ -46,11 +46,20 @@ internal sealed class GitStatusHeaderControl : UserControl
         _settings = settings;
 
         _dot = new Ellipse { Width = 7, Height = 7, VerticalAlignment = VerticalAlignment.Center };
-        _label = new TextBlock { FontSize = 10, VerticalAlignment = VerticalAlignment.Center };
+        // A long branch name trims with an ellipsis instead of running past the badge into the header items to
+        // its right — the overlap AC-103 was about, here for the branch rather than the usage pill.
+        _label = new TextBlock
+        {
+            FontSize = 10,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 140,
+        };
 
         _row = new Button
         {
-            Padding = new Thickness(6, 1),
+            // Roomier than the default so the branch badge does not read as cramped next to the usage pill.
+            Padding = new Thickness(10, 2),
             Content = new StackPanel
             {
                 Orientation = Orientation.Horizontal,

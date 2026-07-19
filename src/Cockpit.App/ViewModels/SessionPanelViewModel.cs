@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -267,14 +268,105 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private string _usageTooltip = string.Empty;
 
+    /// <summary>
+    /// Which metrics the header's usage pill shows (AC-105), a global preference pushed down from
+    /// <see cref="CockpitViewModel"/>. Defaults to just the context window — the original behaviour.
+    /// </summary>
+    [ObservableProperty]
+    private IReadOnlyList<UsagePillField> _usagePillVisibleFields = [UsagePillField.Context];
+
+    /// <summary>
+    /// The mini-pills the header renders (AC-105): one per selected field the session actually has data for, in
+    /// the operator's chosen order. Rebuilt whenever the selection or any underlying metric changes.
+    /// </summary>
+    public ObservableCollection<UsagePillItem> UsagePillItems { get; } = [];
+
+    /// <summary>
+    /// Whether the standalone token/cost meter shows (#8): only when there is usage and the operator has not put
+    /// session usage on the pill itself (AC-105), so the same figure never appears twice on the header.
+    /// </summary>
+    public bool ShowTokenMeter => HasUsage && !UsagePillVisibleFields.Contains(UsagePillField.SessionUsage);
+
+    /// <summary>Whether the usage pill shows at all: at least one metric segment, or the chevron's detail flyout.</summary>
+    public bool HasUsagePillRegion => UsagePillItems.Count > 0 || HasUsagePill;
+
+    /// <summary>Whether a divider sits between the last metric segment and the chevron — only when both are present.</summary>
+    public bool ShowChevronDivider => UsagePillItems.Count > 0 && HasUsagePill;
+
     protected SessionPanelViewModel()
     {
-        // HasUsagePill depends on the RateLimits collection as well as ContextUsedPercent, so a window being
-        // added/cleared has to raise it too (the ctx setter is covered by OnContextUsedPercentChanged below).
-        RateLimits.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasUsagePill));
+        // HasUsagePill and the mini-pills both depend on the RateLimits collection as well as ContextUsedPercent,
+        // so a window being added/cleared has to refresh them too (the ctx setter is covered by the partials below).
+        RateLimits.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasUsagePill));
+            RebuildUsagePillItems();
+        };
     }
 
-    partial void OnContextUsedPercentChanged(double? value) => OnPropertyChanged(nameof(HasUsagePill));
+    partial void OnContextUsedPercentChanged(double? value)
+    {
+        OnPropertyChanged(nameof(HasUsagePill));
+        RebuildUsagePillItems();
+    }
+
+    partial void OnUsagePillVisibleFieldsChanged(IReadOnlyList<UsagePillField> value)
+    {
+        RebuildUsagePillItems();
+        OnPropertyChanged(nameof(ShowTokenMeter));
+    }
+
+    partial void OnHasUsageChanged(bool value)
+    {
+        RebuildUsagePillItems();
+        OnPropertyChanged(nameof(ShowTokenMeter));
+    }
+
+    partial void OnUsageSummaryChanged(string value) => RebuildUsagePillItems();
+
+    // The SessionUsage segment shows UsageSummary with UsageTooltip on hover; the usage feed sets the summary
+    // before the tooltip, so without rebuilding on the tooltip too the hover text would lag a turn behind.
+    partial void OnUsageTooltipChanged(string value) => RebuildUsagePillItems();
+
+    /// <summary>
+    /// Rebuilds <see cref="UsagePillItems"/> from the selected fields, keeping only the metrics this session has a
+    /// value for — a selected field with no data (a rate window the provider never reported, usage on a session
+    /// kind that has none) simply yields no pill, the same silence the single ctx pill kept.
+    /// </summary>
+    private void RebuildUsagePillItems()
+    {
+        UsagePillItems.Clear();
+        foreach (var field in UsagePillVisibleFields)
+        {
+            if (BuildUsagePillItem(field) is { } item)
+            {
+                // Every segment but the first carries a divider on its left, so they read as one pill.
+                UsagePillItems.Add(item with { ShowLeadingDivider = UsagePillItems.Count > 0 });
+            }
+        }
+
+        OnPropertyChanged(nameof(HasUsagePillRegion));
+        OnPropertyChanged(nameof(ShowChevronDivider));
+    }
+
+    private UsagePillItem? BuildUsagePillItem(UsagePillField field) => field switch
+    {
+        UsagePillField.Context when ContextUsedPercent is { } percent =>
+            new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent), $"Context window: {percent:0}% used"),
+        UsagePillField.SessionUsage when HasUsage =>
+            new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip),
+        UsagePillField.FiveHourWindow => WindowPillItem("5h"),
+        UsagePillField.WeeklyWindow => WindowPillItem("wk"),
+        _ => null,
+    };
+
+    // The rate windows label themselves ("5h", "wk"); a field maps to the window carrying its label, and yields
+    // nothing when the provider reported no such window. Each pill carries only its own figure in the hover — the
+    // combined story stays in the chevron's flyout.
+    private UsagePillItem? WindowPillItem(string label) =>
+        RateLimits.FirstOrDefault(window => window.Label == label) is { } window
+            ? new UsagePillItem($"{label} {window.UsedPercent:0}%", UsageSeverity.BrushKeyFor(window.UsedPercent), $"{label}: {window.UsedPercent:0}% used")
+            : null;
 
     /// <summary>
     /// Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the

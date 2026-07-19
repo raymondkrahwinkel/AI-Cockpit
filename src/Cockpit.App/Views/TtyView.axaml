@@ -52,6 +52,27 @@
         <!-- Consent banner (#AC-47): shown under the header, above the terminal, when a request is waiting on this session. -->
         <controls:ConsentBannerHost DockPanel.Dock="Top" Margin="0,0,0,6"/>
 
+        <!-- AC-34: the "agent connected" bar — always visible while an agent is coupled to this pane through the
+             terminal-access MCP, the counterpart to both the operator and the agent being able to type. Its
+             Disconnect is the reactive kill-switch: it interrupts a running command and breaks the coupling at once. -->
+        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4"
+                IsVisible="{Binding AgentConnected}"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Disconnect" Classes="Compact" Click="OnAgentDisconnect"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="Stop the agent driving this terminal: interrupt whatever it is running (Ctrl-C) and break the connection immediately."/>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="RobotOutline" Width="15" Height="15"
+                                                Foreground="{StaticResource CockpitAccentBrush}"/>
+                    <TextBlock Text="{Binding AgentConnectedLabel}" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{StaticResource CockpitAccentBrush}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
         <!-- The terminal surface: Exclr8.Terminal, a pure Avalonia terminal-emulator renderer with no
              PTY plumbing of its own. The code-behind hosts the ConPTY/Porta.Pty process, feeds pty
              output in via Write(...), forwards the control's Input/Output byte events to the pty, and

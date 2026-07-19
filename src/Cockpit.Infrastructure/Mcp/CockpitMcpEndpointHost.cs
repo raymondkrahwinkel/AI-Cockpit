@@ -30,6 +30,7 @@ internal sealed class CockpitMcpEndpointHost
     private readonly IReadOnlyList<CockpitMcpEndpoint> _endpoints;
     private readonly IServiceProvider _services;
     private readonly McpAuthKey _authKey;
+    private readonly SessionMcpKeyring _keyring;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CockpitMcpEndpointHost> _logger;
     private readonly List<WebApplication> _apps = [];
@@ -41,11 +42,13 @@ internal sealed class CockpitMcpEndpointHost
         IEnumerable<CockpitMcpEndpoint> endpoints,
         IServiceProvider services,
         McpAuthKey authKey,
+        SessionMcpKeyring keyring,
         ILoggerFactory loggerFactory)
     {
         _endpoints = [.. endpoints];
         _services = services;
         _authKey = authKey;
+        _keyring = keyring;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<CockpitMcpEndpointHost>();
     }
@@ -57,10 +60,10 @@ internal sealed class CockpitMcpEndpointHost
             try
             {
                 // Built the tools instance from the application's own services, so a tool can depend on any
-                // registered service (the statusline sink, etc.). A registered endpoint is always enabled — a plugin
-                // that wants an on/off toggle passes its own isEnabled to MountAsync.
+                // registered service (the statusline sink, etc.). An endpoint with no gate is always enabled; one that
+                // carries an IsEnabled (AC-34's master switch) is hosted but only advertised to a session while it is on.
                 var tools = ActivatorUtilities.CreateInstance(_services, endpoint.ToolsType);
-                await MountAsync(endpoint.ServerName, tools, isEnabled: null, cancellationToken).ConfigureAwait(false);
+                await MountAsync(endpoint.ServerName, tools, isEnabled: endpoint.IsEnabled, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -98,7 +101,7 @@ internal sealed class CockpitMcpEndpointHost
 
             var app = builder.Build();
             // Guard the endpoint before its tools: a request without this run's key never reaches the tool set (AC-40).
-            McpAuthMiddleware.Require(app, _authKey);
+            McpAuthMiddleware.Require(app, _authKey, _keyring);
             app.MapMcp("/mcp");
             _apps.Add(app);
 

@@ -173,6 +173,15 @@
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
+                            <TextBlock Text="Usage pill" FontWeight="SemiBold"/>
+                            <TextBlock Classes="hint" Text="Which metrics show on the session header, each as its own mini-pill."/>
+                            <CheckBox Content="Context window (ctx %)" IsChecked="{Binding ShowUsagePillContext}"/>
+                            <CheckBox Content="Session usage (tokens · cost)" IsChecked="{Binding ShowUsagePillSessionUsage}"/>
+                            <CheckBox Content="5-hour window" IsChecked="{Binding ShowUsagePillFiveHour}"/>
+                            <CheckBox Content="Weekly window" IsChecked="{Binding ShowUsagePillWeekly}"/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
                             <TextBlock Text="Delegation" FontWeight="SemiBold"/>
                             <CheckBox Content="Let sessions delegate work to other profiles (orchestrator MCP)"
                                       IsChecked="{Binding OrchestratorMcpEnabled}"
@@ -825,6 +834,14 @@
                                        IsVisible="{Binding Security.Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
+                                <TextBlock Text="Let an agent read a terminal" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="When on, an agent can ask to read a terminal pane you have open — you approve each pane, watch every line live, and it reads only from the moment you approve (never the earlier scrollback). It cannot type into a terminal yet. Off by default: while off the feature is not offered to any agent at all."/>
+                            </StackPanel>
+                            <CheckBox Content="Allow agents to read my open terminals (with per-pane approval)"
+                                      IsChecked="{Binding Security.TerminalAccessEnabled}"/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
                                 <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>

@@ -13,5 +13,5 @@ internal interface IMcpToolProvider
     /// enabled/scope filtering. <see langword="null"/> keeps the pre-#44 behaviour of using every eligible
     /// registry server.
     /// </summary>
-    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, CancellationToken cancellationToken = default);
+    Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, CancellationToken cancellationToken = default);
 }

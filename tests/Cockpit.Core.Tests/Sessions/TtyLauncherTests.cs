@@ -41,7 +41,7 @@ public class TtyLauncherTests
             .Start(Arg.Any<string>(), Arg.Any<IReadOnlyList<string>>(), Arg.Any<string>(), Arg.Any<IReadOnlyDictionary<string, string>>(), Arg.Any<short>(), Arg.Any<short>())
             .Returns(Substitute.For<IConPtyProcess>());
         var authKey = new McpAuthKey();
-        return (new TtyLauncher(ptyHostFactory, authKey, logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey);
+        return (new TtyLauncher(ptyHostFactory, authKey, new SessionMcpKeyring(), logger ?? NullLogger<TtyLauncher>.Instance), ptyHostFactory, authKey);
     }
 
     [Fact]
