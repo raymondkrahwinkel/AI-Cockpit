@@ -24,7 +24,7 @@ public class OrchestratorToolsTests
             .Returns<Task<DelegatedTaskView>>(_ => throw new DelegationRejectedException("Profile 'private' is not available as a delegation target."));
         var tools = new OrchestratorTools(delegation);
 
-        var json = await tools.DelegateTaskAsync("private", "do work", null, null, null, CancellationToken.None);
+        var json = await tools.DelegateTaskAsync("private", "do work", null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("rejected").GetBoolean().Should().BeTrue();
@@ -41,7 +41,7 @@ public class OrchestratorToolsTests
             .Returns(_View("task-1", DelegatedTaskStatus.Running));
         var tools = new OrchestratorTools(delegation);
 
-        var json = await tools.DelegateTaskAsync("local", "summarise", null, null, null, CancellationToken.None);
+        var json = await tools.DelegateTaskAsync("local", "summarise", null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("TaskId").GetString().Should().Be("task-1");
@@ -58,7 +58,7 @@ public class OrchestratorToolsTests
             .Returns(_View("task-2", DelegatedTaskStatus.Queued));
         var tools = new OrchestratorTools(delegation);
 
-        var json = await tools.DelegateTaskAsync("local", "bulk work", null, null, null, CancellationToken.None);
+        var json = await tools.DelegateTaskAsync("local", "bulk work", null, null, null, null, CancellationToken.None);
 
         using var document = JsonDocument.Parse(json);
         document.RootElement.GetProperty("queued").GetBoolean().Should().BeTrue();
@@ -112,6 +112,32 @@ public class OrchestratorToolsTests
         document.RootElement.GetProperty("cursor").GetInt32().Should().Be(1);
         document.RootElement.GetProperty("done").GetBoolean().Should().BeFalse();
         document.RootElement.GetProperty("events")[0].GetProperty("text").GetString().Should().Be("working on it");
+    }
+
+    // AC-100/AC-113: a tool result carries its content back to the poller — above all a gate denial / tool error,
+    // which was previously null-text and left a caller unable to see *why* a tool (e.g. write_file) failed.
+    [Fact]
+    public void GetTaskOutput_SurfacesAToolResultsContent_AndMarksAnError()
+    {
+        var delegation = Substitute.For<IDelegationService>();
+        delegation.GetOutput("task-1", 0).Returns((
+            new List<SessionEvent>
+            {
+                new ToolResult { SessionId = "s", ToolUseId = "t1", Content = "wrote 1 file", IsError = false },
+                new ToolResult { SessionId = "s", ToolUseId = "t2", Content = "write_file was blocked", IsError = true },
+            },
+            2,
+            true));
+        var tools = new OrchestratorTools(delegation);
+
+        var json = tools.GetTaskOutput("task-1");
+
+        using var document = JsonDocument.Parse(json);
+        var events = document.RootElement.GetProperty("events");
+        // A normal tool result surfaces its content verbatim (was null before the fix)...
+        events[0].GetProperty("text").GetString().Should().Be("wrote 1 file");
+        // ...and an error result is marked so a poll can tell a denial from a normal return.
+        events[1].GetProperty("text").GetString().Should().Be("[error] write_file was blocked");
     }
 
     private static DelegatedTaskView _View(string id, DelegatedTaskStatus status, string? result = null) => new(

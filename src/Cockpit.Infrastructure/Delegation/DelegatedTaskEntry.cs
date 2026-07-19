@@ -18,6 +18,7 @@ internal sealed class DelegatedTaskEntry
         TaskType = request.TaskType;
         Label = request.Label;
         WorkingDirectory = request.WorkingDirectory;
+        RequestedPermission = request.RequestedPermission;
     }
 
     public string TaskId { get; } = Guid.NewGuid().ToString("N");
@@ -31,6 +32,9 @@ internal sealed class DelegatedTaskEntry
     public string? Label { get; }
 
     public string? WorkingDirectory { get; }
+
+    /// <summary>The caller's optional per-task least-privilege cap (AC-117), clamped to the profile ceiling when the session starts. Null runs at the profile's own ceiling.</summary>
+    public string? RequestedPermission { get; }
 
     public ISessionRuntime? Runtime { get; private set; }
 
@@ -49,6 +53,15 @@ internal sealed class DelegatedTaskEntry
     public DateTimeOffset? FinishedAt { get; private set; }
 
     public int TurnCount { get; set; }
+
+    /// <summary>Tool calls requested in the current turn — reset at each turn boundary, so the false-success guard judges each turn on its own (AC-100).</summary>
+    public int ToolCallsRequested { get; set; }
+
+    /// <summary>Tool calls in the current turn that returned a non-error result (AC-100). Zero-while-requested is a no-op turn.</summary>
+    public int ToolCallsSucceeded { get; set; }
+
+    /// <summary>Tool calls in the current turn that came back as an error — a denial by the delegated gate counts here (AC-100).</summary>
+    public int ToolCallsErrored { get; set; }
 
     public string? Result { get; private set; }
 

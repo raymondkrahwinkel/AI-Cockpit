@@ -134,8 +134,14 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
 
         // A per-session option the operator picked in the New-session dialog wins over the profile's config
-        // default; absent, the config value (and then the CLI's own default) applies.
-        var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, _config.SandboxMode);
+        // default; absent, the config value (and then the CLI's own default) applies. With no explicit sandbox
+        // but a delegated session's permission ceiling folded into the options as permission-mode, derive the
+        // sandbox from that ceiling so a delegated Codex task can actually write (acceptEdits/bypass ->
+        // workspace-write, bounded to the working dir) instead of being stuck at read-only and stalling on an
+        // approval nobody can answer (AC-100/AC-112). danger-full-access is never derived, only ever chosen.
+        var sandbox = CliAgentConfig.ResolveOption(options, SandboxOptionKey, null)
+            ?? CodexSandbox.ForCeiling(CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.PermissionMode, null))
+            ?? _config.SandboxMode;
         var effectiveModel = CliAgentConfig.ResolveOption(options, ModelOptionKey, _model);
         _model = effectiveModel;
         _sandbox = sandbox;

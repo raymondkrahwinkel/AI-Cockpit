@@ -102,12 +102,13 @@ internal sealed class OrchestratorTools
         [Description("The category of work, when the target profile restricts what it accepts (e.g. 'summarize').")] string? task_type,
         [Description("A short human-readable label for this task, shown in the cockpit.")] string? label,
         [Description("The working directory for the task; must be one the target profile allows.")] string? working_directory,
+        [Description("Optional least-privilege cap for this one task: 'plan'/'default' (read-only), 'acceptEdits' (also file writes), or 'bypassPermissions'. It can only lower what the profile already allows, never raise it — a request above the profile's ceiling is clamped to the ceiling. Omit to run at the profile's own ceiling.")] string? requested_permission,
         CancellationToken cancellationToken)
     {
         try
         {
             var task = await _delegation.DelegateAsync(
-                new DelegationRequest(profile, prompt, task_type, label, working_directory),
+                new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission),
                 cancellationToken);
 
             // A queued task is accepted, not rejected — but a bare "Queued" reads to a model like a failure, and
@@ -225,13 +226,29 @@ internal sealed class OrchestratorTools
     }
 
     // Only the events worth reading back to an agent carry text; the rest are reported by type alone, so a
-    // progress poll stays small.
+    // progress poll stays small. A tool result carries its content — above all a gate denial or tool error, which
+    // is otherwise invisible (AC-100/AC-113): without it a caller sees a tool ran and a result came back, but not
+    // why write_file was refused. An error result is marked so a poll can tell a failure from a normal return.
     private static string? _Describe(Cockpit.Core.Sessions.SessionEvent evt) => evt switch
     {
         Cockpit.Core.Sessions.AssistantTextCompleted text => text.Text,
         Cockpit.Core.Sessions.ToolUseRequested tool => tool.ToolName,
+        Cockpit.Core.Sessions.ToolResult result => _DescribeToolResult(result),
         Cockpit.Core.Sessions.TurnCompleted turn => turn.Result,
         Cockpit.Core.Sessions.SessionError error => error.Message,
         _ => null,
     };
+
+    // A tool result's content can be large (a whole tool's output), so it is capped to keep a progress poll
+    // bounded — a short gate-denial/error message (the thing AC-113 exists to surface) always fits whole; only a
+    // long successful output is truncated. An error result is marked so a poll can tell a failure from a return.
+    private static string _DescribeToolResult(Cockpit.Core.Sessions.ToolResult result)
+    {
+        const int maxContentLength = 4000;
+        var content = result.Content.Length > maxContentLength
+            ? result.Content[..maxContentLength] + "… (truncated)"
+            : result.Content;
+
+        return result.IsError ? $"[error] {content}" : content;
+    }
 }

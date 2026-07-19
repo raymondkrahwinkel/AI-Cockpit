@@ -29,4 +29,29 @@ public class CodexSandboxTests
     [Fact]
     public void Choices_AreTheThreeKebabSandboxModes() =>
         CodexSandbox.Choices.Should().Equal("read-only", "workspace-write", "danger-full-access");
+
+    // ForCeiling (AC-112): a delegated Codex task's sandbox derived from its permission ceiling. A ceiling that
+    // allows edits becomes workspace-write so the task can actually write; anything less stays null so the
+    // profile's configured default (read-only) holds. danger-full-access is never derived.
+    [Theory]
+    [InlineData("acceptEdits")]
+    [InlineData("bypassPermissions")]
+    public void ForCeiling_ACeilingThatAllowsEdits_IsWorkspaceWrite(string ceiling) =>
+        CodexSandbox.ForCeiling(ceiling).Should().Be("workspace-write");
+
+    [Theory]
+    [InlineData("plan")]
+    [InlineData("default")]
+    [InlineData("")]
+    [InlineData(null)]
+    [InlineData("something-invented")]
+    public void ForCeiling_AReadOnlyOrUnknownCeiling_IsNull_SoTheConfigDefaultHolds(string? ceiling) =>
+        CodexSandbox.ForCeiling(ceiling).Should().BeNull();
+
+    [Fact]
+    public void ForCeiling_NeverDerivesDangerFullAccess()
+    {
+        CodexSandbox.ForCeiling("acceptEdits").Should().NotBe("danger-full-access");
+        CodexSandbox.ForCeiling("bypassPermissions").Should().NotBe("danger-full-access");
+    }
 }

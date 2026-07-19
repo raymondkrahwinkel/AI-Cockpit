@@ -19,4 +19,18 @@ internal static class CodexSandbox
         "danger-full-access" => "dangerFullAccess",
         _ => null,
     };
+
+    /// <summary>
+    /// The least-privilege sandbox for a delegated session's permission ceiling (AC-112): a ceiling that allows
+    /// edits maps to <c>workspace-write</c> (writable, but bounded to the working directory); plan/default/unknown
+    /// map to <see langword="null"/> so the caller keeps the profile's configured default (Codex's own read-only).
+    /// Never returns <c>danger-full-access</c> — full disk access stays an explicit operator choice, never derived.
+    /// This is what lets a delegated Codex task write instead of stalling at read-only on an approval nobody can
+    /// answer, while staying bounded by the same ceiling the host already set for the session.
+    /// </summary>
+    public static string? ForCeiling(string? permissionMode) => permissionMode switch
+    {
+        "acceptEdits" or "bypassPermissions" => "workspace-write",
+        _ => null,
+    };
 }

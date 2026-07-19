@@ -86,11 +86,27 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             // Classify each tool from its MCP annotations (AC-79) at connect, while we still have the typed
             // McpClientTool — the delegated gate later reads these by tool name. Annotations are advisory hints,
             // so an absent readOnlyHint stays Unknown (trusted only via the profile allow-list), not "safe".
+            // Whether this IS the built-in filesystem preset, identified by its npm package rather than by the
+            // server or tool name. The name-based fallback below is only sound for that one first-party server —
+            // whose tools are scoped to a single configured folder — so it must never fire for an arbitrary
+            // server that happens to expose a tool called write_file/read_file (AC-100 security review).
+            var isFilesystemPreset = server.Args.Any(arg => arg.Contains(McpServerPresets.FilesystemServerPackage, StringComparison.OrdinalIgnoreCase));
+
             var classes = new Dictionary<string, ToolPermissionClass>(StringComparer.Ordinal);
             foreach (var tool in serverTools)
             {
                 var annotations = tool.ProtocolTool.Annotations;
-                classes[tool.Name] = DelegatedToolPermissionPolicy.Classify(annotations?.ReadOnlyHint, annotations?.DestructiveHint);
+                var annotationClass = DelegatedToolPermissionPolicy.Classify(annotations?.ReadOnlyHint, annotations?.DestructiveHint);
+
+                // The built-in filesystem preset ships no read-only/destructive hints, so its write_file is
+                // Unknown and the delegated gate blocks it at every ceiling below bypassPermissions — a local
+                // coder profile cannot write a file at the default acceptEdits ceiling (AC-100/AC-112). Fall back
+                // to first-party knowledge of the tool by name, but ONLY (a) for that preset, and (b) where the
+                // server gave no readOnlyHint at all (Unknown) — any explicit hint, true or false, is always
+                // honoured and never widened. A rogue server reusing these names gets no such treatment.
+                classes[tool.Name] = annotationClass == ToolPermissionClass.Unknown && isFilesystemPreset
+                    ? DelegatedToolPermissionPolicy.ClassifyWellKnown(tool.Name) ?? annotationClass
+                    : annotationClass;
             }
 
             return new ServerConnection(client, [.. serverTools], server.Name, classes);

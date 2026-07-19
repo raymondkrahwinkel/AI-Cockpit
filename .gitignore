@@ -25,3 +25,4 @@ plugins-dev/dist/
 
 # Packaged app bundles (scripts/package-macos.sh)
 artifacts/
+publish/

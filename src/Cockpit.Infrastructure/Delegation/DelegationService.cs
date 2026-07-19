@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Delegation;
@@ -428,11 +429,23 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
         if (request.WorkingDirectory is { Length: > 0 } workingDirectory && !_IsAllowedWorkingDirectory(workingDirectory, policy))
         {
+            // Name what *is* allowed, not just what was refused (AC-114): a caller cannot see the profile's
+            // allowed dirs or the active-session dirs from the MCP surface, so a bare refusal leaves it guessing.
+            var allowed = _AllowedWorkingDirectories(policy);
+            var where = allowed.Count == 0
+                ? "This profile has no allowed working directories configured, and no cockpit session is currently " +
+                  "working in one. Set the profile's allowed working directories, or delegate from a session that " +
+                  "already works in the target directory."
+                : $"Allowed here are: {string.Join(", ", allowed)} (and their subdirectories). Add more under the " +
+                  "profile's delegation settings, or delegate from a session that works in the target directory.";
             throw new DelegationRejectedException(
-                $"Profile '{request.ProfileLabel}' does not allow a task to run in '{workingDirectory}'. " +
-                "Allow it under the profile's delegation settings, or delegate from a session that works there.");
+                $"Profile '{request.ProfileLabel}' does not allow a task to run in '{workingDirectory}'. {where}");
         }
     }
+
+    /// <summary>The directories a delegated task may run in: the profile's own allow-list plus the dirs cockpit sessions are actively working in. Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.</summary>
+    private IReadOnlyList<string> _AllowedWorkingDirectories(DelegationPolicy policy) =>
+        [.. (policy.AllowedWorkingDirs ?? []).Concat(_workspaces.ActiveWorkingDirectories)];
 
     /// <summary>
     /// Where a delegated task may run: the directories the target profile allows, and the ones the cockpit's own
@@ -442,9 +455,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// </summary>
     private bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy)
     {
-        var allowed = (policy.AllowedWorkingDirs ?? [])
-            .Concat(_workspaces.ActiveWorkingDirectories)
-            .ToList();
+        var allowed = _AllowedWorkingDirectories(policy);
 
         if (allowed.Count == 0)
         {
@@ -478,10 +489,17 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             runtime.EventAppended += evt => _OnTaskEvent(entry, evt);
 
             // A delegated session has no human to answer a permission prompt, so it runs under the profile's
-            // ceiling — never bypass, never a mode that would block waiting for a click that cannot come.
+            // ceiling — never bypass, never a mode that would block waiting for a click that cannot come. A caller
+            // may cap this one task lower still (AC-117): the effective ceiling is the more restrictive of the two,
+            // so a per-task request can only narrow what the operator allowed, never widen it.
+            var effectiveCeiling = string.IsNullOrWhiteSpace(entry.RequestedPermission)
+                ? entry.Profile.DelegationPolicy.PermissionCeiling
+                : DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(
+                    entry.Profile.DelegationPolicy.PermissionCeiling, entry.RequestedPermission);
+
             await runtime.StartAsync(
                 entry.Profile,
-                entry.Profile.DelegationPolicy.PermissionCeiling,
+                effectiveCeiling,
                 model: null,
                 enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
                 workingDirectory: entry.WorkingDirectory);
@@ -505,7 +523,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             else
             {
                 await runtime.SetDelegatedToolGateAsync(
-                    entry.Profile.DelegationPolicy.PermissionCeiling,
+                    effectiveCeiling,
                     entry.Profile.DelegationPolicy.AllowedTools ?? []);
             }
 
@@ -644,20 +662,60 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     {
         switch (evt)
         {
+            case ToolUseRequested:
+                entry.ToolCallsRequested++;
+                break;
+
+            case ToolResult toolResult:
+                // A denial by the delegated permission gate comes back to the model as an error tool result, not an
+                // exception — so counting error results is how the orchestrator sees that a tool call did not land.
+                if (toolResult.IsError)
+                {
+                    entry.ToolCallsErrored++;
+                }
+                else
+                {
+                    entry.ToolCallsSucceeded++;
+                }
+
+                break;
+
             case TurnCompleted turn:
                 entry.TurnCount++;
+
+                // False-success guard (AC-100/AC-110): the local-model driver reports a turn as "success" whenever
+                // the HTTP stream ends cleanly — even when every tool call it made was denied or errored and it
+                // produced nothing. A turn that ran tools but landed none of them is not a success; surface it as
+                // Failed with a diagnostic so a no-op run is never silently relayed as done. A turn that used no
+                // tools at all (a plain text answer) is left as Completed — that is a legitimate result.
+                var ranToolsButNoneSucceeded = entry.ToolCallsRequested > 0 && entry.ToolCallsSucceeded == 0;
+                var isFailure = turn.IsError || ranToolsButNoneSucceeded;
+                var diagnostic = turn.IsError
+                    ? turn.Result
+                    : ranToolsButNoneSucceeded
+                        ? $"No-op run: {entry.ToolCallsErrored} of {entry.ToolCallsRequested} tool call(s) were blocked or errored and none succeeded, so the task produced no tool-made change. The delegated model replied: {entry.Runtime?.LastAssistantText}"
+                        : null;
+
+                // Per-turn, not per-session: clear the counters now this turn is classified, so a follow-up turn
+                // (SendFollowUpAsync reuses the same entry) is judged on its own tool calls. Without this a plain
+                // text follow-up after a denied turn would inherit that denial (false failure), and a denied
+                // follow-up after a successful turn would be hidden as success (false success) — AC-100 review.
+                entry.ToolCallsRequested = 0;
+                entry.ToolCallsSucceeded = 0;
+                entry.ToolCallsErrored = 0;
+
                 // The task is answered, but the session stays up for a while: a caller can send a follow-up turn.
                 // It is torn down on stop — and, when nobody stops it, once the idle window closes.
                 entry.Finish(
-                    turn.IsError ? DelegatedTaskStatus.Failed : DelegatedTaskStatus.Completed,
+                    isFailure ? DelegatedTaskStatus.Failed : DelegatedTaskStatus.Completed,
                     result: entry.Runtime?.LastAssistantText,
-                    error: turn.IsError ? turn.Result : null,
+                    error: diagnostic,
                     keepSessionAlive: true);
                 _ArmIdleReap(entry);
                 TasksChanged?.Invoke();
                 _ = _Audit(
-                    turn.IsError ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,
-                    entry.Profile.Label, entry.TaskId, request: null, turn.IsError ? turn.Result : null, entry);
+                    isFailure ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,
+                    entry.Profile.Label, entry.TaskId, request: null, diagnostic, entry);
                 _ = _StartNextQueuedAsync(entry.Profile);
                 break;
 
