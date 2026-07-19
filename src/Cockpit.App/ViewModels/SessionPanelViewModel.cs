@@ -4,6 +4,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Voice;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
 
@@ -290,6 +292,39 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             OutputTextProduced?.Invoke(this, text);
         }
     }
+
+    /// <summary>
+    /// Raised when this session's agent completes a tool call (AC-116), coupling its name and input with the
+    /// result — surfaced to plugins via <see cref="ICockpitSessionObserver.ToolActivityObserved"/> so a
+    /// contribution can react to a specific tool rather than scan prose. Only the SDK session raises it; the
+    /// TTY session does not parse tool calls. Marshalled to the UI thread by the host-side observer.
+    /// </summary>
+    public event EventHandler<SessionToolActivity>? ToolActivityProduced;
+
+    /// <summary>Surfaces a completed tool call to <see cref="ToolActivityProduced"/> subscribers (the read/observe surface). No-op for a blank tool name (nothing to attribute the result to).</summary>
+    protected void RaiseToolActivity(string toolName, string inputJson, string resultContent, bool isError)
+    {
+        if (!string.IsNullOrEmpty(toolName))
+        {
+            ToolActivityProduced?.Invoke(this, new SessionToolActivity(PaneId, toolName, inputJson, resultContent, isError));
+        }
+    }
+
+    private IReadOnlyList<SessionImageAttachment> _currentTurnImages = [];
+
+    /// <summary>
+    /// The images the user message that started the current turn carried (AC-116), or empty. Turn-scoped: set
+    /// when an image-bearing message is sent (<see cref="SetCurrentTurnImages"/>) and cleared when the turn
+    /// completes (<see cref="ClearCurrentTurnImages"/>), so the host-side observer can hand a plugin exactly
+    /// this turn's images when it reacts to a tool call, never a stale earlier set.
+    /// </summary>
+    public IReadOnlyList<SessionImageAttachment> CurrentTurnImages => _currentTurnImages;
+
+    /// <summary>Records the images the just-sent message carried as this turn's images (AC-116).</summary>
+    protected void SetCurrentTurnImages(IReadOnlyList<SessionImageAttachment> images) => _currentTurnImages = images;
+
+    /// <summary>Drops the current turn's images (AC-116) — called when the turn completes, so a later image-less turn attaches nothing.</summary>
+    protected void ClearCurrentTurnImages() => _currentTurnImages = [];
 
     private IVoicePushToTalkService? _voicePushToTalk;
     private IVoiceSettingsStore? _voiceSettingsStore;
