@@ -39,6 +39,12 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- The [McpServerTool] attributes for the fallback attach tool (AC-116). Host-provided (the cockpit already
+         loads ModelContextProtocol), so compile-only — the plugin ships no copy and the attribute types keep one
+         identity. Same pattern as Cockpit.Plugin.Workflows. -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

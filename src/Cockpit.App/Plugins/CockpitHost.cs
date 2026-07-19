@@ -90,9 +90,6 @@ internal sealed class CockpitHost(
     public void AddConversationPicker(ConversationPickerRegistration picker) =>
         services.GetRequiredService<IConversationPickerRegistry>().Register(picker);
 
-    public void AddSessionImageSink(SessionImageSinkRegistration sink) =>
-        services.GetRequiredService<ISessionImageSinkRegistry>().Register(sink);
-
     // This plugin's own storage, observe surface and declared secret keys travel with the registration: a placed
     // instance builds its context long after load, and by then the widget id is the only thing linking it back
     // here. The declared keys are what lets an export drop a credential the name rule cannot guess ("pat").

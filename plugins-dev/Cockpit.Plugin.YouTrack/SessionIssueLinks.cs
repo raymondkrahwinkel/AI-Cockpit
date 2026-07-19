@@ -14,10 +14,6 @@ internal sealed class SessionIssueLinks
 {
     private readonly Dictionary<string, LinkedIssue> _byPaneId = new(StringComparer.Ordinal);
 
-    // Panes whose operator turned on "attach sent images to the issue" (AC-14). Off by default and per-pane, like
-    // the link itself; cleared when the pane stops tracking an issue or is re-pointed at a different one.
-    private readonly HashSet<string> _attachImages = new(StringComparer.Ordinal);
-
     /// <summary>Raised (on the caller's thread — every mutation here happens on the UI thread) when a pane's link changes, so the header showing it can re-render.</summary>
     public event EventHandler<string>? Changed;
 
@@ -30,24 +26,6 @@ internal sealed class SessionIssueLinks
     public LinkedIssue? For(string paneId) =>
         _byPaneId.TryGetValue(paneId, out var link) ? link : null;
 
-    /// <summary>Whether the operator turned on attaching this pane's sent images to its issue (AC-14).</summary>
-    public bool AttachesImages(string paneId) => _attachImages.Contains(paneId);
-
-    /// <summary>Turns image-attaching on or off for a pane (AC-14), raising <see cref="Changed"/> so its header re-renders.</summary>
-    public void SetAttachesImages(string paneId, bool on)
-    {
-        if (string.IsNullOrEmpty(paneId))
-        {
-            return;
-        }
-
-        var changed = on ? _attachImages.Add(paneId) : _attachImages.Remove(paneId);
-        if (changed)
-        {
-            Changed?.Invoke(this, paneId);
-        }
-    }
-
     public void Link(string paneId, LinkedIssue link, string? workingDirectory = null)
     {
         if (string.IsNullOrEmpty(paneId))
@@ -57,27 +35,13 @@ internal sealed class SessionIssueLinks
             return;
         }
 
-        // The image-attach opt-in is per issue (AC-14): re-pointing a pane at a different issue resets it, so an
-        // image is never sent to an issue the operator turned the option on for a *different* one. Same issue again
-        // keeps the choice.
-        if (_byPaneId.TryGetValue(paneId, out var existing) && !_IsSameIssue(existing, link))
-        {
-            _attachImages.Remove(paneId);
-        }
-
         _byPaneId[paneId] = link;
         Changed?.Invoke(this, paneId);
         Linked?.Invoke(this, new IssueLinked(link, workingDirectory));
     }
 
-    private static bool _IsSameIssue(LinkedIssue a, LinkedIssue b) =>
-        string.Equals(a.Issue.IdReadable, b.Issue.IdReadable, StringComparison.Ordinal)
-        && string.Equals(a.Instance.InstanceUrl, b.Instance.InstanceUrl, StringComparison.OrdinalIgnoreCase);
-
     public void Unlink(string paneId)
     {
-        // The image-attach choice is about the issue this pane tracks; dropping the issue drops the choice too.
-        _attachImages.Remove(paneId);
         if (_byPaneId.Remove(paneId))
         {
             Changed?.Invoke(this, paneId);
