@@ -125,6 +125,44 @@ public partial class TtyView : UserControl
         // is untouched. Handled only when a link is actually under the pointer, so every other click still reaches
         // claude. Not Windows-gated: the same Exclr8 control renders on every OS, so the gap and the fix are shared.
         AddHandler(InputElement.PointerPressedEvent, OnTerminalPointerPressedForLinks, RoutingStrategies.Tunnel);
+
+        // AC-34: reflect this pane's coupling on the "agent connected" bar, so it is always visible when an agent is
+        // on the pane (the counterpart to both sides being able to type). Unsubscribed on unload.
+        if (_terminals is { } terminals)
+        {
+            terminals.CouplingChanged += OnCouplingChanged;
+        }
+    }
+
+    // AC-34: a coupling changed on some pane. If it is ours, show or hide the agent bar — on the UI thread, since the
+    // event fires from an MCP request thread (couple) or a teardown (decouple).
+    private void OnCouplingChanged(TerminalCouplingChange change)
+    {
+        if (_viewModel?.PaneId is not { } paneId || !string.Equals(change.PaneId, paneId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_viewModel is null)
+            {
+                return;
+            }
+
+            _viewModel.AgentConnected = change.Coupled;
+            _viewModel.AgentConnectedLabel = change.Coupled ? $"Agent connected — {change.AgentSession}" : null;
+        });
+    }
+
+    // AC-34: the operator's Disconnect on the agent bar — the reactive kill-switch. The registry interrupts a running
+    // command and breaks the coupling, and its CouplingChanged event hides the bar again.
+    private void OnAgentDisconnect(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.PaneId is { Length: > 0 } paneId)
+        {
+            _terminals?.Disconnect(paneId);
+        }
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -641,11 +679,25 @@ public partial class TtyView : UserControl
             }
             _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);
 
-            // AC-34: this pane is now a live terminal an agent could ask to read. Register it under its pane id and the
-            // name the operator sees, so list_terminals can name it and read_terminal can couple to it.
-            if (_viewModel?.PaneId is { Length: > 0 } paneId)
+            // AC-34: this pane is now a live terminal an agent could ask to use. Register it under its pane id and the
+            // name the operator sees (so list_terminals can name it), plus the input sink that a coupled agent's
+            // send_terminal writes through — the same pty stdin the operator's own keystrokes go to.
+            if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals)
             {
-                _terminals?.PaneOpened(paneId, string.IsNullOrWhiteSpace(_viewModel.Title) ? paneId : _viewModel.Title);
+                terminals.PaneOpened(paneId, string.IsNullOrWhiteSpace(_viewModel.Title) ? paneId : _viewModel.Title);
+                terminals.RegisterInput(paneId, bytes =>
+                {
+                    try
+                    {
+                        pty.InputStream.Write(bytes.Span);
+                        pty.InputStream.Flush();
+                    }
+                    catch (Exception)
+                    {
+                        // The pty may have exited between the agent's send and the write; the output pump observes the
+                        // exit, and SendInput already returned true — a dropped keystroke to a dead shell is not fatal.
+                    }
+                });
             }
         }
         catch (Exception ex)
@@ -860,9 +912,13 @@ public partial class TtyView : UserControl
 
         // AC-34: the pane is gone (tab closed, shell exit). Deregister it so it drops out of list_terminals and any
         // agent coupled to it is decoupled automatically, with the surviving side told rather than left reading nothing.
-        if (_viewModel?.PaneId is { Length: > 0 } paneId)
+        if (_terminals is { } terminals)
         {
-            _terminals?.PaneClosed(paneId);
+            terminals.CouplingChanged -= OnCouplingChanged;
+            if (_viewModel?.PaneId is { Length: > 0 } paneId)
+            {
+                terminals.PaneClosed(paneId);
+            }
         }
 
         _pty?.Dispose();
