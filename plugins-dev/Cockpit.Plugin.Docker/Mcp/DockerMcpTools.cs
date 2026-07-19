@@ -109,6 +109,79 @@ internal sealed class DockerMcpTools(
         }
     }
 
+    [McpServerTool(Name = "logs")]
+    [Description("Returns the recent logs of a container (docker logs --tail), stdout and stderr separated. Set tail to how many lines from the end you want (default 200; 0 means all). Does not follow — it returns what is there now and completes. Touching the daemon asks for consent the first time in a session; after that this read is free.")]
+    public async Task<string> Logs(
+        [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
+        [Description("The container id or name.")] string container,
+        [Description("How many lines from the end to return. Default 200; 0 means all.")] int tail = 200,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync($"read logs of container \"{container}\" (tail={tail})", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var logs = await engine.GetContainerLogsAsync(container, tail, cancellationToken);
+            return McpText.Ok(new { ok = true, container, stdout = logs.Stdout, stderr = logs.Stderr });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
+    [McpServerTool(Name = "list_images")]
+    [Description("Lists the images available locally (docker images): each image's id, tags and size in bytes. Use this to see whether an image is already present before run_container (a missing image is why a run fails until you pull_image it). Touching the daemon asks for consent the first time in a session; after that this read is free.")]
+    public async Task<string> ListImages(
+        [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync("list local images", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var images = await engine.ListImagesAsync(cancellationToken);
+            return McpText.Ok(new
+            {
+                ok = true,
+                count = images.Count,
+                images = images.Select(image => new { id = image.Id, tags = image.Tags, sizeBytes = image.SizeBytes }),
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
+    // ---- Image pull (a change to local state, never destructive) -----------------------------------------------
+
+    [McpServerTool(Name = "pull_image")]
+    [Description("Pulls an image from its registry (docker pull), e.g. \"nginx:latest\" or \"ghcr.io/owner/app:1.2\". A bare name without a tag pulls :latest. This is what you run before run_container when the image is not available locally. A change to local state (not destructive), so it asks the operator afresh each time and is never remembered.")]
+    public Task<string> PullImage(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The image reference to pull, e.g. \"nginx:latest\" or \"ghcr.io/owner/app:1.2\".")] string image,
+        CancellationToken cancellationToken = default) =>
+        _MutateAsync($"pull image \"{image}\"", session,
+            token => engine.PullImageAsync(image, token),
+            new { ok = true, pulled = image }, cancellationToken);
+
     // ---- Container mutations (always Dangerous, never remembered) ----------------------------------------------
 
     [McpServerTool(Name = "start_container")]
@@ -217,6 +290,12 @@ internal sealed class DockerMcpTools(
         {
             return McpText.Error("The operation was cancelled.");
         }
+        catch (ImageNotFoundException)
+        {
+            // The real cause is a missing local image, not the daemon — say so, and point at the pull that fixes it,
+            // instead of the generic "daemon could not be reached" that sent operators looking at the endpoint.
+            return McpText.Error($"The image \"{image}\" is not available locally and could not be found. Pull it first with pull_image, then run_container again.");
+        }
         catch (Exception ex)
         {
             return McpText.Error(_Sanitize(ex));
@@ -240,6 +319,27 @@ internal sealed class DockerMcpTools(
         }
 
         return await _RunComposeAsync(directory, _ComposeArgs(file, "config"), cancellationToken);
+    }
+
+    [McpServerTool(Name = "compose_logs")]
+    [Description("Returns the recent logs of a Compose project's services (docker compose logs), optionally filtered to specific services. Set tail to how many lines from the end (default 200; 0 means all). Does not follow — it returns what is there now and completes. A read: needs only the one-time daemon-connection consent.")]
+    public async Task<string> ComposeLogs(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The project directory that holds the compose file.")] string directory,
+        [Description("Optional compose file name/path, relative to the directory.")] string? file = null,
+        [Description("Optional specific services to show logs for; empty means all.")] string[]? services = null,
+        [Description("How many lines from the end to return. Default 200; 0 means all.")] int tail = 200,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync($"docker compose logs (in {directory})", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        var args = _ComposeArgs(file, "logs", "--no-color", "--no-log-prefix", "--tail", tail <= 0 ? "all" : tail.ToString());
+        _AppendServices(args, services);
+        return await _RunComposeAsync(directory, args, cancellationToken);
     }
 
     [McpServerTool(Name = "compose_up")]
