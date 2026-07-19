@@ -4140,6 +4140,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Sessions.RemoveAt(index);
         await session.DisposeAsync();
 
+        // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
+        // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
+        // was created for. Best-effort — closing a session must not fail on a worktree that will not release, and the
+        // startup reconcile is the net that catches whatever slips through.
+        if (_worktreeManager is not null && session.WorktreeBranch is not null)
+        {
+            try
+            {
+                await _worktreeManager.ReleaseAsync(session.PaneId);
+            }
+            catch (Exception)
+            {
+                // Left for the startup reconcile.
+            }
+        }
+
         if (ReferenceEquals(SelectedSession, session))
         {
             SelectedSession = Sessions.Count == 0

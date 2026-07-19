@@ -193,6 +193,47 @@ public sealed class WorktreeManagerTests : IDisposable
         File.Exists(Path.Combine(second.Path, "only-in-first.txt")).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ReleaseAsync_CleanWorktree_RemovesItAndDeletesItsBranch()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        Directory.Exists(record.Path).Should().BeFalse();
+        (await _manager.ListAsync()).Should().BeEmpty();
+        // Unlike a bare RemoveAsync, teardown of a clean worktree also deletes its (work-free) branch.
+        _Git(_repo, "branch", "--list", "wt").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WorktreeWithUncommittedWork_KeepsItAndMarksItRetained()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        File.WriteAllText(Path.Combine(record.Path, "work.txt"), "unfinished\n");
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        Directory.Exists(record.Path).Should().BeTrue();
+        var retained = (await _manager.ListAsync()).Should().ContainSingle().Subject;
+        retained.IsRetained.Should().BeTrue();
+        retained.Path.Should().Be(record.Path);
+        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReconcileAsync_RemovesAnOrphanedCleanWorktree_ButKeepsALiveOne()
+    {
+        var orphan = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/orphan", _repo);
+        var live = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/live", _repo);
+
+        await _manager.ReconcileAsync([live.SessionId]);
+
+        Directory.Exists(orphan.Path).Should().BeFalse();
+        Directory.Exists(live.Path).Should().BeTrue();
+        (await _manager.ListAsync()).Should().ContainSingle().Which.SessionId.Should().Be(live.SessionId);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempRoot))

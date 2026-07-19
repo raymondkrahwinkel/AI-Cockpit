@@ -197,6 +197,21 @@ internal sealed class SessionRuntime : ISessionRuntime
             _driver = null;
         }
 
+        // A delegated session that ran in its own worktree (AC-85) releases it here: the interactive close path tears
+        // down the UI sessions' worktrees, but a delegated one has no panel, so its teardown lives with its runtime.
+        // Clean is removed with its branch, work is kept and retained. Best-effort — the startup reconcile is the net.
+        if (_worktreeManager is not null && Worktree is not null)
+        {
+            try
+            {
+                await _worktreeManager.ReleaseAsync(Id);
+            }
+            catch (Exception)
+            {
+                // Left for the startup reconcile.
+            }
+        }
+
         _lifetime?.Dispose();
         _lifetime = null;
     }

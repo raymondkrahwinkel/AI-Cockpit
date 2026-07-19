@@ -136,6 +136,71 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var record in records.Where(record => string.Equals(record.SessionId, sessionId, StringComparison.Ordinal)))
+        {
+            await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    public async Task ReconcileAsync(IReadOnlyCollection<string> liveSessionIds, CancellationToken cancellationToken = default)
+    {
+        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+
+        foreach (var record in records.Where(record => !liveSessionIds.Contains(record.SessionId)))
+        {
+            await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Reclaim git's own admin entries for worktrees whose folder disappeared out from under it (a manual delete),
+        // which a plain registry drop cannot — done per repository the registry still knows about.
+        foreach (var repositoryRoot in records.Select(record => record.RepositoryRoot).Distinct(StringComparer.Ordinal))
+        {
+            try
+            {
+                await GitCli.RunAsync(repositoryRoot, ["worktree", "prune"], cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // A repository that itself vanished cannot be pruned; the registry drop above already forgot its
+                // worktrees, so there is nothing left to leak.
+            }
+        }
+    }
+
+    private async Task _ReleaseOneAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        bool clean;
+        try
+        {
+            clean = await IsCleanAsync(record, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // If we cannot tell (the worktree folder is gone, git errors), treat it as not clean: keeping a worktree
+            // that might hold work is the safe direction (cleanup-policy A never destroys work on a guess).
+            clean = false;
+        }
+
+        if (clean)
+        {
+            await RemoveAsync(record, force: false, cancellationToken).ConfigureAwait(false);
+
+            // A clean worktree's branch carries no unique work — it is still at its base — so its branch goes too,
+            // otherwise finished sessions would pile up branches nobody merges. Best-effort: the worktree, the thing
+            // that shared the working tree, is already gone; a branch git declines to delete is not worth failing on.
+            await GitCli.RunAsync(record.RepositoryRoot, ["branch", "-d", record.Branch], cancellationToken).ConfigureAwait(false);
+        }
+        else if (!record.IsRetained)
+        {
+            // Keep the work and mark it retained, so the worktree panel shows it for review and no sweep auto-removes
+            // it (cleanup-policy A). Idempotent: an already-retained record is left as it is.
+            await _registry.AddAsync(record with { IsRetained = true }, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     private string _ResolveWorktreePath(string repositoryRoot, string sessionId, string branch)
     {
         // Grouped per repository (a short stable hash of its root) so one repository's worktrees stay together and a

@@ -44,4 +44,18 @@ public interface IWorktreeManager
     /// with uncommitted work, which is the safety net; <paramref name="force"/> is the operator's explicit override.
     /// </summary>
     Task RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tears down the worktrees a session owned when it closes (AC-85, cleanup-policy A): a provably clean one — no
+    /// changes and no commits ahead of its base — is removed along with its branch; one that holds work is kept and
+    /// marked retained, shown for review and never auto-removed. Called on session close.
+    /// </summary>
+    Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reconciles the registry at startup against the sessions actually alive (AC-85): a worktree whose owning
+    /// session is gone — a crash or a hard close that missed teardown — is released the same way (clean removed,
+    /// work retained), and git's own admin entries for folders that vanished are pruned. This is the crash net.
+    /// </summary>
+    Task ReconcileAsync(IReadOnlyCollection<string> liveSessionIds, CancellationToken cancellationToken = default);
 }
