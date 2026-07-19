@@ -62,7 +62,9 @@ internal sealed class TerminalMcpTools
             return _Serialize(new { ok = false, error });
         }
 
-        var output = _registry.ReadCoupled(session, pane.PaneId) ?? string.Empty;
+        // AC-34: strip the ANSI/VT escapes from the captured bytes so the agent reads plain text, not colour codes.
+        // Stripped over the whole buffer, so a sequence split across pty writes is already rejoined (see the sanitizer).
+        var output = TerminalOutputSanitizer.ToPlainText(_registry.ReadCoupled(session, pane.PaneId) ?? string.Empty);
         return _Serialize(new { ok = true, id = pane.PaneId, name = pane.Name, output });
     }
 

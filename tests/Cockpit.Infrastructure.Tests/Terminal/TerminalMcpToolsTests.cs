@@ -46,6 +46,21 @@ public class TerminalMcpToolsTests
     }
 
     [Fact]
+    public async Task ReadTerminal_StripsAnsiEscapes_ReturningPlainText()
+    {
+        // AC-34: the pane captures raw pty bytes with colour codes; read_terminal returns readable text.
+        var esc = ((char)0x1b).ToString();
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5");
+        await tools.ReadTerminal(Session, "zsh-5");                 // couple
+        registry.CaptureOutput("term-1", $"{esc}[32mok{esc}[0m done\n");
+
+        var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
+
+        json!["output"]!.GetValue<string>().Should().Be("ok done\n");
+    }
+
+    [Fact]
     public async Task ReadTerminal_WhenDenied_ReturnsError_AndDoesNotCouple()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
