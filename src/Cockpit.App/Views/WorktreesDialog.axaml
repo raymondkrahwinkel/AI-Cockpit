@@ -95,7 +95,9 @@
                                                     Command="{Binding ((vm:WorktreesViewModel)DataContext).ReattachCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding}"/>
                                             <Button Classes="Subtle Compact" Content="Remove"
-                                                    ToolTip.Tip="Remove this worktree. A tree with unsaved changes asks first."
+                                                    IsEnabled="{Binding CanRemove}"
+                                                    ToolTip.ShowOnDisabled="True"
+                                                    ToolTip.Tip="Remove this worktree (asks to confirm; a tree with unsaved changes warns first). Disabled while a session is still using it — close the session first."
                                                     Command="{Binding ((vm:WorktreesViewModel)DataContext).RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding}"/>
                                         </StackPanel>

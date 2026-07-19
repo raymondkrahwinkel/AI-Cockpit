@@ -89,28 +89,30 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
     }
 
     /// <summary>
-    /// Removes a worktree. A tree with uncommitted changes is only removed after an explicit consent that names the
-    /// loss (its committed history stays on the branch; only unsaved edits go). A clean or commits-only tree removes
-    /// straight away — git itself allows that, and the branch is kept.
+    /// Removes a worktree, always after a confirmation. A tree with uncommitted changes gets the stronger consent
+    /// that names the loss (its committed history stays on the branch; only unsaved edits go); a clean one gets a
+    /// plain confirm. Never removes a tree a live session is still on — that would pull the working directory out
+    /// from under a running session; close the session first.
     /// </summary>
     [RelayCommand]
     private async Task RemoveAsync(ManagedWorktreeRowViewModel? row)
     {
-        if (_manager is null || row is null)
+        if (_manager is null || row is null || row.IsOwnerLive)
         {
             return;
         }
 
-        if (row.Status.HasUncommittedChanges)
-        {
-            var confirmed = _dialogs is not null && await _dialogs.ShowConfirmationDialogAsync(
-                "Delete worktree with unsaved changes?",
+        var (title, message, confirmLabel) = row.Status.HasUncommittedChanges
+            ? ("Delete worktree with unsaved changes?",
                 $"The worktree on branch '{row.Branch}' has uncommitted changes that will be lost. Its committed history stays on the branch.",
-                "Delete anyway");
-            if (!confirmed)
-            {
-                return;
-            }
+                "Delete anyway")
+            : ("Remove worktree?",
+                $"Remove the worktree on branch '{row.Branch}'? The branch itself is kept.",
+                "Remove");
+
+        if (_dialogs is null || !await _dialogs.ShowConfirmationDialogAsync(title, message, confirmLabel))
+        {
+            return;
         }
 
         try
@@ -147,7 +149,8 @@ public sealed partial class WorktreesViewModel : ObservableObject, ISingletonSer
             return;
         }
 
-        foreach (var row in Worktrees.Where(worktree => worktree.IsClean).ToList())
+        // Only clean trees whose session is gone: a live session's tree is never pulled from under it, even when clean.
+        foreach (var row in Worktrees.Where(worktree => worktree.IsClean && !worktree.IsOwnerLive).ToList())
         {
             try
             {
