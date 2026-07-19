@@ -163,6 +163,42 @@ public interface ICockpitHost
         remove { }
     }
 
+    /// <summary>
+    /// Registers a handler for an intent other plugins can send to this one (AC-95), under <paramref name="action"/> —
+    /// the receiving half of <see cref="SendIntent"/>. The host stamps the calling plugin's id on every intent it
+    /// delivers, so <paramref name="handler"/> can trust <see cref="PluginIntent.CallerPluginId"/>. Registering the
+    /// same action twice from one plugin throws — one handler per action, so which one runs is never a question of
+    /// load order. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin
+    /// builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void RegisterIntentHandler(string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler)
+    {
+    }
+
+    /// <summary>
+    /// Sends an intent to the plugin with id <paramref name="targetPluginId"/> and returns its handler's result, or
+    /// <see langword="null"/> when that plugin is not installed or registered no handler for <paramref name="action"/>
+    /// (AC-95). Addressing is by manifest id and an agreed action string, so the caller need not reference the
+    /// target's types — the same loose coupling the workflow steps use. The host stamps this plugin's own id as
+    /// <see cref="PluginIntent.CallerPluginId"/>; a plugin cannot send under another's name. Default returns
+    /// <see langword="null"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched — only
+    /// the app's own host dispatches.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data) =>
+        Task.FromResult<IReadOnlyDictionary<string, string>?>(null);
+
+    /// <summary>
+    /// Whether the plugin with id <paramref name="targetPluginId"/> has registered a handler for
+    /// <paramref name="action"/> (AC-95) — what a plugin checks before offering a menu item ("Start in Autopilot")
+    /// that would otherwise dispatch to nobody, the same way <see cref="HasSettings"/> gates a Configure button.
+    /// The id and action are matched case-sensitively (see <see cref="PluginIntent"/>). Check it when the operator is
+    /// about to act (building a context menu, a button click) rather than from your own
+    /// <see cref="ICockpitPlugin.Initialize"/>: handlers are registered during each plugin's Initialize, so a target
+    /// that loads after you has not registered yet when yours runs. Default <see langword="false"/> so existing
+    /// <see cref="ICockpitHost"/> implementations keep compiling untouched — only the app's own host reports the real answer.
+    /// </summary>
+    bool CanSendIntent(string targetPluginId, string action) => false;
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 

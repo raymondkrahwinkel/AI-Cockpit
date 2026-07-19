@@ -70,7 +70,13 @@
          the plugin's own settings (ShowSettingsAsync) or runs any action it assigns. The icon names a bundled
          MaterialIconKind (like PluginSessionAction's IconKind, AC-33). Existing plugins keep compiling (the member is
          default no-op). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.12.0</Version>
+    <!-- 1.13.0 (#AC-95): added the inter-plugin intent contract — the PluginIntent record and ICockpitHost.
+         RegisterIntentHandler/SendIntent/CanSendIntent (default-implemented), so one plugin can invoke a named action
+         on another addressed by its manifest id, with a presence check (CanSendIntent), and no shared contract type
+         between them — the tracker's "Start in Autopilot" reaches Autopilot without either referencing the other.
+         Existing plugins keep compiling (the members are default no-op / null). Additive API — still a minor; the
+         major and abstractionsVersion stay 1. -->
+    <Version>1.13.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
