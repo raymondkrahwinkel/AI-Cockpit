@@ -16,6 +16,7 @@ using Cockpit.Core.TranscriptDisplay;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Voice;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
 
@@ -61,6 +62,43 @@ public class CockpitViewModelTests
 
         vm.Sessions.Should().BeEmpty();
         vm.HasSessions.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ShowNewSessionDialogForPlugin_ReturnsTheStartedSessionsPaneId_AndInjectsTheInitialPrompt()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>())
+            .Returns(NewSessionResultFor(SessionKind.Sdk));
+        var vm = NewVm(dialogService);
+
+        var prefill = new NewSessionPrefill(ProfileLabel: "default", InitialPrompt: "Investigate AC-96");
+        var paneId = await vm.ShowNewSessionDialogForPluginAsync(prefill);
+
+        // The id handed back is the started session's own PaneId (== ICockpitSessionObserver.ActivePaneId), so a
+        // plugin's onStarted can act on that exact pane — the load-bearing #AC-96 contract.
+        var session = vm.Sessions.Single();
+        paneId.Should().Be(session.PaneId);
+
+        // The prefill's initial prompt lands in that session's composer through the inject seam, for the operator to send.
+        ((SessionViewModel)session).InputText.Should().Be("Investigate AC-96");
+
+        // The prefill is forwarded to the dialog so its fields are pre-filled for the operator.
+        await dialogService.Received(1).ShowNewSessionDialogAsync(prefill, Arg.Any<bool>());
+    }
+
+    [Fact]
+    public async Task ShowNewSessionDialogForPlugin_WhenCancelled_ReturnsNullAndAddsNoSession()
+    {
+        var dialogService = Substitute.For<ISessionDialogService>();
+        dialogService.ShowNewSessionDialogAsync(Arg.Any<NewSessionPrefill?>(), Arg.Any<bool>())
+            .Returns((NewSessionResult?)null);
+        var vm = NewVm(dialogService);
+
+        var paneId = await vm.ShowNewSessionDialogForPluginAsync(new NewSessionPrefill(ProfileLabel: "default"));
+
+        paneId.Should().BeNull();
+        vm.Sessions.Should().BeEmpty();
     }
 
     [Fact]

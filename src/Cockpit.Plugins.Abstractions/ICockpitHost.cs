@@ -271,6 +271,31 @@ public interface ICockpitHost
     Task SetSessionName(string paneId, string name) => Task.CompletedTask;
 
     /// <summary>
+    /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>, and
+    /// starts the session the operator confirms — the plugin equivalent of the operator pressing "New session", with
+    /// the fields it knows already offered. The operator keeps full control: they see and can change every field
+    /// (profile, MCP selection, working tree, resume) before anything starts, and cancelling starts nothing.
+    /// <para>
+    /// <paramref name="onStarted"/> is invoked with the new session's <c>IPluginSessionContext.PaneId</c> (also
+    /// <see cref="ICockpitSessionObserver.ActivePaneId"/>) once it exists, so the caller can go on to act on that exact
+    /// pane — set its statusline, track an issue against it. <paramref name="onCancelled"/> fires instead when the
+    /// operator dismisses the dialog (or no session could be started), so a workflow waiting on the session can stop
+    /// rather than hang. Exactly one of the two runs. Unlike <see cref="ICockpitActions.StartSessionAsync"/>, which
+    /// launches a named profile headlessly, this always shows the dialog — it is the path for "let the operator decide,
+    /// then tell me which session they made".
+    /// </para>
+    /// Default no-op (and no callback) so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin
+    /// builds) keep compiling untouched — only the app's own host shows the dialog.
+    /// </summary>
+    /// <param name="prefill">The fields to seed the dialog with, or <see langword="null"/> to open it on its own defaults.</param>
+    /// <param name="onStarted">Invoked with the started session's pane id when the operator confirms; not called if they cancel.</param>
+    /// <param name="onCancelled">Invoked when the operator cancels or no session could be started; not called once a session starts.</param>
+    Task ShowNewSessionDialogAsync(
+        NewSessionPrefill? prefill = null,
+        Action<string>? onStarted = null,
+        Action? onCancelled = null) => Task.CompletedTask;
+
+    /// <summary>
     /// Adds an in-process MCP server to the cockpit (#AC-12): the host mounts <paramref name="tools"/> — an already-
     /// built class whose <c>[McpServerTool]</c> methods are the tools, constructed by the plugin with its own
     /// dependencies — on a loopback address under <paramref name="serverName"/>. This is how a plugin gives agents
