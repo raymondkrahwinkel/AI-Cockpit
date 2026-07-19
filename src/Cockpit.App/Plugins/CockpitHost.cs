@@ -133,6 +133,18 @@ internal sealed class CockpitHost(
         remove => services.GetRequiredService<IWorkflowStepRegistry>().Fired -= value;
     }
 
+    // The caller's id is stamped here from this host's own pluginId, never taken from the caller — a plugin cannot
+    // register a handler as, or send an intent under, another plugin's name (same rule as RequestConsentAsync).
+    public void RegisterIntentHandler(string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler) =>
+        services.GetRequiredService<IPluginIntentRegistry>().Register(pluginId, action, handler);
+
+    public Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data) =>
+        services.GetRequiredService<IPluginIntentRegistry>()
+            .Dispatch(new PluginIntent(pluginId, targetPluginId, action, data));
+
+    public bool CanSendIntent(string targetPluginId, string action) =>
+        services.GetRequiredService<IPluginIntentRegistry>().HasHandler(targetPluginId, action);
+
     /// <summary>
     /// A plugin's dialog gets a gear in its title bar when the plugin has settings to open — asked for at the
     /// moment the dialog opens rather than when the plugin was built, since a plugin registers its settings and
