@@ -15,11 +15,17 @@ namespace Cockpit.Infrastructure.Mcp;
 /// OAuth-protected HTTP servers go through <see cref="IMcpOAuthAuthorizer"/> (loopback + system browser), so
 /// the first tool use pops a browser sign-in and the SDK handles PKCE, discovery and token refresh.
 /// </summary>
-internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, McpAuthKey authKey, ILogger<McpToolProvider> logger)
+internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
-    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, CancellationToken cancellationToken = default)
+    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, CancellationToken cancellationToken = default)
     {
+        // AC-89: when this in-process tool loop belongs to a session with a pane id (a local-model session), mint it
+        // one per-session token — used for every cockpit-hosted endpoint it connects to — so those endpoints can
+        // attribute its requests to this pane and the consent broker scopes on the real session, not the id the model
+        // declares. Minted once here, not per server, so the concurrent connects below all present the same live
+        // token. No pane id falls back to the shared app key.
+        var sessionToken = string.IsNullOrEmpty(paneId) ? null : keyring.TokenFor(paneId);
         // The effective set — registry plus what active plugins provide (AC-11) — so a local model gets a
         // plugin's MCP servers too, and the per-session selection can narrow them like any other.
         var registry = await catalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
@@ -42,7 +48,7 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         // blocking — or now, delaying — the others. Task.WhenAll returns its results in the same order as the
         // input sequence regardless of which task finishes first, so the resulting tools/connected-names lists
         // stay in the same (deterministic) order as enabledServers even though the connects race in parallel.
-        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, cancellationToken)));
+        var connections = await Task.WhenAll(enabledServers.Select(server => _ConnectServerAsync(server, sessionToken, cancellationToken)));
 
         foreach (var connection in connections)
         {
@@ -70,11 +76,11 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         return new McpToolSession(clients, tools, connectedNames, toolClasses);
     }
 
-    private async Task<ServerConnection?> _ConnectServerAsync(McpServerConfig server, CancellationToken cancellationToken)
+    private async Task<ServerConnection?> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken)
     {
         try
         {
-            var client = await McpClient.CreateAsync(_BuildTransport(server), cancellationToken: cancellationToken).ConfigureAwait(false);
+            var client = await McpClient.CreateAsync(_BuildTransport(server, sessionToken), cancellationToken: cancellationToken).ConfigureAwait(false);
             var serverTools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
             // Classify each tool from its MCP annotations (AC-79) at connect, while we still have the typed
@@ -118,7 +124,7 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         return [.. byName.Values];
     }
 
-    private IClientTransport _BuildTransport(McpServerConfig server) => server.Transport switch
+    private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken) => server.Transport switch
     {
         McpTransport.Stdio => new StdioClientTransport(new StdioClientTransportOptions
         {
@@ -132,9 +138,11 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             Name = server.Name,
             Endpoint = new Uri(server.Url ?? string.Empty),
             TransportMode = HttpTransportMode.AutoDetect,
-            // A bearer header carries this run's key for a cockpit-hosted endpoint (AC-40) or a user API-key server's
-            // own key; OAuth is negotiated by the SDK via the authorizer.
-            AdditionalHeaders = CockpitMcpBearer.For(server, authKey) is { } bearer
+            // A bearer header carries the auth for a cockpit-hosted endpoint (AC-40) or a user API-key server's own
+            // key; OAuth is negotiated by the SDK via the authorizer. AC-89: a cockpit-hosted endpoint gets this
+            // session's per-session token when it has one (so its requests are attributed to this pane), else the
+            // shared app key.
+            AdditionalHeaders = (server.CockpitHosted && sessionToken is not null ? sessionToken : CockpitMcpBearer.For(server, authKey)) is { } bearer
                 ? new Dictionary<string, string> { ["Authorization"] = $"Bearer {bearer}" }
                 : new Dictionary<string, string>(),
             OAuth = server.Auth == McpServerAuth.OAuth ? oauthAuthorizer.CreateOptions(server) : null,
