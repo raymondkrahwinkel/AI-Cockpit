@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Cockpit.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Cockpit.App.Logging;
@@ -18,8 +19,11 @@ public sealed class FileLoggerProvider : ILoggerProvider
     public FileLoggerProvider(string path)
     {
         _path = path;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, "");
+
+        // Owner-only, dir and file (AC-46): the log lives under the state root beside the credential files, and a
+        // stock umask would otherwise leave it world-readable. This truncates for a clean run; Write only appends
+        // afterwards, so the restricted mode set here carries for the life of the file.
+        CredentialFileHousekeeping.PrepareLogFile(path);
     }
 
     public ILogger CreateLogger(string categoryName) =>

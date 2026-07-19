@@ -649,7 +649,8 @@ public partial class PluginManagerViewModel : ViewModelBase
             // Templates are read into the editor's picker at startup, so this one is there next time — said plainly
             // rather than left for the operator to wonder why the flow they just installed is not in the list.
             NeedsRestart = true;
-            StatusMessage = $"'{row.Name}' installed. Restart AI-Cockpit and it is in the flow editor's templates.";
+            var installedMessage = $"'{row.Name}' installed. Restart AI-Cockpit and it is in the flow editor's templates.";
+            StatusMessage = download.Warning is { } warning ? $"⚠ {warning} {installedMessage}" : installedMessage;
         }
         finally
         {
@@ -866,8 +867,14 @@ public partial class PluginManagerViewModel : ViewModelBase
 
         try
         {
+            // Surface an unverified-checksum advisory ahead of the installed message (AC-46): a store that publishes
+            // no per-artifact hash still installs, but the operator is told the download could not be verified.
+            var installedMessage = download.Warning is { } warning
+                ? $"⚠ {warning} '{row.Name}' installed. Restart AI-Cockpit to activate it."
+                : $"'{row.Name}' installed. Restart AI-Cockpit to activate it.";
+
             var result = await _installer!.InstallFromZipAsync(download.ZipPath, AbstractionsContract.Version);
-            await _AfterInstallAsync(result, $"'{row.Name}' installed. Restart AI-Cockpit to activate it.");
+            await _AfterInstallAsync(result, installedMessage);
 
             // A staged update is live only after restart, so remember the version it now effectively is, so the
             // store stops offering the same update (and drops it out of the updates list) until the restart.

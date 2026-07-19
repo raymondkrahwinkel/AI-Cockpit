@@ -4,66 +4,33 @@ using Cockpit.Core.Mcp;
 namespace Cockpit.Core.Sessions.Permissions;
 
 /// <summary>
-/// Builds the <c>--mcp-config</c> body every Claude-CLI session points at. It always contains the
-/// cockpit's shared in-process HTTP permission server, e.g.
-/// <c>{"mcpServers":{"cockpit":{"type":"http","url":"http://127.0.0.1:&lt;port&gt;/mcp"}}}</c>, and — for the
-/// fan-out (#26) — merges in the user's shared MCP registry so the CLI sees the same servers the local-LLM
-/// tool-loop hosts. Combined with <c>--strict-mcp-config</c> this is the CLI's <em>complete</em> server set,
-/// so the cockpit registry is the single source of truth. Pure string/JSON generation so it is
-/// unit-testable; writing it to disk is the host's job.
+/// Builds the <c>--mcp-config</c> body a Claude-CLI session points at from the user's shared MCP registry, so the
+/// CLI sees the same servers the local-LLM tool-loop hosts (#26). Combined with <c>--strict-mcp-config</c> this is
+/// the CLI's <em>complete</em> server set, so the cockpit registry is the single source of truth. Pure string/JSON
+/// generation so it is unit-testable; writing it to disk is the host's job.
+/// <para>
+/// The cockpit once injected its own in-process HTTP permission server into this body; that endpoint is gone, and
+/// the host-side <c>Serialize(mcpUrl,…)</c> overloads that carried it were removed with it (AC-46) so an
+/// unauthenticated permission endpoint cannot be reintroduced through a stale config path. What remains here is
+/// registry fan-out only; the provider plugins build their own spawn config.
+/// </para>
 /// </summary>
 public static class McpConfigFile
 {
-    /// <summary>The server key; the tool is addressed as <c>mcp__cockpit__permission_prompt</c>.</summary>
+    /// <summary>The reserved server key the registry may never claim (it once addressed the cockpit permission server).</summary>
     public const string ServerName = "cockpit";
 
     /// <summary>
     /// Whether a registry server should fan out to an agentic CLI session (Claude Code, Codex) — enabled, not
     /// scoped to local models only (those agents ship their own file/shell/web tools, so a filesystem server
-    /// there is noise), and not the reserved permission-server key (added separately, never from the registry).
-    /// The one predicate the Claude <c>--mcp-config</c> serializers and the plugin driver adapter (#26/#44) all
-    /// share, so "which servers a coding agent sees" lives in one place.
+    /// there is noise), and not the reserved key (never surfaced from the registry). The one predicate the
+    /// registry serializer and the plugin driver adapter (#26/#44) share, so "which servers a coding agent sees"
+    /// lives in one place.
     /// </summary>
     public static bool IsAgentEligible(McpServerConfig server) =>
         server.Enabled
         && server.Scope != McpServerScope.LocalOnly
         && !string.Equals(server.Name, ServerName, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Serializes the config JSON for the permission server alone (no registry fan-out).</summary>
-    public static string Serialize(string mcpUrl) => Serialize(mcpUrl, []);
-
-    /// <summary>
-    /// Serializes the permission server plus every enabled registry server, mapped to the CLI's
-    /// <c>mcpServers</c> shape. A registry server that collides with the reserved <see cref="ServerName"/>
-    /// key, or that carries no usable transport target, is skipped so it can never clobber the permission
-    /// entry or emit a malformed spawn config.
-    /// </summary>
-    public static string Serialize(string mcpUrl, IEnumerable<McpServerConfig> registryServers)
-    {
-        if (string.IsNullOrWhiteSpace(mcpUrl))
-        {
-            throw new ArgumentException("MCP url must be provided.", nameof(mcpUrl));
-        }
-
-        var servers = new JsonObject
-        {
-            [ServerName] = new JsonObject
-            {
-                ["type"] = "http",
-                ["url"] = mcpUrl,
-            },
-        };
-
-        foreach (var server in registryServers)
-        {
-            if (IsAgentEligible(server) && _ToConfigEntry(server) is { } entry)
-            {
-                servers[server.Name] = entry;
-            }
-        }
-
-        return new JsonObject { ["mcpServers"] = servers }.ToJsonString();
-    }
 
     /// <summary>
     /// Serializes an mcp-config body of <em>only</em> the enabled, Claude-eligible registry servers — with no
