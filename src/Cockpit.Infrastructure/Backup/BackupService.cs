@@ -29,6 +29,13 @@ internal sealed class BackupService(
 
     private static string CockpitDirectory => CockpitConfigPath.Root;
 
+    // Backup and restore both stage under the cockpit's own state root, never Path.GetTempPath() (AC-45): on Linux
+    // that is a world-readable 1777 /tmp, and a restore necessarily unpacks the whole archive — every credential,
+    // including the credential-bearing files the backup-time scrubber only ever touches inside cockpit.json — to the
+    // staging directory for the length of the restore. Staged here, in an owner-only directory, that window is not
+    // readable by other users on the machine.
+    private static string StagingRoot => Path.Combine(CockpitConfigPath.Root, "staging");
+
     public async Task<BackupManifest> WriteAsync(string archivePath, BackupOptions options, CancellationToken cancellationToken = default)
     {
         var root = CockpitDirectory;
@@ -41,8 +48,10 @@ internal sealed class BackupService(
         var profileDirectories = new Dictionary<string, string>(StringComparer.Ordinal);
 
         // Written to a temporary file and moved into place: a half-written archive with the right name is a backup
-        // you will trust exactly once.
-        var staging = Path.Combine(Path.GetTempPath(), $"cockpit-backup-{Guid.NewGuid():n}.zip");
+        // you will trust exactly once. Under the owner-only staging root (AC-45), so the credential-bearing zip is
+        // never briefly readable to other users while it is being built.
+        CockpitConfigPath.EnsurePrivateDirectory(StagingRoot);
+        var staging = Path.Combine(StagingRoot, $"cockpit-backup-{Guid.NewGuid():n}.zip");
 
         try
         {
@@ -144,11 +153,13 @@ internal sealed class BackupService(
         }
 
         // Unpack first, write second. Everything that can fail — a corrupt entry, a full disk — fails while this
-        // cockpit is still untouched.
-        var staging = Path.Combine(Path.GetTempPath(), $"cockpit-restore-{Guid.NewGuid():n}");
+        // cockpit is still untouched. Extracted into an owner-only directory (AC-45): the archive holds every
+        // credential, and the extraction window must not expose them to other users the way a shared /tmp would.
+        var staging = Path.Combine(StagingRoot, $"cockpit-restore-{Guid.NewGuid():n}");
 
         try
         {
+            CockpitConfigPath.EnsurePrivateDirectory(staging);
             ZipFile.ExtractToDirectory(archivePath, staging);
 
             var archived = Path.Combine(staging, "cockpit");
