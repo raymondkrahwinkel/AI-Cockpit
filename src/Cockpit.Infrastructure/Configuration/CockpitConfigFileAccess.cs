@@ -156,6 +156,18 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// </summary>
     public async Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
     {
+        // Refuse to write while the app is locked with encryption still on (AC-5). Relock cleared the key without
+        // turning encryption off, so there is no protector to encrypt the secret fields — yet every write serializes
+        // the whole document, secret sections included. Writing now would land provider API keys, MCP bearer tokens
+        // and plugin credentials on disk in the clear while the operator believes encryption is on and is looking at
+        // the unlock screen. Fail closed: a background writer's change is lost (recoverable) rather than a secret
+        // leaked (not). Writes resume the moment Unlock derives the key again.
+        if (_keyHolder.IsLocked)
+        {
+            throw new InvalidOperationException(
+                "Cockpit is locked; its configuration cannot be written until it is unlocked.");
+        }
+
         using var gate = await CockpitConfigWriteGate.AcquireAsync(configFilePath, cancellationToken).ConfigureAwait(false);
 
         var configFile = await ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();

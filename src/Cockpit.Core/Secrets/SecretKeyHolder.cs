@@ -14,6 +14,15 @@ public interface ISecretKeyHolder
     /// <summary>The protector for the unlocked session, or <see langword="null"/> when encryption is off (or the app is not unlocked yet).</summary>
     ISecretProtector? Protector { get; }
 
+    /// <summary>
+    /// Whether the app is locked while encryption stays on (AC-5): the session key has been cleared — so
+    /// <see cref="Protector"/> is null — but encryption is still enabled, which a bare null <see cref="Protector"/>
+    /// cannot tell apart from encryption being off. The config write seam refuses to write while this is true:
+    /// serializing the document with no protector would put the secret fields on disk in the clear <em>despite</em>
+    /// encryption being on, which the operator staring at the unlock screen would never expect.
+    /// </summary>
+    bool IsLocked { get; }
+
     /// <summary>Fields the plugins declared as secret, on top of the name rule.</summary>
     SecretFields Fields { get; }
 
@@ -40,6 +49,9 @@ public sealed class SecretKeyHolder : ISecretKeyHolder
 
     public ISecretProtector? Protector { get; private set; }
 
+    /// <inheritdoc />
+    public bool IsLocked { get; private set; }
+
     public SecretFields Fields => _fields;
 
     /// <inheritdoc />
@@ -48,11 +60,30 @@ public sealed class SecretKeyHolder : ISecretKeyHolder
     /// <inheritdoc />
     public void NoteUnprotectedSecretsWritten() => UnprotectedSecretsWritten?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>The app is unlocked: from here on, the settings are read and written through <paramref name="protector"/>.</summary>
-    public void Unlock(ISecretProtector protector) => Protector = protector;
+    /// <summary>The app is unlocked: from here on, the settings are read and written through <paramref name="protector"/>. Clears the locked state.</summary>
+    public void Unlock(ISecretProtector protector)
+    {
+        Protector = protector;
+        IsLocked = false;
+    }
 
-    /// <summary>Encryption is off — the settings are read and written in the clear.</summary>
-    public void Lock() => Protector = null;
+    /// <summary>Encryption is off — the settings are read and written in the clear. Not a lock: writes are allowed (there is nothing to protect).</summary>
+    public void Lock()
+    {
+        Protector = null;
+        IsLocked = false;
+    }
+
+    /// <summary>
+    /// The app is locked while encryption stays on (AC-5): drop the key but keep encryption enabled, so writes are
+    /// refused until the next <see cref="Unlock"/> rather than falling back to writing secrets in the clear the way
+    /// <see cref="Lock"/> (encryption off) does. See <see cref="ISecretKeyHolder.IsLocked"/>.
+    /// </summary>
+    public void Relock()
+    {
+        Protector = null;
+        IsLocked = true;
+    }
 
     /// <summary>
     /// Adds the secret keys a plugin declared (<c>plugin.json</c>), so its own fields are protected too. Additive:

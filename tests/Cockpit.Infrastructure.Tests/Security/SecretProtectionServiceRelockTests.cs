@@ -57,4 +57,27 @@ public sealed class SecretProtectionServiceRelockTests : IDisposable
 
         holder.Protector.Should().BeNull();
     }
+
+    [Fact]
+    public async Task WhileRelocked_TheConfigWriteSeamRefusesToWrite_RatherThanFallBackToTheClear()
+    {
+        var holder = new SecretKeyHolder();
+        var service = new SecretProtectionService(ConfigPath, holder);
+        await service.EnableAsync("correct horse");
+
+        service.Relock();
+        holder.IsLocked.Should().BeTrue("encryption stays on but the session key was cleared");
+
+        // Every settings write goes through this one seam, which serializes the whole document. With no protector to
+        // encrypt the secret sections and encryption still on, a write would land them on disk in the clear — so it is
+        // refused, not silently written the way a bare null protector (encryption off) is allowed to be.
+        var access = new CockpitConfigFileAccess(ConfigPath, holder);
+        var write = async () => await access.UpdateAsync(_ => { }, CancellationToken.None);
+        await write.Should().ThrowAsync<InvalidOperationException>().WithMessage("*locked*");
+
+        // Unlocking clears the locked state and lets writes through again.
+        (await service.UnlockAsync("correct horse")).Should().BeTrue();
+        holder.IsLocked.Should().BeFalse();
+        await access.UpdateAsync(_ => { }, CancellationToken.None);
+    }
 }
