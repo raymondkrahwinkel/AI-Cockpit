@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 
 namespace Cockpit.Infrastructure.Worktrees;
@@ -17,10 +18,14 @@ internal sealed class WorktreeTools
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = false };
 
     private readonly IWorktreeManager _worktreeManager;
+    private readonly ILiveSessionRegistry? _liveSessions;
 
-    public WorktreeTools(IWorktreeManager worktreeManager)
+    // The liveness registry is optional so the tool's own tests construct it without one; the container injects the
+    // shared singleton, so a real removal is checked against the sessions actually running.
+    public WorktreeTools(IWorktreeManager worktreeManager, ILiveSessionRegistry? liveSessions = null)
     {
         _worktreeManager = worktreeManager;
+        _liveSessions = liveSessions;
     }
 
     [McpServerTool(Name = "worktree_create")]
@@ -76,6 +81,14 @@ internal sealed class WorktreeTools
         if (record is null)
         {
             return _Serialize(new { ok = false, error = "No managed worktree at that path — call worktree_list for the current paths." });
+        }
+
+        // Never remove a worktree whose owning session is still running — that pulls the working directory out from
+        // under it (and with force would discard its uncommitted work). The panel enforces the same guard; close the
+        // session first, or let its own teardown remove the worktree when it exits.
+        if (_liveSessions is not null && _liveSessions.LiveSessionIds.Contains(record.SessionId))
+        {
+            return _Serialize(new { ok = false, error = "That worktree's session is still running — it will be cleaned up when the session closes; do not remove a live session's worktree." });
         }
 
         try

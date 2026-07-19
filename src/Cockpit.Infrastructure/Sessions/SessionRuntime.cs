@@ -1,9 +1,7 @@
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
-using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -24,7 +22,6 @@ internal sealed class SessionRuntime : ISessionRuntime
     private const int MaxLoggedEvents = 5_000;
 
     private readonly ISessionDriverFactory _driverFactory;
-    private readonly IWorktreeManager? _worktreeManager;
     private readonly List<SessionEvent> _events = [];
     private readonly List<string> _currentTurnText = [];
     private readonly Lock _eventsLock = new();
@@ -37,20 +34,15 @@ internal sealed class SessionRuntime : ISessionRuntime
     // place in the log rather than silently replaying events the consumer has already seen.
     private int _droppedEvents;
 
-    // Optional on purpose: a session only needs it when its profile opts into worktree isolation (AC-85), and the
-    // runtime's own tests exercise the event pump without one. SessionManager hands the real singleton in.
-    public SessionRuntime(ISessionDriverFactory driverFactory, SessionProfile? profile, IWorktreeManager? worktreeManager = null)
+    public SessionRuntime(ISessionDriverFactory driverFactory, SessionProfile? profile)
     {
         _driverFactory = driverFactory;
-        _worktreeManager = worktreeManager;
         Profile = profile;
     }
 
     public string Id { get; } = Guid.NewGuid().ToString("N");
 
     public SessionProfile? Profile { get; private set; }
-
-    public WorktreeRecord? Worktree { get; private set; }
 
     public SessionCapabilities? Capabilities => _driver?.Capabilities;
 
@@ -85,45 +77,21 @@ internal sealed class SessionRuntime : ISessionRuntime
         string? workingDirectory = null,
         SessionResume? resume = null,
         IReadOnlyDictionary<string, string>? launchOptions = null,
-        bool isolateInWorktree = false,
         CancellationToken cancellationToken = default)
     {
         Profile = profile;
         _lifetime = new CancellationTokenSource();
 
-        // A session that was started with isolation gets its own worktree here, and runs there instead of in the
-        // folder as given (AC-85). It is a per-session choice made at start next to the folder, not a profile
-        // setting. Done before the driver starts, so the process is spawned with the worktree as its cwd from the
-        // first command.
-        var effectiveWorkingDirectory = await _ResolveWorkingDirectoryAsync(isolateInWorktree, profile, workingDirectory, _lifetime.Token);
+        // Worktree isolation is resolved by the cockpit before the session starts (AC-85), keyed on the pane the
+        // session runs in, so the runtime just launches the driver in whatever working directory it is handed —
+        // whether that is the folder as given or the isolated worktree the cockpit already created for it.
 
         // Picking the driver is deferred to here rather than to the constructor: it depends on the profile's
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.
         _driver = _driverFactory.Create(profile);
-        await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, effectiveWorkingDirectory, resume, launchOptions, _lifetime.Token);
+        await _driver.StartAsync(profile, permissionMode, model, enabledMcpServerNames, workingDirectory, resume, launchOptions, _lifetime.Token);
         _pump = _PumpEventsAsync(_lifetime.Token);
-    }
-
-    private async Task<string?> _ResolveWorkingDirectoryAsync(bool isolateInWorktree, SessionProfile? profile, string? workingDirectory, CancellationToken cancellationToken)
-    {
-        if (_worktreeManager is null || !isolateInWorktree || string.IsNullOrWhiteSpace(workingDirectory))
-        {
-            return workingDirectory;
-        }
-
-        var repository = await _worktreeManager.DetectRepositoryAsync(workingDirectory, cancellationToken);
-        if (repository is null)
-        {
-            // The profile asked for isolation but this folder is not a git repository (with a commit). The
-            // New-session dialog greys the option out for a non-repo, so reaching here means the folder changed under
-            // the profile — run in it as given rather than pretend to isolate; the absent branch chip is what says
-            // "not isolated" (§4), not a silent success.
-            return workingDirectory;
-        }
-
-        Worktree = await _worktreeManager.CreateForSessionAsync(Id, profile?.Label, workingDirectory, cancellationToken);
-        return Worktree.Path;
     }
 
     public Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default) =>
@@ -195,21 +163,6 @@ internal sealed class SessionRuntime : ISessionRuntime
         {
             await _driver.DisposeAsync();
             _driver = null;
-        }
-
-        // A delegated session that ran in its own worktree (AC-85) releases it here: the interactive close path tears
-        // down the UI sessions' worktrees, but a delegated one has no panel, so its teardown lives with its runtime.
-        // Clean is removed with its branch, work is kept and retained. Best-effort — the startup reconcile is the net.
-        if (_worktreeManager is not null && Worktree is not null)
-        {
-            try
-            {
-                await _worktreeManager.ReleaseAsync(Id);
-            }
-            catch (Exception)
-            {
-                // Left for the startup reconcile.
-            }
         }
 
         _lifetime?.Dispose();

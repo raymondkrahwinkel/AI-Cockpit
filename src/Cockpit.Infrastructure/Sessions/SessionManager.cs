@@ -1,6 +1,5 @@
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
-using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Profiles;
 
 namespace Cockpit.Infrastructure.Sessions;
@@ -13,17 +12,12 @@ namespace Cockpit.Infrastructure.Sessions;
 internal sealed class SessionManager : ISessionManager, ISingletonService
 {
     private readonly ISessionDriverFactory _driverFactory;
-    private readonly IWorktreeManager? _worktreeManager;
     private readonly List<ISessionRuntime> _sessions = [];
     private readonly Lock _sessionsLock = new();
 
-    // The worktree manager is optional only so the runtime's own tests can new this up without it; the container
-    // always injects the registered singleton (a registered service fills the parameter regardless of its default),
-    // so a real session never runs without worktree isolation available.
-    public SessionManager(ISessionDriverFactory driverFactory, IWorktreeManager? worktreeManager = null)
+    public SessionManager(ISessionDriverFactory driverFactory)
     {
         _driverFactory = driverFactory;
-        _worktreeManager = worktreeManager;
     }
 
     public IReadOnlyList<ISessionRuntime> Sessions
@@ -41,7 +35,7 @@ internal sealed class SessionManager : ISessionManager, ISingletonService
 
     public ISessionRuntime Create(SessionProfile? profile)
     {
-        var runtime = new SessionRuntime(_driverFactory, profile, _worktreeManager);
+        var runtime = new SessionRuntime(_driverFactory, profile);
         lock (_sessionsLock)
         {
             _sessions.Add(runtime);

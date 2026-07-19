@@ -1,7 +1,6 @@
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
-using Cockpit.Core.Worktrees;
 
 namespace Cockpit.Core.Abstractions.Sessions;
 
@@ -20,9 +19,6 @@ public interface ISessionRuntime : IAsyncDisposable
 
     /// <summary>The profile the session runs under, once started.</summary>
     SessionProfile? Profile { get; }
-
-    /// <summary>The git worktree this session was isolated in (AC-85), or null when it runs in the working directory as given. Held so the header can show the branch and teardown can reconcile it.</summary>
-    WorktreeRecord? Worktree => null;
 
     /// <summary>
     /// What the running driver supports, so a consumer only offers controls the provider can back. Meaningful
@@ -73,8 +69,9 @@ public interface ISessionRuntime : IAsyncDisposable
     /// <summary>
     /// Creates the driver for <paramref name="profile"/>'s provider, starts it, and begins pumping its events.
     /// Throws if the driver cannot be created or started — the caller decides how to surface that.
+    /// Worktree isolation (AC-85) is resolved by the cockpit before start and handed in through
+    /// <paramref name="workingDirectory"/>, so the runtime launches in whatever directory it is given.
     /// </summary>
-    /// <param name="isolateInWorktree">When true and <paramref name="workingDirectory"/> is a git repository, the session runs in a fresh git worktree on its own branch (AC-85) — a per-session choice made at start, next to the folder, not a profile setting.</param>
     Task StartAsync(
         SessionProfile? profile,
         string? permissionMode = null,
@@ -83,7 +80,6 @@ public interface ISessionRuntime : IAsyncDisposable
         string? workingDirectory = null,
         SessionResume? resume = null,
         IReadOnlyDictionary<string, string>? launchOptions = null,
-        bool isolateInWorktree = false,
         CancellationToken cancellationToken = default);
 
     Task SendUserMessageAsync(string text, IReadOnlyList<ImageAttachment>? images = null, CancellationToken cancellationToken = default);

@@ -24,10 +24,21 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         _registry = registry;
 
         // Resolved per create, so an override the operator changes in Options takes effect on the next worktree
-        // rather than only on a restart. A blank override keeps the default under the app state root.
+        // rather than only on a restart. A blank override keeps the default under the app state root. An unreadable
+        // config must never make creating a worktree fail — resolving the root is not the place to surface a corrupt
+        // cockpit.json — so a load failure falls back to the default root rather than throwing on the create path.
         _resolveRoot = async cancellationToken =>
         {
-            var root = (await settings.LoadAsync(cancellationToken).ConfigureAwait(false)).Root;
+            string? root;
+            try
+            {
+                root = (await settings.LoadAsync(cancellationToken).ConfigureAwait(false)).Root;
+            }
+            catch (Exception)
+            {
+                return CockpitConfigPath.WorktreesRoot;
+            }
+
             return string.IsNullOrWhiteSpace(root) ? CockpitConfigPath.WorktreesRoot : Path.GetFullPath(root);
         };
     }
@@ -119,14 +130,10 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     public async Task<IReadOnlyList<WorktreeStatus>> GetStatusesAsync(CancellationToken cancellationToken = default)
     {
+        // Each worktree's status is two independent git subprocesses; run them across worktrees at once so opening the
+        // panel costs the slowest tree rather than the sum of all of them. Order is preserved (Task.WhenAll keeps it).
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
-        var statuses = new List<WorktreeStatus>(records.Count);
-        foreach (var record in records)
-        {
-            statuses.Add(await _StatusOfAsync(record, cancellationToken).ConfigureAwait(false));
-        }
-
-        return statuses;
+        return await Task.WhenAll(records.Select(record => _StatusOfAsync(record, cancellationToken))).ConfigureAwait(false);
     }
 
     private static async Task<WorktreeStatus> _StatusOfAsync(WorktreeRecord record, CancellationToken cancellationToken)
@@ -246,7 +253,16 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
         foreach (var record in records.Where(record => !liveSessionIds.Contains(record.SessionId)))
         {
-            await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _ReleaseOneAsync(record, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // One orphan that will not release (a stale lock, a folder still held) must not abort the sweep and
+                // strand every remaining orphan across restarts — skip it; the next reconcile retries it. This runs as
+                // a fire-and-forget at startup, so a throw here would also be an unobserved task exception.
+            }
         }
 
         // Reclaim git's own admin entries for worktrees whose folder disappeared out from under it (a manual delete),
