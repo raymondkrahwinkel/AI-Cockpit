@@ -7,6 +7,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
@@ -37,6 +38,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly ITtySessionProviderResolver _ttyProviderResolver;
     private readonly IPluginTtyProviderRegistry _ttyProviderRegistry;
     private readonly IWorktreeManager _worktreeManager;
+    private readonly IRepositoryCloneManager _cloneManager;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -51,7 +53,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         DelegatedTasksViewModel delegatedTasks,
         ITtySessionProviderResolver ttyProviderResolver,
         IPluginTtyProviderRegistry ttyProviderRegistry,
-        IWorktreeManager worktreeManager)
+        IWorktreeManager worktreeManager,
+        IRepositoryCloneManager cloneManager)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -66,6 +69,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
         _worktreeManager = worktreeManager;
+        _cloneManager = cloneManager;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(string? initialWorkingDirectory = null)
@@ -109,6 +113,25 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             }
         };
 
+        // Clone from a Git URL (AC-90): open the clone dialog over the New-session dialog, and on success drop the
+        // local clone path into the folder field, from where isolation (AC-85) and the session start pick it up. The
+        // clone dialog owns the failure path, so nothing is set here unless a real directory came back.
+        // async void via the event: guard it so a clone/dialog failure can't tear the process down.
+        viewModel.CloneFromUrlRequested += async () =>
+        {
+            try
+            {
+                if (await ShowCloneFromGitUrlAsync(dialog) is { Length: > 0 } clonePath)
+                {
+                    viewModel.WorkingDirectory = clonePath;
+                }
+            }
+            catch
+            {
+                // Cloning is best-effort from here; a failure must not crash the app.
+            }
+        };
+
         return await dialog.ShowDialog<NewSessionResult?>(owner);
     }
 
@@ -118,6 +141,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             await ShowManageProfilesAsync(owner);
         }
+    }
+
+    // Shows the clone-from-URL dialog over the New-session dialog and returns the local clone path, or null if the
+    // operator cancelled. The dialog runs the clone itself (through the injected manager) and surfaces its own
+    // failures, so this only ever hands back a directory that is actually on disk.
+    private async Task<string?> ShowCloneFromGitUrlAsync(Window owner)
+    {
+        var viewModel = new CloneFromGitUrlDialogViewModel(_cloneManager);
+        var dialog = new CloneFromGitUrlDialog { DataContext = viewModel };
+        return await dialog.ShowDialog<string?>(owner);
     }
 
     private async Task ShowManageProfilesAsync(Window owner)

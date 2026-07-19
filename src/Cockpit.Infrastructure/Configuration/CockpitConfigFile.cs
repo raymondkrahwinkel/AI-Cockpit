@@ -122,4 +122,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Worktree settings (AC-85) — the operator's root-location override; owned by the worktree-settings store. Separate from the <see cref="Worktrees"/> registry above.</summary>
     public WorktreeSettingsEntry? WorktreeSettings { get; set; }
+
+    /// <summary>Repositories cloned from a URL into the managed clones area (AC-90); owned by the repository-clone-registry store. The source of truth for reuse and startup reconciliation, so it outlives the process that cloned them.</summary>
+    public List<RepositoryCloneEntry> Clones { get; set; } = [];
 }

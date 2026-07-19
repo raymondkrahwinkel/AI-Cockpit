@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Cockpit.Infrastructure.Worktrees;
 
@@ -19,7 +20,8 @@ internal static class GitCli
     public static async Task<GitResult> RunAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var startInfo = new ProcessStartInfo("git")
         {
@@ -29,6 +31,18 @@ internal static class GitCli
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+
+        // Extra environment for the child git only — how the clone path (AC-90) turns off interactive prompting
+        // (GIT_TERMINAL_PROMPT=0) so a missing credential helper fails fast instead of hanging on an invisible
+        // prompt. Set on the child's own Environment, never the cockpit's, and the seam a future in-memory token
+        // injection (GIT_ASKPASS + the token in this child env only) would extend without touching argv or config.
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment)
+            {
+                startInfo.Environment[name] = value;
+            }
+        }
 
         // core.longpaths so a worktree checkout — the app state root plus a deep repository path (a nested Angular
         // component tree is enough) — does not trip Windows' 260-character path limit with "Filename too long".
@@ -76,7 +90,7 @@ internal static class GitCli
         {
             _Kill(process);
             throw new InvalidOperationException(
-                $"git {string.Join(' ', arguments)} did not finish within {Timeout.TotalSeconds:F0}s and was stopped.");
+                $"git {_RedactArguments(arguments)} did not finish within {Timeout.TotalSeconds:F0}s and was stopped.");
         }
         catch (OperationCanceledException)
         {
@@ -89,9 +103,10 @@ internal static class GitCli
     public static async Task<string> RunCheckedAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
-        var result = await RunAsync(workingDirectory, arguments, cancellationToken).ConfigureAwait(false);
+        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environment).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
             // git says why in words a person can act on ("a branch named 'x' already exists"); that is what the
@@ -122,6 +137,14 @@ internal static class GitCli
 
         return kept.Count > 0 ? string.Join(Environment.NewLine, kept) : standardError.Trim();
     }
+
+    // Credentials embedded in an HTTP(S) URL argument (https://user:token@host/…) — never constructed by the
+    // cockpit, but an operator can paste one — must not reach an exception message that ends up in a log. Blank the
+    // userinfo before the arguments are joined for display. A binding rule: secret values never in argv/config/logs.
+    private static readonly Regex _UrlUserInfo = new(@"://[^/@\s]+@", RegexOptions.Compiled);
+
+    private static string _RedactArguments(IReadOnlyList<string> arguments) =>
+        string.Join(' ', arguments.Select(argument => _UrlUserInfo.Replace(argument, "://***@")));
 
     private static bool _IsProgressLine(string line) =>
         line.StartsWith("Updating files:", StringComparison.Ordinal)
