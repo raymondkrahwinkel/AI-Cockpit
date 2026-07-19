@@ -73,6 +73,46 @@ public class ShortcutSettingsStoreLegacySessionSwitchTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_LegacyAltModifier_WithAnUnrelatedShortcutSaved_StillCarriesOver()
+    {
+        // AC-35: the mere existence of a shortcuts section — here only an unrelated action (CommandPalette) was
+        // ever rebound — must not suppress the legacy carry-over. The operator never saved a session-switch
+        // gesture, so their legacy Alt choice must still win over the catalog default.
+        await File.WriteAllTextAsync(_configFilePath, """
+            {
+              "SessionSwitching": { "IsEnabled": true, "Modifier": "Alt" },
+              "Shortcuts": { "Gestures": { "CommandPalette": "Ctrl+K" } }
+            }
+            """);
+        var store = new ShortcutSettingsStore(_configFilePath);
+
+        var settings = await store.LoadAsync();
+
+        settings.GestureFor(ShortcutAction.PreviousSession).Should().Be("Alt+Up");
+        settings.GestureFor(ShortcutAction.NextSession).Should().Be("Alt+Down");
+        settings.GestureFor(ShortcutAction.CommandPalette).Should().Be("Ctrl+K", "the unrelated saved gesture is untouched");
+    }
+
+    [Fact]
+    public async Task LoadAsync_LegacySwitchDisabled_WithAnUnrelatedShortcutSaved_StillUnbindsTheSessionSwitch()
+    {
+        // The disabled-legacy path has the same gate, so it too must ignore an unrelated saved shortcut (AC-35):
+        // an operator who turned the session switch off keeps it off, not reset to the catalog default.
+        await File.WriteAllTextAsync(_configFilePath, """
+            {
+              "SessionSwitching": { "IsEnabled": false, "Modifier": "Ctrl" },
+              "Shortcuts": { "Gestures": { "CommandPalette": "Ctrl+K" } }
+            }
+            """);
+        var store = new ShortcutSettingsStore(_configFilePath);
+
+        var settings = await store.LoadAsync();
+
+        settings.GestureFor(ShortcutAction.PreviousSession).Should().BeEmpty();
+        settings.GestureFor(ShortcutAction.NextSession).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task LoadAsync_NoLegacySection_UsesTheCatalogDefaults()
     {
         var store = new ShortcutSettingsStore(_configFilePath);
