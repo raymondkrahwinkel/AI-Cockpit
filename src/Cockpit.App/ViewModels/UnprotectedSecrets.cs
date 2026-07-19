@@ -10,7 +10,9 @@ namespace Cockpit.App.ViewModels;
 internal sealed class UnprotectedSecrets : ISecretProtectionService
 {
     public Task<SecretProtectionStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(new SecretProtectionStatus(Enabled: false, Unlocked: false));
+        Task.FromResult(new SecretProtectionStatus(Enabled: false, Unlocked: false, ShouldWarnUnprotected: false));
+
+    public Task DismissUnprotectedWarningAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default) => Task.FromResult(true);
 

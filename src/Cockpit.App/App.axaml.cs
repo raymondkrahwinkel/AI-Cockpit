@@ -46,7 +46,7 @@ public partial class App : Application
             // model, the plugins and the MCP servers all read settings, and reading them without the key would
             // hand them ciphertext. The unlock window goes first and the app starts behind it.
             var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
-            if (protection.GetStatusAsync().GetAwaiter().GetResult() is { Enabled: true, Unlocked: false })
+            if (_IsLockedAtStartup(protection))
             {
                 _ShowUnlockWindow(desktop, protection);
                 base.OnFrameworkInitializationCompleted();
@@ -58,6 +58,23 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    // The startup probe reads cockpit.json through the same retry the settings stores use, so a save publishing at
+    // that exact moment no longer throws (review #9). Should the read fail anyway — a genuinely unreadable file —
+    // this must not crash the launch before a single window is up: fall through to a normal start, where the stores'
+    // own backup-recovery and refusal handle a broken config the way they do everywhere else, with a window to say
+    // so. Reading it as "locked" instead would send the operator to an unlock window backed by the same failing read.
+    private static bool _IsLockedAtStartup(ISecretProtectionService protection)
+    {
+        try
+        {
+            return protection.GetStatusAsync().GetAwaiter().GetResult() is { Enabled: true, Unlocked: false };
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -171,6 +188,11 @@ public partial class App : Application
         if (declared.Count > 0)
         {
             SecretKeyHolder.Shared.Declare(declared);
+
+            // A plugin's declared field names can turn a value the host did not recognise as a credential into one
+            // it does, so the awareness banner (AC-41) has to re-evaluate now that the field set is complete —
+            // otherwise a plugin token in the clear would go unmentioned until the next save.
+            _ = cockpit.Security.RefreshAsync();
         }
         var actions = new PluginActions(
             cockpit,

@@ -398,6 +398,35 @@ public partial class CockpitView : UserControl
         }
     }
 
+    // The awareness banner's "Enable now" (AC-41). Same two-clicks-plus-password path as Options → Security, and
+    // the same copy: the password dialog already carries the irreversibility warning, so the banner needs no
+    // confirm of its own. Opening a window is a view's job (it needs the owner), but the outcome is a toast raised
+    // from the view model, so success and failure are said the same way wherever encryption is turned on.
+    private async void OnEnableEncryption(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CockpitViewModel cockpit || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        var dialog = new PasswordDialog
+        {
+            DataContext = new PasswordDialogViewModel(
+                "Encrypt your credentials",
+                "Your API keys and tokens are encrypted in cockpit.json, and AI-Cockpit asks for this password "
+                + "every time it starts.\n\n"
+                + "If you forget it, nobody can decrypt them — not you, not us. The only way back is to clear the "
+                + "credentials and type them in again; your profiles, sessions, layout and shortcuts survive that. "
+                + "You can turn encryption off again at any time, which puts everything back exactly as it was.",
+                requiresCurrent: false),
+        };
+
+        if (await dialog.ShowDialog<PasswordDialogViewModel?>(owner) is { } password)
+        {
+            await cockpit.EnableEncryptionFromBannerAsync(password.NewPassword);
+        }
+    }
+
     /// <summary>Clicking anywhere on a workspace tab switches to it — same whole-row click target as a session
     /// row, and the same wiring: the tab is the <see cref="Border"/>'s DataContext. The ✕ inside the tab is a
     /// Button, so its click is handled there and never reaches this; a press that bubbles up from it would

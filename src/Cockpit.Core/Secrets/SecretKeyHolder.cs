@@ -16,6 +16,16 @@ public interface ISecretKeyHolder
 
     /// <summary>Fields the plugins declared as secret, on top of the name rule.</summary>
     SecretFields Fields { get; }
+
+    /// <summary>
+    /// Raised when a save wrote at least one credential to disk in the clear (AC-41). The awareness banner
+    /// listens for this so it reappears the moment a new credential is added while encryption is off — the one
+    /// event that fires from the universal config write seam, wherever the credential came from.
+    /// </summary>
+    event EventHandler? UnprotectedSecretsWritten;
+
+    /// <summary>Tells listeners a credential was just written in the clear. Called by the config write seam; carries no value, only the fact.</summary>
+    void NoteUnprotectedSecretsWritten();
 }
 
 /// <inheritdoc cref="ISecretKeyHolder"/>
@@ -31,6 +41,12 @@ public sealed class SecretKeyHolder : ISecretKeyHolder
     public ISecretProtector? Protector { get; private set; }
 
     public SecretFields Fields => _fields;
+
+    /// <inheritdoc />
+    public event EventHandler? UnprotectedSecretsWritten;
+
+    /// <inheritdoc />
+    public void NoteUnprotectedSecretsWritten() => UnprotectedSecretsWritten?.Invoke(this, EventArgs.Empty);
 
     /// <summary>The app is unlocked: from here on, the settings are read and written through <paramref name="protector"/>.</summary>
     public void Unlock(ISecretProtector protector) => Protector = protector;

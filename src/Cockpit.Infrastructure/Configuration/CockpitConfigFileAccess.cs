@@ -29,14 +29,6 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// <summary>The last version that read cleanly, written by every save — and what a damaged config is recovered from.</summary>
     private const string BackupSuffix = ".bak";
 
-    /// <summary>Holds the write gate; empty, and only its existence-while-open means anything.</summary>
-    private const string LockSuffix = ".lock";
-
-    /// <summary>Generous on purpose: a write is milliseconds, so reaching this means something is wrong, not busy.</summary>
-    private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(10);
-
-    private static readonly TimeSpan GatePollInterval = TimeSpan.FromMilliseconds(20);
-
     /// <summary>How long a read waits out a writer holding the file. A swap is milliseconds; reaching this means something other than contention.</summary>
     private static readonly TimeSpan ReadContentionWindow = TimeSpan.FromSeconds(2);
 
@@ -90,7 +82,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
 
         try
         {
-            var json = await _ReadWhenNotBeingReplacedAsync(path, cancellationToken).ConfigureAwait(false);
+            var json = await ReadWhenNotBeingReplacedAsync(path, cancellationToken).ConfigureAwait(false);
             var document = JsonNode.Parse(json);
             if (document is null)
             {
@@ -126,8 +118,12 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// one swap. Past the window something else is wrong, so the exception goes on to <see cref="ReadAsync"/>'s
     /// recovery — the backup, and then a refusal that says so.
     /// </para>
+    /// <para>
+    /// Internal rather than private so <see cref="SecretProtectionService"/> reads through the same retry (review
+    /// #9): its status probe and migrations touch the same file, and an ungated read there had the same race.
+    /// </para>
     /// </remarks>
-    private static async Task<string> _ReadWhenNotBeingReplacedAsync(string path, CancellationToken cancellationToken)
+    internal static async Task<string> ReadWhenNotBeingReplacedAsync(string path, CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + ReadContentionWindow;
         while (true)
@@ -160,7 +156,7 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
     /// </summary>
     public async Task UpdateAsync(Action<CockpitConfigFile> mutate, CancellationToken cancellationToken)
     {
-        using var gate = await _AcquireWriteGateAsync(cancellationToken).ConfigureAwait(false);
+        using var gate = await CockpitConfigWriteGate.AcquireAsync(configFilePath, cancellationToken).ConfigureAwait(false);
 
         var configFile = await ReadAsync(cancellationToken).ConfigureAwait(false) ?? new CockpitConfigFile();
         mutate(configFile);
@@ -168,7 +164,8 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         var document = JsonSerializer.SerializeToNode(configFile, SerializerOptions)
             ?? throw new InvalidOperationException("The cockpit configuration serialized to nothing.");
 
-        if (_keyHolder.Protector is { } protector)
+        var protector = _keyHolder.Protector;
+        if (protector is not null)
         {
             SecretJsonWalker.Transform(document, _keyHolder.Fields, (path, value) => protector.Protect(path, value));
         }
@@ -188,51 +185,22 @@ internal sealed class CockpitConfigFileAccess(string configFilePath, ISecretKeyH
         // file holds provider API keys, MCP bearer headers and the plugins' tokens.
         CockpitConfigPath.ReplaceAtomicallyPrivate(configFilePath, document.ToJsonString(SerializerOptions));
 
+        // Save-time signal (AC-41): this is the universal seam every section passes through, so it is where a
+        // credential written in the clear — by a provider, an MCP server, a plugin this build never heard of —
+        // becomes visible to the awareness banner. Only when encryption is off (nothing to warn about once it is
+        // on) and only when this document actually carries a credential, so a settings save with no secret in it
+        // never nudges the banner. In-memory: it counts on a clone and raises an event, never a second write.
+        if (protector is null
+            && SecretJsonWalker.Transform(document.DeepClone(), _keyHolder.Fields, (_, value) => value).Count > 0)
+        {
+            _keyHolder.NoteUnprotectedSecretsWritten();
+        }
+
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Takes the write gate, waiting for whoever holds it. A lock file rather than a named mutex: the operating
-    /// system drops it when the holder exits — including when it is killed mid-write — and it behaves the same
-    /// on the three platforms the cockpit runs on.
-    /// <para>
-    /// Reads do not take this gate, but they are not free of it either: the swap that publishes a write holds the
-    /// file for its duration, so a reader that lands in that window is refused rather than served either version.
-    /// It waits the writer out instead — see <see cref="_ReadWhenNotBeingReplacedAsync"/>. This used to claim a
-    /// reader "never waits on a writer", which was true of the file's <em>content</em> and false of the read.
-    /// </para>
-    /// </summary>
-    private async Task<FileStream> _AcquireWriteGateAsync(CancellationToken cancellationToken)
-    {
-        var lockFilePath = configFilePath + LockSuffix;
-        var directory = Path.GetDirectoryName(lockFilePath);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
-
-        var deadline = DateTimeOffset.UtcNow + GateTimeout;
-        while (true)
-        {
-            try
-            {
-                return new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            }
-            catch (IOException) when (DateTimeOffset.UtcNow < deadline)
-            {
-                // Someone else is mid-write. Theirs finishes in milliseconds — this is a settings file, not a
-                // database — so waiting is cheaper than any scheme that lets both through and merges after.
-                await Task.Delay(GatePollInterval, cancellationToken).ConfigureAwait(false);
-            }
-            catch (IOException exception)
-            {
-                // Long past the point where contention explains it. Failing loudly beats writing anyway: a save
-                // that goes through ungated is how a section disappears, and disappearing is what this exists
-                // to stop.
-                throw new IOException(
-                    $"Could not take the write lock on '{lockFilePath}' within {GateTimeout.TotalSeconds:F0}s; the cockpit's settings were not saved.",
-                    exception);
-            }
-        }
-    }
+    // The write gate lives in CockpitConfigWriteGate now, so the encryption migration and the awareness-banner
+    // dismissal (AC-41) take the same lock this does. Reads do not take it, but they are not free of it either:
+    // the swap that publishes a write holds the file for its duration, so a reader that lands in that window is
+    // refused rather than served either version — it waits the writer out instead (_ReadWhenNotBeingReplacedAsync).
 }

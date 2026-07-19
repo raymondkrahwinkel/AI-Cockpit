@@ -150,6 +150,48 @@
             </DockPanel>
         </Border>
 
+        <!-- Awareness banner (AC-41): the API keys and tokens in cockpit.json are readable at rest. Amber, not
+             red, and never modal — it states a fact and offers the one-click fix, it does not steal focus or block
+             the cockpit. Docked above the whole window like the update banner, so it reads as "the application",
+             not "this panel". Collapsed (not just transparent) when there is nothing to say, so it costs no height
+             once encryption is on or the operator dismisses it. -->
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding Security.ShowUnprotectedBanner}"
+                Background="#26E0A33E"
+                BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,9">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <!-- While the migration runs, the action is replaced by its own inline "Encrypting…" so the
+                         banner shows its work rather than going quiet mid-rewrite. -->
+                    <TextBlock Text="Encrypting…" VerticalAlignment="Center"
+                               IsVisible="{Binding Security.IsMigrating}"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                    <Button Classes="Accent" Padding="12,5" Content="Enable now"
+                            IsVisible="{Binding !Security.IsMigrating}"
+                            Click="OnEnableEncryption"
+                            ToolTip.Tip="Encrypt your API keys and tokens with a password"/>
+                    <Button Classes="Subtle" Padding="6,4"
+                            Command="{Binding Security.DismissBannerCommand}"
+                            ToolTip.Tip="Dismiss — returns when you add a new credential">
+                        <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14"/>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="ShieldAlertOutline" Width="18" Height="18"
+                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                                                VerticalAlignment="Center"/>
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextPrimaryBrush}"
+                               Text="Your API keys and tokens are stored unencrypted."/>
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                               Text="Turn on encryption to protect them at rest — it only takes a moment."/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
     <Grid x:Name="RootGrid">
         <!-- One row for AI-Cockpit, one for the status bar (#78). Everything that was here before stays in
              row 0 by default, so adding the bar did not have to touch a single existing panel. -->
