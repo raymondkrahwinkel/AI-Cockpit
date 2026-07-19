@@ -19,7 +19,7 @@ namespace Cockpit.Infrastructure.Sessions.Tty;
 /// specific (executable, flags, config directory, status relay) moved into <see cref="ITtySessionProvider"/>,
 /// and what is left is the part every TUI needs identically.
 /// </remarks>
-internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey authKey, ILogger<TtyLauncher> logger) : ITtyLauncher, ISingletonService
+internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<TtyLauncher> logger) : ITtyLauncher, ISingletonService
 {
     public IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -70,9 +70,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
         // Compose has already laid down, so no profile can shadow it. Without this the env reference expands to empty
         // and every cockpit-hosted MCP endpoint answers 401 (unlike the in-process local-model loop and the SDK
         // spawn, which hand the key straight to the client and so were never affected).
+        // AC-89: when this session has a pane id, hand it its own per-session token instead of the shared app key, so
+        // a request from it can be attributed to this pane and the consent broker cannot be tricked by another pane's
+        // agent claiming this session's id. Without a pane id (no session to name) it falls back to the shared key.
         baseEnvironment = new Dictionary<string, string>(baseEnvironment, StringComparer.OrdinalIgnoreCase)
         {
-            [WellKnownSessionEnvironment.CockpitMcpKey] = authKey.Value,
+            [WellKnownSessionEnvironment.CockpitMcpKey] = string.IsNullOrEmpty(paneId) ? authKey.Value : keyring.TokenFor(paneId),
         };
 
         var context = new TtyLaunchContext(

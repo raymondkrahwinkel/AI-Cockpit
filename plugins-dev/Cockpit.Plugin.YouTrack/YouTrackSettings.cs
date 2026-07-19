@@ -45,6 +45,19 @@ internal sealed class YouTrackSettings(IPluginStorage storage)
         set => storage.Set("template", value);
     }
 
+    /// <summary>
+    /// Whether the cockpit automatically attaches a message's images to the issue the agent creates or updates
+    /// in that same turn (AC-116). Plugin-wide (not per session), default on — the whole point is that a
+    /// screenshot sent with "put this in YouTrack" ends up on the issue with no extra step. Turned off, the
+    /// automatic path does nothing; the explicit <c>attach_message_images_to_issue</c> tool still works, since
+    /// calling it is a deliberate act. Default true is also what a store predating this key deserializes to.
+    /// </summary>
+    public bool AutoAttachImages
+    {
+        get => storage.Get<bool?>("autoAttachImages") ?? true;
+        set => storage.Set("autoAttachImages", value);
+    }
+
     // Back-compat (#48): before instances were a list, this plugin had exactly one — instanceUrl/token/projectTag
     // stored directly. Migrate that single config into a one-item list on first read instead of a returning
     // user silently losing their configured instance (an empty list, requiring them to notice and re-enter it).

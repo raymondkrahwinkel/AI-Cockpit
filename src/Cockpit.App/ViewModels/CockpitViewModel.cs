@@ -2052,7 +2052,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         WorktreesViewModel? worktrees = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
         LiveSessionRegistry? liveSessions = null,
-        IUsagePillSettingsStore? usagePillSettingsStore = null)
+        IUsagePillSettingsStore? usagePillSettingsStore = null,
+        ITerminalAccessSwitch? terminalAccessSwitch = null,
+        ITerminalAccessSettingsStore? terminalAccessSettingsStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2065,7 +2067,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
-        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets());
+        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets(), terminalAccessSwitch, terminalAccessSettingsStore);
         _ = Security.RefreshAsync();
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new

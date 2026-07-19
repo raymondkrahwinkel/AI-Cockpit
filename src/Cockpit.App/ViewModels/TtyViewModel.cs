@@ -89,6 +89,14 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     [ObservableProperty]
     private string _diagnostics = string.Empty;
 
+    /// <summary>AC-34: true while an agent is coupled to this pane through the terminal-access MCP — drives the "agent connected" bar and its Disconnect button. The counterpart to both the human and the agent being able to type: it must always be visible that an agent is on the pane.</summary>
+    [ObservableProperty]
+    private bool _agentConnected;
+
+    /// <summary>The label on the agent-connected bar ("Agent connected — &lt;session&gt;"), or null when no agent is coupled.</summary>
+    [ObservableProperty]
+    private string? _agentConnectedLabel;
+
     /// <summary>The working directory the <c>claude</c> TUI runs in (the configured <c>Claude:WorkingDirectory</c>, else the process cwd — same resolution as <c>ClaudeTtySessionProvider</c>), shown compactly in the header so it is clear which project a session is operating on.</summary>
     [ObservableProperty]
     private string _workingPath = string.Empty;

@@ -19,10 +19,17 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     private readonly TextBox _template;
     private readonly TextBox _pickerQuery;
     private readonly TextBox _branchPattern;
+    private readonly CheckBox _autoAttachImages;
 
     public YouTrackSettingsControl(YouTrackSettings settings)
     {
         _settings = settings;
+
+        _autoAttachImages = new CheckBox
+        {
+            Content = "Automatically attach sent images to created/updated issues",
+            IsChecked = settings.AutoAttachImages,
+        };
 
         _instancesPanel = new StackPanel();
 
@@ -65,6 +72,9 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
                     _Hint("Each instance is a separate YouTrack (cloud or self-hosted) with its own base URL and permanent token. Pick one in the issues dialog."),
                     _instancesPanel,
                     addInstance,
+                    _Label("Images"),
+                    _autoAttachImages,
+                    _Hint("When on, a screenshot you send with a message is attached to the issue the agent creates or updates in that same turn — no per-session toggle. The agent can also attach explicitly with the attach_message_images_to_issue tool."),
                     _Label("Which issues the session picker shows (YouTrack query)"),
                     SettingsHelpRow.Build(_pickerQuery, "Anything YouTrack's own search understands. Default \"#Unresolved\": showing issues that are done is offering work that is over. Examples: \"State: {In Progress}\", \"#Unresolved -State: Review\", \"#Unresolved Priority: Critical\"."),
 
@@ -94,6 +104,7 @@ internal sealed class YouTrackSettingsControl : UserControl, IPluginSettingsView
     public bool Save()
     {
         _settings.Instances = _rows.Where(row => !row.IsBlank).Select(row => row.ToInstance()).ToList();
+        _settings.AutoAttachImages = _autoAttachImages.IsChecked ?? true;
         _settings.PickerQuery = string.IsNullOrWhiteSpace(_pickerQuery.Text) ? "#Unresolved" : _pickerQuery.Text.Trim();
         _settings.BranchPattern = string.IsNullOrWhiteSpace(_branchPattern.Text) ? BranchName.DefaultPattern : _branchPattern.Text.Trim();
         _settings.Template = string.IsNullOrWhiteSpace(_template.Text) ? PromptTemplate.Default : _template.Text;
