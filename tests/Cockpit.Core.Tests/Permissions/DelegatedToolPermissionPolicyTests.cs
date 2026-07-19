@@ -28,6 +28,58 @@ public class DelegatedToolPermissionPolicyTests
         DelegatedToolPermissionPolicy.Classify(readOnlyHint, destructiveHint).Should().Be(expected);
     }
 
+    // --- ClassifyWellKnown: first-party fallback for annotation-less built-in tools (AC-100/AC-112) ---
+
+    [Theory]
+    [InlineData("write_file")]
+    [InlineData("edit_file")]
+    [InlineData("create_directory")]
+    [InlineData("move_file")]
+    public void ClassifyWellKnown_FilesystemWrites_AreWrite(string toolName)
+    {
+        DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName).Should().Be(ToolPermissionClass.Write);
+    }
+
+    [Theory]
+    [InlineData("read_file")]
+    [InlineData("read_text_file")]
+    [InlineData("read_media_file")]
+    [InlineData("read_multiple_files")]
+    [InlineData("list_directory")]
+    [InlineData("list_directory_with_sizes")]
+    [InlineData("directory_tree")]
+    [InlineData("search_files")]
+    [InlineData("get_file_info")]
+    [InlineData("list_allowed_directories")]
+    public void ClassifyWellKnown_FilesystemReads_AreReadOnly(string toolName)
+    {
+        DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName).Should().Be(ToolPermissionClass.ReadOnly);
+    }
+
+    [Theory]
+    [InlineData("mystery_tool")]
+    [InlineData("delete_repo")]
+    [InlineData("")]
+    public void ClassifyWellKnown_UnrecognisedName_IsNull_SoAnnotationClassIsKept(string toolName)
+    {
+        DelegatedToolPermissionPolicy.ClassifyWellKnown(toolName).Should().BeNull();
+    }
+
+    [Fact]
+    public void WellKnownFilesystemWrite_RunsAtAcceptEdits_ButNotAtDefault()
+    {
+        // The AC-100/AC-112 fix, end-to-end at the policy layer: the filesystem preset ships no hint, so without
+        // the fallback write_file is Unknown and blocked at every ceiling; with it, write_file is a Write and a
+        // local coder profile at the default acceptEdits ceiling can finally write — while plan/default stay read-only.
+        var toolClass = DelegatedToolPermissionPolicy.ClassifyWellKnown("write_file");
+        toolClass.Should().Be(ToolPermissionClass.Write);
+
+        DelegatedToolPermissionPolicy.Decide("acceptEdits", toolClass!.Value, "write_file", onAllowList: false)
+            .IsAllowed.Should().BeTrue();
+        DelegatedToolPermissionPolicy.Decide("default", toolClass.Value, "write_file", onAllowList: false)
+            .IsAllowed.Should().BeFalse();
+    }
+
     // --- Decide: read-only runs under every ceiling ---
 
     [Theory]

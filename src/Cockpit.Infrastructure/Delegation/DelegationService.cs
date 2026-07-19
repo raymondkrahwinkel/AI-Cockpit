@@ -644,20 +644,52 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     {
         switch (evt)
         {
+            case ToolUseRequested:
+                entry.ToolCallsRequested++;
+                break;
+
+            case ToolResult toolResult:
+                // A denial by the delegated permission gate comes back to the model as an error tool result, not an
+                // exception — so counting error results is how the orchestrator sees that a tool call did not land.
+                if (toolResult.IsError)
+                {
+                    entry.ToolCallsErrored++;
+                }
+                else
+                {
+                    entry.ToolCallsSucceeded++;
+                }
+
+                break;
+
             case TurnCompleted turn:
                 entry.TurnCount++;
+
+                // False-success guard (AC-100/AC-110): the local-model driver reports a turn as "success" whenever
+                // the HTTP stream ends cleanly — even when every tool call it made was denied or errored and it
+                // produced nothing. A turn that ran tools but landed none of them is not a success; surface it as
+                // Failed with a diagnostic so a no-op run is never silently relayed as done. A turn that used no
+                // tools at all (a plain text answer) is left as Completed — that is a legitimate result.
+                var ranToolsButNoneSucceeded = entry.ToolCallsRequested > 0 && entry.ToolCallsSucceeded == 0;
+                var isFailure = turn.IsError || ranToolsButNoneSucceeded;
+                var diagnostic = turn.IsError
+                    ? turn.Result
+                    : ranToolsButNoneSucceeded
+                        ? $"No-op run: {entry.ToolCallsErrored} of {entry.ToolCallsRequested} tool call(s) were blocked or errored and none succeeded, so the task produced no tool-made change. The delegated model replied: {entry.Runtime?.LastAssistantText}"
+                        : null;
+
                 // The task is answered, but the session stays up for a while: a caller can send a follow-up turn.
                 // It is torn down on stop — and, when nobody stops it, once the idle window closes.
                 entry.Finish(
-                    turn.IsError ? DelegatedTaskStatus.Failed : DelegatedTaskStatus.Completed,
+                    isFailure ? DelegatedTaskStatus.Failed : DelegatedTaskStatus.Completed,
                     result: entry.Runtime?.LastAssistantText,
-                    error: turn.IsError ? turn.Result : null,
+                    error: diagnostic,
                     keepSessionAlive: true);
                 _ArmIdleReap(entry);
                 TasksChanged?.Invoke();
                 _ = _Audit(
-                    turn.IsError ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,
-                    entry.Profile.Label, entry.TaskId, request: null, turn.IsError ? turn.Result : null, entry);
+                    isFailure ? DelegationAuditAction.Failed : DelegationAuditAction.Completed,
+                    entry.Profile.Label, entry.TaskId, request: null, diagnostic, entry);
                 _ = _StartNextQueuedAsync(entry.Profile);
                 break;
 

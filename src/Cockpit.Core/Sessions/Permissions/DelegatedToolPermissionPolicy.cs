@@ -46,6 +46,35 @@ public static class DelegatedToolPermissionPolicy
     }
 
     /// <summary>
+    /// A first-party fallback class for a well-known built-in tool whose MCP server ships no reliable
+    /// read-only/destructive annotation — above all the built-in filesystem preset
+    /// (<c>@modelcontextprotocol/server-filesystem</c>), whose write tools would otherwise be
+    /// <see cref="ToolPermissionClass.Unknown"/> and denied at every ceiling below <c>bypassPermissions</c>, making
+    /// a local coder profile unable to write a single file at the default <c>acceptEdits</c> ceiling (AC-100/AC-112).
+    /// Returns <see langword="null"/> for a name we do not recognise, so an unrecognised tool keeps its
+    /// annotation-derived class. Keyed on the bare tool name to match how the delegated gate keys trust; the
+    /// more-restrictive reconciliation in the tool provider still applies if another server exposes the same name.
+    /// Only ever consulted where the server did not declare the tool explicitly, so an explicit hint is never widened.
+    /// The filesystem server is itself scoped to one configured folder, so its writes are workspace edits — the exact
+    /// thing <c>acceptEdits</c> is meant to permit — not free rein over the disk.
+    /// </summary>
+    public static ToolPermissionClass? ClassifyWellKnown(string toolName) => toolName switch
+    {
+        // @modelcontextprotocol/server-filesystem — read side.
+        "read_file" or "read_text_file" or "read_media_file" or "read_multiple_files"
+            or "list_directory" or "list_directory_with_sizes" or "directory_tree"
+            or "search_files" or "get_file_info" or "list_allowed_directories"
+            => ToolPermissionClass.ReadOnly,
+
+        // @modelcontextprotocol/server-filesystem — write side. State-changing but not destructive: the server is
+        // scoped to a single configured folder, so these edit files within the workspace rather than delete freely.
+        "write_file" or "edit_file" or "create_directory" or "move_file"
+            => ToolPermissionClass.Write,
+
+        _ => null,
+    };
+
+    /// <summary>
     /// Decides whether a delegated session may run <paramref name="toolName"/> unattended. An allow-listed tool is
     /// always allowed; otherwise the <paramref name="toolClass"/> is graded against <paramref name="ceiling"/>. An
     /// unrecognised ceiling is treated as the most restrictive (read-only only), so a typo or a future mode never

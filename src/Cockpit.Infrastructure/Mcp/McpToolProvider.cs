@@ -84,7 +84,18 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             foreach (var tool in serverTools)
             {
                 var annotations = tool.ProtocolTool.Annotations;
-                classes[tool.Name] = DelegatedToolPermissionPolicy.Classify(annotations?.ReadOnlyHint, annotations?.DestructiveHint);
+                var annotationClass = DelegatedToolPermissionPolicy.Classify(annotations?.ReadOnlyHint, annotations?.DestructiveHint);
+
+                // A server that ships no explicit hint leaves a well-known first-party tool (e.g. the built-in
+                // filesystem preset's write_file) as Unknown/conservatively-Destructive, which the delegated gate
+                // then blocks at every ceiling below bypassPermissions — so a local coder profile cannot write a
+                // file at the default acceptEdits ceiling (AC-100/AC-112). Fall back to first-party knowledge of
+                // the tool by name, but only where the server did NOT declare it explicitly: an explicit
+                // readOnlyHint=true or destructiveHint=true is always honoured and never widened here.
+                var serverDeclaredExplicitly = annotations?.ReadOnlyHint == true || annotations?.DestructiveHint == true;
+                classes[tool.Name] = !serverDeclaredExplicitly && DelegatedToolPermissionPolicy.ClassifyWellKnown(tool.Name) is { } wellKnown
+                    ? wellKnown
+                    : annotationClass;
             }
 
             return new ServerConnection(client, [.. serverTools], server.Name, classes);

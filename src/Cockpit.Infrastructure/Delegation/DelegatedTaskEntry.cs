@@ -50,6 +50,15 @@ internal sealed class DelegatedTaskEntry
 
     public int TurnCount { get; set; }
 
+    /// <summary>How many tool calls this session has requested, across all its turns (AC-100 false-success guard).</summary>
+    public int ToolCallsRequested { get; set; }
+
+    /// <summary>How many of those tool calls returned a non-error result (AC-100). Zero-while-requested is a no-op run.</summary>
+    public int ToolCallsSucceeded { get; set; }
+
+    /// <summary>How many of those tool calls came back as an error — a denial by the delegated gate counts here (AC-100).</summary>
+    public int ToolCallsErrored { get; set; }
+
     public string? Result { get; private set; }
 
     public string? Error { get; private set; }

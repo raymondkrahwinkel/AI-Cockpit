@@ -225,11 +225,14 @@ internal sealed class OrchestratorTools
     }
 
     // Only the events worth reading back to an agent carry text; the rest are reported by type alone, so a
-    // progress poll stays small.
+    // progress poll stays small. A tool result carries its content — above all a gate denial or tool error, which
+    // is otherwise invisible (AC-100/AC-113): without it a caller sees a tool ran and a result came back, but not
+    // why write_file was refused. An error result is marked so a poll can tell a failure from a normal return.
     private static string? _Describe(Cockpit.Core.Sessions.SessionEvent evt) => evt switch
     {
         Cockpit.Core.Sessions.AssistantTextCompleted text => text.Text,
         Cockpit.Core.Sessions.ToolUseRequested tool => tool.ToolName,
+        Cockpit.Core.Sessions.ToolResult result => result.IsError ? $"[error] {result.Content}" : result.Content,
         Cockpit.Core.Sessions.TurnCompleted turn => turn.Result,
         Cockpit.Core.Sessions.SessionError error => error.Message,
         _ => null,
