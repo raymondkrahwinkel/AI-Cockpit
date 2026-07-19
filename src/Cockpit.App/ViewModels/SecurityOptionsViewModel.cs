@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Secrets;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Secrets;
+using Cockpit.Core.Terminal;
 
 namespace Cockpit.App.ViewModels;
 
@@ -14,10 +16,26 @@ namespace Cockpit.App.ViewModels;
 /// an app that goes quiet while it does that.
 /// </para>
 /// </summary>
-public sealed partial class SecurityOptionsViewModel(ISecretProtectionService protection) : ObservableObject
+public sealed partial class SecurityOptionsViewModel(
+    ISecretProtectionService protection,
+    ITerminalAccessSwitch? terminalAccessSwitch = null,
+    ITerminalAccessSettingsStore? terminalAccessSettings = null) : ObservableObject
 {
+    // True only while RefreshAsync seeds the toggle from disk, so setting the property then does not turn around and
+    // write the same value straight back.
+    private bool _loadingTerminalAccess;
+
     [ObservableProperty]
     private bool _isEncrypted;
+
+    /// <summary>
+    /// The terminal-access master switch (AC-34): off by default, an opt-in. While off, the <c>cockpit-terminal</c>
+    /// MCP is not advertised to any session — for an agent the feature does not exist. Turning it on makes it
+    /// reachable, still behind a per-pane Approve/Deny. Persisted, and flipped live so the next session sees the
+    /// change without a restart.
+    /// </summary>
+    [ObservableProperty]
+    private bool _terminalAccessEnabled;
 
     [ObservableProperty]
     private bool _isMigrating;
@@ -45,6 +63,38 @@ public sealed partial class SecurityOptionsViewModel(ISecretProtectionService pr
         var status = await protection.GetStatusAsync().ConfigureAwait(true);
         IsEncrypted = status.Enabled;
         ShowUnprotectedBanner = status.ShouldWarnUnprotected;
+
+        // Absent in the design-time/unit-test graph — the toggle then stays off and inert.
+        if (terminalAccessSettings is null)
+        {
+            return;
+        }
+
+        var terminal = await terminalAccessSettings.LoadAsync().ConfigureAwait(true);
+        _loadingTerminalAccess = true;
+        TerminalAccessEnabled = terminal.Enabled;
+        _loadingTerminalAccess = false;
+        if (terminalAccessSwitch is not null)
+        {
+            terminalAccessSwitch.Enabled = terminal.Enabled;
+        }
+    }
+
+    // The toggle changed. Flip the live switch at once (so the next session sees it without a restart) and persist,
+    // unless we are only seeding the value from disk in RefreshAsync (or the store is absent in a test graph).
+    async partial void OnTerminalAccessEnabledChanged(bool value)
+    {
+        if (_loadingTerminalAccess || terminalAccessSettings is null)
+        {
+            return;
+        }
+
+        if (terminalAccessSwitch is not null)
+        {
+            terminalAccessSwitch.Enabled = value;
+        }
+
+        await terminalAccessSettings.SaveAsync(new TerminalAccessSettings { Enabled = value }).ConfigureAwait(true);
     }
 
     /// <summary>
