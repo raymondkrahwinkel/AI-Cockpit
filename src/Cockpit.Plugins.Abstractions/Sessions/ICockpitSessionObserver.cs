@@ -36,6 +36,29 @@ public interface ICockpitSessionObserver
     /// text is surfaced verbatim so a match works regardless of which underlying field it came from.
     /// </summary>
     event EventHandler<SessionOutputText>? OutputProduced;
+
+    /// <summary>
+    /// Raised when a session's agent finishes a tool call, coupling the tool's name and input with its
+    /// result (AC-116) — richer than <see cref="OutputProduced"/>, which carries only the result text and
+    /// cannot say which tool produced it. Lets a plugin react to a specific tool completing (e.g. a YouTrack
+    /// tracker attaching the message's images to an issue the agent just created) instead of scanning prose
+    /// for a signal. Only structured (SDK) sessions raise it; a raw terminal session, whose tool calls the
+    /// cockpit does not parse, never does. Null on a host that predates this member.
+    /// </summary>
+    event EventHandler<SessionToolActivity>? ToolActivityObserved
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
+    /// The images the user message that started the pane's current turn carried (AC-116), or empty when it
+    /// carried none / the turn is over / <paramref name="paneId"/> is unknown. Host-managed and turn-scoped:
+    /// set when an image-bearing message is sent and cleared when that turn completes, so a consumer reacting
+    /// to a tool call mid-turn (an attach) gets exactly this turn's images and never a stale earlier set.
+    /// Default empty for a host that predates this member.
+    /// </summary>
+    IReadOnlyList<SessionImageAttachment> GetCurrentTurnImages(string paneId) => [];
 }
 
 /// <summary>
@@ -45,6 +68,20 @@ public interface ICockpitSessionObserver
 /// <param name="WorkingDirectory">Working directory of the session that produced it, or null when unknown.</param>
 /// <param name="IsFromActiveSession">True when this came from the currently selected session, so a watcher can ignore background sessions if it only cares about the one in view.</param>
 public sealed record SessionOutputText(string Text, string? WorkingDirectory, bool IsFromActiveSession);
+
+/// <summary>
+/// One tool call a session's agent completed (AC-116), delivered on
+/// <see cref="ICockpitSessionObserver.ToolActivityObserved"/>: which session (its pane id), which tool, the
+/// arguments it was called with, and the result it produced. The name and input come from the tool-use event,
+/// the content and error flag from the matching tool-result — coupled by the host so a consumer sees the whole
+/// call in one place.
+/// </summary>
+/// <param name="PaneId">Pane id of the session whose agent made the call — how a consumer names the session to act on (e.g. to fetch that turn's images via <see cref="ICockpitSessionObserver.GetCurrentTurnImages"/>).</param>
+/// <param name="ToolName">The tool's name as the agent called it, e.g. <c>mcp__youtrack_personal__create_issue</c>.</param>
+/// <param name="InputJson">The call's arguments as a JSON string, verbatim.</param>
+/// <param name="ResultContent">The tool result's content, verbatim (often JSON the tool returned).</param>
+/// <param name="IsError">True when the tool reported the call as an error.</param>
+public sealed record SessionToolActivity(string PaneId, string ToolName, string InputJson, string ResultContent, bool IsError);
 
 /// <summary>
 /// A no-op <see cref="ICockpitSessionObserver"/> used as the default from <see cref="ICockpitHost.Sessions"/>

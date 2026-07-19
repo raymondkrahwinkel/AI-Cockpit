@@ -32,6 +32,7 @@ internal sealed class OrchestratorMcpServer
 
     private readonly IDelegationService _delegation;
     private readonly McpAuthKey _authKey;
+    private readonly SessionMcpKeyring _keyring;
     private readonly IDelegationSettingsStore _settingsStore;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<OrchestratorMcpServer> _logger;
@@ -41,11 +42,13 @@ internal sealed class OrchestratorMcpServer
     public OrchestratorMcpServer(
         IDelegationService delegation,
         McpAuthKey authKey,
+        SessionMcpKeyring keyring,
         IDelegationSettingsStore settingsStore,
         ILoggerFactory loggerFactory)
     {
         _delegation = delegation;
         _authKey = authKey;
+        _keyring = keyring;
         _settingsStore = settingsStore;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<OrchestratorMcpServer>();
@@ -94,7 +97,7 @@ internal sealed class OrchestratorMcpServer
 
         _app = builder.Build();
         // Guard the endpoint before its tools: a request without this run's key never reaches delegation (AC-40).
-        McpAuthMiddleware.Require(_app, _authKey);
+        McpAuthMiddleware.Require(_app, _authKey, _keyring);
         _app.MapMcp("/mcp");
 
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);

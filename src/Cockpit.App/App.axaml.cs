@@ -12,6 +12,7 @@ using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
@@ -194,6 +195,12 @@ public partial class App : Application
             // otherwise a plugin token in the clear would go unmentioned until the next save.
             _ = cockpit.Security.RefreshAsync();
         }
+
+        // AC-34: seed the terminal-access master switch from its persisted setting before any session can start, so a
+        // session that launches before the operator ever opens Options still reflects the saved choice (default off).
+        Program.Services.GetRequiredService<ITerminalAccessSwitch>().Enabled =
+            Program.Services.GetRequiredService<ITerminalAccessSettingsStore>().LoadAsync().GetAwaiter().GetResult().Enabled;
+
         var actions = new PluginActions(
             cockpit,
             () => _mainWindow is null ? null : TopLevel.GetTopLevel(_mainWindow)?.Clipboard,

@@ -15,4 +15,8 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// A class whose <c>[McpServerTool]</c> methods are this endpoint's tools. Its constructor dependencies are
 /// resolved from the application's service provider, so a tool can depend on any registered service.
 /// </param>
-public sealed record CockpitMcpEndpoint(string ServerName, Type ToolsType);
+/// <param name="IsEnabled">
+/// An optional live gate: when it returns false the endpoint is hosted but not advertised to a session's
+/// <c>--mcp-config</c>, so for an agent the server does not exist (AC-34's master switch). Null means always on.
+/// </param>
+public sealed record CockpitMcpEndpoint(string ServerName, Type ToolsType, Func<bool>? IsEnabled = null);
