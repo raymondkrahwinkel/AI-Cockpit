@@ -44,8 +44,36 @@ public static class DependencyInjection
         AddNotifications(services);
         AddPtyHost(services);
         AddGlobalHotkey(services);
+        AddScreenLockMonitor(services);
 
         return services;
+    }
+
+    // OS screen-lock detection (AC-5) is registered by platform here rather than via the Scrutor marker scan, for the
+    // same reason the pty host and hotkey are: the scan would bind whichever implementation it saw last to the single
+    // IScreenLockMonitor registration. Windows reads SystemEvents.SessionSwitch; macOS the CoreFoundation distributed
+    // notification; Linux systemd-logind over D-Bus. Anything else gets the null monitor, so the feature is simply
+    // inert there rather than a missing registration — the runtime selection always yields a working object.
+    private static void AddScreenLockMonitor(IServiceCollection services)
+    {
+#pragma warning disable CA1416
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            services.AddSingleton<Core.Secrets.IScreenLockMonitor, Security.WindowsScreenLockMonitor>();
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            services.AddSingleton<Core.Secrets.IScreenLockMonitor, Security.MacScreenLockMonitor>();
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            services.AddSingleton<Core.Secrets.IScreenLockMonitor, Security.LinuxScreenLockMonitor>();
+        }
+        else
+        {
+            services.AddSingleton<Core.Secrets.IScreenLockMonitor, Core.Secrets.NullScreenLockMonitor>();
+        }
+#pragma warning restore CA1416
     }
 
     // Global push-to-talk (#34) is registered by platform here rather than via the Scrutor marker scan, for the

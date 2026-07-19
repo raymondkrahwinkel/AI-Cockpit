@@ -106,6 +106,13 @@ internal sealed class SecretProtectionService : ISecretProtectionService, ISingl
         return true;
     }
 
+    public void Relock() =>
+        // The only reference to the derived key is the protector the holder is keeping; dropping it is what takes the
+        // key out of memory (AC-5). No file is touched — encryption stays on, the config on disk is unchanged
+        // ciphertext, and the next UnlockAsync derives the key afresh from the password. This is the running-app twin
+        // of never having unlocked at startup.
+        _keyHolder.Lock();
+
     public async Task EnableAsync(
         string password,
         IProgress<SecretMigrationProgress>? progress = null,

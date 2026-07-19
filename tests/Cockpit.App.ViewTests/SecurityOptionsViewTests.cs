@@ -70,6 +70,10 @@ public class SecurityOptionsViewTests
 
         public Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default) => Task.FromResult(false);
 
+        public void Relock()
+        {
+        }
+
         public Task EnableAsync(string password, IProgress<Core.Abstractions.Secrets.SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
