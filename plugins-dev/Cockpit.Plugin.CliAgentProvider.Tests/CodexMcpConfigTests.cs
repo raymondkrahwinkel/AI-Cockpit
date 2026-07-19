@@ -73,11 +73,42 @@ public class CodexMcpConfigTests
     }
 
     [Fact]
-    public void Build_QuotesAServerNameThatIsNotABareKey()
+    public void Build_SanitizesAServerNameToCodexCharset_SoItStartsRatherThanBeingRejected()
     {
-        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "my server", Url = "http://x/mcp" }]);
+        // AC-77: Codex validates each server name against ^[a-zA-Z0-9_-]+$ and refuses "YouTrack: Personal" /
+        // "SQL Explorer" with "Invalid MCP server name". Every out-of-charset character folds to '_', and the
+        // result is a bare (unquoted) TOML key.
+        var launch = CodexMcpConfig.Build(
+        [
+            new PluginMcpServer { Name = "YouTrack: Personal", Url = "http://x/mcp" },
+            new PluginMcpServer { Name = "SQL Explorer", Url = "http://y/mcp" },
+        ]);
 
-        launch.ConfigArgs[1].Should().StartWith("""mcp_servers."my server"=""");
+        launch.ConfigArgs.Should().Equal(
+            "-c", """mcp_servers.YouTrack__Personal={ url = "http://x/mcp" }""",
+            "-c", """mcp_servers.SQL_Explorer={ url = "http://y/mcp" }""");
+    }
+
+    [Fact]
+    public void Build_MakesSanitizedNamesUnique_SoTwoNamesThatFoldTheSameDoNotCollapseIntoOneServer()
+    {
+        var launch = CodexMcpConfig.Build(
+        [
+            new PluginMcpServer { Name = "a b", Url = "http://x/mcp" },
+            new PluginMcpServer { Name = "a:b", Url = "http://y/mcp" },
+        ]);
+
+        launch.ConfigArgs.Should().Equal(
+            "-c", """mcp_servers.a_b={ url = "http://x/mcp" }""",
+            "-c", """mcp_servers.a_b_2={ url = "http://y/mcp" }""");
+    }
+
+    [Fact]
+    public void Build_FallsBackToAnIndexedName_WhenAServerNameHasNoUsableCharacters()
+    {
+        var launch = CodexMcpConfig.Build([new PluginMcpServer { Name = "：（）", Url = "http://x/mcp" }]);
+
+        launch.ConfigArgs.Should().Equal("-c", """mcp_servers.server_0={ url = "http://x/mcp" }""");
     }
 
     [Fact]
