@@ -1,0 +1,45 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.CloneFromGitUrlDialog"
+        x:DataType="vm:CloneFromGitUrlDialogViewModel"
+        Title="Clone from a Git URL"
+        Width="520" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:CloneFromGitUrlDialogViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <TextBlock Grid.Column="0" Text="Cloning…" VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                           IsVisible="{Binding IsCloning}"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" Click="OnCancel"/>
+                    <Button Content="Clone" Classes="Accent"
+                            Command="{Binding CloneCommand}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <StackPanel Margin="20,18" Spacing="10">
+            <TextBlock Text="Clone a repository into a managed folder and start the session there. Private HTTPS repos use your own git credential helper — no token is handled here."
+                       TextWrapping="Wrap" FontSize="12.5"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <TextBox Name="UrlBox" Text="{Binding Url}"
+                     IsEnabled="{Binding !IsCloning}"
+                     PlaceholderText="e.g. https://github.com/org/repo.git" KeyDown="OnUrlBoxKeyDown"/>
+            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12.5"
+                       Foreground="{StaticResource CockpitStatusErrorBrush}"
+                       IsVisible="{Binding HasError}"/>
+        </StackPanel>
+    </DockPanel>
+</Window>

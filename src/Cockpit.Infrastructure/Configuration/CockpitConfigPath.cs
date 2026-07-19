@@ -37,6 +37,13 @@ internal static class CockpitConfigPath
     /// </summary>
     public static string WorktreesRoot => Path.Combine(Root, "worktrees");
 
+    /// <summary>
+    /// Where repositories cloned from a URL live (AC-90): a <c>clones/</c> folder next to <c>cockpit.json</c>,
+    /// one directory per repository under a <c>host/org/repo</c> slug. Under the app state root, so a development
+    /// build keeps its own (<see cref="CockpitBuild"/>) rather than cloning into the production cockpit's area.
+    /// </summary>
+    public static string ClonesRoot => Path.Combine(Root, "clones");
+
     /// <summary>Creates <paramref name="directory"/> if needed and restricts it to its owner. Idempotent.</summary>
     public static void EnsurePrivateDirectory(string directory)
     {

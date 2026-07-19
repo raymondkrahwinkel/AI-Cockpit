@@ -30,6 +30,28 @@ public class GitCliTests
         cleaned.Should().NotContain("Updating files:");
     }
 
+    // git echoes the remote URL in its own failures ("fatal: unable to access 'https://token@host/…'"); a clone
+    // error must not carry a pasted credential into the operator's dialog or a log (AC-90 binding rule).
+    [Fact]
+    public void RedactUrlCredentials_BlanksUserInfoInGitsOwnErrorText()
+    {
+        const string stderr =
+            "fatal: unable to access 'https://x-access-token:ghp_secretsecret@github.com/org/repo.git/': error 403";
+
+        var redacted = GitCli.RedactUrlCredentials(stderr);
+
+        redacted.Should().NotContain("ghp_secretsecret");
+        redacted.Should().Contain("https://***@github.com/org/repo.git");
+    }
+
+    [Fact]
+    public void RedactUrlCredentials_LeavesTextWithoutCredentialsUntouched()
+    {
+        const string stderr = "fatal: repository 'https://github.com/org/repo.git/' not found";
+
+        GitCli.RedactUrlCredentials(stderr).Should().Be(stderr);
+    }
+
     [Fact]
     public void StripProgress_HandlesCarriageReturnOverwrittenProgress()
     {

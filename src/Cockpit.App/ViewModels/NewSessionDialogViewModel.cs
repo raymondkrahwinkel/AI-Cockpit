@@ -67,6 +67,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Raised when the operator wants to manage profiles; the host opens the Manage-profiles dialog and reloads.</summary>
     public event Action? ManageProfilesRequested;
 
+    /// <summary>Raised when the operator picks "Clone from a Git URL…" (AC-90); the host opens the clone dialog and, on success, sets <see cref="WorkingDirectory"/> to the local clone path.</summary>
+    public event Action? CloneFromUrlRequested;
+
+    /// <summary>The label of the special quick-pick entry that opens the clone-from-URL flow instead of choosing a folder (AC-90).</summary>
+    public const string CloneFromUrlLabel = "Clone from a Git URL…";
+
     /// <summary>Which kind of session to create; chosen in the dialog itself (#32), defaulting to TTY (Raymond's preferred default).</summary>
     [ObservableProperty]
     private SessionKind _selectedKind = SessionKind.Tty;
@@ -463,6 +469,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private void _RefreshRememberedPaths()
     {
         RememberedPaths.Clear();
+
+        // Always first, and independent of any history, so cloning a not-yet-local repository (AC-90) is one pick away
+        // even on a fresh machine with no remembered folders.
+        RememberedPaths.Add(new RememberedPathOption(CloneFromUrlLabel, IsFavorite: false, IsCloneAction: true));
+
         foreach (var path in _history.Favorites)
         {
             RememberedPaths.Add(new RememberedPathOption(path, IsFavorite: true));
@@ -490,6 +501,15 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     {
         if (value is null)
         {
+            return;
+        }
+
+        // The "Clone from a Git URL…" entry is not a folder: hand it to the host's clone flow rather than dropping its
+        // label into the folder field. The selection still clears (below) so it behaves as a one-shot action.
+        if (value.IsCloneAction)
+        {
+            Dispatcher.UIThread.Post(() => SelectedRememberedPath = null);
+            CloneFromUrlRequested?.Invoke();
             return;
         }
 
@@ -818,8 +838,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private void ManageProfiles() => ManageProfilesRequested?.Invoke();
 }
 
-/// <summary>One entry in the New-session dialog's working-directory quick-pick: the remembered <see cref="Path"/> and whether it is a pinned favorite (shown with a star icon, and listed first).</summary>
-public sealed record RememberedPathOption(string Path, bool IsFavorite);
+/// <summary>
+/// One entry in the New-session dialog's working-directory quick-pick: the remembered <see cref="Path"/> and whether
+/// it is a pinned favorite (shown with a star icon, and listed first). <see cref="IsCloneAction"/> marks the special
+/// "Clone from a Git URL…" entry (AC-90) rather than a folder — selecting it opens the clone flow instead of filling
+/// the folder field.
+/// </summary>
+public sealed record RememberedPathOption(string Path, bool IsFavorite, bool IsCloneAction = false);
 
 /// <summary>
 /// One start default a plugin TTY provider declared (<c>PluginTtyLaunchOption</c>) — <see cref="Key"/>/
