@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.decide.outputs.build }}
+      previous: ${{ steps.decide.outputs.previous }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -37,16 +38,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The commit the nightly tag points at — not the release's targetCommitish, which reports the branch
+          # ("main") and would never equal a sha, quietly making this check always say "yes, build". Captured
+          # here, before the manual short-circuit below, so the release job can list the commits since it as
+          # this nightly's changelog on a scheduled and a hand-fired run alike.
+          published=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly" -q .object.sha 2>/dev/null || echo "")
+          echo "previous=$published" >> "$GITHUB_OUTPUT"
+          head=$(git rev-parse HEAD)
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manual run — building this commit."
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          # The commit the nightly tag points at — not the release's targetCommitish, which reports the branch
-          # ("main") and would never equal a sha, quietly making this check always say "yes, build".
-          published=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly" -q .object.sha 2>/dev/null || echo "")
-          head=$(git rev-parse HEAD)
 
           if [ "$published" = "$head" ]; then
             echo "main is unchanged since the last nightly ($head) — nothing to build."
@@ -184,11 +188,14 @@ jobs:
 
   # One publish, after every platform built. All three or none.
   release:
-    needs: publish
+    needs: [changes, publish]
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history so the changelog can walk from the previous nightly's commit to this one.
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v8
         with:
@@ -203,6 +210,34 @@ jobs:
           echo "version=${base}-nightly.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Build the release body as a file rather than an inline --notes string: the changelog is a bullet list,
+      # and this YAML block's indentation would prepend leading spaces to every line, turning the list into a
+      # markdown code block. A file sidesteps that. The changelog is the commits since the previous nightly —
+      # the question a rolling pre-release actually raises: what landed in tonight's build. The previous
+      # nightly's commit comes from the `changes` job (its sha, not the 'nightly' tag name, because this job
+      # deletes and recreates that tag below). A previous sha that is missing or no longer in history (the very
+      # first nightly, a pruned tag, or a rewritten main) falls back to the most recent commits so the body is
+      # never empty.
+      - name: Compose the release notes
+        shell: bash
+        run: |
+          previous="${{ needs.changes.outputs.previous }}"
+          {
+            echo "Rolling build of \`main\`, replaced whenever main moves. Not a release: things here are expected to break."
+            echo
+            echo "Version: \`${{ steps.version.outputs.version }}\` · commit \`${{ steps.version.outputs.sha }}\`"
+            echo
+            echo "### Changes since the previous nightly"
+            echo
+            if [ -n "$previous" ] && git cat-file -e "${previous}^{commit}" 2>/dev/null; then
+              git log --no-merges --pretty='- %s' "${previous}..HEAD"
+            else
+              echo "_No previous nightly in history — the most recent commits:_"
+              echo
+              git log --no-merges --pretty='- %s' -n 20
+            fi
+          } > nightly-notes.md
+
       # Delete and recreate rather than update: an existing release keeps its old assets and — the part that
       # bites — its old tag, so 'nightly' kept pointing at the commit before last while the page claimed the new
       # one. The tag is what the next run's "did anything change?" check reads, so a tag that never moves means a
@@ -216,7 +251,5 @@ jobs:
             --target "${GITHUB_SHA}" \
             --prerelease \
             --title "Nightly ${{ steps.version.outputs.version }} (${{ steps.version.outputs.sha }})" \
-            --notes "Rolling build of \`main\`, replaced whenever main moves. Not a release: things here are expected to break.
-
-          Version: \`${{ steps.version.outputs.version }}\` · commit \`${{ steps.version.outputs.sha }}\`" \
+            --notes-file nightly-notes.md \
             artifacts/*
