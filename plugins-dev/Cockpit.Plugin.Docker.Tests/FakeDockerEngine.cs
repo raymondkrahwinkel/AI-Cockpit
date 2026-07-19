@@ -14,6 +14,10 @@ internal sealed class FakeDockerEngine : IDockerEngine
 
     public string RunReturnsId { get; set; } = "newcontainerid";
 
+    public ContainerLogs LogsValue { get; set; } = new("stdout line", string.Empty);
+
+    public IReadOnlyList<DockerImage> Images { get; set; } = [];
+
     /// <summary>When set, every call throws it — to exercise the sanitized-error path.</summary>
     public Exception? Throw { get; set; }
 
@@ -23,6 +27,8 @@ internal sealed class FakeDockerEngine : IDockerEngine
     public List<(string Id, bool Force)> Removed { get; } = [];
     public List<(string Id, IReadOnlyList<string> Command)> Execs { get; } = [];
     public List<RunSpec> Runs { get; } = [];
+    public List<(string Id, int Tail)> LogReads { get; } = [];
+    public List<string> Pulled { get; } = [];
 
     public Task<DockerDaemonInfo> GetInfoAsync(CancellationToken cancellationToken)
     {
@@ -76,6 +82,26 @@ internal sealed class FakeDockerEngine : IDockerEngine
         _Guard();
         Runs.Add(spec);
         return Task.FromResult(RunReturnsId);
+    }
+
+    public Task<ContainerLogs> GetContainerLogsAsync(string id, int tail, CancellationToken cancellationToken)
+    {
+        _Guard();
+        LogReads.Add((id, tail));
+        return Task.FromResult(LogsValue);
+    }
+
+    public Task<IReadOnlyList<DockerImage>> ListImagesAsync(CancellationToken cancellationToken)
+    {
+        _Guard();
+        return Task.FromResult(Images);
+    }
+
+    public Task PullImageAsync(string image, CancellationToken cancellationToken)
+    {
+        _Guard();
+        Pulled.Add(image);
+        return Task.CompletedTask;
     }
 
     private void _Guard()

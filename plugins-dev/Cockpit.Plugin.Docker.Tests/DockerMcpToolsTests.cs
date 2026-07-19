@@ -202,4 +202,91 @@ public sealed class DockerMcpToolsTests
         h.Asked.Should().ContainSingle();
         h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
     }
+
+    // ---- AC-93: logs, images, pull ----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Logs_WhenApproved_ReturnsOutput_AndIsARead()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+        h.Engine.LogsValue = new ContainerLogs("hello from stdout", "a warning");
+
+        var json = JsonNode.Parse(await h.Tools.Logs(Session, "web", tail: 50));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        json["stdout"]!.GetValue<string>().Should().Be("hello from stdout");
+        json["stderr"]!.GetValue<string>().Should().Be("a warning");
+        h.Engine.LogReads.Should().ContainSingle().Which.Should().Be(("web", 50));
+        h.Asked.Should().ContainSingle();
+        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk, "logs is a read behind the one-time connection consent");
+    }
+
+    [Fact]
+    public async Task ListImages_WhenApproved_ReturnsImages()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+        h.Engine.Images = new[] { new DockerImage("abc", new[] { "nginx:latest" }, 142_000_000) };
+
+        var json = JsonNode.Parse(await h.Tools.ListImages(Session));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        json["count"]!.GetValue<int>().Should().Be(1);
+        json["images"]![0]!["tags"]![0]!.GetValue<string>().Should().Be("nginx:latest");
+        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
+    }
+
+    [Fact]
+    public async Task PullImage_WhenApproved_PullsAndAsksMutationConsentEachTime()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.PullImage(Session, "nginx:1.27"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        h.Engine.Pulled.Should().ContainSingle().Which.Should().Be("nginx:1.27");
+        // A mutation first clears the one-time connection consent, then asks for the change itself.
+        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous, "a pull changes local state, so it is not remembered");
+        h.Asked.Last().AllowRemember.Should().BeFalse();
+        h.Asked.Last().Action.Should().Contain("nginx:1.27");
+    }
+
+    [Fact]
+    public async Task PullImage_WhenDeclined_DoesNotTouchTheEngine()
+    {
+        var h = _Build(ConsentOutcome.Denied);
+        h.Engine.Throw = new InvalidOperationException("the engine must not be called");
+
+        var json = JsonNode.Parse(await h.Tools.PullImage(Session, "nginx:1.27"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        h.Engine.Pulled.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RunContainer_WhenImageMissing_ReturnsAClearPullHint_NotADaemonError()
+    {
+        // AC-93: a missing local image used to surface "daemon could not be reached (DockerImageNotFoundException)",
+        // sending operators to look at the endpoint. It now names the image and points at pull_image.
+        var h = _Build(ConsentOutcome.Approved, allowExec: true);
+        h.Engine.Throw = new ImageNotFoundException("nginx:latest");
+
+        var json = JsonNode.Parse(await h.Tools.RunContainer(Session, "nginx:latest"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        var error = json["error"]!.GetValue<string>();
+        error.Should().Contain("nginx:latest").And.Contain("pull_image");
+        error.Should().NotContain("daemon could not be reached");
+    }
+
+    [Fact]
+    public async Task ComposeLogs_IsARead_PassingTailAndServices()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.ComposeLogs(Session, "/srv/app", services: new[] { "web" }, tail: 100));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        h.Compose.Calls[0].Args.Should().Equal("logs", "--no-color", "--no-log-prefix", "--tail", "100", "--", "web");
+        h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
+    }
 }

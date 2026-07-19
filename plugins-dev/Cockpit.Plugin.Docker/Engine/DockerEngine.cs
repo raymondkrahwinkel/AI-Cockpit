@@ -143,7 +143,18 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
         };
 
         var client = _Client();
-        var created = await client.Containers.CreateContainerAsync(parameters, cancellationToken);
+        CreateContainerResponse created;
+        try
+        {
+            created = await client.Containers.CreateContainerAsync(parameters, cancellationToken);
+        }
+        catch (DockerImageNotFoundException)
+        {
+            // Translate the raw daemon error into a plugin one, so the tool can say "pull it first" rather than
+            // surfacing a misleading daemon-unreachable message.
+            throw new ImageNotFoundException(spec.Image);
+        }
+
         try
         {
             await client.Containers.StartContainerAsync(created.ID, new ContainerStartParameters(), cancellationToken);
@@ -165,6 +176,64 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
         }
 
         return created.ID;
+    }
+
+    public async Task<ContainerLogs> GetContainerLogsAsync(string id, int tail, CancellationToken cancellationToken)
+    {
+        var client = _Client();
+
+        // A tty container's log stream is not multiplexed; a non-tty one interleaves stdout/stderr frames. Ask the
+        // container which it is so the read demuxes correctly instead of splicing frame headers into the text.
+        var inspect = await client.Containers.InspectContainerAsync(id, cancellationToken);
+        var tty = inspect.Config?.Tty ?? false;
+
+        var parameters = new ContainerLogsParameters
+        {
+            ShowStdout = true,
+            ShowStderr = true,
+            Tail = tail <= 0 ? "all" : tail.ToString(),
+        };
+
+        using var stream = await client.Containers.GetContainerLogsAsync(id, tty, parameters, cancellationToken);
+        var (stdout, stderr) = await stream.ReadOutputToEndAsync(cancellationToken);
+        return new ContainerLogs(stdout, stderr);
+    }
+
+    public async Task<IReadOnlyList<DockerImage>> ListImagesAsync(CancellationToken cancellationToken)
+    {
+        var images = await _Client().Images.ListImagesAsync(new ImagesListParameters { All = false }, cancellationToken);
+
+        return images.Select(image => new DockerImage(
+            (image.ID ?? string.Empty).Replace("sha256:", string.Empty, StringComparison.Ordinal),
+            image.RepoTags?.ToList() ?? [],
+            image.Size)).ToList();
+    }
+
+    public Task PullImageAsync(string image, CancellationToken cancellationToken)
+    {
+        // "repo:tag", "repo" (→ latest), or "repo@sha256:…" (a digest carries its own tag). A blank progress sink is
+        // required by the API; the pull's success or failure is what the tool reports, not its byte-by-byte progress.
+        var (fromImage, tag) = _SplitImageRef(image);
+        return _Client().Images.CreateImageAsync(
+            new ImagesCreateParameters { FromImage = fromImage, Tag = tag },
+            authConfig: null,
+            new Progress<JSONMessage>(),
+            cancellationToken);
+    }
+
+    private static (string FromImage, string? Tag) _SplitImageRef(string image)
+    {
+        if (image.Contains('@', StringComparison.Ordinal))
+        {
+            return (image, null);
+        }
+
+        // Only a ':' after the last '/' is a tag — a registry host may carry a port ("registry:5000/repo").
+        var lastSlash = image.LastIndexOf('/');
+        var colon = image.LastIndexOf(':');
+        return colon > lastSlash
+            ? (image[..colon], image[(colon + 1)..])
+            : (image, "latest");
     }
 
     /// <summary>Parse "host:container[/proto]" (or bare "container[/proto]") publish specs into Docker's exposed-port

@@ -28,8 +28,23 @@ internal interface IDockerEngine
     /// <summary>Runs a single, non-interactive command in a container (<c>docker exec</c>).</summary>
     Task<ExecResult> ExecAsync(string id, IReadOnlyList<string> command, CancellationToken cancellationToken);
 
-    /// <summary>Creates and starts a detached container (<c>docker run -d</c>); returns its id.</summary>
+    /// <summary>Creates and starts a detached container (<c>docker run -d</c>); returns its id. Throws <see cref="ImageNotFoundException"/> when the image is not available locally and could not be found.</summary>
     Task<string> RunContainerAsync(RunSpec spec, CancellationToken cancellationToken);
+
+    /// <summary>The last <paramref name="tail"/> lines of a container's logs (<c>docker logs --tail</c>), stdout and stderr separated. A read.</summary>
+    Task<ContainerLogs> GetContainerLogsAsync(string id, int tail, CancellationToken cancellationToken);
+
+    /// <summary>Lists the images available locally (<c>docker images</c>). A read.</summary>
+    Task<IReadOnlyList<DockerImage>> ListImagesAsync(CancellationToken cancellationToken);
+
+    /// <summary>Pulls an image from its registry (<c>docker pull</c>). A change to local state, but not destructive.</summary>
+    Task PullImageAsync(string image, CancellationToken cancellationToken);
+}
+
+/// <summary>The engine's local image is missing and could not be resolved — distinct from a daemon-unreachable error so the tool can point the operator at <c>pull_image</c> rather than at the endpoint.</summary>
+internal sealed class ImageNotFoundException(string image) : Exception($"The image '{image}' was not found.")
+{
+    public string Image { get; } = image;
 }
 
 /// <summary>Engine-agnostic daemon summary.</summary>
@@ -49,6 +64,12 @@ internal sealed record DockerPortMapping(string Type, int PrivatePort, int Publi
 
 /// <summary>The result of an exec: exit code plus captured output.</summary>
 internal sealed record ExecResult(long ExitCode, string Stdout, string Stderr);
+
+/// <summary>A container's captured logs, stdout and stderr separated (a tty container puts everything on stdout).</summary>
+internal sealed record ContainerLogs(string Stdout, string Stderr);
+
+/// <summary>Engine-agnostic image summary — only the fields the MCP surface returns.</summary>
+internal sealed record DockerImage(string Id, IReadOnlyList<string> Tags, long SizeBytes);
 
 /// <summary>
 /// A structured <c>docker run -d</c> request. The MCP tool reconstructs a verbatim command line from this for the
