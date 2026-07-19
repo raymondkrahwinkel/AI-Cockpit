@@ -253,6 +253,28 @@ public sealed class WorktreeManagerTests : IDisposable
         ahead.IsClean.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ReattachAsync_ReassignsTheWorktreeToANewSession()
+    {
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/orphan", _repo);
+        var newSession = Guid.NewGuid().ToString("n");
+
+        var reattached = await _manager.ReattachAsync(record.Path, newSession);
+
+        reattached.Should().NotBeNull();
+        reattached!.SessionId.Should().Be(newSession);
+        reattached.IsRetained.Should().BeFalse();
+        (await _manager.ListAsync()).Should().ContainSingle().Which.SessionId.Should().Be(newSession);
+    }
+
+    [Fact]
+    public async Task ReattachAsync_UnknownPath_ReturnsNull()
+    {
+        var reattached = await _manager.ReattachAsync(Path.Combine(_tempRoot, "nope"), Guid.NewGuid().ToString("n"));
+
+        reattached.Should().BeNull();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempRoot))

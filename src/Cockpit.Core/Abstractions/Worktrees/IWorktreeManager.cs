@@ -53,6 +53,15 @@ public interface IWorktreeManager
     Task RemoveAsync(WorktreeRecord record, bool force = false, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Re-owns an existing worktree for a new session (AC-85 reattach): after a crash a worktree's owning session is
+    /// gone, and starting a new session "here" hands the same worktree and branch to the new session instead of
+    /// orphaning the work — the registry owner is updated and the worktree re-locked. Returns the updated record, or
+    /// <c>null</c> when no registered worktree matches <paramref name="worktreePath"/>. The caller enforces that the
+    /// old owner is gone (reattaching a live worktree would put two sessions on one tree).
+    /// </summary>
+    Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tears down the worktrees a session owned when it closes (AC-85, cleanup-policy A): a provably clean one — no
     /// changes and no commits ahead of its base — is removed along with its branch; one that holds work is kept and
     /// marked retained, shown for review and never auto-removed. Called on session close.

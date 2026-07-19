@@ -175,6 +175,30 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         await _registry.RemoveAsync(record.Path, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<WorktreeRecord?> ReattachAsync(string worktreePath, string newSessionId, CancellationToken cancellationToken = default)
+    {
+        var fullPath = Path.GetFullPath(worktreePath);
+        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        var existing = records.FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), fullPath, PathComparison));
+        if (existing is null)
+        {
+            return null;
+        }
+
+        // Re-lock so a reconcile sweep leaves the reattached worktree alone, and re-own it so liveness and later
+        // teardown follow the new session rather than the dead one. Locking is best-effort — it may already be
+        // locked; the re-own is the part that has to land.
+        await GitCli.RunAsync(
+            existing.RepositoryRoot,
+            ["worktree", "lock", "--reason", $"cockpit session {newSessionId}", existing.Path],
+            cancellationToken).ConfigureAwait(false);
+
+        var reattached = existing with { SessionId = newSessionId, IsRetained = false, IsLocked = true };
+        await _registry.AddAsync(reattached, cancellationToken).ConfigureAwait(false);
+
+        return reattached;
+    }
+
     public async Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default)
     {
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);

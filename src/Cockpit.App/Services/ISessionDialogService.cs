@@ -10,9 +10,18 @@ public interface ISessionDialogService
 {
     /// <summary>
     /// Shows the New-session dialog — SDK vs TTY is chosen inside it (#32) — and returns the confirmed
-    /// choices, or null if cancelled.
+    /// choices, or null if cancelled. <paramref name="initialWorkingDirectory"/> pre-fills the folder (AC-85
+    /// reattach: starting a session in an existing worktree), blank leaves it to the operator.
     /// </summary>
-    Task<NewSessionResult?> ShowNewSessionDialogAsync();
+    Task<NewSessionResult?> ShowNewSessionDialogAsync(string? initialWorkingDirectory = null);
+
+    /// <summary>
+    /// Opens the managed-worktrees dialog (AC-85): the git worktrees the cockpit created, their state and owner, with
+    /// reattach and remove. Takes <paramref name="worktrees"/> as a parameter rather than injecting it (like
+    /// <see cref="ShowOptionsDialogAsync"/>) so the dialog service does not depend on the view model that itself
+    /// depends on the dialog service for the remove-consent prompt.
+    /// </summary>
+    Task ShowWorktreesDialogAsync(WorktreesViewModel worktrees);
 
     /// <summary>Shows the Manage-profiles dialog on its own (e.g. from the sidebar), over the main window.</summary>
     Task ShowManageProfilesDialogAsync();

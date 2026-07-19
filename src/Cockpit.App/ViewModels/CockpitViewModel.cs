@@ -31,6 +31,7 @@ using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Worktrees;
 using Cockpit.Core.Abstractions.Rendering;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Rendering;
@@ -216,6 +217,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.</summary>
     public DelegatedTasksViewModel DelegatedTasks { get; }
+
+    /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
+    public WorktreesViewModel Worktrees { get; }
 
     /// <summary>The workspace tab strip and the active workspace's panes.</summary>
     public WorkspacesViewModel Workspaces { get; }
@@ -1857,6 +1861,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
+        Worktrees = new WorktreesViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
         Diagnostics = new DiagnosticsViewModel(null, _BuildSessionDescriptors);
 
@@ -1919,7 +1924,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITranscriptCleanupService? cleanupService = null,
         ILocalLlmEndpointResolver? localLlmEndpointResolver = null,
         IAudioCaptureService? audioCapture = null,
-        IWorktreeManager? worktreeManager = null)
+        IWorktreeManager? worktreeManager = null,
+        WorktreesViewModel? worktrees = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1945,6 +1951,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _worktreeManager = worktreeManager;
+        Worktrees = worktrees ?? new WorktreesViewModel();
+        Worktrees.LiveSessionIds = () => Sessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
+        Worktrees.ReattachRequested += record => _ = _ReattachSessionAsync(record);
+        _ = Worktrees.RefreshCountAsync();
         _audioDeviceProvider = audioDeviceProvider;
         _modelCatalog = modelCatalog;
         _voicePlaybackQueue = voicePlaybackQueue;
@@ -3624,6 +3634,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 result.Resume,
                 result.PluginTtyOptions);
         }
+
+        // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
+        _ = Worktrees.RefreshCountAsync();
     }
 
     // Isolation is identical for both session kinds (Raymond 2026-07-19): both take a working directory, so both
@@ -3640,6 +3653,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         try
         {
+            // Reattach: the folder is already a worktree the cockpit created (its session gone) — re-own it for this
+            // session and run there, rather than nesting a new worktree inside it. Returns null for a normal folder.
+            if (await _worktreeManager.ReattachAsync(result.WorkingDirectory, session.PaneId) is { } reattached)
+            {
+                session.WorktreeBranch = reattached.Branch;
+                return reattached.Path;
+            }
+
             if (await _worktreeManager.DetectRepositoryAsync(result.WorkingDirectory) is null)
             {
                 return result.WorkingDirectory;
@@ -3817,6 +3838,36 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         await _dialogService.ShowDelegatedTasksDialogAsync();
+    }
+
+    [RelayCommand]
+    private async Task ShowWorktreesAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowWorktreesDialogAsync(Worktrees);
+
+        // The dialog may have removed or reattached worktrees; bring the status-bar counter back in step.
+        await Worktrees.RefreshCountAsync();
+    }
+
+    // Reattach (AC-85): start a new session in an existing worktree by opening the New-session dialog with its folder
+    // pre-filled and isolation on, so starting re-owns that worktree (the resolve reattaches a known worktree path).
+    private async Task _ReattachSessionAsync(WorktreeRecord record)
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        var result = await _dialogService.ShowNewSessionDialogAsync(record.Path);
+        if (result is not null)
+        {
+            await _LaunchSessionFromResultAsync(result);
+        }
     }
 
     /// <summary>Opens the command palette (#: command palette): a searchable list of every app action and plugin command with its shortcut.</summary>
@@ -4154,6 +4205,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 // Left for the startup reconcile.
             }
+
+            // A closed session's worktree was just removed or retained; keep the status-bar counter current.
+            _ = Worktrees.RefreshCountAsync();
         }
 
         if (ReferenceEquals(SelectedSession, session))
