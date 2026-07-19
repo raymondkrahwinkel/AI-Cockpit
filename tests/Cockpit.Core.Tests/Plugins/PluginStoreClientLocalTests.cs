@@ -39,6 +39,23 @@ public class PluginStoreClientLocalTests : IDisposable
 
         result.IsSuccess.Should().BeTrue();
         File.ReadAllBytes(result.ZipPath!).Should().Equal(bytes);
+        result.Warning.Should().BeNull("a verified checksum carries no advisory");
+        _TryDelete(result.ZipPath);
+    }
+
+    [Fact]
+    public async Task DownloadZipAsync_LocalFolder_WarnsButAllowsWhenNoChecksumPublished()
+    {
+        // An index without a per-artifact checksum still installs (many simple stores publish none), but the
+        // download's integrity could not be verified, so the operator is told (AC-46).
+        var bytes = Encoding.UTF8.GetBytes("a plugin zip's bytes");
+        await File.WriteAllBytesAsync(Path.Combine(_tempDir, "plugin.zip"), bytes);
+
+        var result = await _client.DownloadZipAsync(PluginStoreConfig.Local(_tempDir), "plugin.zip", expectedSha256: null);
+
+        result.IsSuccess.Should().BeTrue();
+        result.ZipPath.Should().NotBeNull();
+        result.Warning.Should().Contain("checksum");
         _TryDelete(result.ZipPath);
     }
 
@@ -73,6 +90,8 @@ public class PluginStoreClientLocalTests : IDisposable
 
         result.IsSuccess.Should().BeTrue();
         result.Json.Should().Be(json);
+        // No checksum was supplied, so the template download carries the same unverified advisory (AC-46).
+        result.Warning.Should().Contain("checksum");
     }
 
     private static void _TryDelete(string? path)

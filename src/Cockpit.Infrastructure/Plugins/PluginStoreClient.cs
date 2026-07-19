@@ -64,7 +64,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
             var tempPath = Path.Combine(Path.GetTempPath(), "cockpit-store-" + Guid.NewGuid().ToString("N") + ".zip");
             await File.WriteAllBytesAsync(tempPath, bytes, cancellationToken).ConfigureAwait(false);
 
-            return new PluginStoreDownloadResult(true, null, tempPath);
+            return new PluginStoreDownloadResult(true, null, tempPath, _UnverifiedWarning(expectedSha256, "plugin"));
         }
         catch (Exception exception)
         {
@@ -87,7 +87,7 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
                 return new WorkflowTemplateDownloadResult(false, "The downloaded template did not match the store's published checksum and was rejected.", null);
             }
 
-            return new WorkflowTemplateDownloadResult(true, null, System.Text.Encoding.UTF8.GetString(bytes));
+            return new WorkflowTemplateDownloadResult(true, null, System.Text.Encoding.UTF8.GetString(bytes), _UnverifiedWarning(expectedSha256, "template"));
         }
         catch (Exception exception)
         {
@@ -358,4 +358,16 @@ internal sealed class PluginStoreClient : IPluginStoreClient, ISingletonService
 
         return !string.Equals(PluginHash.Compute(bytes), expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// A non-fatal advisory when the store's index published no per-artifact SHA-256 (AC-46). The store URL is
+    /// fully operator-settable and a published hash, when present, rides in the same index as the payload — so the
+    /// checksum defends transit, not a compromised store. An index without one leaves the download's integrity
+    /// unverifiable. We still allow the install — plenty of simple/local stores publish no hash, and a mismatch on
+    /// a published one is already a hard reject — but say so rather than let an unverified artifact land silently.
+    /// </summary>
+    private static string? _UnverifiedWarning(string? expectedSha256, string artifact) =>
+        string.IsNullOrWhiteSpace(expectedSha256)
+            ? $"The store published no checksum for this {artifact}, so its integrity could not be verified before install."
+            : null;
 }
