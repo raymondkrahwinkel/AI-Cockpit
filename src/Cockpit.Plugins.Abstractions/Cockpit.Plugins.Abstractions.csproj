@@ -80,6 +80,13 @@
          AbstractionsContract.Version (the gate PluginLoadPolicy enforces) stays 1 and no plugin is refused. On
          balance additive; the SDK's package version follows suit as a minor. SessionImageAttachment stays (reused by
          GetCurrentTurnImages). -->
+    <!-- 1.16.0 (#AC-95): added the inter-plugin intent contract — the PluginIntent record and ICockpitHost.
+         RegisterIntentHandler/SendIntent/CanSendIntent (default-implemented), so one plugin can invoke a named action
+         on another addressed by its manifest id, with a presence check (CanSendIntent), and no shared contract type
+         between them — the tracker's "Start in Autopilot" reaches Autopilot without either referencing the other.
+         Existing plugins keep compiling (the members are default no-op / null). Additive API — still a minor; the
+         major and abstractionsVersion stay 1. (1.14.0/1.15.0 were skipped — AC-96/AC-54 renumbered past AC-116's
+         1.13.0 to avoid a version collision.) -->
     <!-- 1.17.0 (#AC-96): added the NewSessionPrefill record and ICockpitHost.ShowNewSessionDialogAsync (default-
          implemented), so a plugin can open the cockpit's New-session dialog pre-filled and get the started session's
          pane id back through an onStarted callback (or an onCancelled signal) — the operator still confirms every
