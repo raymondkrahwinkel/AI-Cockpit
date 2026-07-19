@@ -83,6 +83,21 @@ public class DelegationAuditLogTests : IDisposable
     }
 
     [Fact]
+    public async Task ALongPromptEndingInAnAstralChar_IsTrimmedWithoutALoneSurrogate()
+    {
+        // C5, inherited from the shared base (AC-59): 299 plain chars then an emoji straddling the 300-char cut. The
+        // old char-index trim kept the high surrogate and dropped the low one, which round-trips through JSON as
+        // U+FFFD; the surrogate-safe trim drops the whole pair instead.
+        var log = new DelegationAuditLog(_logPath, NullLogger<DelegationAuditLog>.Instance);
+
+        await log.RecordAsync(_Entry(DelegationAuditAction.Delegated, "task-1") with { Prompt = new string('x', 299) + "😀" });
+
+        var entries = await log.ReadRecentAsync();
+
+        entries[0].Prompt.Should().NotContain("�").And.EndWith("…");
+    }
+
+    [Fact]
     public async Task ReadingABsentLog_ReturnsNothing_RatherThanThrowing()
     {
         var log = new DelegationAuditLog(Path.Combine(_tempDir, "never-written.jsonl"), NullLogger<DelegationAuditLog>.Instance);
