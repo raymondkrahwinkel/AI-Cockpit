@@ -151,6 +151,42 @@ public interface ICockpitHost
         remove { }
     }
 
+    /// <summary>
+    /// Registers a handler for an intent other plugins can send to this one (AC-95), under <paramref name="action"/> —
+    /// the receiving half of <see cref="SendIntent"/>. The host stamps the calling plugin's id on every intent it
+    /// delivers, so <paramref name="handler"/> can trust <see cref="PluginIntent.CallerPluginId"/>. Registering the
+    /// same action twice from one plugin throws — one handler per action, so which one runs is never a question of
+    /// load order. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin
+    /// builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void RegisterIntentHandler(string action, Func<PluginIntent, Task<IReadOnlyDictionary<string, string>>> handler)
+    {
+    }
+
+    /// <summary>
+    /// Sends an intent to the plugin with id <paramref name="targetPluginId"/> and returns its handler's result, or
+    /// <see langword="null"/> when that plugin is not installed or registered no handler for <paramref name="action"/>
+    /// (AC-95). Addressing is by manifest id and an agreed action string, so the caller need not reference the
+    /// target's types — the same loose coupling the workflow steps use. The host stamps this plugin's own id as
+    /// <see cref="PluginIntent.CallerPluginId"/>; a plugin cannot send under another's name. Default returns
+    /// <see langword="null"/> so existing <see cref="ICockpitHost"/> implementations keep compiling untouched — only
+    /// the app's own host dispatches.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, string>?> SendIntent(string targetPluginId, string action, IReadOnlyDictionary<string, string> data) =>
+        Task.FromResult<IReadOnlyDictionary<string, string>?>(null);
+
+    /// <summary>
+    /// Whether the plugin with id <paramref name="targetPluginId"/> has registered a handler for
+    /// <paramref name="action"/> (AC-95) — what a plugin checks before offering a menu item ("Start in Autopilot")
+    /// that would otherwise dispatch to nobody, the same way <see cref="HasSettings"/> gates a Configure button.
+    /// The id and action are matched case-sensitively (see <see cref="PluginIntent"/>). Check it when the operator is
+    /// about to act (building a context menu, a button click) rather than from your own
+    /// <see cref="ICockpitPlugin.Initialize"/>: handlers are registered during each plugin's Initialize, so a target
+    /// that loads after you has not registered yet when yours runs. Default <see langword="false"/> so existing
+    /// <see cref="ICockpitHost"/> implementations keep compiling untouched — only the app's own host reports the real answer.
+    /// </summary>
+    bool CanSendIntent(string targetPluginId, string action) => false;
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 
@@ -257,6 +293,32 @@ public interface ICockpitHost
     /// existing <see cref="ICockpitHost"/> implementations keep compiling untouched.
     /// </summary>
     Task SetSessionName(string paneId, string name) => Task.CompletedTask;
+
+    /// <summary>
+    /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>, and
+    /// starts the session the operator confirms — the plugin equivalent of the operator pressing "New session", with
+    /// the fields it knows already offered. The operator keeps full control: they see and can change every field
+    /// (profile, MCP selection, working tree, resume) before anything starts, and cancelling starts nothing.
+    /// <para>
+    /// <paramref name="onStarted"/> is invoked with the new session's <c>IPluginSessionContext.PaneId</c> — the pane
+    /// becomes the active session the moment it starts, so it is <see cref="ICockpitSessionObserver.ActivePaneId"/>
+    /// then, though the operator may select another pane afterwards. The id stays valid to act on that exact pane —
+    /// set its statusline, track an issue against it. <paramref name="onCancelled"/> fires instead when the
+    /// operator dismisses the dialog (or no session could be started), so a workflow waiting on the session can stop
+    /// rather than hang. Exactly one of the two runs. Unlike <see cref="ICockpitActions.StartSessionAsync"/>, which
+    /// launches a named profile headlessly, this always shows the dialog — it is the path for "let the operator decide,
+    /// then tell me which session they made".
+    /// </para>
+    /// Default no-op (and no callback) so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin
+    /// builds) keep compiling untouched — only the app's own host shows the dialog.
+    /// </summary>
+    /// <param name="prefill">The fields to seed the dialog with, or <see langword="null"/> to open it on its own defaults.</param>
+    /// <param name="onStarted">Invoked with the started session's pane id when the operator confirms; not called if they cancel.</param>
+    /// <param name="onCancelled">Invoked when the operator cancels or no session could be started; not called once a session starts.</param>
+    Task ShowNewSessionDialogAsync(
+        NewSessionPrefill? prefill = null,
+        Action<string>? onStarted = null,
+        Action? onCancelled = null) => Task.CompletedTask;
 
     /// <summary>
     /// Adds an in-process MCP server to the cockpit (#AC-12): the host mounts <paramref name="tools"/> — an already-
