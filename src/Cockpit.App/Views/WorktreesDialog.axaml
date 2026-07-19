@@ -86,6 +86,10 @@
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <!-- Look at the files yourself in the OS file manager (read-only, always available). -->
+                                            <Button Classes="Subtle Compact" Content="Open folder"
+                                                    ToolTip.Tip="Open the worktree folder in your file manager"
+                                                    Click="OnOpenFolder"/>
                                             <!-- Reattach only when the owning session is gone (Raymond: GONE only); a live tree
                                                  disables it so two sessions never land on one working tree. -->
                                             <Button Classes="Subtle Compact" Content="Reattach"
