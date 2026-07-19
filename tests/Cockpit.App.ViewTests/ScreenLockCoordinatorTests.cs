@@ -7,11 +7,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Cockpit.App.ViewTests;
 
 /// <summary>
-/// The AC-5 gate, tested where it can be: the coordinator decides — per screen-lock event — whether to lock the app,
-/// and clears the key only when it does. The native monitor that reports the OS lock cannot be unit-tested (it needs
-/// a real desktop lock), so it is faked here; what is proven is the part that matters for correctness — that a lock
-/// happens only with encryption on and the option on, that it takes the key out of memory, and that a duplicate
-/// event does not stack a second unlock screen.
+/// The AC-5 gate, tested where it can be: the coordinator decides — per screen-lock event — whether to lock the app's
+/// UI, and shows the unlock screen only when it does. The native monitor that reports the OS lock cannot be
+/// unit-tested (it needs a real desktop lock), so it is faked here; what is proven is the part that matters for
+/// correctness — that a lock happens only with encryption on and the option on, and that a duplicate event does not
+/// stack a second unlock screen. This is a pure UI lock: the coordinator never clears the key (that a running agent's
+/// write survives is pinned in the infrastructure tests), so there is nothing key-related to assert here.
 /// </summary>
 public class ScreenLockCoordinatorTests
 {
@@ -25,7 +26,6 @@ public class ScreenLockCoordinatorTests
 
         locked.Should().BeFalse("there is no password to re-ask for when encryption is off");
         locks().Should().Be(0);
-        protection.RelockCalls.Should().Be(0, "the key was never derived, so nothing is cleared");
     }
 
     [Fact]
@@ -38,20 +38,31 @@ public class ScreenLockCoordinatorTests
 
         locked.Should().BeFalse("the operator turned the feature off");
         locks().Should().Be(0);
-        protection.RelockCalls.Should().Be(0);
     }
 
     [Fact]
-    public async Task ItLocks_AndClearsTheKey_WhenEncryptionAndTheOptionAreOn()
+    public async Task ItLocksTheUi_WhenEncryptionAndTheOptionAreOn()
     {
         var protection = new FakeProtection { Enabled = true, Unlocked = true };
-        var (coordinator, locks) = Build(protection, optionOn: true);
+        var count = 0;
+
+        // LockAction deliberately does not touch Unlocked here: it models nothing but showing the screen, so the
+        // assertion below genuinely proves the coordinator left the key alone rather than the fake putting it back.
+        var coordinator = new ScreenLockCoordinator(new FakeMonitor(), protection, new FakeSettings(true), NullLogger<ScreenLockCoordinator>.Instance)
+        {
+            LockAction = () =>
+            {
+                Interlocked.Increment(ref count);
+
+                return Task.CompletedTask;
+            },
+        };
 
         var locked = await coordinator.HandleLockAsync();
 
         locked.Should().BeTrue();
-        locks().Should().Be(1, "the unlock screen was shown once");
-        protection.RelockCalls.Should().Be(1, "the in-memory key is cleared as part of locking");
+        count.Should().Be(1, "the unlock screen was shown once");
+        protection.Unlocked.Should().BeTrue("a pure UI lock leaves the key in memory — the coordinator never clears it");
     }
 
     [Fact]
@@ -173,16 +184,8 @@ public class ScreenLockCoordinatorTests
 
         public bool Unlocked { get; set; }
 
-        public int RelockCalls { get; private set; }
-
         public Task<SecretProtectionStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new SecretProtectionStatus(Enabled, Unlocked));
-
-        public void Relock()
-        {
-            RelockCalls++;
-            Unlocked = false;
-        }
 
         public Task DismissUnprotectedWarningAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

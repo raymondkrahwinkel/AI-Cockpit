@@ -97,12 +97,13 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Locks the running cockpit (AC-5): shows the unlock window over the main window, so the app behind it cannot be
-    /// touched until the encryption password is entered again — the running-app twin of the startup unlock window
-    /// being the only window. The key is already cleared by the coordinator before this is called; here is only the
-    /// screen. The returned task completes when the operator has unlocked, which is what lets a later OS lock lock
-    /// again. Runs on the UI thread (the coordinator marshals here), and is idempotent through that coordinator, not
-    /// on its own — a second call while the dialog is up would try to own a second modal, which the guard prevents.
+    /// Locks the running cockpit's UI (AC-5): shows the unlock window over the main window, so the app behind it cannot
+    /// be touched until the encryption password is entered again — the running-app twin of the startup unlock window
+    /// being the only window. This is a pure UI lock: the encryption key stays in memory, so agents already running
+    /// keep working (a background config write is not blocked) while the screen re-asks for the password. The returned
+    /// task completes when the operator has unlocked, which is what lets a later OS lock lock again. Runs on the UI
+    /// thread (the coordinator marshals here), and is idempotent through that coordinator, not on its own — a second
+    /// call while the dialog is up would try to own a second modal, which the guard prevents.
     /// </summary>
     private Task _LockToUnlockScreen()
     {
@@ -159,10 +160,11 @@ public partial class App : Application
         // portal/keyboard-hook is only ever touched for an operator who opted in.
         _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
 
-        // AC-5: lock the cockpit when the OS screen locks — clear the in-memory key and ask for the encryption
-        // password again, exactly as at startup — but only when encryption is on and the operator left the option on.
-        // The coordinator owns that gate and the idempotence; App owns the windows, so it supplies how to show the
-        // unlock screen over the running cockpit. Its task completes when the operator has unlocked again.
+        // AC-5: lock the cockpit's UI when the OS screen locks — put the unlock screen in front and ask for the
+        // encryption password again — but only when encryption is on and the operator left the option on. A pure UI
+        // lock: the key stays in memory so running agents keep working. The coordinator owns that gate and the
+        // idempotence; App owns the windows, so it supplies how to show the unlock screen over the running cockpit.
+        // Its task completes when the operator has unlocked again.
         var screenLock = Program.Services.GetRequiredService<ScreenLockCoordinator>();
         screenLock.LockAction = () => Dispatcher.UIThread.InvokeAsync(_LockToUnlockScreen);
         _ = screenLock.StartAsync();

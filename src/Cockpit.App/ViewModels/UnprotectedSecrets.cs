@@ -16,11 +16,6 @@ internal sealed class UnprotectedSecrets : ISecretProtectionService
 
     public Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-    public void Relock()
-    {
-        // Nothing is protected here, so there is no key to clear.
-    }
-
     public Task EnableAsync(string password, IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 

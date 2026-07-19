@@ -10,6 +10,12 @@ namespace Cockpit.App.Services;
 /// <see cref="IScreenLockMonitor"/> below it only reports "the screen locked"; this decides — per event — whether
 /// that should lock the cockpit, and if so drives the existing unlock flow.
 /// <para>
+/// This is a pure UI lock: it puts the unlock screen in front of the running cockpit but leaves the encryption key
+/// in memory. The point is that the operator has to re-enter the password to touch the UI again, while agents that
+/// are already running keep working — a background config write still needs the key, so clearing it would block a
+/// writing agent for no security gain (the process is the same, and the screen already guards the UI).
+/// </para>
+/// <para>
 /// A lock only happens when all of it holds: encryption is on (there is a password to re-ask for), the app is
 /// currently unlocked (a locked app is already where a lock would send it), and the operator left the option on.
 /// That gate is why this class exists apart from the platform monitors — it is the testable half, exercised with a
@@ -50,11 +56,10 @@ internal sealed class ScreenLockCoordinator : ISingletonService, IDisposable
     }
 
     /// <summary>
-    /// What actually locks the app: clear-the-key is this class's job, but showing the unlock window over the running
-    /// cockpit is the view layer's, so it is supplied by <c>App</c> at startup. Its returned task completes when the
-    /// operator has unlocked again, which is what lets the idempotence guard reopen. Null until wired — with no way
-    /// to show the screen, a lock event is dropped rather than clearing the key behind an app that cannot ask for it
-    /// back.
+    /// What actually locks the app: showing the unlock window over the running cockpit is the view layer's job, so it
+    /// is supplied by <c>App</c> at startup. Its returned task completes when the operator has unlocked again, which is
+    /// what lets the idempotence guard reopen. Null until wired — with no way to show the screen, a lock event is
+    /// simply dropped.
     /// </summary>
     public Func<Task>? LockAction { get; set; }
 
@@ -102,7 +107,7 @@ internal sealed class ScreenLockCoordinator : ISingletonService, IDisposable
             }
 
             // Admit exactly one lock. A duplicate event (or one arriving while the screen is already up) turns back
-            // here rather than clearing the key twice or stacking a second window.
+            // here rather than stacking a second window.
             if (Interlocked.CompareExchange(ref _locking, 1, 0) != 0)
             {
                 return false;
@@ -110,11 +115,10 @@ internal sealed class ScreenLockCoordinator : ISingletonService, IDisposable
 
             try
             {
-                // Order matters: take the key out of memory first, then show the screen. A window shown before the
-                // key is cleared would leave a window of time where the app is "locked" on screen but still holding
-                // the key — the opposite of the point.
-                _protection.Relock();
-                _logger.LogInformation("The OS screen locked; the cockpit locked itself and is asking for the encryption password again.");
+                // Pure UI lock: put the unlock screen in front, but leave the key in memory so a running agent's
+                // config write is not blocked. The screen is what re-asks for the password before the UI can be
+                // touched again; the key staying put is what keeps the agents behind it working.
+                _logger.LogInformation("The OS screen locked; the cockpit locked its UI and is asking for the encryption password again.");
 
                 await LockAction().ConfigureAwait(false);
 

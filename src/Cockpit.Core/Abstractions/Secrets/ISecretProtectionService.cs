@@ -37,15 +37,6 @@ public interface ISecretProtectionService
     /// <summary>Derives the key from <paramref name="password"/> and, if it is the right one, unlocks the settings for this run. False means: wrong password.</summary>
     Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Clears the in-memory key so the settings can no longer be read — the running-app equivalent of the startup
-    /// lock (AC-5), used when the OS screen locks. Encryption stays on and nothing on disk changes: this only drops
-    /// the derived key the process was holding, so the very next read hands back ciphertext again and a fresh
-    /// <see cref="UnlockAsync"/> is what lets it in. A no-op when the app was not unlocked to begin with. Unlike
-    /// <see cref="DisableAsync"/> it never writes the credentials back in the clear — it is a lock, not a teardown.
-    /// </summary>
-    void Relock();
-
     /// <summary>Encrypts every credential in the settings with a key derived from <paramref name="password"/>, and leaves the app unlocked.</summary>
     Task EnableAsync(string password, IProgress<SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default);
 
