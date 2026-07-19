@@ -34,12 +34,13 @@ internal sealed class ShortcutSettingsStore : IShortcutSettingsStore, ISingleton
         if (configFile?.SessionSwitching is { } legacySessionSwitch)
         {
             // Whether the operator has since bound the session switch themselves is a question about what is
-            // *saved*, not about the in-memory settings: ShortcutSettings.Default seeds a gesture for every
-            // action, so asking the merged object would always answer "already set" and the legacy value would
-            // never carry over.
-            var alreadyRebound = configFile.Shortcuts?.ToDomain() is { } saved &&
-                                 (saved.Gestures.ContainsKey(ShortcutAction.PreviousSession) ||
-                                  saved.Gestures.ContainsKey(ShortcutAction.NextSession));
+            // *saved*, so it has to read the raw persisted gestures — not ToDomain(), which back-fills every
+            // catalog action with its default and would therefore always report both session gestures present the
+            // moment any shortcuts section exists (AC-35). The DTO's keys are the ShortcutAction names as written.
+            var savedGestures = configFile.Shortcuts?.Gestures;
+            var alreadyRebound = savedGestures is not null &&
+                                 (savedGestures.ContainsKey(nameof(ShortcutAction.PreviousSession)) ||
+                                  savedGestures.ContainsKey(nameof(ShortcutAction.NextSession)));
 
             if (!alreadyRebound)
             {
