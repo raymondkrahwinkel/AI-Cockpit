@@ -18,6 +18,7 @@ namespace Cockpit.App.ViewModels;
 /// </summary>
 public sealed partial class SecurityOptionsViewModel(
     ISecretProtectionService protection,
+    IScreenLockSettingsStore? screenLockSettings = null,
     ITerminalAccessSwitch? terminalAccessSwitch = null,
     ITerminalAccessSettingsStore? terminalAccessSettings = null) : ObservableObject
 {
@@ -27,6 +28,17 @@ public sealed partial class SecurityOptionsViewModel(
 
     [ObservableProperty]
     private bool _isEncrypted;
+
+    /// <summary>
+    /// AC-5: whether AI-Cockpit locks itself when the operating system locks (screen lock), re-asking for the
+    /// encryption password just as at startup. On by default, and only shown while encryption is on — there is
+    /// nothing to re-ask for otherwise. Its row is hidden, not disabled, when encryption is off: a control that does
+    /// nothing is worse than an absent one. Persisted the moment it changes, in its own <c>ScreenLock</c> section so
+    /// it survives turning encryption off and on again. Without a store (design-time/unit-test) it is an in-memory
+    /// default that simply does not persist.
+    /// </summary>
+    [ObservableProperty]
+    private bool _lockWithOperatingSystem = true;
 
     /// <summary>
     /// The terminal-access master switch (AC-34): off by default, an opt-in. While off, the <c>cockpit-terminal</c>
@@ -58,11 +70,28 @@ public sealed partial class SecurityOptionsViewModel(
     [ObservableProperty]
     private bool _showUnprotectedBanner;
 
+    /// <summary>True only while <see cref="RefreshAsync"/> is seeding the toggle from disk, so the change it makes to the property is not written straight back out.</summary>
+    private bool _loadingLockSetting;
+
     public async Task RefreshAsync()
     {
         var status = await protection.GetStatusAsync().ConfigureAwait(true);
         IsEncrypted = status.Enabled;
         ShowUnprotectedBanner = status.ShouldWarnUnprotected;
+
+        if (screenLockSettings is not null)
+        {
+            var settings = await screenLockSettings.LoadAsync().ConfigureAwait(true);
+            _loadingLockSetting = true;
+            try
+            {
+                LockWithOperatingSystem = settings.LockWhenOperatingSystemLocks;
+            }
+            finally
+            {
+                _loadingLockSetting = false;
+            }
+        }
 
         // Absent in the design-time/unit-test graph — the toggle then stays off and inert.
         if (terminalAccessSettings is null)
@@ -78,6 +107,17 @@ public sealed partial class SecurityOptionsViewModel(
         {
             terminalAccessSwitch.Enabled = terminal.Enabled;
         }
+    }
+
+    /// <summary>Persists the AC-5 toggle the moment it changes. The load above sets it too, which is why that path suppresses this — a seed from disk must not be a write back to disk.</summary>
+    partial void OnLockWithOperatingSystemChanged(bool value)
+    {
+        if (_loadingLockSetting || screenLockSettings is null)
+        {
+            return;
+        }
+
+        _ = screenLockSettings.SaveAsync(new ScreenLockSettings { LockWhenOperatingSystemLocks = value });
     }
 
     // The toggle changed. Flip the live switch at once (so the next session sees it without a restart) and persist,

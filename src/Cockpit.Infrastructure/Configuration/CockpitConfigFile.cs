@@ -37,6 +37,10 @@ internal sealed class CockpitConfigFile
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SecurityNoticeEntry? SecurityNotice { get; set; }
 
+    /// <summary>Whether AI-Cockpit locks itself when the OS screen locks (AC-5); owned by the screen-lock-settings store. Its own section, apart from the crypto <see cref="Security"/>, so it outlives turning encryption off and a password change.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ScreenLockSettingsEntry? ScreenLock { get; set; }
+
     public List<SessionProfileEntry> Profiles { get; set; } = [];
 
     public NotificationSettingsEntry? Notifications { get; set; }

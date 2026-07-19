@@ -835,6 +835,13 @@
                                        Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                        TextWrapping="Wrap" Margin="0,4,0,0"/>
 
+                            <!-- AC-5: only meaningful while encryption is on, so the row is shown then rather than
+                                 sitting disabled — a control that does nothing is worse than an absent one. -->
+                            <CheckBox Content="Lock AI-Cockpit when the computer locks (screen lock)"
+                                      IsChecked="{Binding Security.LockWithOperatingSystem}"
+                                      IsVisible="{Binding Security.IsEncrypted}" Margin="0,8,0,0"
+                                      ToolTip.Tip="When your screen locks, AI-Cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
+
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
                                 <TextBlock Text="Let an agent read a terminal" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"

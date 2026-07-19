@@ -97,6 +97,39 @@ public partial class App : Application
         desktop.MainWindow = window;
     }
 
+    /// <summary>
+    /// Locks the running cockpit's UI (AC-5): shows the unlock window over the main window, so the app behind it cannot
+    /// be touched until the encryption password is entered again — the running-app twin of the startup unlock window
+    /// being the only window. This is a pure UI lock: the encryption key stays in memory, so agents already running
+    /// keep working (a background config write is not blocked) while the screen re-asks for the password. The returned
+    /// task completes when the operator has unlocked, which is what lets a later OS lock lock again. Runs on the UI
+    /// thread (the coordinator marshals here), and is idempotent through that coordinator, not on its own — a second
+    /// call while the dialog is up would try to own a second modal, which the guard prevents.
+    /// </summary>
+    private Task _LockToUnlockScreen()
+    {
+        if (_mainWindow is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Bring the cockpit to the front first: a lock screen hidden behind a minimized or tray-hidden window reads
+        // as a freeze, not as a lock. ShowDialog also needs a shown owner.
+        _mainWindow.Show();
+        _mainWindow.WindowState = WindowState.Normal;
+
+        var protection = Program.Services.GetRequiredService<ISecretProtectionService>();
+        var viewModel = new UnlockViewModel(protection);
+        var window = new UnlockWindow { DataContext = viewModel, Topmost = true };
+
+        // Same contract as startup: the password is the key, and Unlocked fires once it is right (or once the operator
+        // took the forgotten-password way out, which turns encryption off — after which nothing re-locks). Closing the
+        // dialog is what completes ShowDialog's task.
+        viewModel.Unlocked += (_, _) => window.Close();
+
+        return window.ShowDialog(_mainWindow);
+    }
+
     private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var cockpitViewModel = Program.Services.GetRequiredService<CockpitViewModel>();
@@ -127,6 +160,15 @@ public partial class App : Application
         // Fire-and-forget (#34): a no-op when voice or global push-to-talk is off, so the
         // portal/keyboard-hook is only ever touched for an operator who opted in.
         _ = Program.Services.GetRequiredService<VoicePushToTalkCoordinator>().StartAsync();
+
+        // AC-5: lock the cockpit's UI when the OS screen locks — put the unlock screen in front and ask for the
+        // encryption password again — but only when encryption is on and the operator left the option on. A pure UI
+        // lock: the key stays in memory so running agents keep working. The coordinator owns that gate and the
+        // idempotence; App owns the windows, so it supplies how to show the unlock screen over the running cockpit.
+        // Its task completes when the operator has unlocked again.
+        var screenLock = Program.Services.GetRequiredService<ScreenLockCoordinator>();
+        screenLock.LockAction = () => Dispatcher.UIThread.InvokeAsync(_LockToUnlockScreen);
+        _ = screenLock.StartAsync();
 
         // Open-mic dictation: expose the coordinator so the sidebar toggle can turn it on/off at
         // runtime, and resume listening at startup if it was left on. No-op when voice is off.
