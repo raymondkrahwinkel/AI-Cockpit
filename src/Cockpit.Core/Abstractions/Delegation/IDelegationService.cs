@@ -141,4 +141,5 @@ public sealed record DelegationRequest(
     string? TaskType = null,
     string? Label = null,
     string? WorkingDirectory = null,
+    string? RequestedPermission = null,
     int Depth = 0);

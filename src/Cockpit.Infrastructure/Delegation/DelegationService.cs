@@ -6,6 +6,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions;
 
 namespace Cockpit.Infrastructure.Delegation;
@@ -488,10 +489,17 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             runtime.EventAppended += evt => _OnTaskEvent(entry, evt);
 
             // A delegated session has no human to answer a permission prompt, so it runs under the profile's
-            // ceiling — never bypass, never a mode that would block waiting for a click that cannot come.
+            // ceiling — never bypass, never a mode that would block waiting for a click that cannot come. A caller
+            // may cap this one task lower still (AC-117): the effective ceiling is the more restrictive of the two,
+            // so a per-task request can only narrow what the operator allowed, never widen it.
+            var effectiveCeiling = string.IsNullOrWhiteSpace(entry.RequestedPermission)
+                ? entry.Profile.DelegationPolicy.PermissionCeiling
+                : DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(
+                    entry.Profile.DelegationPolicy.PermissionCeiling, entry.RequestedPermission);
+
             await runtime.StartAsync(
                 entry.Profile,
-                entry.Profile.DelegationPolicy.PermissionCeiling,
+                effectiveCeiling,
                 model: null,
                 enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
                 workingDirectory: entry.WorkingDirectory);
@@ -515,7 +523,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             else
             {
                 await runtime.SetDelegatedToolGateAsync(
-                    entry.Profile.DelegationPolicy.PermissionCeiling,
+                    effectiveCeiling,
                     entry.Profile.DelegationPolicy.AllowedTools ?? []);
             }
 

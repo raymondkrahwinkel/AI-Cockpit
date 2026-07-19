@@ -197,4 +197,29 @@ public class DelegatedToolPermissionPolicyTests
         DelegatedToolPermissionPolicy.MoreRestrictive(a, b).Should().Be(expected);
         DelegatedToolPermissionPolicy.MoreRestrictive(b, a).Should().Be(expected, "the reconciliation is order-independent");
     }
+
+    // --- MoreRestrictiveCeiling: clamp a per-task requested ceiling to the profile's own (AC-117) ---
+
+    [Theory]
+    [InlineData("bypassPermissions", "acceptEdits", "acceptEdits")]
+    [InlineData("acceptEdits", "default", "default")]
+    [InlineData("acceptEdits", "plan", "plan")]
+    [InlineData("default", "bypassPermissions", "default")]   // a request above the ceiling is clamped to the ceiling
+    [InlineData("acceptEdits", "acceptEdits", "acceptEdits")]
+    public void MoreRestrictiveCeiling_TakesTheLowerCeiling_EitherOrder(string a, string b, string expected)
+    {
+        DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(a, b).Should().Be(expected);
+        DelegatedToolPermissionPolicy.MoreRestrictiveCeiling(b, a).Should().Be(expected, "the clamp is order-independent");
+    }
+
+    [Fact]
+    public void MoreRestrictiveCeiling_AnUnrecognisedRequest_NeverWidens_AndDeniesAWrite()
+    {
+        // A per-task request the policy does not recognise must never widen what runs: it ranks as most
+        // restrictive, and the resulting ceiling denies a write just like read-only does.
+        var effective = DelegatedToolPermissionPolicy.MoreRestrictiveCeiling("acceptEdits", "nonsense");
+
+        DelegatedToolPermissionPolicy.Decide(effective, ToolPermissionClass.Write, "write_file", onAllowList: false)
+            .IsAllowed.Should().BeFalse();
+    }
 }

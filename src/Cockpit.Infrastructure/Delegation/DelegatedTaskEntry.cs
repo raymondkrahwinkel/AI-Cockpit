@@ -18,6 +18,7 @@ internal sealed class DelegatedTaskEntry
         TaskType = request.TaskType;
         Label = request.Label;
         WorkingDirectory = request.WorkingDirectory;
+        RequestedPermission = request.RequestedPermission;
     }
 
     public string TaskId { get; } = Guid.NewGuid().ToString("N");
@@ -31,6 +32,9 @@ internal sealed class DelegatedTaskEntry
     public string? Label { get; }
 
     public string? WorkingDirectory { get; }
+
+    /// <summary>The caller's optional per-task least-privilege cap (AC-117), clamped to the profile ceiling when the session starts. Null runs at the profile's own ceiling.</summary>
+    public string? RequestedPermission { get; }
 
     public ISessionRuntime? Runtime { get; private set; }
 

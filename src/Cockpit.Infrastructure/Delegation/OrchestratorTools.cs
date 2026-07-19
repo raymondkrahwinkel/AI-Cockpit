@@ -102,12 +102,13 @@ internal sealed class OrchestratorTools
         [Description("The category of work, when the target profile restricts what it accepts (e.g. 'summarize').")] string? task_type,
         [Description("A short human-readable label for this task, shown in the cockpit.")] string? label,
         [Description("The working directory for the task; must be one the target profile allows.")] string? working_directory,
+        [Description("Optional least-privilege cap for this one task: 'plan'/'default' (read-only), 'acceptEdits' (also file writes), or 'bypassPermissions'. It can only lower what the profile already allows, never raise it — a request above the profile's ceiling is clamped to the ceiling. Omit to run at the profile's own ceiling.")] string? requested_permission,
         CancellationToken cancellationToken)
     {
         try
         {
             var task = await _delegation.DelegateAsync(
-                new DelegationRequest(profile, prompt, task_type, label, working_directory),
+                new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission),
                 cancellationToken);
 
             // A queued task is accepted, not rejected — but a bare "Queued" reads to a model like a failure, and

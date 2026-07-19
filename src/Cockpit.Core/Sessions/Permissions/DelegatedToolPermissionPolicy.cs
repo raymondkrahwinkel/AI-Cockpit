@@ -119,6 +119,24 @@ public static class DelegatedToolPermissionPolicy
     public static ToolPermissionClass MoreRestrictive(ToolPermissionClass a, ToolPermissionClass b) =>
         _Restraint(a) >= _Restraint(b) ? a : b;
 
+    /// <summary>
+    /// The more restrictive of two permission ceilings, ranked by how much a delegated session may do unattended:
+    /// <c>bypassPermissions</c> &gt; <c>acceptEdits</c> &gt; <c>default</c>/<c>plan</c> &gt; anything unrecognised
+    /// (treated as most restrictive, so a typo or a future mode never silently widens what runs). Used to clamp a
+    /// caller's per-task requested ceiling to the profile's own (AC-117): a request can only ever narrow what the
+    /// operator already allowed, never widen it, so it is always safe to honour without a second consent.
+    /// </summary>
+    public static string MoreRestrictiveCeiling(string? a, string? b) =>
+        _CeilingRank(a) <= _CeilingRank(b) ? a ?? string.Empty : b ?? string.Empty;
+
+    private static int _CeilingRank(string? ceiling) => ceiling switch
+    {
+        BypassPermissionsCeiling => 3,
+        AcceptEditsCeiling => 2,
+        "default" or "plan" => 1,
+        _ => 0, // unrecognised/blank — most restrictive (read-only only), the fail-safe reading
+    };
+
     private static int _Restraint(ToolPermissionClass toolClass) => toolClass switch
     {
         ToolPermissionClass.ReadOnly => 0,
