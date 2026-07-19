@@ -106,7 +106,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
                 viewModel.SessionName = prefill.SessionName;
             }
 
-            if (!string.IsNullOrWhiteSpace(prefill.ResumeSessionId))
+            // Only a Claude profile keeps a resumable history; the dialog hides the resume controls for every other
+            // provider (ShowResumeOptions). Gate the prefill the same way — otherwise a plugin could push the dialog
+            // into resume-by-id on a provider that ignores it, or silently start a resume the operator never saw the
+            // controls for. Resolved against whichever profile is selected now (the prefilled one, or the default).
+            if (!string.IsNullOrWhiteSpace(prefill.ResumeSessionId) && viewModel.IsClaudeProfile)
             {
                 viewModel.ResumeSessionId = prefill.ResumeSessionId;
                 viewModel.ResumeMode = SessionResumeMode.BySessionId;

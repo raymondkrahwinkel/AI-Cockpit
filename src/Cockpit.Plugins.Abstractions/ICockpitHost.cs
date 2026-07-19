@@ -276,9 +276,10 @@ public interface ICockpitHost
     /// the fields it knows already offered. The operator keeps full control: they see and can change every field
     /// (profile, MCP selection, working tree, resume) before anything starts, and cancelling starts nothing.
     /// <para>
-    /// <paramref name="onStarted"/> is invoked with the new session's <c>IPluginSessionContext.PaneId</c> (also
-    /// <see cref="ICockpitSessionObserver.ActivePaneId"/>) once it exists, so the caller can go on to act on that exact
-    /// pane — set its statusline, track an issue against it. <paramref name="onCancelled"/> fires instead when the
+    /// <paramref name="onStarted"/> is invoked with the new session's <c>IPluginSessionContext.PaneId</c> — the pane
+    /// becomes the active session the moment it starts, so it is <see cref="ICockpitSessionObserver.ActivePaneId"/>
+    /// then, though the operator may select another pane afterwards. The id stays valid to act on that exact pane —
+    /// set its statusline, track an issue against it. <paramref name="onCancelled"/> fires instead when the
     /// operator dismisses the dialog (or no session could be started), so a workflow waiting on the session can stop
     /// rather than hang. Exactly one of the two runs. Unlike <see cref="ICockpitActions.StartSessionAsync"/>, which
     /// launches a named profile headlessly, this always shows the dialog — it is the path for "let the operator decide,

@@ -258,14 +258,23 @@ internal sealed class CockpitHost(
         Action<string>? onStarted = null,
         Action? onCancelled = null)
     {
-        string? paneId = null;
-        await Dispatcher.UIThread.InvokeAsync(async () =>
+        string? paneId;
+        try
         {
-            if (services.GetService<CockpitViewModel>() is { } cockpit)
-            {
-                paneId = await cockpit.ShowNewSessionDialogForPluginAsync(prefill);
-            }
-        });
+            paneId = await Dispatcher.UIThread.InvokeAsync(() =>
+                services.GetService<CockpitViewModel>() is { } cockpit
+                    ? cockpit.ShowNewSessionDialogForPluginAsync(prefill)
+                    : Task.FromResult<string?>(null));
+        }
+        catch (Exception ex)
+        {
+            // The exactly-one-callback contract has to hold even when the dialog or the launch throws: a plugin that
+            // bridges these callbacks to a TaskCompletionSource would otherwise wait forever. A failure is "nothing
+            // started" — log it and fall through to onCancelled rather than letting the exception drop both callbacks.
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>()
+                .LogError(ex, "Opening the New-session dialog for plugin '{PluginId}' failed", pluginId);
+            paneId = null;
+        }
 
         if (paneId is not null)
         {
