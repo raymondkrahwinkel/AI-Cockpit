@@ -443,16 +443,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         }
     }
 
+    /// <summary>The directories a delegated task may run in: the profile's own allow-list plus the dirs cockpit sessions are actively working in. Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.</summary>
+    private IReadOnlyList<string> _AllowedWorkingDirectories(DelegationPolicy policy) =>
+        [.. (policy.AllowedWorkingDirs ?? []).Concat(_workspaces.ActiveWorkingDirectories)];
+
     /// <summary>
     /// Where a delegated task may run: the directories the target profile allows, and the ones the cockpit's own
     /// sessions are already working in. The second is what makes delegation usable at all — you delegate <em>from</em>
     /// a session in a repository, and that session can already read and write there, so the sub-agent it starts
     /// reaches nothing its caller did not have. Everywhere else still needs the profile's own say-so.
     /// </summary>
-    /// <summary>The directories a delegated task may run in: the profile's own allow-list plus the dirs cockpit sessions are actively working in. Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.</summary>
-    private IReadOnlyList<string> _AllowedWorkingDirectories(DelegationPolicy policy) =>
-        [.. (policy.AllowedWorkingDirs ?? []).Concat(_workspaces.ActiveWorkingDirectories)];
-
     private bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy)
     {
         var allowed = _AllowedWorkingDirectories(policy);
@@ -695,6 +695,14 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                     : ranToolsButNoneSucceeded
                         ? $"No-op run: {entry.ToolCallsErrored} of {entry.ToolCallsRequested} tool call(s) were blocked or errored and none succeeded, so the task produced no tool-made change. The delegated model replied: {entry.Runtime?.LastAssistantText}"
                         : null;
+
+                // Per-turn, not per-session: clear the counters now this turn is classified, so a follow-up turn
+                // (SendFollowUpAsync reuses the same entry) is judged on its own tool calls. Without this a plain
+                // text follow-up after a denied turn would inherit that denial (false failure), and a denied
+                // follow-up after a successful turn would be hidden as success (false success) — AC-100 review.
+                entry.ToolCallsRequested = 0;
+                entry.ToolCallsSucceeded = 0;
+                entry.ToolCallsErrored = 0;
 
                 // The task is answered, but the session stays up for a while: a caller can send a follow-up turn.
                 // It is torn down on stop — and, when nobody stops it, once the idle window closes.

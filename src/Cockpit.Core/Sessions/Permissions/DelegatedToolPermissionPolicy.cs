@@ -52,11 +52,11 @@ public static class DelegatedToolPermissionPolicy
     /// <see cref="ToolPermissionClass.Unknown"/> and denied at every ceiling below <c>bypassPermissions</c>, making
     /// a local coder profile unable to write a single file at the default <c>acceptEdits</c> ceiling (AC-100/AC-112).
     /// Returns <see langword="null"/> for a name we do not recognise, so an unrecognised tool keeps its
-    /// annotation-derived class. Keyed on the bare tool name to match how the delegated gate keys trust; the
-    /// more-restrictive reconciliation in the tool provider still applies if another server exposes the same name.
-    /// Only ever consulted where the server did not declare the tool explicitly, so an explicit hint is never widened.
-    /// The filesystem server is itself scoped to one configured folder, so its writes are workspace edits — the exact
-    /// thing <c>acceptEdits</c> is meant to permit — not free rein over the disk.
+    /// annotation-derived class. This is a table of names only; the caller is responsible for consulting it ONLY
+    /// for the built-in filesystem preset (identified by its package, <see cref="Cockpit.Core.Mcp.McpServerPresets.FilesystemServerPackage"/>)
+    /// and ONLY where the server gave no explicit hint — so a rogue server that reuses one of these names never gets
+    /// the fallback. The filesystem server is itself scoped to one configured folder, so its writes are workspace
+    /// edits — the exact thing <c>acceptEdits</c> is meant to permit — not free rein over the disk.
     /// </summary>
     public static ToolPermissionClass? ClassifyWellKnown(string toolName) => toolName switch
     {

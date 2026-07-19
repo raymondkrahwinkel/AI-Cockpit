@@ -233,9 +233,22 @@ internal sealed class OrchestratorTools
     {
         Cockpit.Core.Sessions.AssistantTextCompleted text => text.Text,
         Cockpit.Core.Sessions.ToolUseRequested tool => tool.ToolName,
-        Cockpit.Core.Sessions.ToolResult result => result.IsError ? $"[error] {result.Content}" : result.Content,
+        Cockpit.Core.Sessions.ToolResult result => _DescribeToolResult(result),
         Cockpit.Core.Sessions.TurnCompleted turn => turn.Result,
         Cockpit.Core.Sessions.SessionError error => error.Message,
         _ => null,
     };
+
+    // A tool result's content can be large (a whole tool's output), so it is capped to keep a progress poll
+    // bounded — a short gate-denial/error message (the thing AC-113 exists to surface) always fits whole; only a
+    // long successful output is truncated. An error result is marked so a poll can tell a failure from a return.
+    private static string _DescribeToolResult(Cockpit.Core.Sessions.ToolResult result)
+    {
+        const int maxContentLength = 4000;
+        var content = result.Content.Length > maxContentLength
+            ? result.Content[..maxContentLength] + "… (truncated)"
+            : result.Content;
+
+        return result.IsError ? $"[error] {content}" : content;
+    }
 }

@@ -13,6 +13,14 @@ public sealed record McpServerPreset(string Label, string Description, McpServer
 public static class McpServerPresets
 {
     /// <summary>
+    /// The npm package behind the built-in filesystem preset. The delegated-tool gate keys its name-based
+    /// fallback classification (AC-100) on this package — never on the bare server or tool name — so the
+    /// "writes are folder-scoped, so a write is a Write not a Destructive" guarantee it relies on only ever
+    /// applies to this specific first-party server, not to any server that happens to reuse a generic tool name.
+    /// </summary>
+    public const string FilesystemServerPackage = "@modelcontextprotocol/server-filesystem";
+
+    /// <summary>
     /// The presets, in the order shown. The filesystem preset is scoped to the user's profile folder by
     /// default — a sensible starting point the user is expected to narrow to the project they want the model
     /// to see. Runtime prerequisites (Node/<c>npx</c> or Python/<c>uvx</c>) are called out in each
@@ -31,7 +39,7 @@ public static class McpServerPresets
                 Transport = McpTransport.Stdio,
                 Scope = McpServerScope.LocalOnly,
                 Command = "npx",
-                Args = ["-y", "@modelcontextprotocol/server-filesystem", DefaultFilesystemRoot()],
+                Args = ["-y", FilesystemServerPackage, DefaultFilesystemRoot()],
             }),
         new(
             "Fetch",

@@ -71,6 +71,39 @@ public class DelegationFalseSuccessTests
         finished.Result.Should().Be("The answer is 42.");
     }
 
+    [Fact]
+    public async Task AFollowUpTextTurnAfterADeniedTurn_IsJudgedOnItsOwn_NotInheritedAsFailure()
+    {
+        // Per-turn counters (AC-100 review): turn 1's denied tool call must not make a later plain-text turn look
+        // like a no-op run. Without the per-turn reset, the follow-up inherits turn 1's denial and is wrongly Failed.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_TwoTurns_DeniedThenPlainText());
+        var service = _Service(driver);
+
+        var task = await service.DelegateAsync(new DelegationRequest("local", "write then chat"));
+        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 2);
+
+        var finished = service.GetTask(task.TaskId)!;
+        finished.Status.Should().Be(DelegatedTaskStatus.Completed, "the second, tool-less turn stands on its own");
+        finished.Error.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ADeniedFollowUpTurnAfterASuccessfulTurn_IsFailed_NotHiddenAsSuccess()
+    {
+        // The mirror case: turn 1 lands a tool call, the follow-up's only tool call is denied. Session-cumulative
+        // counters would still see one success and report Completed, hiding the failed follow-up; per-turn counters
+        // catch it.
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_TwoTurns_SuccessThenDenied());
+        var service = _Service(driver);
+
+        var task = await service.DelegateAsync(new DelegationRequest("local", "write then write"));
+        await _WaitUntilAsync(() => service.GetTask(task.TaskId)!.TurnCount >= 2);
+
+        service.GetTask(task.TaskId)!.Status.Should().Be(DelegatedTaskStatus.Failed);
+    }
+
     private static DelegationService _Service(ISessionDriver driver)
     {
         var profile = new SessionProfile(
@@ -128,6 +161,31 @@ public class DelegationFalseSuccessTests
     {
         yield return new AssistantTextCompleted { SessionId = "s1", Text = "The answer is 42." };
         yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "The answer is 42.", IsError = false };
+        await Task.Delay(Timeout.Infinite, CancellationToken.None);
+    }
+
+    private static async IAsyncEnumerable<SessionEvent> _TwoTurns_DeniedThenPlainText()
+    {
+        // Turn 1: a denied tool call → Failed.
+        yield return new ToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "write_file", InputJson = "{}" };
+        yield return new ToolResult { SessionId = "s1", ToolUseId = "t1", Content = "write_file was blocked.", IsError = true };
+        yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "I can't create files.", IsError = false };
+        // Turn 2: a plain-text answer, no tools → must be Completed on its own, not inheriting turn 1's denial.
+        yield return new AssistantTextCompleted { SessionId = "s1", Text = "Sure, here is the explanation." };
+        yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "Sure, here is the explanation.", IsError = false };
+        await Task.Delay(Timeout.Infinite, CancellationToken.None);
+    }
+
+    private static async IAsyncEnumerable<SessionEvent> _TwoTurns_SuccessThenDenied()
+    {
+        // Turn 1: a successful tool call → Completed.
+        yield return new ToolUseRequested { SessionId = "s1", ToolUseId = "t1", ToolName = "write_file", InputJson = "{}" };
+        yield return new ToolResult { SessionId = "s1", ToolUseId = "t1", Content = "wrote 1 file", IsError = false };
+        yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "Done.", IsError = false };
+        // Turn 2: a denied tool call, nothing landed → must flip back to Failed rather than stay Completed.
+        yield return new ToolUseRequested { SessionId = "s1", ToolUseId = "t2", ToolName = "write_file", InputJson = "{}" };
+        yield return new ToolResult { SessionId = "s1", ToolUseId = "t2", Content = "write_file was blocked.", IsError = true };
+        yield return new TurnCompleted { SessionId = "s1", Subtype = "success", Result = "I can't create files.", IsError = false };
         await Task.Delay(Timeout.Infinite, CancellationToken.None);
     }
 }
