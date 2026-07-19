@@ -5,10 +5,11 @@ using FluentAssertions;
 namespace Cockpit.Core.Tests.Delegation;
 
 /// <summary>
-/// The orchestrator (#67) reaches a session as an ordinary MCP server, so it has to survive both fan-out paths:
-/// the SDK spawn (permission server + registry) and the interactive TTY (registry only). If it is dropped by
-/// either, delegation is simply unavailable in that kind of session — which is exactly the failure that is easy
-/// to miss, because nothing errors: the tools are just not there.
+/// The orchestrator (#67) reaches a session as an ordinary MCP server, so it has to survive the registry fan-out
+/// into the interactive TTY (<see cref="McpConfigFile.SerializeRegistryOnly"/>). If it is dropped, delegation is
+/// simply unavailable in that session — exactly the failure that is easy to miss, because nothing errors: the
+/// tools are just not there. (The provider plugins build their own SDK-spawn config; the host-side permission-server
+/// serializer that once carried this on that path was removed in AC-46.)
 /// </summary>
 public class OrchestratorFanOutTests
 {
@@ -32,21 +33,12 @@ public class OrchestratorFanOutTests
     }
 
     [Fact]
-    public void TheSdkFanOut_CarriesTheOrchestrator_WhenItIsEnabled()
-    {
-        var json = McpConfigFile.Serialize("http://127.0.0.1:1234/mcp", [Orchestrator]);
-
-        json.Should().Contain("cockpit-orchestrator");
-    }
-
-    [Fact]
-    public void NeitherFanOut_CarriesIt_WhileItIsSwitchedOff()
+    public void TheTtyFanOut_DropsIt_WhileItIsSwitchedOff()
     {
         // Off is off: the server is registered with every cockpit, but a session only gets the ability to spawn
         // work under other profiles once the operator turns it on.
         var disabled = Orchestrator with { Enabled = false };
 
         McpConfigFile.SerializeRegistryOnly([disabled]).Should().BeNull();
-        McpConfigFile.Serialize("http://127.0.0.1:1234/mcp", [disabled]).Should().NotContain("cockpit-orchestrator");
     }
 }
