@@ -428,9 +428,17 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
         if (request.WorkingDirectory is { Length: > 0 } workingDirectory && !_IsAllowedWorkingDirectory(workingDirectory, policy))
         {
+            // Name what *is* allowed, not just what was refused (AC-114): a caller cannot see the profile's
+            // allowed dirs or the active-session dirs from the MCP surface, so a bare refusal leaves it guessing.
+            var allowed = _AllowedWorkingDirectories(policy);
+            var where = allowed.Count == 0
+                ? "This profile has no allowed working directories configured, and no cockpit session is currently " +
+                  "working in one. Set the profile's allowed working directories, or delegate from a session that " +
+                  "already works in the target directory."
+                : $"Allowed here are: {string.Join(", ", allowed)} (and their subdirectories). Add more under the " +
+                  "profile's delegation settings, or delegate from a session that works in the target directory.";
             throw new DelegationRejectedException(
-                $"Profile '{request.ProfileLabel}' does not allow a task to run in '{workingDirectory}'. " +
-                "Allow it under the profile's delegation settings, or delegate from a session that works there.");
+                $"Profile '{request.ProfileLabel}' does not allow a task to run in '{workingDirectory}'. {where}");
         }
     }
 
@@ -440,11 +448,13 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// a session in a repository, and that session can already read and write there, so the sub-agent it starts
     /// reaches nothing its caller did not have. Everywhere else still needs the profile's own say-so.
     /// </summary>
+    /// <summary>The directories a delegated task may run in: the profile's own allow-list plus the dirs cockpit sessions are actively working in. Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.</summary>
+    private IReadOnlyList<string> _AllowedWorkingDirectories(DelegationPolicy policy) =>
+        [.. (policy.AllowedWorkingDirs ?? []).Concat(_workspaces.ActiveWorkingDirectories)];
+
     private bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy)
     {
-        var allowed = (policy.AllowedWorkingDirs ?? [])
-            .Concat(_workspaces.ActiveWorkingDirectories)
-            .ToList();
+        var allowed = _AllowedWorkingDirectories(policy);
 
         if (allowed.Count == 0)
         {

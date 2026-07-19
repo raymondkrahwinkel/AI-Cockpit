@@ -63,6 +63,34 @@ public class DelegationWorkspaceTests
         await delegate_.Should().ThrowAsync<DelegationRejectedException>().WithMessage("*does not allow a task to run in*");
     }
 
+    // A refusal has to say where the caller *may* go — it cannot read the profile's dirs or the active-session
+    // dirs off the MCP surface, so a bare "no" leaves it guessing (AC-114).
+    [Fact]
+    public async Task ARefusal_NamesTheDirectoriesThatAreAllowed()
+    {
+        var service = _ServiceWith(
+            workspaces: ["/home/raymond/RiderProjects/Eveworkbench"],
+            _Target("qwen"));
+
+        var delegate_ = async () => await service.DelegateAsync(
+            new DelegationRequest("qwen", "read the secrets", WorkingDirectory: "/home/raymond/.ssh"));
+
+        (await delegate_.Should().ThrowAsync<DelegationRejectedException>())
+            .WithMessage("*Eveworkbench*");
+    }
+
+    [Fact]
+    public async Task ARefusal_WithNothingAllowed_SaysNoneIsConfigured()
+    {
+        var service = _ServiceWith(workspaces: [], _Target("qwen"));
+
+        var delegate_ = async () => await service.DelegateAsync(
+            new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/anywhere"));
+
+        (await delegate_.Should().ThrowAsync<DelegationRejectedException>())
+            .WithMessage("*no allowed working directories*");
+    }
+
     [Fact]
     public async Task WithNoSessionsOpen_OnlyTheProfilesOwnDirectoriesAreAllowed()
     {
