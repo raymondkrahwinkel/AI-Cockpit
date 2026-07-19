@@ -47,8 +47,14 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
                 return await _ReuseAsync(parsed, targetPath, cancellationToken).ConfigureAwait(false);
             }
 
+            // Not the same repository — but tell the operator which of the two it is. A valid git work tree is another
+            // project they must not lose; a folder that is not a git repository at all (an empty leftover, a clone that
+            // failed halfway) is broken, and saying "a different repository" there sends them looking for work that was
+            // never there. Both refuse to clobber; only the wording differs.
             throw new InvalidOperationException(
-                $"A different repository is already cloned at '{targetPath}'. Remove it first to clone {parsed.Slug} there.");
+                await _IsGitWorkTreeAsync(targetPath, cancellationToken).ConfigureAwait(false)
+                    ? $"A different repository is already cloned at '{targetPath}'. Remove it first to clone {parsed.Slug} there."
+                    : $"A folder already exists at '{targetPath}' but is not a valid clone. Remove it first to clone {parsed.Slug} there.");
         }
 
         var parent = System.IO.Path.GetDirectoryName(targetPath)!;
@@ -116,15 +122,22 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
 
     private static async Task<bool> _IsSameRepositoryAsync(string targetPath, GitCloneUrl parsed, CancellationToken cancellationToken)
     {
-        var insideWorkTree = await GitCli.RunAsync(targetPath, ["rev-parse", "--is-inside-work-tree"], cancellationToken)
-            .ConfigureAwait(false);
-        if (insideWorkTree.ExitCode != 0 || insideWorkTree.StandardOutput.Trim() != "true")
+        if (!await _IsGitWorkTreeAsync(targetPath, cancellationToken).ConfigureAwait(false))
         {
             return false;
         }
 
         var remote = await GitCli.RunAsync(targetPath, ["remote", "get-url", "origin"], cancellationToken).ConfigureAwait(false);
         return remote.ExitCode == 0 && parsed.SameRepositoryAs(remote.StandardOutput.Trim());
+    }
+
+    // Whether the folder is a git work tree at all — separates a real different-repository collision (a checkout with
+    // work in it) from a broken folder (empty leftover, half-finished clone) so each gets the right refusal message.
+    private static async Task<bool> _IsGitWorkTreeAsync(string targetPath, CancellationToken cancellationToken)
+    {
+        var insideWorkTree = await GitCli.RunAsync(targetPath, ["rev-parse", "--is-inside-work-tree"], cancellationToken)
+            .ConfigureAwait(false);
+        return insideWorkTree.ExitCode == 0 && insideWorkTree.StandardOutput.Trim() == "true";
     }
 
     // Turns git's raw failure into something the operator can act on, without echoing the URL (which could carry a

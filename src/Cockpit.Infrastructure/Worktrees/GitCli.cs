@@ -113,7 +113,10 @@ internal static class GitCli
             // caller sees, not "git exited with 128" — but with the checkout progress ("Updating files: 42% …",
             // written to stderr and carriage-returned over itself) stripped out first, so a failed worktree add
             // surfaces the actual error instead of a hundred percent-lines.
-            var said = StripProgress(result.StandardError);
+            // git echoes the remote URL in its own failures ("fatal: unable to access 'https://user:token@host/…'"),
+            // so redact any URL userinfo before this reaches the caller's dialog/log — the same binding rule the
+            // display of the arguments follows. Belt and suspenders with GitCloneUrl stripping credentials up front.
+            var said = RedactUrlCredentials(StripProgress(result.StandardError));
             throw new InvalidOperationException(said.Length > 0 ? said : $"git exited with {result.ExitCode}.");
         }
 
@@ -143,8 +146,16 @@ internal static class GitCli
     // userinfo before the arguments are joined for display. A binding rule: secret values never in argv/config/logs.
     private static readonly Regex _UrlUserInfo = new(@"://[^/@\s]+@", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Blanks any URL userinfo (<c>https://user:token@host</c>) in <paramref name="text"/> bound for an exception
+    /// message or a log. The same binding rule as <see cref="_RedactArguments"/>, applied to arbitrary text — git's
+    /// own stderr echoes the remote URL in its failures, so a pasted token would otherwise ride a clone/fetch error
+    /// straight into the dialog and the log.
+    /// </summary>
+    internal static string RedactUrlCredentials(string text) => _UrlUserInfo.Replace(text, "://***@");
+
     private static string _RedactArguments(IReadOnlyList<string> arguments) =>
-        string.Join(' ', arguments.Select(argument => _UrlUserInfo.Replace(argument, "://***@")));
+        string.Join(' ', arguments.Select(RedactUrlCredentials));
 
     private static bool _IsProgressLine(string line) =>
         line.StartsWith("Updating files:", StringComparison.Ordinal)

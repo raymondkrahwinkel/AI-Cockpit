@@ -68,6 +68,18 @@ public sealed class GitCloneUrlTests
         parsed.RemoteUrl.Should().Be("ssh://git@github.com/org/repo.git");
     }
 
+    // The same binding rule as HTTPS, for the one scheme that kept its userinfo: an ssh:// URL may carry the git@
+    // login (needed, not a secret), but a password after it must not reach argv, .git/config or the registry. The
+    // login is kept; only the password is cut. The repository path is left exactly as given.
+    [Fact]
+    public void Parse_SshSchemeUrlWithPassword_StripsThePasswordButKeepsTheLoginAndPath()
+    {
+        var parsed = GitCloneUrl.Parse("ssh://git:s3cr3t-token@github.com/org/repo.git");
+
+        parsed.RemoteUrl.Should().Be("ssh://git@github.com/org/repo.git");
+        parsed.RemoteUrl.Should().NotContain("s3cr3t-token");
+    }
+
     [Fact]
     public void Parse_NestedGroup_KeepsEverySegment()
     {

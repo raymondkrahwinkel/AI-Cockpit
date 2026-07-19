@@ -13,7 +13,8 @@ namespace Cockpit.Infrastructure.Clones;
 /// stripped from <see cref="RemoteUrl"/> before it ever reaches git, the registry, or a log. A token in the URL
 /// would otherwise land in <c>.git/config</c>, the process arguments and the logs — the exact leak the design
 /// forbids — and dropping it forces git down the host credential-helper path instead, which is v1's whole auth
-/// model. An SSH URL keeps its <c>git@</c> user: that is the SSH login, not a secret, and the clone needs it.
+/// model. An SSH URL keeps its <c>git@</c> user — that is the SSH login the clone needs, not a secret — but any
+/// password after it (<c>user:secret@host</c>) is stripped just the same, so no scheme smuggles a credential through.
 /// </remarks>
 internal sealed class GitCloneUrl
 {
@@ -162,12 +163,52 @@ internal sealed class GitCloneUrl
         var isHttp = scheme is "http" or "https";
 
         // Rebuild the URL git is handed. For HTTP(S), drop any userinfo — a token there is the forbidden leak — so
-        // git falls back to the host credential helper. For SSH, keep the user (the login) via the original URL.
+        // git falls back to the host credential helper. For SSH (and any other scheme) keep the login user but strip
+        // any password after it: the git@ user is the SSH login, not a secret, whereas a "user:secret@host" password
+        // would otherwise reach argv, .git/config and the registry verbatim.
         var remoteUrl = isHttp
             ? _BuildHttpRemoteUrl(scheme, uri, segments)
-            : url;
+            : _StripUrlPassword(url);
 
         return new GitCloneUrl(remoteUrl, uri.Host.ToLowerInvariant(), segments);
+    }
+
+    // Removes a "user:password@" password from a scheme URL's userinfo while keeping the login user and everything
+    // else — the repository path included — verbatim. String surgery rather than a Uri rebuild so an SSH path (which
+    // may be absolute or ~-relative) is handed to git exactly as the operator gave it. The last '@' inside the
+    // authority is the userinfo/host separator, so a password that itself contains '@' is still cut correctly.
+    private static string _StripUrlPassword(string url)
+    {
+        var schemeSep = url.IndexOf("://", StringComparison.Ordinal);
+        if (schemeSep < 0)
+        {
+            return url;
+        }
+
+        var authorityStart = schemeSep + 3;
+        var authorityEnd = url.IndexOf('/', authorityStart);
+        if (authorityEnd < 0)
+        {
+            authorityEnd = url.Length;
+        }
+
+        var at = url.LastIndexOf('@', authorityEnd - 1, authorityEnd - authorityStart);
+        if (at < 0)
+        {
+            return url;
+        }
+
+        var userInfo = url[authorityStart..at];
+        var colon = userInfo.IndexOf(':');
+        if (colon < 0)
+        {
+            return url;
+        }
+
+        var user = userInfo[..colon];
+        return user.Length > 0
+            ? string.Concat(url.AsSpan(0, authorityStart), user, url.AsSpan(at))
+            : string.Concat(url.AsSpan(0, authorityStart), url.AsSpan(at + 1));
     }
 
     private static string _BuildHttpRemoteUrl(string scheme, Uri uri, IReadOnlyList<string> segments)
