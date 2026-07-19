@@ -29,6 +29,7 @@ internal static class CodexMcpConfig
 
         var configArgs = new List<string>();
         var environmentVariables = new Dictionary<string, string?>();
+        var usedNames = new HashSet<string>(StringComparer.Ordinal);
 
         for (var index = 0; index < servers.Count; index++)
         {
@@ -40,7 +41,7 @@ internal static class CodexMcpConfig
             }
 
             configArgs.Add("-c");
-            configArgs.Add($"mcp_servers.{_TomlKey(server.Name)}={inlineTable}");
+            configArgs.Add($"mcp_servers.{_CodexServerName(server.Name, index, usedNames)}={inlineTable}");
         }
 
         return new CodexMcpLaunch(configArgs, environmentVariables);
@@ -83,11 +84,45 @@ internal static class CodexMcpConfig
         return null;
     }
 
-    /// <summary>A bare TOML key when the name is a bare-key-safe identifier, otherwise a quoted key.</summary>
-    private static string _TomlKey(string name) =>
-        name.Length > 0 && name.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-')
-            ? name
-            : _TomlString(name);
+    /// <summary>
+    /// A server name Codex will accept. Codex validates every MCP server name against <c>^[a-zA-Z0-9_-]+$</c> and
+    /// refuses to start a server whose name carries anything else (AC-77 test finding: <c>"YouTrack: Personal"</c>,
+    /// <c>"SQL Explorer"</c> were rejected with "Invalid MCP server name"). A quoted TOML key parses fine but does
+    /// not change the name Codex then validates, so the display name is folded to the charset here: every
+    /// out-of-set character becomes <c>_</c>. The result is also a valid TOML bare key, so no quoting is needed.
+    /// Claude's <c>--mcp-config</c> route keeps the verbatim name (its JSON keys tolerate spaces), so the two
+    /// providers can differ on this without the Cockpit-side name changing. Names are made unique per launch (a
+    /// <c>_2</c>, <c>_3</c>, … suffix) so two display names that fold to the same identifier — <c>"a b"</c> and
+    /// <c>"a:b"</c> — do not collapse into one server. A name with no letter or digit at all (empty, or only
+    /// symbols that would fold to a bare run of <c>_</c>) falls back to <c>server_{index}</c>.
+    /// </summary>
+    private static string _CodexServerName(string name, int index, HashSet<string> usedNames)
+    {
+        var builder = new StringBuilder(name.Length);
+        var hasAlphanumeric = false;
+        foreach (var character in name)
+        {
+            if (char.IsAsciiLetterOrDigit(character))
+            {
+                hasAlphanumeric = true;
+                builder.Append(character);
+            }
+            else
+            {
+                builder.Append(character is '_' or '-' ? character : '_');
+            }
+        }
+
+        var sanitized = hasAlphanumeric ? builder.ToString() : $"server_{index}";
+
+        var unique = sanitized;
+        for (var suffix = 2; !usedNames.Add(unique); suffix++)
+        {
+            unique = $"{sanitized}_{suffix}";
+        }
+
+        return unique;
+    }
 
     /// <summary>A TOML basic string with the escapes the spec requires, so a url/name with a quote or backslash cannot break the value.</summary>
     private static string _TomlString(string value)
