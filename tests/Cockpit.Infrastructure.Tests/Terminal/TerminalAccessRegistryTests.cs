@@ -1,3 +1,4 @@
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Infrastructure.Terminal;
 using FluentAssertions;
 
@@ -88,5 +89,61 @@ public class TerminalAccessRegistryTests
         registry.Resolve("pane-1")!.Name.Should().Be("zsh-5");
         registry.Resolve("zsh-5")!.PaneId.Should().Be("pane-1");
         registry.Resolve("nope").Should().BeNull();
+    }
+
+    [Fact]
+    public void SendInput_WhenCoupled_WritesThroughTheRegisteredSink_ButNotWhenNotCoupled()
+    {
+        var registry = new TerminalAccessRegistry();
+        var written = new List<byte[]>();
+        registry.PaneOpened("pane-1", "zsh-5");
+        registry.RegisterInput("pane-1", bytes => written.Add(bytes.ToArray()));
+
+        // Not coupled yet: a send must not reach the pty.
+        registry.SendInput("session-a", "pane-1", new byte[] { 1 }).Should().BeFalse();
+        written.Should().BeEmpty();
+
+        registry.Couple("session-a", "pane-1");
+        registry.SendInput("session-a", "pane-1", "ls\r"u8.ToArray()).Should().BeTrue();
+        registry.SendInput("session-b", "pane-1", new byte[] { 9 }).Should().BeFalse("only the coupled session can type");
+
+        written.Should().ContainSingle();
+        System.Text.Encoding.UTF8.GetString(written[0]).Should().Be("ls\r");
+    }
+
+    [Fact]
+    public void Disconnect_SendsInterrupt_ThenDecouples_AndAnnounces()
+    {
+        var registry = new TerminalAccessRegistry();
+        var written = new List<byte[]>();
+        var changes = new List<TerminalCouplingChange>();
+        registry.CouplingChanged += changes.Add;
+        registry.PaneOpened("pane-1", "zsh-5");
+        registry.RegisterInput("pane-1", bytes => written.Add(bytes.ToArray()));
+        registry.Couple("session-a", "pane-1");
+
+        registry.Disconnect("pane-1");
+
+        written.Should().ContainSingle("a Ctrl-C interrupts a running command");
+        written[0].Should().Equal(new byte[] { 0x03 });
+        registry.IsCoupled("pane-1").Should().BeFalse();
+        changes.Should().HaveCount(2);
+        changes[0].Coupled.Should().BeTrue();
+        changes[1].Coupled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CouplingChanged_FiresOnCoupleAndOnAutoDecouple()
+    {
+        var registry = new TerminalAccessRegistry();
+        var changes = new List<TerminalCouplingChange>();
+        registry.CouplingChanged += changes.Add;
+        registry.PaneOpened("pane-1", "zsh-5");
+
+        registry.Couple("session-a", "pane-1");
+        registry.PaneClosed("pane-1");
+
+        changes.Select(change => change.Coupled).Should().Equal(true, false);
+        changes[0].AgentSession.Should().Be("session-a");
     }
 }

@@ -98,6 +98,36 @@ public class TerminalMcpToolsTests
     }
 
     [Fact]
+    public async Task SendTerminal_FirstTime_AsksConsent_ThenWritesToPty_WithEnterWhenSubmit()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5");
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+
+        var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "echo hi", submit: true));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        asked.Should().ContainSingle("touching a pane asks once, for read and drive together");
+        System.Text.Encoding.UTF8.GetString(written.Should().ContainSingle().Subject).Should().Be("echo hi\r");
+    }
+
+    [Fact]
+    public async Task SendTerminal_WhenDenied_DoesNotWrite()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5");
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+
+        var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "rm -rf /"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        written.Should().BeEmpty();
+        registry.IsCoupled("term-1").Should().BeFalse();
+    }
+
+    [Fact]
     public void ListTerminals_ReturnsOpenPanes_WithCouplingFlag()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
