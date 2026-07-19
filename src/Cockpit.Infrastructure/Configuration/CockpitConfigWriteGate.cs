@@ -14,8 +14,9 @@ namespace Cockpit.Infrastructure.Configuration;
 /// A lock file rather than a named mutex: the operating system drops it when the holder exits — including a
 /// process killed mid-write — and it behaves the same on the three platforms the cockpit runs on. The lock is
 /// non-reentrant (<see cref="FileShare.None"/>), so a leaf operation must never take it while already holding it:
-/// re-entering deadlocks until the timeout. That is why <c>ChangePasswordAsync</c> is not gated as a whole and
-/// instead lets its Disable/Enable steps each take and release the gate in turn.
+/// re-entering deadlocks until the timeout. That is why <c>ChangePasswordAsync</c> takes the gate exactly once
+/// and re-encrypts in that single pass rather than delegating to Disable+Enable — nesting would re-enter and
+/// deadlock, and Disable would put every credential back in the clear on disk for the width of the window.
 /// </para>
 /// </summary>
 internal static class CockpitConfigWriteGate
