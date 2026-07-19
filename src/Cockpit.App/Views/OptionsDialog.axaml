@@ -270,6 +270,16 @@
                                         ToolTip.Tip="Verbatim reads the reply as-is. Naturalized and Summarized use the same local LLM as transcript cleanup to phrase (or shorten) it naturally before speaking — Summarized keeps every number, decision, warning and action item. Both add a short local LLM call per turn."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Acknowledge"
+                                               Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox ItemsSource="{Binding TurnAckModes}"
+                                              SelectedItem="{Binding SelectedTurnAckMode}"
+                                              DisplayMemberBinding="{Binding Label}" MinWidth="260"/>
+                                    <materialIcons:MaterialIcon Classes="hint"
+                                        ToolTip.Tip="Speaks a short 'let me take a look' the moment a turn starts, so a voice conversation isn't met with silence while Claude works. Preset phrases are instant; Local LLM writes a contextual line via the same local model (falling back to a preset if it's slow). Only spoken when read-aloud is on."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <TextBlock Text="Voice"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}" FontSize="11"
                                                VerticalAlignment="Center"/>

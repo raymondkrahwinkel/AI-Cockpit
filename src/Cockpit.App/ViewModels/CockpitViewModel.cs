@@ -1658,6 +1658,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private ReadAloudModeOption _selectedReadAloudMode = new("Verbatim — read the reply as-is", ReadAloudMode.Verbatim);
 
+    /// <summary>Turn-start acknowledgement modes (AC-99) offered by the Options flyout combo box.</summary>
+    public IReadOnlyList<TurnAckModeOption> TurnAckModes { get; } =
+    [
+        new("Off — no acknowledgement", TurnAckMode.Off),
+        new("Preset phrases — instant, rotates a short set", TurnAckMode.InstantPhrases),
+        new("Local LLM — a contextual line (falls back to a preset)", TurnAckMode.LocalLlm),
+    ];
+
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TurnAckMode"/>: how a turn-start acknowledgement is produced (AC-99). Preset phrases by default. Only spoken when read-aloud is on.</summary>
+    [ObservableProperty]
+    private TurnAckModeOption _selectedTurnAckMode = new("Preset phrases — instant, rotates a short set", TurnAckMode.InstantPhrases);
+
     /// <summary>Selectable read-aloud voices (#35) offered by the Options flyout combo box — SupertonicTTS speaker choices.</summary>
     public IReadOnlyList<TtsVoiceOption> TtsVoices => TtsVoiceCatalog.Voices;
 
@@ -3137,6 +3149,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         VoiceStopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking;
         VoiceStopReadAloudLevelThreshold = (decimal)settings.StopReadAloudLevelThreshold;
         SelectedReadAloudMode = ReadAloudModes.FirstOrDefault(mode => mode.Value == settings.ReadAloudMode) ?? ReadAloudModes[0];
+        SelectedTurnAckMode = TurnAckModes.FirstOrDefault(mode => mode.Value == settings.TurnAckMode) ?? TurnAckModes[1];
         SelectedTtsVoice = TtsVoices.FirstOrDefault(voice => voice.Sid == settings.TtsVoiceSid) ?? TtsVoiceCatalog.Default;
         SelectedReadAloudLanguage = ReadAloudLanguages.FirstOrDefault(language => language.Code == settings.ReadAloudLanguage) ?? ReadAloudLanguages[0];
         SelectedSttLanguage = SttLanguages.FirstOrDefault(language => language.Code == settings.SttLanguage) ?? SttLanguages[0];
@@ -3372,6 +3385,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             StopReadAloudWhenSpeaking = VoiceStopReadAloudWhenSpeaking,
             StopReadAloudLevelThreshold = (double)VoiceStopReadAloudLevelThreshold,
             ReadAloudMode = SelectedReadAloudMode.Value,
+            TurnAckMode = SelectedTurnAckMode.Value,
             TtsVoiceSid = SelectedTtsVoice.Sid,
             ReadAloudLanguage = SelectedReadAloudLanguage.Code,
             SttLanguage = SelectedSttLanguage.Code,
@@ -3385,6 +3399,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         foreach (var session in Sessions)
         {
             session.ReadAloudMode = SelectedReadAloudMode.Value;
+            session.TurnAckMode = SelectedTurnAckMode.Value;
             session.TtsVoiceSid = SelectedTtsVoice.Sid;
             session.ReadAloudLanguage = SelectedReadAloudLanguage.Code;
         }

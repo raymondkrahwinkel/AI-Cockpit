@@ -116,6 +116,14 @@ public sealed record VoiceSettings
     public ReadAloudMode ReadAloudMode { get; init; } = ReadAloudMode.Verbatim;
 
     /// <summary>
+    /// How a turn-start acknowledgement is produced (AC-99) — the short "let me take a look" spoken the moment the
+    /// agent starts working, so a voice conversation is not met with silence. <see cref="Cockpit.Core.Voice.TurnAckMode.InstantPhrases"/>
+    /// (a rotating preset, instant) by default; <see cref="Cockpit.Core.Voice.TurnAckMode.LocalLlm"/> asks the local
+    /// model for a contextual line (falling back to a preset). Only spoken when read-aloud is on.
+    /// </summary>
+    public TurnAckMode TurnAckMode { get; init; } = TurnAckMode.InstantPhrases;
+
+    /// <summary>
     /// When true, open-mic dictation listens continuously and detects speech start/stop itself (VAD
     /// endpointing) instead of requiring the push-to-talk hotkey to be held. Off by default: opt-in like
     /// voice itself, so the microphone is never held open for an operator who never turns it on.

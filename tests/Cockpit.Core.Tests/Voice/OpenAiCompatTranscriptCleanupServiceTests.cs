@@ -88,6 +88,93 @@ public class OpenAiCompatTranscriptCleanupServiceTests
         factory.DidNotReceiveWithAnyArgs().CreateForEndpoint(default!, default!, default);
     }
 
+    [Fact]
+    public async Task NaturalizeForSpeechAsync_CapsTheOutputTokens_SoARunawayGenerationCannotPinTheServer()
+    {
+        ChatOptions? captured = null;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Do<ChatOptions?>(options => captured = options), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "Spoken.")));
+        var service = _CreateService(chatClient, out _);
+
+        await service.NaturalizeForSpeechAsync("Here is a reply the operator asked to be read aloud naturally.");
+
+        captured.Should().NotBeNull();
+        captured!.MaxOutputTokens.Should().NotBeNull().And.BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task NaturalizeForSpeechAsync_CallTimesOut_ReturnsTheOriginalText()
+    {
+        // A timeout fires the service's own linked token, surfacing as OperationCanceledException — it must fall back
+        // to the original text, not throw. (Before the hardening the catch only named TaskCanceledException, so a
+        // bare OperationCanceledException escaped.)
+        var service = _CreateService(_Throwing(new OperationCanceledException()), out _);
+
+        var result = await service.NaturalizeForSpeechAsync("the original reply");
+
+        result.Should().Be("the original reply");
+    }
+
+    [Fact]
+    public async Task NaturalizeForSpeechAsync_CallerCancels_Propagates_RatherThanPassingOffTheOriginal()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var service = _CreateService(_Chat("unused"), out _);
+
+        var act = () => service.NaturalizeForSpeechAsync("the original reply", cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task ConcurrentCalls_AreSerialized_SoOnlyOneEverHitsTheServerAtATime()
+    {
+        var release = new TaskCompletionSource<ChatResponse>();
+        var inFlight = 0;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                Interlocked.Increment(ref inFlight);
+                return release.Task;
+            });
+        var service = _CreateService(chatClient, out _);
+
+        var first = service.NaturalizeForSpeechAsync("first reply");
+        var second = service.NaturalizeForSpeechAsync("second reply");
+        await Task.Delay(50);
+
+        // The single-flight gate holds the second call before it reaches the server; without it both would be in flight.
+        inFlight.Should().Be(1);
+
+        release.SetResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "Spoken.")));
+        await Task.WhenAll(first, second);
+
+        inFlight.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task AcknowledgeForSpeechAsync_ReturnsTheGeneratedLine()
+    {
+        var service = _CreateService(_Chat("Let me take a look."), out _);
+
+        var result = await service.AcknowledgeForSpeechAsync("fix the failing build");
+
+        result.Should().Be("Let me take a look.");
+    }
+
+    [Fact]
+    public async Task AcknowledgeForSpeechAsync_ServerUnavailable_ReturnsEmpty_SoTheCallerFallsBackToAPreset()
+    {
+        var service = _CreateService(_Throwing(new HttpRequestException("connection refused")), out _);
+
+        var result = await service.AcknowledgeForSpeechAsync("fix the failing build");
+
+        result.Should().BeEmpty();
+    }
+
     private static IChatClient _Chat(string content)
     {
         var chatClient = Substitute.For<IChatClient>();

@@ -46,6 +46,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>Assistant-text rows added since the last <see cref="TurnCompleted"/> — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.</summary>
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
 
+    // How many characters of this turn's assistant prose have already been sent to read-aloud (AC-97). A turn
+    // pauses on a question/permission and then keeps streaming into the same growing entry afterwards — the Claude
+    // driver never re-emits a completed snapshot, so a turn is one appending entry — which is why this tracks a
+    // text offset, not an entry count: counting entries would mark the whole (still-growing) entry "spoken" at the
+    // first flush and lose everything the reply says after a tool approval. Reset with the list at the turn boundary.
+    private int _readAloudFlushedLength;
+
     /// <summary>Set when an "exit" message is dispatched with auto-close on, so the next completed turn closes the session (T10).</summary>
     private bool _closeAfterTurn;
 
@@ -724,6 +731,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IsBusy = true;
         IsAwaitingResponse = true;
         _needsAttention = false;
+        // Speak a quick "let me take a look" now (AC-99) so a voice conversation is not met with silence while the
+        // turn spins up — no-op unless read-aloud is on and an acknowledgement mode is chosen.
+        _ = SpeakTurnAcknowledgmentAsync(text);
         _RecomputeStatus();
 
         var sent = false;
@@ -849,16 +859,30 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         await _runtime.AllowPermissionAlwaysAsync(entry.ToolUseId, entry.ToolName, entry.InputJson ?? "{}", scope);
     }
 
-    /// <summary>Extracts read-aloud sentences from the just-finished turn's assistant prose and enqueues them (#35). No-op when the turn produced no assistant text.</summary>
-    private void _EnqueueTurnProseForReadAloud()
+    /// <summary>
+    /// Enqueues the assistant prose accumulated since the last flush (#35, AC-97). Called both when the turn
+    /// finishes and when it pauses on a question/permission prompt mid-turn — so the lead-in a reply gives before
+    /// asking ("let me check…") is spoken right away instead of staying silent until the operator answers. The
+    /// flushed-count marks each entry spoken exactly once, no matter how many prompts one turn raises.
+    /// </summary>
+    private void _FlushPendingProseForReadAloud()
     {
-        if (_currentTurnAssistantEntries.Count == 0)
+        if (!ReadResponsesAloud)
         {
             return;
         }
 
-        var markdown = string.Join("\n\n", _currentTurnAssistantEntries.Select(entry => entry.Text));
-        _ = EnqueueReadAloudAsync(markdown);
+        // Only the last entry grows (deltas append to the current one), so the prose up to _readAloudFlushedLength
+        // is stable and the tail from there is exactly what has not been spoken yet.
+        var prose = string.Join("\n\n", _currentTurnAssistantEntries.Select(entry => entry.Text));
+        if (_readAloudFlushedLength >= prose.Length)
+        {
+            return;
+        }
+
+        var pending = prose[_readAloudFlushedLength..];
+        _readAloudFlushedLength = prose.Length;
+        _ = EnqueueReadAloudAsync(pending);
     }
 
     /// <summary>On-demand read-aloud for a single transcript row (#35) — works regardless of <see cref="ReadResponsesAloud"/>, since the speaker button next to an assistant reply is an explicit request to hear it.</summary>
@@ -1007,11 +1031,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 }
 
                 _needsAttention = true;
+                // Speak the lead-in the reply gave before this tool needs approval, rather than holding it back
+                // until the operator answers the prompt (AC-97).
+                _FlushPendingProseForReadAloud();
                 _RecomputeStatus();
                 break;
 
             case Question question:
                 Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Question, question.Text));
+                // Same as a permission prompt: a question pauses the turn, so speak what was said before it now.
+                _FlushPendingProseForReadAloud();
                 break;
 
             case TurnCompleted turn:
@@ -1024,12 +1053,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                         TranscriptEntryKind.TurnCompleted, $"Turn failed ({turn.Subtype})"));
                 }
 
-                if (ReadResponsesAloud)
-                {
-                    _EnqueueTurnProseForReadAloud();
-                }
+                _FlushPendingProseForReadAloud();
 
                 _currentTurnAssistantEntries.Clear();
+                _readAloudFlushedLength = 0;
                 _currentAssistantEntry = null;
                 _hasCompletedATurn = true;
                 IsBusy = false;

@@ -74,6 +74,9 @@ internal sealed class VoiceSettingsEntry
     /// <summary>How read-aloud renders a reply (#35). Null when neither this nor the legacy naturalize flag was written.</summary>
     public ReadAloudMode? ReadAloudMode { get; set; }
 
+    /// <summary>How a turn-start acknowledgement is produced (AC-99). Null when written before this key existed — read at the default (instant presets) in <see cref="ToDomain"/>.</summary>
+    public TurnAckMode? TurnAckMode { get; set; }
+
     /// <summary>
     /// Legacy on-disk on/off naturalize flag from before read-aloud gained the three-way mode. Read to migrate an
     /// existing config (<c>true</c> → Naturalized, otherwise Verbatim); never written back (see <see cref="FromDomain"/>),
@@ -118,6 +121,7 @@ internal sealed class VoiceSettingsEntry
         StopReadAloudWhenSpeaking = settings.StopReadAloudWhenSpeaking,
         StopReadAloudLevelThreshold = settings.StopReadAloudLevelThreshold,
         ReadAloudMode = settings.ReadAloudMode,
+        TurnAckMode = settings.TurnAckMode,
         // Legacy naturalize flag is migration-only: never written back, so it stays null and drops out of the file.
         NaturalizeReadAloud = null,
     };
@@ -149,6 +153,8 @@ internal sealed class VoiceSettingsEntry
         // behaviour (naturalize on → Naturalized, otherwise Verbatim) rather than silently resetting to Verbatim.
         ReadAloudMode = ReadAloudMode
             ?? (NaturalizeReadAloud == true ? Cockpit.Core.Voice.ReadAloudMode.Naturalized : Cockpit.Core.Voice.ReadAloudMode.Verbatim),
+        // A config saved before this key existed defaults to instant presets — the same fresh-install default.
+        TurnAckMode = TurnAckMode ?? Cockpit.Core.Voice.TurnAckMode.InstantPhrases,
         OpenMicEnabled = OpenMicEnabled,
         OpenMicSilenceTimeoutMs = OpenMicSilenceTimeoutMs,
         StopReadAloudWhenSpeaking = StopReadAloudWhenSpeaking,

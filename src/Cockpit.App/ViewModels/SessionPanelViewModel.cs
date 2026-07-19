@@ -292,6 +292,13 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [ObservableProperty]
     private ReadAloudMode _readAloudMode = ReadAloudMode.Verbatim;
 
+    /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.TurnAckMode"/>: how a turn-start acknowledgement is produced (off / preset phrase / local LLM) (AC-99).</summary>
+    [ObservableProperty]
+    private TurnAckMode _turnAckMode = TurnAckMode.InstantPhrases;
+
+    // Rotates the preset acknowledgement phrases so back-to-back turns do not repeat the same one.
+    private int _turnAckPhraseIndex;
+
     /// <summary>Mirrors the saved voice-input setting, loaded once via <see cref="InitializeVoice"/>. Gates <see cref="BeginVoiceHold"/> so a disabled operator's F9 does nothing.</summary>
     [ObservableProperty]
     private bool _voiceEnabled;
@@ -398,6 +405,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         TtsVoiceSid = settings.TtsVoiceSid;
         ReadAloudLanguage = settings.ReadAloudLanguage;
         ReadAloudMode = settings.ReadAloudMode;
+        TurnAckMode = settings.TurnAckMode;
     }
 
     /// <summary>
@@ -413,6 +421,24 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         _voicePlaybackQueue is null
             ? Task.CompletedTask
             : ReadAloudPipeline.SpeakAsync(_voicePlaybackQueue, _cleanupService, text, ReadAloudMode, TtsVoiceSid, ReadAloudLanguage);
+
+    /// <summary>
+    /// Speaks a short acknowledgement as a turn starts (AC-99) so a voice conversation is not met with silence while
+    /// the agent works. Only when read-aloud is on (the operator is already listening to the cockpit) and a queue is
+    /// wired; the mode picks a rotating preset phrase or a local-LLM line (which falls back to a preset). Shares the
+    /// barge-in-aware playback queue, so a push-to-talk hold cuts it off like any other read-aloud. Fire-and-forget,
+    /// the same as <see cref="EnqueueReadAloudAsync"/> — the acknowledgement is a nicety, never load-bearing.
+    /// </summary>
+    protected async Task SpeakTurnAcknowledgmentAsync(string userMessage)
+    {
+        if (_voicePlaybackQueue is null || !ReadResponsesAloud || TurnAckMode == TurnAckMode.Off)
+        {
+            return;
+        }
+
+        _turnAckPhraseIndex = await TurnAcknowledgmentPipeline.SpeakAsync(
+            _voicePlaybackQueue, _cleanupService, TurnAckMode, _turnAckPhraseIndex, userMessage, TtsVoiceSid, ReadAloudLanguage);
+    }
 
     /// <summary>
     /// Starts a push-to-talk hold (KeyDown on the configured hotkey). Returns false — a no-op the

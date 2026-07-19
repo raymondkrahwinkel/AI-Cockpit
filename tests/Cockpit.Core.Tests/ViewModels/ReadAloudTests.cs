@@ -184,6 +184,73 @@ public class ReadAloudTests
         voicePlaybackQueue.Received(1).StopAll();
     }
 
+    [Fact]
+    public void PermissionRequested_MidTurn_ReadAloudOn_FlushesTheLeadIn_ThenTurnCompletedDoesNotRepeatIt()
+    {
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { TtsVoiceSid = 3 });
+        var vm = new SessionViewModel(
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voiceSettingsStore: voiceSettingsStore, voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Let me check that for you." });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+
+        // AC-97: the lead-in is spoken the moment the tool needs approval, not held back until the operator answers.
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Let me check that for you." })), 3, "en");
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        // TurnCompleted must not speak the already-flushed lead-in a second time.
+        voicePlaybackQueue.Received(1).Enqueue(Arg.Any<IReadOnlyList<string>>(), Arg.Any<int>(), Arg.Any<string>());
+    }
+
+    [Fact]
+    public void Question_MidTurn_ReadAloudOff_EnqueuesNothing()
+    {
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var vm = new SessionViewModel(new SessionManager(Substitute.For<ISessionDriverFactory>()), voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = false,
+        };
+
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Here is a thought." });
+        vm.Apply(new Question { SessionId = "S1", Text = "Which option do you prefer?" });
+
+        voicePlaybackQueue.ReceivedCalls().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void AfterAMidTurnQuestion_TurnCompletedSpeaksTheRestThatStreamedInAfterIt()
+    {
+        var voicePlaybackQueue = Substitute.For<IVoicePlaybackQueue>();
+        var voiceSettingsStore = Substitute.For<IVoiceSettingsStore>();
+        voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings { TtsVoiceSid = 3 });
+        var vm = new SessionViewModel(
+            new SessionManager(Substitute.For<ISessionDriverFactory>()), voiceSettingsStore: voiceSettingsStore, voicePlaybackQueue: voicePlaybackQueue)
+        {
+            ReadResponsesAloud = true,
+        };
+
+        // The real Claude driver never emits AssistantTextCompleted: a turn's deltas keep appending to one growing
+        // entry, including the text that streams in after a mid-turn question. This drives that exact shape — a
+        // flush that counted entries instead of text offset would mark the whole entry spoken at the question and
+        // silently drop "Now, the result.".
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "First, the setup. " });
+        vm.Apply(new Question { SessionId = "S1", Text = "Ready?" });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Now, the result." });
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "First, the setup." })), 3, "en");
+        voicePlaybackQueue.Received(1).Enqueue(
+            Arg.Is<IReadOnlyList<string>>(sentences => sentences.SequenceEqual(new[] { "Now, the result." })), 3, "en");
+    }
+
     private static async Task _WaitUntilAsync(Func<bool> condition)
     {
         for (var i = 0; i < 50 && !condition(); i++)
