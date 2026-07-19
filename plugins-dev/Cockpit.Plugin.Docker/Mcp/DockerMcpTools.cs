@@ -23,6 +23,7 @@ internal sealed class DockerMcpTools(
     DockerAccessGate gate,
     IDockerEngine engine,
     IComposeCli compose,
+    IDockerCli docker,
     RunningContainerRegistry running)
 {
     // ---- Reads -------------------------------------------------------------------------------------------------
@@ -170,6 +171,177 @@ internal sealed class DockerMcpTools(
         }
     }
 
+    [McpServerTool(Name = "inspect")]
+    [Description("Inspects a container (docker inspect): its state and exit code, health, environment variables, mounts and networks — the read you reach for to debug why a container is unhealthy or how it is wired. Touching the daemon asks for consent the first time in a session; after that this read is free.")]
+    public async Task<string> Inspect(
+        [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
+        [Description("The container id or name.")] string container,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync($"inspect container \"{container}\"", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var c = await engine.InspectContainerAsync(container, cancellationToken);
+            return McpText.Ok(new
+            {
+                ok = true,
+                id = c.Id,
+                name = c.Name,
+                image = c.Image,
+                state = c.State,
+                exitCode = c.ExitCode,
+                health = c.Health,
+                env = c.Env,
+                mounts = c.Mounts.Select(mount => new { type = mount.Type, source = mount.Source, destination = mount.Destination, readWrite = mount.ReadWrite }),
+                networks = c.Networks.Select(network => new { name = network.Name, ip = network.IpAddress }),
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
+    [McpServerTool(Name = "stats")]
+    [Description("Returns a one-shot resource sample for a container (docker stats --no-stream): CPU percent, memory usage and limit in bytes, network rx/tx and block read/write. A read behind the one-time daemon-connection consent.")]
+    public async Task<string> Stats(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The container id or name.")] string container,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync($"read stats of container \"{container}\"", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var s = await engine.GetContainerStatsAsync(container, cancellationToken);
+            return McpText.Ok(new
+            {
+                ok = true,
+                container,
+                cpuPercent = s.CpuPercent,
+                memoryUsageBytes = s.MemoryUsageBytes,
+                memoryLimitBytes = s.MemoryLimitBytes,
+                networkRxBytes = s.NetworkRxBytes,
+                networkTxBytes = s.NetworkTxBytes,
+                blockReadBytes = s.BlockReadBytes,
+                blockWriteBytes = s.BlockWriteBytes,
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
+    [McpServerTool(Name = "top")]
+    [Description("Lists the processes running inside a container (docker top): the column titles and a row per process. A read behind the one-time daemon-connection consent.")]
+    public async Task<string> Top(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The container id or name.")] string container,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync($"list processes in container \"{container}\"", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var top = await engine.TopContainerAsync(container, cancellationToken);
+            return McpText.Ok(new { ok = true, container, titles = top.Titles, processes = top.Processes });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
+    [McpServerTool(Name = "list_volumes")]
+    [Description("Lists local volumes (docker volume ls): name, driver and mountpoint. A read behind the one-time daemon-connection consent.")]
+    public async Task<string> ListVolumes(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync("list volumes", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var volumes = await engine.ListVolumesAsync(cancellationToken);
+            return McpText.Ok(new
+            {
+                ok = true,
+                count = volumes.Count,
+                volumes = volumes.Select(volume => new { name = volume.Name, driver = volume.Driver, mountpoint = volume.Mountpoint }),
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
+    [McpServerTool(Name = "list_networks")]
+    [Description("Lists networks (docker network ls): id, name, driver and scope — for inspecting connectivity between containers. A read behind the one-time daemon-connection consent.")]
+    public async Task<string> ListNetworks(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync("list networks", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var networks = await engine.ListNetworksAsync(cancellationToken);
+            return McpText.Ok(new
+            {
+                ok = true,
+                count = networks.Count,
+                networks = networks.Select(network => new { id = network.Id, name = network.Name, driver = network.Driver, scope = network.Scope }),
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
     // ---- Image pull (a change to local state, never destructive) -----------------------------------------------
 
     [McpServerTool(Name = "pull_image")]
@@ -302,6 +474,129 @@ internal sealed class DockerMcpTools(
         }
     }
 
+    // ---- Image tag / push -------------------------------------------------------------------------------------
+
+    [McpServerTool(Name = "tag")]
+    [Description("Tags an image under a new reference (docker tag), e.g. source \"myapp:latest\" as \"registry.example.com/myapp:1.2\". A change to local state (not destructive), so it asks the operator afresh each time and is never remembered.")]
+    public Task<string> Tag(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The existing image id or reference to tag, e.g. \"myapp:latest\".")] string source,
+        [Description("The new reference to give it, e.g. \"registry.example.com/myapp:1.2\".")] string target,
+        CancellationToken cancellationToken = default) =>
+        _MutateAsync($"tag image \"{source}\" as \"{target}\"", session,
+            token => engine.TagImageAsync(source, target, token),
+            new { ok = true, tagged = target }, cancellationToken);
+
+    [McpServerTool(Name = "push")]
+    [Description("Pushes an image to its registry (docker push), e.g. \"registry.example.com/myapp:1.2\". This publishes it outside your machine, so it always asks the operator afresh with the reference shown, and is never remembered. Runs through the docker CLI (registry auth).")]
+    public async Task<string> Push(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The image reference to push, e.g. \"registry.example.com/myapp:1.2\".")] string image,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeMutationAsync($"push image \"{image}\" to its registry (publishes it outside this machine)", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        return await _RunDockerCliAsync(["push", image], cancellationToken);
+    }
+
+    // ---- Volumes ----------------------------------------------------------------------------------------------
+
+    [McpServerTool(Name = "remove_volume")]
+    [Description("Removes a volume (docker volume rm). Set force=true to remove one still referenced. This deletes the volume's data, so it asks the operator afresh each time with the volume name shown, and is never remembered.")]
+    public Task<string> RemoveVolume(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The volume name.")] string volume,
+        [Description("Force removal even if still referenced. Default false.")] bool force = false,
+        CancellationToken cancellationToken = default) =>
+        _MutateAsync($"remove volume \"{volume}\" (force={force}) — this deletes its data", session,
+            token => engine.RemoveVolumeAsync(volume, force, token),
+            new { ok = true, removed = volume }, cancellationToken);
+
+    [McpServerTool(Name = "prune")]
+    [Description("Reclaims disk by pruning unused resources (docker prune). target is one of \"containers\" (stopped containers), \"images\" (dangling images), or \"volumes\" (volumes no container uses). This deletes things, so it asks the operator afresh each time with the target shown, and is never remembered. Returns the bytes reclaimed and what was removed.")]
+    public async Task<string> Prune(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("What to prune: \"containers\", \"images\" or \"volumes\".")] string target,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_TryParsePruneTarget(target, out var pruneTarget))
+        {
+            return McpText.Error("target must be one of \"containers\", \"images\" or \"volumes\".");
+        }
+
+        var decision = await gate.AuthorizeMutationAsync($"prune {pruneTarget.ToString().ToLowerInvariant()} — this permanently removes the unused ones", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        try
+        {
+            var result = await engine.PruneAsync(pruneTarget, cancellationToken);
+            return McpText.Ok(new { ok = true, spaceReclaimedBytes = result.SpaceReclaimedBytes, deleted = result.Deleted });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error(_Sanitize(ex));
+        }
+    }
+
+    // ---- Build / cp (arbitrary code / container-fs writes — behind the exec capability) ------------------------
+
+    [McpServerTool(Name = "build_image")]
+    [Description("Builds an image from a Dockerfile (docker build -t <tag> <context>). Because a build runs the Dockerfile's RUN steps — arbitrary code — this is off unless the exec capability is on, and always asks afresh with the literal command shown. Never remembered. Runs through the docker CLI.")]
+    public async Task<string> BuildImage(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The build context directory (holds the Dockerfile).")] string context,
+        [Description("The tag to give the built image, e.g. \"myapp:latest\".")] string tag,
+        [Description("Optional Dockerfile path relative to the context. Default: Dockerfile.")] string? dockerfile = null,
+        CancellationToken cancellationToken = default)
+    {
+        var args = new List<string> { "build", "-t", tag };
+        if (!string.IsNullOrWhiteSpace(dockerfile))
+        {
+            args.Add("-f");
+            args.Add(dockerfile!);
+        }
+
+        args.Add(context);
+
+        var decision = await gate.AuthorizeDangerAsync(
+            DangerCapability.Exec, settings.AllowExec, $"docker {string.Join(' ', args)}", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        return await _RunDockerCliAsync(args, cancellationToken);
+    }
+
+    [McpServerTool(Name = "cp")]
+    [Description("Copies files between the host and a container (docker cp). One of source/dest is \"container:/path\" and the other a host path. Because it reads or writes the container's filesystem, this is off unless the exec capability is on, and always asks afresh with the literal command shown. Never remembered. Runs through the docker CLI.")]
+    public async Task<string> Cp(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("Source: a host path, or \"container:/path/in/container\".")] string source,
+        [Description("Destination: a host path, or \"container:/path/in/container\".")] string destination,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeDangerAsync(
+            DangerCapability.Exec, settings.AllowExec, $"docker cp {source} {destination}", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        return await _RunDockerCliAsync(["cp", source, destination], cancellationToken);
+    }
+
     // ---- Compose (docker compose CLI) --------------------------------------------------------------------------
 
     [McpServerTool(Name = "compose_config")]
@@ -379,7 +674,72 @@ internal sealed class DockerMcpTools(
         return _ComposeMutateAsync(directory, args, session, cancellationToken);
     }
 
+    [McpServerTool(Name = "compose_ps")]
+    [Description("Shows the status of a Compose project's services (docker compose ps): which are up, their state and ports. A read: needs only the one-time daemon-connection consent.")]
+    public async Task<string> ComposePs(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The project directory that holds the compose file.")] string directory,
+        [Description("Optional compose file name/path, relative to the directory.")] string? file = null,
+        CancellationToken cancellationToken = default)
+    {
+        var decision = await gate.AuthorizeConnectionAsync($"docker compose ps (in {directory})", session);
+        if (decision is { IsAllowed: false, DeniedReason: { } reason })
+        {
+            return McpText.Error(reason);
+        }
+
+        return await _RunComposeAsync(directory, _ComposeArgs(file, "ps"), cancellationToken);
+    }
+
+    [McpServerTool(Name = "compose_restart")]
+    [Description("Restarts a Compose project's services, or specific ones (docker compose restart) — without recreating them, so it is quicker than down+up. A change, so it asks the operator afresh with the literal command shown, and is never remembered.")]
+    public Task<string> ComposeRestart(
+        [Description("Your session id (COCKPIT_PANE_ID).")] string session,
+        [Description("The project directory that holds the compose file.")] string directory,
+        [Description("Optional compose file name/path, relative to the directory.")] string? file = null,
+        [Description("Optional specific services to restart; empty means all.")] string[]? services = null,
+        CancellationToken cancellationToken = default)
+    {
+        var args = _ComposeArgs(file, "restart");
+        _AppendServices(args, services);
+        return _ComposeMutateAsync(directory, args, session, cancellationToken);
+    }
+
     // ---- Helpers -----------------------------------------------------------------------------------------------
+
+    private async Task<string> _RunDockerCliAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await docker.RunAsync(args, cancellationToken);
+            return McpText.Ok(new
+            {
+                ok = result.ExitCode == 0,
+                exitCode = result.ExitCode,
+                stdout = result.Stdout,
+                stderr = result.Stderr,
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return McpText.Error("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return McpText.Error($"The docker command could not be run ({ex.GetType().Name}). Check that the docker CLI is installed and on PATH.");
+        }
+    }
+
+    private static bool _TryParsePruneTarget(string target, out PruneTarget result)
+    {
+        switch (target.Trim().ToLowerInvariant())
+        {
+            case "containers": result = PruneTarget.Containers; return true;
+            case "images": result = PruneTarget.Images; return true;
+            case "volumes": result = PruneTarget.Volumes; return true;
+            default: result = default; return false;
+        }
+    }
 
     private async Task<string> _MutateAsync(string operation, string session, Func<CancellationToken, Task> action, object success, CancellationToken cancellationToken)
     {

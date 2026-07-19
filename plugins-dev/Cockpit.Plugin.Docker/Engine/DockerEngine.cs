@@ -221,6 +221,130 @@ internal sealed class DockerEngine(DockerSettings settings) : IDockerEngine, IDi
             cancellationToken);
     }
 
+    public async Task<ContainerInspection> InspectContainerAsync(string id, CancellationToken cancellationToken)
+    {
+        var c = await _Client().Containers.InspectContainerAsync(id, cancellationToken);
+        return new ContainerInspection(
+            c.ID ?? string.Empty,
+            (c.Name ?? string.Empty).TrimStart('/'),
+            c.Config?.Image ?? string.Empty,
+            c.State?.Status ?? string.Empty,
+            c.State?.ExitCode ?? 0,
+            c.State?.Health?.Status,
+            c.Config?.Env?.ToList() ?? [],
+            (c.Mounts ?? []).Select(mount => new ContainerMount(
+                mount.Type ?? string.Empty, mount.Source ?? string.Empty, mount.Destination ?? string.Empty, mount.RW)).ToList(),
+            (c.NetworkSettings?.Networks ?? new Dictionary<string, EndpointSettings>())
+                .Select(network => new ContainerNetwork(network.Key, network.Value?.IPAddress ?? string.Empty)).ToList());
+    }
+
+    public async Task<ContainerStats> GetContainerStatsAsync(string id, CancellationToken cancellationToken)
+    {
+        // A streamed read stopped after the second sample: the first carries no previous-CPU baseline, so a CPU
+        // percentage can only be computed once two samples are in hand (the same two `docker stats` reads itself).
+        var samples = new List<ContainerStatsResponse>();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var progress = new Progress<ContainerStatsResponse>(sample =>
+        {
+            samples.Add(sample);
+            if (samples.Count >= 2)
+            {
+                stop.Cancel();
+            }
+        });
+
+        try
+        {
+            await _Client().Containers.GetContainerStatsAsync(
+                id, new ContainerStatsParameters { Stream = true }, progress, stop.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Expected: we cancelled the stream ourselves once the second sample arrived.
+        }
+
+        var latest = samples.LastOrDefault() ?? throw new InvalidOperationException("The container reported no stats.");
+        var cpuPercent = _CpuPercent(latest);
+        var networks = latest.Networks?.Values ?? [];
+        var blkRead = _BlockIo(latest, "Read");
+        var blkWrite = _BlockIo(latest, "Write");
+        return new ContainerStats(
+            cpuPercent,
+            (long)latest.MemoryStats.Usage,
+            (long)latest.MemoryStats.Limit,
+            (long)networks.Sum(network => (decimal)network.RxBytes),
+            (long)networks.Sum(network => (decimal)network.TxBytes),
+            blkRead,
+            blkWrite);
+    }
+
+    private static double _CpuPercent(ContainerStatsResponse s)
+    {
+        var cpuDelta = (double)s.CPUStats.CPUUsage.TotalUsage - s.PreCPUStats.CPUUsage.TotalUsage;
+        var systemDelta = (double)s.CPUStats.SystemUsage - s.PreCPUStats.SystemUsage;
+        if (systemDelta <= 0 || cpuDelta < 0)
+        {
+            return 0;
+        }
+
+        int cpus = s.CPUStats.OnlineCPUs > 0 ? (int)s.CPUStats.OnlineCPUs : (s.CPUStats.CPUUsage.PercpuUsage?.Count ?? 1);
+        return Math.Round(cpuDelta / systemDelta * cpus * 100.0, 2);
+    }
+
+    private static long _BlockIo(ContainerStatsResponse s, string op) =>
+        (long)(s.BlkioStats?.IoServiceBytesRecursive?
+            .Where(entry => string.Equals(entry.Op, op, StringComparison.OrdinalIgnoreCase))
+            .Sum(entry => (decimal)entry.Value) ?? 0);
+
+    public async Task<ContainerProcesses> TopContainerAsync(string id, CancellationToken cancellationToken)
+    {
+        var top = await _Client().Containers.ListProcessesAsync(id, new ContainerListProcessesParameters(), cancellationToken);
+        return new ContainerProcesses(
+            top.Titles?.ToList() ?? [],
+            (top.Processes ?? []).Select(row => (IReadOnlyList<string>)row.ToList()).ToList());
+    }
+
+    public async Task<IReadOnlyList<DockerVolume>> ListVolumesAsync(CancellationToken cancellationToken)
+    {
+        var volumes = await _Client().Volumes.ListAsync(cancellationToken);
+        return (volumes.Volumes ?? [])
+            .Select(volume => new DockerVolume(volume.Name ?? string.Empty, volume.Driver ?? string.Empty, volume.Mountpoint ?? string.Empty))
+            .ToList();
+    }
+
+    public Task RemoveVolumeAsync(string name, bool force, CancellationToken cancellationToken) =>
+        _Client().Volumes.RemoveAsync(name, force, cancellationToken);
+
+    public async Task<IReadOnlyList<DockerNetwork>> ListNetworksAsync(CancellationToken cancellationToken)
+    {
+        var networks = await _Client().Networks.ListNetworksAsync(new NetworksListParameters(), cancellationToken);
+        return networks
+            .Select(network => new DockerNetwork(network.ID ?? string.Empty, network.Name ?? string.Empty, network.Driver ?? string.Empty, network.Scope ?? string.Empty))
+            .ToList();
+    }
+
+    public async Task<PruneResult> PruneAsync(PruneTarget target, CancellationToken cancellationToken)
+    {
+        var client = _Client();
+        return target switch
+        {
+            PruneTarget.Containers => await _Prune(() => client.Containers.PruneContainersAsync(new ContainersPruneParameters(), cancellationToken),
+                response => new PruneResult((long)response.SpaceReclaimed, response.ContainersDeleted?.ToList() ?? [])),
+            PruneTarget.Images => await _Prune(() => client.Images.PruneImagesAsync(new ImagesPruneParameters(), cancellationToken),
+                response => new PruneResult((long)response.SpaceReclaimed, (response.ImagesDeleted ?? []).Select(deleted => deleted.Deleted ?? deleted.Untagged ?? string.Empty).Where(text => text.Length > 0).ToList())),
+            _ => await _Prune(() => client.Volumes.PruneAsync(new VolumesPruneParameters(), cancellationToken),
+                response => new PruneResult((long)response.SpaceReclaimed, response.VolumesDeleted?.ToList() ?? [])),
+        };
+    }
+
+    private static async Task<PruneResult> _Prune<T>(Func<Task<T>> prune, Func<T, PruneResult> project) => project(await prune());
+
+    public Task TagImageAsync(string source, string target, CancellationToken cancellationToken)
+    {
+        var (repository, tag) = _SplitImageRef(target);
+        return _Client().Images.TagImageAsync(source, new ImageTagParameters { RepositoryName = repository, Tag = tag }, cancellationToken);
+    }
+
     private static (string FromImage, string? Tag) _SplitImageRef(string image)
     {
         if (image.Contains('@', StringComparison.Ordinal))
