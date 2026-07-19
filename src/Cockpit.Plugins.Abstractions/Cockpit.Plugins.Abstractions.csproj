@@ -70,13 +70,13 @@
          the plugin's own settings (ShowSettingsAsync) or runs any action it assigns. The icon names a bundled
          MaterialIconKind (like PluginSessionAction's IconKind, AC-33). Existing plugins keep compiling (the member is
          default no-op). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <!-- 1.14.0 (#AC-96): added the NewSessionPrefill record and ICockpitHost.ShowNewSessionDialogAsync (default-
+    <!-- 1.17.0 (#AC-96): added the NewSessionPrefill record and ICockpitHost.ShowNewSessionDialogAsync (default-
          implemented), so a plugin can open the cockpit's New-session dialog pre-filled and get the started session's
          pane id back through an onStarted callback (or an onCancelled signal) — the operator still confirms every
          field. Existing plugins keep compiling (the member is default no-op). Additive API — still a minor; the major
          and abstractionsVersion stay 1. Sits above AC-95's in-flight 1.13.0; a version clash at merge is Raymond's to
          resolve. -->
-    <Version>1.14.0</Version>
+    <Version>1.17.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
