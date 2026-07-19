@@ -266,12 +266,366 @@ public class SecretProtectionTests : IDisposable
     }
 
     [Fact]
-    public async Task TheRewrite_KeepsABackupOfWhatWasThere()
+    public async Task TheRewrite_KeepsABackup_ButScrubsThePlaintextOutOfIt()
     {
         await Store().SaveAsync([Server(Token)]);
         await Service().EnableAsync(Password);
 
-        File.Exists(_configPath + ".bak").Should().BeTrue("a migration that rewrites every credential leaves a way back");
+        var backup = _configPath + ".bak";
+        File.Exists(backup).Should().BeTrue("a migration that rewrites every credential leaves a way back");
+
+        // The atomic swap keeps the pre-migration file as .bak — which is the operator's credentials still in the
+        // clear, next door to the one that was just encrypted. Scrubbing it to ciphertext is the whole point:
+        // otherwise the at-rest plaintext this feature removes would simply move one filename over.
+        var backupText = File.ReadAllText(backup);
+        backupText.Should().NotContain(Token, "the backup must not be a plaintext copy of the credentials");
+        backupText.Should().Contain(SecretProtector.Prefix);
+    }
+
+    [Fact]
+    public async Task TheBanner_Warns_WhenCredentialsSitInTheClear()
+    {
+        await Store().SaveAsync([Server(Token)]);
+
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected
+            .Should().BeTrue("encryption is off and there is a token in the file to protect");
+    }
+
+    [Fact]
+    public async Task TheBanner_StaysQuiet_WhenThereIsNoCredentialToProtect()
+    {
+        await File.WriteAllTextAsync(_configPath, new JsonObject { ["Profiles"] = new JsonArray() }.ToJsonString());
+
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected
+            .Should().BeFalse("a config with no credential in it has nothing to warn about");
+    }
+
+    [Fact]
+    public async Task TheBanner_StaysQuiet_OnceEncryptionIsOn()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().EnableAsync(Password);
+
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected
+            .Should().BeFalse("the credentials are encrypted, so there is nothing left to warn about");
+    }
+
+    [Fact]
+    public async Task DismissingTheWarning_Silences_ItAndSurvivesARestart()
+    {
+        await Store().SaveAsync([Server(Token)]);
+
+        await Service().DismissUnprotectedWarningAsync();
+
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("the operator said not this set");
+
+        // A fresh process reads the dismissal back rather than nagging again — it is persisted, not per-session.
+        var restarted = new SecretProtectionService(_configPath, new SecretKeyHolder());
+        (await restarted.GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("the dismissal outlives the run that made it");
+    }
+
+    [Fact]
+    public async Task RotatingACredential_OnAFieldThatWasAlreadyThere_DoesNotBringTheWarningBack()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().DismissUnprotectedWarningAsync();
+
+        // Same field, new value: a key rotation. The dismissal is bound to which fields hold a credential, not to
+        // what is in them, so this must not un-dismiss.
+        await Store().SaveAsync([Server("a-rotated-token")]);
+
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected
+            .Should().BeFalse("a rotated value on an existing field is not a new credential");
+    }
+
+    [Fact]
+    public async Task AddingANewCredential_AtANewPath_BringsTheWarningBack()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().DismissUnprotectedWarningAsync();
+
+        // A second server is a new credential field — a new path — so the set changes and the banner returns.
+        await Store().SaveAsync([Server(Token), Server("a-second-token")]);
+
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected
+            .Should().BeTrue("a brand-new credential is exactly when the operator should be reminded again");
+    }
+
+    [Fact]
+    public async Task TurningEncryptionOff_BringsTheWarningBackAtOnce()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        var service = Service();
+        await service.EnableAsync(Password);
+
+        // Dismissal from before encryption must not carry over: Disable puts every credential back in the clear, so
+        // the banner should return immediately (Raymond, 2026-07-19).
+        await service.DisableAsync();
+
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected
+            .Should().BeTrue("a deliberate Disable exposes the credentials again, so the warning returns");
+    }
+
+    [Fact]
+    public async Task TheDismissalRecord_CarriesFieldPaths_NotCredentialValues()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().DismissUnprotectedWarningAsync();
+
+        // The token itself is still in the file — encryption is off, that is what the banner was about — but the
+        // dismissal we just wrote records only the field paths, so it must not carry the credential's value.
+        var dismissedPaths = JsonNode.Parse(RawConfig())!["SecurityNotice"]!["DismissedPaths"]!.AsArray()
+            .Select(node => node!.GetValue<string>()).ToList();
+        dismissedPaths.Should().ContainSingle().Which.Should().Be("McpServers[0].ApiKey", "the field location is what is stored");
+        dismissedPaths.Should().NotContain(path => path.Contains(Token), "a field path is not the credential value");
+    }
+
+    [Fact]
+    public async Task ChangingThePassword_DoesNotDeadlockOnTheSharedWriteGate()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        var service = Service();
+        await service.EnableAsync(Password);
+
+        const string newPassword = "a-different-good-passphrase";
+
+        // The gate is non-reentrant, and ChangePassword re-enters through Disable then Enable: if it took the gate
+        // itself it would deadlock until the 10s timeout. The WaitAsync turns that hang into a failing test.
+        await service.ChangePasswordAsync(Password, newPassword).WaitAsync(TimeSpan.FromSeconds(20));
+
+        var reopened = new SecretKeyHolder();
+        (await new SecretProtectionService(_configPath, reopened).UnlockAsync(newPassword)).Should().BeTrue();
+        (await new McpServerStore(_configPath, reopened).LoadAsync()).Single().ApiKey.Should().Be(Token);
+    }
+
+    [Fact]
+    public async Task Enabling_ScrubsThePlaintextOutOfADamagedSidecar()
+    {
+        await Store().SaveAsync([Server(Token)]);
+
+        // A quarantined copy an earlier recovery left behind (CockpitConfigFileAccess writes these) — plaintext,
+        // and holding the same token as the live config. Decision #4: Enable has to close it too.
+        var damaged = $"{_configPath}.damaged-20260719-101500";
+        await File.WriteAllTextAsync(damaged, new JsonObject { ["token"] = Token }.ToJsonString());
+
+        await Service().EnableAsync(Password);
+
+        (!File.Exists(damaged) || !File.ReadAllText(damaged).Contains(Token))
+            .Should().BeTrue("a plaintext .damaged-* copy is re-encrypted or removed, never left with a readable token");
+    }
+
+    [Fact]
+    public async Task ChangingThePassword_NeverWritesPlaintextToThePrimaryFile()
+    {
+        await Store().SaveAsync([Server(Token)]);
+
+        // Every protect/unprotect during the rotation peeks at the live file: if the rotation ever wrote the
+        // decrypted document to cockpit.json — the old Disable-then-Enable window (review #1) — this catches the
+        // token sitting there mid-flight.
+        var observing = false;
+        var service = new SecretProtectionService(_configPath, _keyHolder, key => new ObservingProtector(
+            new SecretProtector(key),
+            () =>
+            {
+                if (observing)
+                {
+                    File.ReadAllText(_configPath).Should().NotContain(Token, "the primary file must never be readable during a rotation");
+                }
+            }));
+
+        await service.EnableAsync(Password);
+
+        observing = true;
+        await service.ChangePasswordAsync(Password, "a-new-good-passphrase").WaitAsync(TimeSpan.FromSeconds(20));
+        observing = false;
+
+        var reopened = new SecretKeyHolder();
+        (await new SecretProtectionService(_configPath, reopened).UnlockAsync("a-new-good-passphrase")).Should().BeTrue();
+        (await new McpServerStore(_configPath, reopened).LoadAsync()).Single().ApiKey.Should().Be(Token);
+    }
+
+    [Fact]
+    public async Task Enabling_AbortsAndLeavesTheFileByteIdentical_WhenAValueWillNotRoundTrip()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        var before = RawConfig();
+
+        // A protector whose ciphertext does not decrypt back: verify-before-publish must catch it and abort before
+        // the atomic swap, leaving the plaintext config exactly as it was (review #2).
+        var service = new SecretProtectionService(_configPath, _keyHolder, _ => new BrokenRoundTripProtector());
+
+        await Assert.ThrowsAsync<SecretProtectionException>(() => service.EnableAsync(Password));
+
+        RawConfig().Should().Be(before, "a migration that cannot verify itself must not touch the file");
+        RawConfig().Should().NotContain("Security", "no Security section is published when the migration aborts");
+        _keyHolder.Protector.Should().BeNull("a failed enable leaves the app locked");
+    }
+
+    [Fact]
+    public async Task AnAbortedMigration_LeavesThePlaintextIntact_AndTheBannerReturns()
+    {
+        await Store().SaveAsync([Server(Token)]);
+
+        var service = new SecretProtectionService(_configPath, _keyHolder, _ => new BrokenRoundTripProtector());
+        await Assert.ThrowsAnyAsync<SecretProtectionException>(() => service.EnableAsync(Password));
+
+        RawConfig().Should().Contain(Token, "the credential is still there, in the clear, exactly as before (review #6)");
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeTrue("nothing was encrypted, so the banner is due again");
+    }
+
+    [Fact]
+    public async Task AMigration_RacingAConcurrentStoreSave_LeavesEverythingEncrypted_WithNoSectionLost()
+    {
+        await Store().SaveAsync([Server(Token)]);
+
+        // The migration and an ordinary store save hit the same file at once. They take the same write gate, so one
+        // fully completes before the other starts — the result is never half-plaintext/half-ciphertext, and no
+        // section is lost (review #3).
+        var enable = Service().EnableAsync(Password);
+        var save = Store().SaveAsync([Server(Token), Server("a-second-token")]);
+        await Task.WhenAll(enable, save);
+
+        RawConfig().Should().NotContain(Token);
+        RawConfig().Should().NotContain("a-second-token");
+        RawConfig().Should().Contain("Security");
+        RawConfig().Should().Contain(SecretProtector.Prefix);
+
+        var reopened = new SecretKeyHolder();
+        (await new SecretProtectionService(_configPath, reopened).UnlockAsync(Password)).Should().BeTrue();
+        (await new McpServerStore(_configPath, reopened).LoadAsync()).Should().HaveCount(2, "both servers survive; no section was lost");
+    }
+
+    [Fact]
+    public async Task Unlocking_ReEncryptsAPlaintextBackup_LeftBesideAnEncryptedConfig()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().EnableAsync(Password);
+
+        // A plaintext .bak reappears (a crash between Save and scrub). A fresh start unlocks, and the sweep closes
+        // it (review #4).
+        await File.WriteAllTextAsync(
+            _configPath + ".bak",
+            new JsonObject { ["McpServers"] = new JsonArray(new JsonObject { ["ApiKey"] = Token }) }.ToJsonString());
+
+        var restarted = new SecretKeyHolder();
+        (await new SecretProtectionService(_configPath, restarted).UnlockAsync(Password)).Should().BeTrue();
+
+        var backup = File.ReadAllText(_configPath + ".bak");
+        backup.Should().NotContain(Token, "the plaintext backup is re-encrypted on unlock");
+        backup.Should().Contain(SecretProtector.Prefix);
+    }
+
+    [Fact]
+    public async Task SavingACredential_RaisesTheAwarenessSignalOnlyWhenItIsAnAtRestExposure()
+    {
+        var holder = new SecretKeyHolder();
+        var fires = 0;
+        holder.UnprotectedSecretsWritten += (_, _) => fires++;
+        var store = new McpServerStore(_configPath, holder);
+
+        // (a) a credential written in the clear → the banner is nudged (review #5).
+        await store.SaveAsync([Server(Token)]);
+        fires.Should().Be(1, "a credential was written with encryption off");
+
+        // (b) a save with no credential in it → no nudge.
+        await store.SaveAsync([ServerWithoutKey()]);
+        fires.Should().Be(1, "a secret-free save has nothing to warn about");
+
+        // (c) a save while unlocked (protector present, ciphertext on disk) → no nudge.
+        holder.Unlock(new SecretProtector(SecretKey.Derive(Password, SecretKey.NewSalt(), iterations: 1000)));
+        await store.SaveAsync([Server("another-token")]);
+        fires.Should().Be(1, "an encrypted save is not an at-rest exposure");
+    }
+
+    [Fact]
+    public async Task RemovingACredential_DoesNotReNag_ButAddingANewPathDoes()
+    {
+        // Two named credential fields, so a removal and an addition are each an unambiguous change to the path set.
+        await WriteRawSecretsAsync(("token", Token), ("secret", "a-second-credential"));
+        await Service().DismissUnprotectedWarningAsync();
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("just dismissed");
+
+        // Remove one of the two dismissed fields: the remaining set is still a subset of what was dismissed.
+        await WriteRawSecretsAsync(("token", Token));
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeFalse("a removal is not a new credential (review #7)");
+
+        // Add a genuinely new field path → the banner returns.
+        await WriteRawSecretsAsync(("token", Token), ("password", "a-third-credential"));
+        (await Service().GetStatusAsync()).ShouldWarnUnprotected.Should().BeTrue("a new credential path re-nags");
+    }
+
+    [Fact]
+    public async Task StartupHousekeeping_RemovesAPlaintextBackup_WhenTheConfigIsEncrypted()
+    {
+        await Store().SaveAsync([Server(Token)]);
+        await Service().EnableAsync(Password);
+
+        // A plaintext .bak reappears (a crash, or an abandoned unlock that never re-encrypted). Startup runs before
+        // any unlock — no key — but must still get the plaintext copy off disk (review #8).
+        var backup = _configPath + ".bak";
+        await File.WriteAllTextAsync(
+            backup,
+            new JsonObject { ["McpServers"] = new JsonArray(new JsonObject { ["ApiKey"] = Token }) }.ToJsonString());
+
+        CredentialFileHousekeeping.RemoveEncryptedConfigPlaintextSidecars(_configPath);
+
+        File.Exists(backup).Should().BeFalse("an encrypted config makes a plaintext backup pure exposure, so it is removed");
+    }
+
+    private async Task WriteRawSecretsAsync(params (string Key, string Value)[] fields)
+    {
+        var document = new JsonObject();
+
+        // Carry the dismissal across, the way a real typed store save round-trips the SecurityNotice section rather
+        // than clobbering it — otherwise "remove a field" would also wipe the dismissal and re-nag for that reason.
+        if ((File.Exists(_configPath) ? JsonNode.Parse(File.ReadAllText(_configPath)) : null) is JsonObject existing
+            && existing["SecurityNotice"] is { } notice)
+        {
+            document["SecurityNotice"] = notice.DeepClone();
+        }
+
+        foreach (var (key, value) in fields)
+        {
+            document[key] = value;
+        }
+
+        await File.WriteAllTextAsync(_configPath, document.ToJsonString());
+    }
+
+    private static McpServerConfig ServerWithoutKey() => new()
+    {
+        Name = "OpenServer",
+        Transport = McpTransport.Http,
+        Url = "https://open.invalid",
+        Auth = McpServerAuth.None,
+    };
+
+    /// <summary>Wraps a real protector and fires a callback on every operation — the test's window onto what the
+    /// primary file looks like mid-migration.</summary>
+    private sealed class ObservingProtector(ISecretProtector inner, Action onOperate) : ISecretProtector
+    {
+        public string Protect(string path, string value)
+        {
+            onOperate();
+
+            return inner.Protect(path, value);
+        }
+
+        public string Unprotect(string path, string value)
+        {
+            onOperate();
+
+            return inner.Unprotect(path, value);
+        }
+    }
+
+    /// <summary>Produces something that looks encrypted but does not decrypt back — the only way to exercise the
+    /// verify-before-publish abort, since the real AES-GCM protector always round-trips.</summary>
+    private sealed class BrokenRoundTripProtector : ISecretProtector
+    {
+        public string Protect(string path, string value) => SecretProtector.Prefix + value;
+
+        public string Unprotect(string path, string value) => "not-what-went-in";
     }
 
     public void Dispose()

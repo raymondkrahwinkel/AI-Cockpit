@@ -66,6 +66,8 @@ public class SecurityOptionsViewTests
         public Task<Core.Abstractions.Secrets.SecretProtectionStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new Core.Abstractions.Secrets.SecretProtectionStatus(Enabled: true, Unlocked: false));
 
+        public Task DismissUnprotectedWarningAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
         public Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default) => Task.FromResult(false);
 
         public Task EnableAsync(string password, IProgress<Core.Abstractions.Secrets.SecretMigrationProgress>? progress = null, CancellationToken cancellationToken = default) =>

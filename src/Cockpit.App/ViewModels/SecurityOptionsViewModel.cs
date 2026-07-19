@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Secrets;
 
@@ -30,9 +31,31 @@ public sealed partial class SecurityOptionsViewModel(ISecretProtectionService pr
     [ObservableProperty]
     private string? _status;
 
+    /// <summary>
+    /// Whether the app-level awareness banner (AC-41) should show: encryption is off and the settings hold at
+    /// least one credential in the clear that the operator has not dismissed the warning for. Bound by
+    /// <c>CockpitView.axaml</c>'s banner, and re-read on every <see cref="RefreshAsync"/> — startup, a save that
+    /// wrote a new credential, and after either migration — so a single property is the whole of its visibility.
+    /// </summary>
+    [ObservableProperty]
+    private bool _showUnprotectedBanner;
+
     public async Task RefreshAsync()
     {
-        IsEncrypted = (await protection.GetStatusAsync().ConfigureAwait(true)).Enabled;
+        var status = await protection.GetStatusAsync().ConfigureAwait(true);
+        IsEncrypted = status.Enabled;
+        ShowUnprotectedBanner = status.ShouldWarnUnprotected;
+    }
+
+    /// <summary>
+    /// Dismisses the awareness banner for the credentials now in the file (AC-41). Hides it at once, then persists
+    /// the dismissal so it stays hidden across restarts — until a new credential changes the set and brings it back.
+    /// </summary>
+    [RelayCommand]
+    private async Task DismissBannerAsync()
+    {
+        ShowUnprotectedBanner = false;
+        await protection.DismissUnprotectedWarningAsync().ConfigureAwait(true);
     }
 
     public async Task EnableAsync(string password)

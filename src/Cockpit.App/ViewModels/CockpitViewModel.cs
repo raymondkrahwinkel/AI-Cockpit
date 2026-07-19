@@ -33,6 +33,7 @@ using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Rendering;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Rendering;
+using Cockpit.Core.Secrets;
 using Cockpit.Core.Workspaces;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.Plugins;
@@ -81,6 +82,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IAppRestartService? _appRestart;
     private readonly IUpdateService? _updates;
     private readonly IUpdateSettingsStore? _updateSettingsStore;
+    // The process-wide key holder, listened to so the awareness banner (AC-41) reappears the moment a save writes
+    // a new credential in the clear. A static singleton, so the subscription is unwired in DisposeAsync — a view
+    // model that outlived its window would otherwise be kept alive by it, and refresh a dead Security tab. The
+    // design-time constructor leaves it at this default and never subscribes (nothing writes there); the real one
+    // reassigns it to the injected holder and wires the event.
+    private readonly ISecretKeyHolder _secretKeyHolder = SecretKeyHolder.Shared;
     private ShortcutSettings _shortcutSettings = ShortcutSettings.Default;
     private readonly ITranscriptDisplaySettingsStore? _transcriptDisplaySettingsStore;
     private readonly ISessionBehaviorSettingsStore? _sessionBehaviorSettingsStore;
@@ -1881,6 +1888,34 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The Security tab: encrypting the credentials in cockpit.json at rest, and the migration either way.</summary>
     public SecurityOptionsViewModel Security { get; }
 
+    // A save wrote a credential in the clear (AC-41). Re-read the banner state on the UI thread — the event comes
+    // off whatever thread the save ran on, and the Security VM's properties feed a binding.
+    private void OnUnprotectedSecretsWritten(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(() => _ = Security.RefreshAsync());
+
+    /// <summary>
+    /// Turns encryption on from the awareness banner (AC-41) and says how it went with a toast. The banner's
+    /// "Enable now" opens the password dialog in the view and hands the password here, so a success or a failure
+    /// is reported the same way however the migration was started. On failure the credentials are untouched — the
+    /// migration verifies itself before it publishes anything — so the message says exactly that.
+    /// </summary>
+    public async Task EnableEncryptionFromBannerAsync(string password)
+    {
+        try
+        {
+            await Security.EnableAsync(password);
+            ToastHost.Add("Your credentials are encrypted now.", ToastSeverity.Success, null, null);
+        }
+        catch (Exception)
+        {
+            ToastHost.Add(
+                "Encryption could not be turned on. Your credentials are unchanged.",
+                ToastSeverity.Error,
+                null,
+                null);
+        }
+    }
+
     /// <summary>The Debug tab's diagnostics panel (AC-58): render backend, memory, GC, platform and crash logs, as copyable text.</summary>
     public DiagnosticsViewModel Diagnostics { get; }
 
@@ -1928,7 +1963,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptCleanupService? cleanupService = null,
         ILocalLlmEndpointResolver? localLlmEndpointResolver = null,
-        IAudioCaptureService? audioCapture = null)
+        IAudioCaptureService? audioCapture = null,
+        ISecretKeyHolder? secretKeyHolder = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1943,6 +1979,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
         Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets());
         _ = Security.RefreshAsync();
+
+        // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
+        // MCP server, a provider key, a plugin's token — not just when the Security tab is opened. The write seam
+        // raises this from whatever thread did the save, so the refresh is marshalled back to the UI thread.
+        _secretKeyHolder = secretKeyHolder ?? SecretKeyHolder.Shared;
+        _secretKeyHolder.UnprotectedSecretsWritten += OnUnprotectedSecretsWritten;
 
         // The Debug tab's diagnostics panel (AC-58). Absent in the design-time/unit-test graph, where the collector
         // is not registered; the panel then reports it is unavailable rather than the dialog failing to open.
@@ -4176,6 +4218,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // The key holder is a process-wide singleton, so leaving this wired would keep the whole view model alive
+        // past its window (AC-41).
+        _secretKeyHolder.UnprotectedSecretsWritten -= OnUnprotectedSecretsWritten;
+
         foreach (var session in Sessions.ToList())
         {
             session.PropertyChanged -= OnSessionPropertyChanged;

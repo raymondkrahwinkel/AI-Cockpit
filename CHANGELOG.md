@@ -30,6 +30,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: an awareness banner for unencrypted credentials. When your API keys and tokens are stored in
+  the clear, a dismissible amber bar under the title bar offers to turn on encryption in one click
+  (the same password flow as Options → Security). Dismissing it hides it until you add a new
+  credential; turning encryption off brings it straight back. Turning it on now also scrubs the
+  plaintext out of the backup and any recovery copies it leaves behind, so the credentials are not
+  left readable next door (AC-41).
 - added: a project changelog. Every finished work item is recorded here, and each release turns the
   `[Unreleased]` section into that version's GitHub release notes, so it is clear from one release to
   the next what changed (AC-73 follow-up).

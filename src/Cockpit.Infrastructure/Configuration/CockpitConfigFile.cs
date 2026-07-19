@@ -28,6 +28,15 @@ internal sealed class CockpitConfigFile
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SecretProtectionEntry? Security { get; set; }
 
+    /// <summary>
+    /// What the operator has been warned about and dismissed (AC-41) — currently the awareness banner's
+    /// per-credential-set fingerprint. Owned by <see cref="SecretProtectionService"/>, but declared here so a
+    /// typed store write round-trips it rather than dropping it. Absent until the banner is first dismissed, and
+    /// deliberately readable while encryption is off — that is when the banner it silences is shown.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SecurityNoticeEntry? SecurityNotice { get; set; }
+
     public List<SessionProfileEntry> Profiles { get; set; } = [];
 
     public NotificationSettingsEntry? Notifications { get; set; }

@@ -3,7 +3,12 @@ namespace Cockpit.Core.Abstractions.Secrets;
 /// <summary>What the cockpit knows about its own credential protection before anything is unlocked.</summary>
 /// <param name="Enabled">Whether the operator turned encryption on.</param>
 /// <param name="Unlocked">Whether the key for this session has been derived, so the settings can be read.</param>
-public readonly record struct SecretProtectionStatus(bool Enabled, bool Unlocked);
+/// <param name="ShouldWarnUnprotected">
+/// Whether the awareness banner (AC-41) should show: encryption is off, the settings hold at least one credential
+/// in the clear, and the operator has not dismissed the warning for this exact set of credential fields. Defaults
+/// off, so a status built without it (a test, a design-time stand-in) simply does not nag.
+/// </param>
+public readonly record struct SecretProtectionStatus(bool Enabled, bool Unlocked, bool ShouldWarnUnprotected = false);
 
 /// <summary>How far a migration has come, so the operator watches it happen instead of watching nothing happen.</summary>
 /// <param name="Completed">Fields converted so far.</param>
@@ -20,6 +25,14 @@ public readonly record struct SecretMigrationProgress(int Completed, int Total);
 public interface ISecretProtectionService
 {
     Task<SecretProtectionStatus> GetStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Remembers that the operator dismissed the awareness banner (AC-41) for the credentials now in the file, so
+    /// it does not nag again until a new credential is added. Bound to a fingerprint of the credential field paths
+    /// — not their values — so rotating a key on an existing field does not bring the banner back, but adding a
+    /// new one does. A no-op once encryption is on, since there is then nothing to warn about.
+    /// </summary>
+    Task DismissUnprotectedWarningAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Derives the key from <paramref name="password"/> and, if it is the right one, unlocks the settings for this run. False means: wrong password.</summary>
     Task<bool> UnlockAsync(string password, CancellationToken cancellationToken = default);
