@@ -9,6 +9,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
 using Cockpit.Infrastructure.Mcp;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -86,7 +87,11 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // Wrap the chat client in the agentic function-invocation loop; each MCP tool is gated so a tool
         // call is executed only after the operator approves it (the gate is this driver).
         _agent = new ChatClientBuilder(_chatClientFactory.Create(config)).UseFunctionInvocation().Build();
-        _toolSession = await _mcpToolProvider.ConnectAsync(enabledMcpServerNames, cancellationToken).ConfigureAwait(false);
+        // AC-89: pass this session's pane id (the App sets it as the cockpit.pane-id launch option) so the tool loop
+        // connects to the cockpit endpoints on a per-session token — the consent broker then scopes on this pane, not
+        // the id the local model declares.
+        var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
+        _toolSession = await _mcpToolProvider.ConnectAsync(enabledMcpServerNames, paneId, cancellationToken).ConfigureAwait(false);
         _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
         Capabilities = Capabilities with { SupportsTools = _gatedTools.Count > 0 };
 
