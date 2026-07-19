@@ -30,6 +30,13 @@ internal static class CockpitConfigPath
     /// <summary>The plugins root — a <c>plugins/</c> folder next to <c>cockpit.json</c>, stable across app updates. Each plugin lives in its own subfolder here.</summary>
     public static string PluginsRoot => Path.Combine(Root, "plugins");
 
+    /// <summary>
+    /// Where session-isolation worktrees live (AC-85): a <c>worktrees/</c> folder next to <c>cockpit.json</c>,
+    /// grouped per repository. Under the app state root, so a development build keeps its own (<see cref="CockpitBuild"/>)
+    /// and a worktree is never checked out inside the repository being worked on.
+    /// </summary>
+    public static string WorktreesRoot => Path.Combine(Root, "worktrees");
+
     /// <summary>Creates <paramref name="directory"/> if needed and restricts it to its owner. Idempotent.</summary>
     public static void EnsurePrivateDirectory(string directory)
     {
