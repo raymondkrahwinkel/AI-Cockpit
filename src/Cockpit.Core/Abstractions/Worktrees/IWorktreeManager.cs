@@ -34,6 +34,13 @@ public interface IWorktreeManager
     Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The live state of every registered worktree for the management panel (AC-85): each registry record plus what
+    /// git reports about it now — folder-exists, uncommitted-changes, commits-ahead — so the panel shows clean vs.
+    /// dirty and a destructive remove can be gated behind consent rather than losing work silently.
+    /// </summary>
+    Task<IReadOnlyList<WorktreeStatus>> GetStatusesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Whether the worktree has neither uncommitted changes nor commits ahead of the base it was branched from —
     /// the test teardown uses to decide a worktree is removable rather than work to keep (cleanup-policy A).
     /// </summary>

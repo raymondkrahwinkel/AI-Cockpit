@@ -105,6 +105,45 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
     public Task<IReadOnlyList<WorktreeRecord>> ListAsync(CancellationToken cancellationToken = default) =>
         _registry.ListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<WorktreeStatus>> GetStatusesAsync(CancellationToken cancellationToken = default)
+    {
+        var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
+        var statuses = new List<WorktreeStatus>(records.Count);
+        foreach (var record in records)
+        {
+            statuses.Add(await _StatusOfAsync(record, cancellationToken).ConfigureAwait(false));
+        }
+
+        return statuses;
+    }
+
+    private static async Task<WorktreeStatus> _StatusOfAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(record.Path))
+        {
+            return new WorktreeStatus(record, Exists: false, HasUncommittedChanges: false, CommitsAhead: 0);
+        }
+
+        try
+        {
+            var status = await GitCli.RunCheckedAsync(record.Path, ["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
+            var aheadRaw = await GitCli.RunCheckedAsync(record.Path, ["rev-list", "--count", $"{record.BaseCommit}..HEAD"], cancellationToken).ConfigureAwait(false);
+
+            return new WorktreeStatus(
+                record,
+                Exists: true,
+                HasUncommittedChanges: status.Length > 0,
+                CommitsAhead: int.TryParse(aheadRaw, out var ahead) ? ahead : 0);
+        }
+        catch (Exception)
+        {
+            // The folder is there but git cannot read it (corrupt, mid-delete). Report it as holding changes: a
+            // status we cannot confirm is treated as not-clean, so the panel never invites a remove that might lose
+            // work it could not see.
+            return new WorktreeStatus(record, Exists: true, HasUncommittedChanges: true, CommitsAhead: 0);
+        }
+    }
+
     public async Task<bool> IsCleanAsync(WorktreeRecord record, CancellationToken cancellationToken = default)
     {
         var status = await GitCli.RunCheckedAsync(record.Path, ["status", "--porcelain"], cancellationToken).ConfigureAwait(false);

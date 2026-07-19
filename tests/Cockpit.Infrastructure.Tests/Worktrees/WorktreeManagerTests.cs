@@ -234,6 +234,25 @@ public sealed class WorktreeManagerTests : IDisposable
         (await _manager.ListAsync()).Should().ContainSingle().Which.SessionId.Should().Be(live.SessionId);
     }
 
+    [Fact]
+    public async Task GetStatusesAsync_ReportsClean_ThenDirty_ThenAheadOfBase()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        (await _manager.GetStatusesAsync()).Should().ContainSingle().Which.IsClean.Should().BeTrue();
+
+        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
+        var dirty = (await _manager.GetStatusesAsync()).Single();
+        dirty.HasUncommittedChanges.Should().BeTrue();
+        dirty.IsClean.Should().BeFalse();
+
+        _Git(record.Path, "add", "-A");
+        _Git(record.Path, "commit", "-m", "work");
+        var ahead = (await _manager.GetStatusesAsync()).Single();
+        ahead.CommitsAhead.Should().Be(1);
+        ahead.IsClean.Should().BeFalse();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempRoot))
