@@ -82,6 +82,10 @@ internal sealed class SessionRuntime : ISessionRuntime
         Profile = profile;
         _lifetime = new CancellationTokenSource();
 
+        // Worktree isolation is resolved by the cockpit before the session starts (AC-85), keyed on the pane the
+        // session runs in, so the runtime just launches the driver in whatever working directory it is handed —
+        // whether that is the folder as given or the isolated worktree the cockpit already created for it.
+
         // Picking the driver is deferred to here rather than to the constructor: it depends on the profile's
         // provider, and a profile pointing at a missing plugin provider throws — which the caller wants to see
         // as a failed start, not as a failed construction.

@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Worktrees;
 using FluentAssertions;
+using NSubstitute;
 
 namespace Cockpit.Infrastructure.Tests.Worktrees;
 
@@ -191,6 +194,102 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(first.Path, "commit", "-m", "first-only work");
 
         File.Exists(Path.Combine(second.Path, "only-in-first.txt")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_CleanWorktree_RemovesItAndDeletesItsBranch()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        Directory.Exists(record.Path).Should().BeFalse();
+        (await _manager.ListAsync()).Should().BeEmpty();
+        // Unlike a bare RemoveAsync, teardown of a clean worktree also deletes its (work-free) branch.
+        _Git(_repo, "branch", "--list", "wt").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WorktreeWithUncommittedWork_KeepsItAndMarksItRetained()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        File.WriteAllText(Path.Combine(record.Path, "work.txt"), "unfinished\n");
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        Directory.Exists(record.Path).Should().BeTrue();
+        var retained = (await _manager.ListAsync()).Should().ContainSingle().Subject;
+        retained.IsRetained.Should().BeTrue();
+        retained.Path.Should().Be(record.Path);
+        _Git(_repo, "branch", "--list", "wt").Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task ReconcileAsync_RemovesAnOrphanedCleanWorktree_ButKeepsALiveOne()
+    {
+        var orphan = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/orphan", _repo);
+        var live = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/live", _repo);
+
+        await _manager.ReconcileAsync([live.SessionId]);
+
+        Directory.Exists(orphan.Path).Should().BeFalse();
+        Directory.Exists(live.Path).Should().BeTrue();
+        (await _manager.ListAsync()).Should().ContainSingle().Which.SessionId.Should().Be(live.SessionId);
+    }
+
+    [Fact]
+    public async Task GetStatusesAsync_ReportsClean_ThenDirty_ThenAheadOfBase()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        (await _manager.GetStatusesAsync()).Should().ContainSingle().Which.IsClean.Should().BeTrue();
+
+        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
+        var dirty = (await _manager.GetStatusesAsync()).Single();
+        dirty.HasUncommittedChanges.Should().BeTrue();
+        dirty.IsClean.Should().BeFalse();
+
+        _Git(record.Path, "add", "-A");
+        _Git(record.Path, "commit", "-m", "work");
+        var ahead = (await _manager.GetStatusesAsync()).Single();
+        ahead.CommitsAhead.Should().Be(1);
+        ahead.IsClean.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReattachAsync_ReassignsTheWorktreeToANewSession()
+    {
+        var record = await _manager.CreateAsync(Guid.NewGuid().ToString("n"), "cockpit/orphan", _repo);
+        var newSession = Guid.NewGuid().ToString("n");
+
+        var reattached = await _manager.ReattachAsync(record.Path, newSession);
+
+        reattached.Should().NotBeNull();
+        reattached!.SessionId.Should().Be(newSession);
+        reattached.IsRetained.Should().BeFalse();
+        (await _manager.ListAsync()).Should().ContainSingle().Which.SessionId.Should().Be(newSession);
+    }
+
+    [Fact]
+    public async Task ReattachAsync_UnknownPath_ReturnsNull()
+    {
+        var reattached = await _manager.ReattachAsync(Path.Combine(_tempRoot, "nope"), Guid.NewGuid().ToString("n"));
+
+        reattached.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateAsync_PlacesTheWorktreeUnderTheConfiguredRootOverride()
+    {
+        var customRoot = Path.Combine(_tempRoot, "custom-worktree-root");
+        var settings = Substitute.For<IWorktreeSettingsStore>();
+        settings.LoadAsync(Arg.Any<CancellationToken>()).Returns(new WorktreeSettings { Root = customRoot });
+        var manager = new WorktreeManager(new WorktreeRegistryStore(Path.Combine(_tempRoot, "override.json")), settings);
+
+        var record = await manager.CreateAsync(_sessionId, "wt", _repo);
+
+        record.Path.Should().StartWith(Path.GetFullPath(customRoot));
+        Directory.Exists(record.Path).Should().BeTrue();
     }
 
     public void Dispose()

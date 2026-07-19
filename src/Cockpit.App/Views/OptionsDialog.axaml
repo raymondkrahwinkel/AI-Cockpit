@@ -127,6 +127,16 @@
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
+                            <!-- Worktree isolation location (AC-85): where new isolated-session worktrees are created. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Worktree location" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Where the cockpit creates the git worktrees that isolate sessions (AC-85). Blank uses the default under the app's config directory; existing worktrees keep their location."/>
+                            </StackPanel>
+                            <TextBox Text="{Binding WorktreeRoot}" PlaceholderText="{Binding WorktreeRootPlaceholder}"/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Layout" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"

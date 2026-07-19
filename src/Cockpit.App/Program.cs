@@ -8,6 +8,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure;
 using Cockpit.Infrastructure.Configuration;
@@ -183,6 +184,13 @@ sealed class Program
         // ServiceProvider rather than a generic Host, so drive the hosted-service lifecycle here.
         var hostedServices = Services.GetServices<IHostedService>().ToArray();
         StartHostedServices(hostedServices);
+
+        // Reconcile the worktree registry against a fresh start (AC-85): no session is alive yet, so any worktree a
+        // previous run left is orphaned — a clean one is removed with its branch, one that holds work is kept and
+        // marked retained, and git's stale admin entries are pruned. Fire-and-forget so it never delays the window;
+        // it is the background net for a crash or a hard exit that missed a session's own teardown.
+        _ = Services.GetRequiredService<IWorktreeManager>().ReconcileAsync([]);
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

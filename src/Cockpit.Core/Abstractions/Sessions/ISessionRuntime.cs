@@ -69,6 +69,8 @@ public interface ISessionRuntime : IAsyncDisposable
     /// <summary>
     /// Creates the driver for <paramref name="profile"/>'s provider, starts it, and begins pumping its events.
     /// Throws if the driver cannot be created or started — the caller decides how to surface that.
+    /// Worktree isolation (AC-85) is resolved by the cockpit before start and handed in through
+    /// <paramref name="workingDirectory"/>, so the runtime launches in whatever directory it is given.
     /// </summary>
     Task StartAsync(
         SessionProfile? profile,

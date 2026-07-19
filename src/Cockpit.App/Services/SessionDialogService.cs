@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.WorkingPaths;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 
@@ -35,6 +36,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly DelegatedTasksViewModel _delegatedTasks;
     private readonly ITtySessionProviderResolver _ttyProviderResolver;
     private readonly IPluginTtyProviderRegistry _ttyProviderRegistry;
+    private readonly IWorktreeManager _worktreeManager;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -48,7 +50,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IConversationPickerRegistry conversationPickers,
         DelegatedTasksViewModel delegatedTasks,
         ITtySessionProviderResolver ttyProviderResolver,
-        IPluginTtyProviderRegistry ttyProviderRegistry)
+        IPluginTtyProviderRegistry ttyProviderRegistry,
+        IWorktreeManager worktreeManager)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -62,9 +65,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
+        _worktreeManager = worktreeManager;
     }
 
-    public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
+    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(string? initialWorkingDirectory = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -75,8 +79,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry);
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager);
         await viewModel.LoadAsync();
+
+        // Reattach (AC-85): pre-fill the folder with the existing worktree, and turn isolation on, so starting the
+        // session re-owns that worktree rather than picking a fresh folder.
+        if (!string.IsNullOrWhiteSpace(initialWorkingDirectory))
+        {
+            viewModel.WorkingDirectory = initialWorkingDirectory;
+            viewModel.IsolateInWorktree = true;
+        }
 
         var dialog = new NewSessionDialog { DataContext = viewModel };
 
@@ -272,6 +284,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         // The shared view model, so the dialog lists the same tasks the orchestrator tools act on.
         var dialog = new DelegatedTasksDialog { DataContext = _delegatedTasks };
+        await dialog.ShowDialog(owner);
+    }
+
+    public async Task ShowWorktreesDialogAsync(WorktreesViewModel worktrees)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        // The caller's shared view model, so the dialog and the status-bar counter read the same worktrees. Refreshed
+        // to the real git state (clean/dirty, owner live/gone) before it opens.
+        await worktrees.RefreshAsync();
+        var dialog = new WorktreesDialog { DataContext = worktrees };
         await dialog.ShowDialog(owner);
     }
 
