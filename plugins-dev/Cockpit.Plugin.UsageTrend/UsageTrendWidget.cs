@@ -28,8 +28,7 @@ internal sealed class UsageTrendWidget : UserControl
         _context = context;
 
         // What survived a restart, with anything past retention shed before it is ever charted.
-        var stored = _context.Storage.Get<List<UsageTrendSample>>(HistoryKey) ?? [];
-        _history = UsageTrendHistory.Prune(stored, DateTimeOffset.UtcNow);
+        _history = _LoadHistory();
 
         Content = _BuildLayout();
         _Render();
@@ -80,9 +79,26 @@ internal sealed class UsageTrendWidget : UserControl
     {
         // A refresh re-reads the store (another instance of this widget may have appended) and redraws; it never
         // samples, so ↻ cannot forge a data point.
-        var stored = _context.Storage.Get<List<UsageTrendSample>>(HistoryKey) ?? [];
-        _history = UsageTrendHistory.Prune(stored, DateTimeOffset.UtcNow);
+        _history = _LoadHistory();
         _Render();
+    }
+
+    // Reads the stored history, defensively. Storage.Get deserializes the raw cockpit.json blob, and a hand-edited or
+    // otherwise corrupt one (malformed JSON, or an array with a null element) would throw — out of the widget's
+    // construction, which WorkspacesViewModel does while rebuilding every dashboard pane, so one bad blob would cost
+    // the operator the whole workspace rather than this one pane. A store it cannot read becomes an empty history; the
+    // next sample starts a fresh, valid one. Prune already skips null elements for the same reason.
+    private IReadOnlyList<UsageTrendSample> _LoadHistory()
+    {
+        try
+        {
+            var stored = _context.Storage.Get<List<UsageTrendSample>>(HistoryKey) ?? [];
+            return UsageTrendHistory.Prune(stored, DateTimeOffset.UtcNow);
+        }
+        catch (Exception)
+        {
+            return [];
+        }
     }
 
     private void _Sample()

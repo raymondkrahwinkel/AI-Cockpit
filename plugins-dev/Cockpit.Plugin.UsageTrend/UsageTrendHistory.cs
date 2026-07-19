@@ -70,8 +70,11 @@ internal static class UsageTrendHistory
         var cutoff = now - TimeSpan.FromDays(RetentionDays);
         return
         [
+            // Drop null entries defensively: this runs over what was deserialized from storage, and a hand-edited
+            // cockpit.json can hold a JSON array with a null element — reading TimestampUtc off it would throw out of
+            // the widget's construction and take the whole dashboard workspace down, not just this pane.
             .. samples
-                .Where(sample => sample.TimestampUtc >= cutoff)
+                .Where(sample => sample is not null && sample.TimestampUtc >= cutoff)
                 .OrderBy(sample => sample.TimestampUtc),
         ];
     }

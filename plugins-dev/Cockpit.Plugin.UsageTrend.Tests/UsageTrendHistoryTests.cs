@@ -123,4 +123,16 @@ public class UsageTrendHistoryTests
         kept.Select(sample => sample.TimestampUtc).Should().BeInAscendingOrder();
         kept.Should().OnlyContain(sample => sample.TimestampUtc >= T0 - TimeSpan.FromDays(14));
     }
+
+    [Fact]
+    public void Prune_DropsNullElements_RatherThanThrowing()
+    {
+        // A hand-edited cockpit.json can hold a JSON array with a null element; deserialization then yields a list
+        // with a null in it. Prune has to skip it, not throw out of the widget's load and take the dashboard down.
+        var samples = new List<UsageTrendSample> { Sample(T0.AddMinutes(-5)), null!, Sample(T0.AddMinutes(-1)) };
+
+        var kept = UsageTrendHistory.Prune(samples, T0);
+
+        kept.Should().HaveCount(2);
+    }
 }
