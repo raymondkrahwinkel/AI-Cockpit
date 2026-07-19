@@ -8,6 +8,7 @@
         x:DataType="vm:ConfirmationDialogViewModel"
         Title="Confirm"
         Width="440" SizeToContent="Height" CanResize="False"
+        MaxHeight="560"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -26,8 +27,13 @@
 
         <StackPanel Margin="20,18" Spacing="8">
             <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"
-                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            <!-- The message can be a long git error (a failed worktree checkout dumps every file it could not
+                 create). Bounded and scrolled so it never grows the window past its owner and pushes the action
+                 buttons off-screen; short messages still size to their content. -->
+            <ScrollViewer MaxHeight="380" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </ScrollViewer>
         </StackPanel>
     </DockPanel>
 </Window>
