@@ -1099,6 +1099,21 @@
                                VerticalAlignment="Center"/>
                 </Button>
 
+                <!-- Managed worktrees (AC-85): the git worktrees the cockpit created for isolated sessions. Shown only
+                     while there are any — click to see each one's state, reattach a gone one, or clean up finished. -->
+                <Button DockPanel.Dock="Right"
+                        Classes="statusMeter"
+                        Padding="8,2"
+                        Margin="0,0,8,0"
+                        Command="{Binding ShowWorktreesCommand}"
+                        IsVisible="{Binding Worktrees.HasWorktrees}"
+                        ToolTip.Tip="Git worktrees the cockpit created for isolated sessions — click to view them, reattach a gone one, or clean up">
+                    <TextBlock Text="{Binding Worktrees.Count, StringFormat='⑂ Managed worktrees: {0}'}"
+                               FontSize="11"
+                               Foreground="{Binding Worktrees.CountBrushKey, Converter={x:Static conv:StatusBrushConverter.Instance}}"
+                               VerticalAlignment="Center"/>
+                </Button>
+
                 <!-- Plugin-registered supervised activities (AC-82): a counter per source (e.g. "Port-forwards: 2"),
                      shown only while it has activities, opening a panel with a Kill per item. -->
                 <controls:PluginStatusBarHost DockPanel.Dock="Right"

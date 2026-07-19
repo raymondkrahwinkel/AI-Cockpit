@@ -42,18 +42,31 @@
                        IsVisible="{Binding Statusline, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
         </Panel>
 
-        <!-- cwd as an icon; profile + full path on hover, freeing the path's width. -->
-        <materialIcons:MaterialIcon Grid.Column="4" Kind="FolderOutline" Width="14" Height="14"
-                                    VerticalAlignment="Center" Margin="8,0,0,0"
-                                    Foreground="{StaticResource CockpitTextFaintBrush}"
-                                    IsVisible="{Binding WorkingDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-            <ToolTip.Tip>
-                <MultiBinding StringFormat="{}{0} · {1}">
-                    <Binding Path="ActiveProfileLabel"/>
-                    <Binding Path="WorkingDirectory"/>
-                </MultiBinding>
-            </ToolTip.Tip>
-        </materialIcons:MaterialIcon>
+        <!-- cwd as an icon (profile + full path on hover, freeing the path's width), and next to it the worktree
+             branch chip (AC-85) when the session runs in an isolated worktree — both say where the session runs. -->
+        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+            <materialIcons:MaterialIcon Kind="FolderOutline" Width="14" Height="14"
+                                        VerticalAlignment="Center"
+                                        Foreground="{StaticResource CockpitTextFaintBrush}"
+                                        IsVisible="{Binding WorkingDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <ToolTip.Tip>
+                    <MultiBinding StringFormat="{}{0} · {1}">
+                        <Binding Path="ActiveProfileLabel"/>
+                        <Binding Path="WorkingDirectory"/>
+                    </MultiBinding>
+                </ToolTip.Tip>
+            </materialIcons:MaterialIcon>
+
+            <!-- Soft purple so the worktree chip reads apart from the grey kind chip and the green/yellow status
+                 colours, per the mockup. Exact shade is Raymond's to confirm (colour is not machine-verifiable). -->
+            <Border Background="#332B47" VerticalAlignment="Center"
+                    CornerRadius="4" Padding="5,1" Margin="7,0,0,0"
+                    IsVisible="{Binding WorktreeBranch, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    ToolTip.Tip="This session runs in an isolated git worktree on its own branch (AC-85)">
+                <TextBlock Text="{Binding WorktreeBranch, StringFormat='⑂ {0}'}" FontSize="10"
+                           Foreground="#BCA8E0"/>
+            </Border>
+        </StackPanel>
 
         <!-- Branch (plugin-contributed, e.g. git-status): width-capped; hidden on a plain terminal pane (AC-25),
              where a plugin session indicator has nothing to say; takes no space when none contributes. -->

@@ -30,6 +30,8 @@ using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Worktrees;
 using Cockpit.Core.Abstractions.Rendering;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Rendering;
@@ -72,6 +74,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private readonly Func<SessionViewModel>? _sessionFactory;
     private readonly Func<TtyViewModel>? _ttySessionFactory;
+    private readonly IWorktreeManager? _worktreeManager;
+    private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
@@ -98,6 +102,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ResourceMonitor? _resourceMonitor;
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
+    private readonly IWorktreeSettingsStore? _worktreeSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly IModelCatalog? _modelCatalog;
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
@@ -221,6 +226,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The delegated-tasks view (#67): work other sessions handed to a profile, which has no tab of its own.</summary>
     public DelegatedTasksViewModel DelegatedTasks { get; }
+
+    /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
+    public WorktreesViewModel Worktrees { get; }
 
     /// <summary>The workspace tab strip and the active workspace's panes.</summary>
     public WorkspacesViewModel Workspaces { get; }
@@ -718,6 +726,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     [ObservableProperty]
     private string _terminalSettingsStatus = string.Empty;
+
+    /// <summary>The worktree-root override (AC-85); blank uses the default. Bound in Options → Sessions.</summary>
+    [ObservableProperty]
+    private string _worktreeRoot = string.Empty;
+
+    [ObservableProperty]
+    private string _worktreeSettingsStatus = string.Empty;
+
+    /// <summary>The default worktree root, shown as the folder field's placeholder so a blank value clearly means "use the default".</summary>
+    public string WorktreeRootPlaceholder { get; private set; } = string.Empty;
 
     /// <summary>Sentinel item in the font-family dropdown (#40) that switches to a free-text box for any font not in the curated list.</summary>
     public const string CustomFontChoice = "Custom…";
@@ -1874,6 +1892,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         SelectedSession = waiting;
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
+        Worktrees = new WorktreesViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
         Diagnostics = new DiagnosticsViewModel(null, _BuildSessionDescriptors);
 
@@ -1964,7 +1983,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITranscriptCleanupService? cleanupService = null,
         ILocalLlmEndpointResolver? localLlmEndpointResolver = null,
         IAudioCaptureService? audioCapture = null,
-        ISecretKeyHolder? secretKeyHolder = null)
+        ISecretKeyHolder? secretKeyHolder = null,
+        IWorktreeManager? worktreeManager = null,
+        WorktreesViewModel? worktrees = null,
+        IWorktreeSettingsStore? worktreeSettingsStore = null,
+        LiveSessionRegistry? liveSessions = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1995,6 +2018,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _backupService = backupService;
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
+        _worktreeManager = worktreeManager;
+        _liveSessions = liveSessions;
+        Worktrees = worktrees ?? new WorktreesViewModel();
+        // One source of "which sessions are live" (their pane ids, what worktrees are keyed on): the panel reads it,
+        // and it feeds the shared registry the worktree-removal paths (the managed panel and the agent's
+        // worktree_remove MCP tool) check, so none of them pulls a running session's checkout out from under it.
+        IReadOnlySet<string> LivePaneIds() => Sessions.Select(session => session.PaneId).ToHashSet(StringComparer.Ordinal);
+        Worktrees.LiveSessionIds = LivePaneIds;
+        liveSessions?.SetSource(LivePaneIds);
+        Worktrees.ReattachRequested += record => _ = _ReattachSessionAsync(record);
+        _ = Worktrees.RefreshCountAsync();
+        _worktreeSettingsStore = worktreeSettingsStore;
+        WorktreeRootPlaceholder = worktreeSettingsStore?.DefaultRoot ?? string.Empty;
+        _ = LoadWorktreeSettingsAsync();
         _audioDeviceProvider = audioDeviceProvider;
         _modelCatalog = modelCatalog;
         _voicePlaybackQueue = voicePlaybackQueue;
@@ -3062,6 +3099,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         });
     }
 
+    private async Task LoadWorktreeSettingsAsync()
+    {
+        if (_worktreeSettingsStore is null)
+        {
+            return;
+        }
+
+        WorktreeRoot = (await _worktreeSettingsStore.LoadAsync()).Root ?? string.Empty;
+    }
+
+    /// <summary>Persists the worktree-root override (AC-85); a blank field clears the override, keeping the default.</summary>
+    [RelayCommand]
+    private async Task SaveWorktreeSettingsAsync()
+    {
+        if (_worktreeSettingsStore is null)
+        {
+            return;
+        }
+
+        var root = string.IsNullOrWhiteSpace(WorktreeRoot) ? null : WorktreeRoot.Trim();
+        await _worktreeSettingsStore.SaveAsync(new WorktreeSettings { Root = root });
+        WorktreeRoot = root ?? string.Empty;
+        WorktreeSettingsStatus = "Saved";
+    }
+
     private async Task LoadTerminalSettingsAsync()
     {
         if (_terminalSettingsStore is null)
@@ -3654,13 +3716,38 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var session = _sessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, result.WorkingDirectory, result.Resume, result.SdkLaunchOptions);
+            string? workingDirectory;
+            try
+            {
+                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(session, result);
+            }
+            catch (OperationCanceledException)
+            {
+                // Isolation failed and running unisolated was declined — undo the half-added session rather than
+                // starting it in the operator's real working tree.
+                await CloseSessionAsync(session);
+                return;
+            }
+
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions);
         }
         else
         {
             var session = _ttySessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
+            string? workingDirectory;
+            try
+            {
+                workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(session, result);
+            }
+            catch (OperationCanceledException)
+            {
+                // Isolation failed and running unisolated was declined — undo the half-added session rather than
+                // starting it in the operator's real working tree.
+                await CloseSessionAsync(session);
+                return;
+            }
 
             // Claude's permission-mode/model/effort are its own vocabulary, not every provider's — a plugin
             // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
@@ -3671,10 +3758,94 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 isClaudeProfile ? result.Mode.Value : null,
                 isClaudeProfile ? result.Model.Value : null,
                 isClaudeProfile ? result.Effort.Value : null,
-                result.WorkingDirectory,
+                workingDirectory,
                 result.Resume,
                 result.PluginTtyOptions);
         }
+
+        // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
+        _ = Worktrees.RefreshCountAsync();
+    }
+
+    // Isolation is identical for both session kinds (Raymond 2026-07-19): both take a working directory, so both
+    // isolate it the same way (AC-85). When asked and the folder is a git repository, a worktree is created for this
+    // session on its own branch — keyed on the session's pane, so the same session identity is used whichever kind it
+    // is — and the session runs there instead of in the folder as given; the branch shows as a header chip. A
+    // non-repository folder (or no worktree manager) runs as given, never a silent pretend-isolation.
+    private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(SessionPanelViewModel session, NewSessionResult result)
+    {
+        if (!result.IsolateInWorktree || _worktreeManager is null || string.IsNullOrWhiteSpace(result.WorkingDirectory))
+        {
+            return result.WorkingDirectory;
+        }
+
+        try
+        {
+            // Reattach: the folder is already a worktree the cockpit created — re-own it for this session and run
+            // there, rather than nesting a new worktree inside it. Only ever a worktree whose owning session is gone:
+            // stealing a live one would put two sessions on one working tree, so a folder that matches a *live*
+            // worktree is left owned by it and this session runs in it as given rather than re-owning it.
+            var existing = await _MatchingWorktreeAsync(result.WorkingDirectory);
+            if (existing is not null)
+            {
+                var live = _liveSessions?.LiveSessionIds ?? Sessions.Select(s => s.PaneId).ToHashSet(StringComparer.Ordinal);
+                if (live.Contains(existing.SessionId))
+                {
+                    return result.WorkingDirectory;
+                }
+
+                if (await _worktreeManager.ReattachAsync(existing.Path, session.PaneId) is { } reattached)
+                {
+                    session.WorktreeBranch = reattached.Branch;
+                    return reattached.Path;
+                }
+            }
+
+            if (await _worktreeManager.DetectRepositoryAsync(result.WorkingDirectory) is null)
+            {
+                return result.WorkingDirectory;
+            }
+
+            var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, result.Profile.Label, result.WorkingDirectory);
+            session.WorktreeBranch = worktree.Branch;
+            return worktree.Path;
+        }
+        catch (Exception exception)
+        {
+            // Isolation was explicitly asked for but the worktree could not be created (a git error, a folder that
+            // vanished). Running in the operator's real checkout is the exact working-tree contamination isolation
+            // exists to prevent, so never fall back to it silently: ask, and only run unisolated on an explicit yes.
+            // A no throws OperationCanceledException, which the launch path turns into a cancelled start rather than
+            // contaminating the working tree.
+            var runInFolder = _dialogService is not null && await _dialogService.ShowConfirmationDialogAsync(
+                "Could not isolate this session",
+                $"A git worktree could not be created for this session ({exception.Message}). Run it directly in '{result.WorkingDirectory}' instead? Its edits and commits would then land in that working tree, not an isolated one.",
+                "Run in folder");
+            if (runInFolder)
+            {
+                return result.WorkingDirectory;
+            }
+
+            throw new OperationCanceledException("Session start cancelled: worktree isolation failed and running unisolated was declined.");
+        }
+    }
+
+    // The registered worktree whose folder is exactly this working directory, or null — the reattach probe. Uses the
+    // same OS-aware path comparison the worktree engine does, so a case-only difference matches on Windows/macOS and
+    // is distinct on Linux.
+    private async Task<WorktreeRecord?> _MatchingWorktreeAsync(string workingDirectory)
+    {
+        if (_worktreeManager is null)
+        {
+            return null;
+        }
+
+        var full = Path.GetFullPath(workingDirectory);
+        var comparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        return (await _worktreeManager.ListAsync())
+            .FirstOrDefault(record => string.Equals(Path.GetFullPath(record.Path), full, comparison));
     }
 
     /// <summary>Context-menu Rename: begin the sidebar row's inline rename.</summary>
@@ -3839,6 +4010,36 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowDelegatedTasksDialogAsync();
     }
 
+    [RelayCommand]
+    private async Task ShowWorktreesAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowWorktreesDialogAsync(Worktrees);
+
+        // The dialog may have removed or reattached worktrees; bring the status-bar counter back in step.
+        await Worktrees.RefreshCountAsync();
+    }
+
+    // Reattach (AC-85): start a new session in an existing worktree by opening the New-session dialog with its folder
+    // pre-filled and isolation on, so starting re-owns that worktree (the resolve reattaches a known worktree path).
+    private async Task _ReattachSessionAsync(WorktreeRecord record)
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        var result = await _dialogService.ShowNewSessionDialogAsync(record.Path);
+        if (result is not null)
+        {
+            await _LaunchSessionFromResultAsync(result);
+        }
+    }
+
     /// <summary>Opens the command palette (#: command palette): a searchable list of every app action and plugin command with its shortcut.</summary>
     [RelayCommand]
     private async Task ShowCommandPaletteAsync()
@@ -3924,6 +4125,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveShortcutSettingsCommand.ExecuteAsync(null);
         await SaveDebugSettingsCommand.ExecuteAsync(null);
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
+        await SaveWorktreeSettingsCommand.ExecuteAsync(null);
         AllSettingsStatus = "Saved";
     }
 
@@ -4159,6 +4361,25 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Sessions.RemoveAt(index);
         await session.DisposeAsync();
+
+        // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
+        // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree
+        // was created for. Best-effort — closing a session must not fail on a worktree that will not release, and the
+        // startup reconcile is the net that catches whatever slips through.
+        if (_worktreeManager is not null && session.WorktreeBranch is not null)
+        {
+            try
+            {
+                await _worktreeManager.ReleaseAsync(session.PaneId);
+            }
+            catch (Exception)
+            {
+                // Left for the startup reconcile.
+            }
+
+            // A closed session's worktree was just removed or retained; keep the status-bar counter current.
+            _ = Worktrees.RefreshCountAsync();
+        }
 
         if (ReferenceEquals(SelectedSession, session))
         {

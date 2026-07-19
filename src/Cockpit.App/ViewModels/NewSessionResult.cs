@@ -34,6 +34,11 @@ namespace Cockpit.App.ViewModels;
 /// options. The two never both apply to the same launch: <see cref="Mode"/>/<see cref="Model"/>/<see cref="Effort"/>
 /// are Claude's vocabulary and this is everyone else's.
 /// </param>
+/// <param name="IsolateInWorktree">
+/// Whether to run this session in its own git worktree on a dedicated branch (AC-85) when
+/// <see cref="WorkingDirectory"/> is a git repository — a per-session choice made in the dialog next to the
+/// folder, not a profile setting. Ignored for a non-repository folder.
+/// </param>
 public sealed record NewSessionResult(
     SessionKind Kind,
     SessionProfile Profile,
@@ -45,4 +50,5 @@ public sealed record NewSessionResult(
     string? WorkingDirectory = null,
     SessionResume? Resume = null,
     IReadOnlyDictionary<string, string>? PluginTtyOptions = null,
-    IReadOnlyDictionary<string, string>? SdkLaunchOptions = null);
+    IReadOnlyDictionary<string, string>? SdkLaunchOptions = null,
+    bool IsolateInWorktree = false);

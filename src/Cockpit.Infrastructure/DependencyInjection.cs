@@ -27,6 +27,10 @@ public static class DependencyInjection
         // session (including delegated sub-agents, unlike the orchestrator). A plugin adds its own the same way (#AC-12).
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-session", typeof(SessionStatusTools)));
 
+        // cockpit-worktrees (AC-104): the tools an agent uses to isolate a subtask in its own git worktree and clean
+        // it up when done. Its own server, like cockpit-session, so a delegated sub-agent has it too.
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-worktrees", typeof(Worktrees.WorktreeTools)));
+
         AddDiagnostics(services);
         AddNotifications(services);
         AddPtyHost(services);
