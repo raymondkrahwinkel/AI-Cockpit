@@ -6,9 +6,11 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.WorkingPaths;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
+using Cockpit.Core.Worktrees;
 using Cockpit.App.Plugins;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -41,8 +43,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
     private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
     private readonly IPluginProviderRegistry? _sessionProviderRegistry;
+    private readonly IWorktreeManager? _worktreeManager;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
     private CancellationTokenSource? _launchOptionsRefreshCts;
+    private CancellationTokenSource? _repoDetectCts;
 
     /// <summary>
     /// Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
@@ -228,6 +232,81 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Whether the favorite toggle is actionable (there is a path to pin).</summary>
     public bool CanFavoriteWorkingDirectory => !string.IsNullOrWhiteSpace(WorkingDirectory);
 
+    /// <summary>Whether this session runs in its own git worktree on a dedicated branch (AC-85) — a per-session choice made here, next to the folder, not a profile setting. Only actionable when the folder is a git repository; forced off otherwise so it is never a silent no-op.</summary>
+    [ObservableProperty]
+    private bool _isolateInWorktree;
+
+    /// <summary>Whether the current working directory is a git repository — the reactive gate (§4) for offering worktree isolation.</summary>
+    [ObservableProperty]
+    private bool _isWorkingDirectoryGitRepo;
+
+    /// <summary>The branch the current working directory is on, when it is a git repository — the base a worktree would branch from, shown in the isolation status line.</summary>
+    [ObservableProperty]
+    private string? _workingDirectoryBaseBranch;
+
+    /// <summary>Whether the isolation checkbox is actionable (the folder is a git repository).</summary>
+    public bool CanIsolateInWorktree => IsWorkingDirectoryGitRepo;
+
+    /// <summary>The status line under the isolation checkbox: a repo shows the base branch it would fork from, a non-repo says why the option is disabled (§4).</summary>
+    public string WorktreeStatusText => IsWorkingDirectoryGitRepo
+        ? $"✓ Git repo{(string.IsNullOrEmpty(WorkingDirectoryBaseBranch) ? string.Empty : $" · base {WorkingDirectoryBaseBranch}")} → runs on a new cockpit/… branch"
+        : "Pick a Git repository to enable isolation";
+
+    /// <summary>
+    /// Whether to show the isolation control — for any session that runs in a working directory (SDK or TTY alike;
+    /// isolation is resolved once for both kinds). Hidden only for a local HTTP provider (Ollama/LM Studio), which
+    /// spawns no process and so has no working tree to isolate. Shown greyed with a hint until the folder is a git
+    /// repository (§4), so the option is discoverable rather than appearing only once a repo is picked.
+    /// </summary>
+    public bool ShowWorktreeIsolation => SelectedProfile is not null && !IsLocalProfile;
+
+    // Each working-directory change supersedes the last detection. A manager-less design-time VM reports no repo, so
+    // the option simply never enables in the previewer.
+    private async Task _DetectWorkingDirectoryRepoAsync(string directory)
+    {
+        _repoDetectCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _repoDetectCts = cts;
+
+        GitRepositoryInfo? info = null;
+        if (_worktreeManager is not null && !string.IsNullOrWhiteSpace(directory))
+        {
+            try
+            {
+                // Task.Run so the synchronous git spawn prefix never runs on the UI thread; ConfigureAwait(true) keeps
+                // the continuation on it, since it mutates bound properties.
+                info = await Task.Run(() => _worktreeManager.DetectRepositoryAsync(directory.Trim(), cts.Token), cts.Token).ConfigureAwait(true);
+            }
+            catch (Exception)
+            {
+                // A folder that vanished, or git being unavailable, is "not a repository here" — the option disables,
+                // it does not fail the dialog.
+                info = null;
+            }
+        }
+
+        if (!ReferenceEquals(_repoDetectCts, cts))
+        {
+            return;
+        }
+
+        IsWorkingDirectoryGitRepo = info is not null;
+        WorkingDirectoryBaseBranch = info?.CurrentBranch;
+        if (!IsWorkingDirectoryGitRepo && IsolateInWorktree)
+        {
+            IsolateInWorktree = false;
+        }
+
+        OnPropertyChanged(nameof(CanIsolateInWorktree));
+        OnPropertyChanged(nameof(WorktreeStatusText));
+    }
+
+    partial void OnIsWorkingDirectoryGitRepoChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanIsolateInWorktree));
+        OnPropertyChanged(nameof(WorktreeStatusText));
+    }
+
     [ObservableProperty]
     private SessionProfile? _selectedProfile;
 
@@ -324,7 +403,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IConversationPickerRegistry? conversationPickers = null,
         ITtySessionProviderResolver? ttyProviderResolver = null,
         IPluginTtyProviderRegistry? ttyProviderRegistry = null,
-        IPluginProviderRegistry? sessionProviderRegistry = null)
+        IPluginProviderRegistry? sessionProviderRegistry = null,
+        IWorktreeManager? worktreeManager = null)
     {
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
@@ -334,6 +414,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
         _sessionProviderRegistry = sessionProviderRegistry;
+        _worktreeManager = worktreeManager;
     }
 
     /// <summary>
@@ -401,6 +482,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsWorkingDirectoryFavorite));
         OnPropertyChanged(nameof(FavoriteToggleGlyph));
         OnPropertyChanged(nameof(CanFavoriteWorkingDirectory));
+        _ = _DetectWorkingDirectoryRepoAsync(value);
     }
 
     partial void OnSelectedRememberedPathChanged(RememberedPathOption? value)
@@ -444,6 +526,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsLocalProfile));
         OnPropertyChanged(nameof(ShowResumeOptions));
         OnPropertyChanged(nameof(SelectedProviderLabel));
+        OnPropertyChanged(nameof(ShowWorktreeIsolation));
 
         _RefreshPluginTtyOptions(value);
         _RefreshSdkLaunchOptions(value);
@@ -715,9 +798,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
                 .ToDictionary(option => option.Key, option => option.Value!)
             : null;
 
+        // Isolation only when the folder is actually a git repository — the checkbox disables otherwise, and this is
+        // the belt-and-suspenders so a stale check can never send a true for a non-repo the backend would ignore.
+        var isolateInWorktree = IsolateInWorktree && IsWorkingDirectoryGitRepo;
+
         CloseRequested?.Invoke(new NewSessionResult(
             SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,
-            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions));
+            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions, isolateInWorktree));
     }
 
     [RelayCommand]

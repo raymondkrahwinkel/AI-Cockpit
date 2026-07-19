@@ -116,6 +116,19 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
+
+                    <!-- Worktree isolation (AC-85): a per-session choice, right under the folder it applies to.
+                         Disabled with a hint when the folder is not a git repository — reactive, never a silent
+                         no-op (§4). ShowOnDisabled so the disabled checkbox still explains itself. -->
+                    <StackPanel Spacing="2" Margin="0,2,0,0" IsVisible="{Binding ShowWorktreeIsolation}">
+                        <CheckBox Content="Isolate in a git worktree"
+                                  IsChecked="{Binding IsolateInWorktree}"
+                                  IsEnabled="{Binding CanIsolateInWorktree}"
+                                  ToolTip.ShowOnDisabled="True"
+                                  ToolTip.Tip="Run this session in its own git worktree on a new branch, so it never shares a working tree with another session on the same repository."/>
+                        <TextBlock Text="{Binding WorktreeStatusText}" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
 

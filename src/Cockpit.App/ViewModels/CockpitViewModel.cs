@@ -30,6 +30,7 @@ using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Abstractions.Rendering;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Rendering;
@@ -71,6 +72,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private readonly Func<SessionViewModel>? _sessionFactory;
     private readonly Func<TtyViewModel>? _ttySessionFactory;
+    private readonly IWorktreeManager? _worktreeManager;
     private readonly ISessionDialogService? _dialogService;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
@@ -1916,7 +1918,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ITranscriptCleanupService? cleanupService = null,
         ILocalLlmEndpointResolver? localLlmEndpointResolver = null,
-        IAudioCaptureService? audioCapture = null)
+        IAudioCaptureService? audioCapture = null,
+        IWorktreeManager? worktreeManager = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -1941,6 +1944,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _backupService = backupService;
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
+        _worktreeManager = worktreeManager;
         _audioDeviceProvider = audioDeviceProvider;
         _modelCatalog = modelCatalog;
         _voicePlaybackQueue = voicePlaybackQueue;
@@ -3597,13 +3601,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             var session = _sessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, result.WorkingDirectory, result.Resume, result.SdkLaunchOptions);
+            var workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(session, result);
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions);
         }
         else
         {
             var session = _ttySessionFactory();
             session.LaunchResult = result;
             AddSession(session, result.SessionName, result.Profile.Label);
+            var workingDirectory = await _ResolveIsolatedWorkingDirectoryAsync(session, result);
 
             // Claude's permission-mode/model/effort are its own vocabulary, not every provider's — a plugin
             // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
@@ -3614,9 +3620,40 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 isClaudeProfile ? result.Mode.Value : null,
                 isClaudeProfile ? result.Model.Value : null,
                 isClaudeProfile ? result.Effort.Value : null,
-                result.WorkingDirectory,
+                workingDirectory,
                 result.Resume,
                 result.PluginTtyOptions);
+        }
+    }
+
+    // Isolation is identical for both session kinds (Raymond 2026-07-19): both take a working directory, so both
+    // isolate it the same way (AC-85). When asked and the folder is a git repository, a worktree is created for this
+    // session on its own branch — keyed on the session's pane, so the same session identity is used whichever kind it
+    // is — and the session runs there instead of in the folder as given; the branch shows as a header chip. A
+    // non-repository folder (or no worktree manager) runs as given, never a silent pretend-isolation.
+    private async Task<string?> _ResolveIsolatedWorkingDirectoryAsync(SessionPanelViewModel session, NewSessionResult result)
+    {
+        if (!result.IsolateInWorktree || _worktreeManager is null || string.IsNullOrWhiteSpace(result.WorkingDirectory))
+        {
+            return result.WorkingDirectory;
+        }
+
+        try
+        {
+            if (await _worktreeManager.DetectRepositoryAsync(result.WorkingDirectory) is null)
+            {
+                return result.WorkingDirectory;
+            }
+
+            var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, result.Profile.Label, result.WorkingDirectory);
+            session.WorktreeBranch = worktree.Branch;
+            return worktree.Path;
+        }
+        catch (Exception)
+        {
+            // A worktree that could not be created (a git error, a folder that vanished) must not cost the operator
+            // the session — fall back to the folder as given.
+            return result.WorkingDirectory;
         }
     }
 

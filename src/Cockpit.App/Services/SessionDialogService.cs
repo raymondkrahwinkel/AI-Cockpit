@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.WorkingPaths;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 
@@ -35,6 +36,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly DelegatedTasksViewModel _delegatedTasks;
     private readonly ITtySessionProviderResolver _ttyProviderResolver;
     private readonly IPluginTtyProviderRegistry _ttyProviderRegistry;
+    private readonly IWorktreeManager _worktreeManager;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -48,7 +50,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IConversationPickerRegistry conversationPickers,
         DelegatedTasksViewModel delegatedTasks,
         ITtySessionProviderResolver ttyProviderResolver,
-        IPluginTtyProviderRegistry ttyProviderRegistry)
+        IPluginTtyProviderRegistry ttyProviderRegistry,
+        IWorktreeManager worktreeManager)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -62,6 +65,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
+        _worktreeManager = worktreeManager;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync()
@@ -75,7 +79,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry);
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager);
         await viewModel.LoadAsync();
 
         var dialog = new NewSessionDialog { DataContext = viewModel };

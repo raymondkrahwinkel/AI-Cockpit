@@ -238,6 +238,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string? _kindLabel;
 
     /// <summary>
+    /// The git branch of the worktree this session was isolated in (AC-85), shown as a header chip when set —
+    /// e.g. <c>cockpit/&lt;slug&gt;</c>. Empty/null hides the chip (the session runs in the folder as given). On the
+    /// base so the one SessionHeaderBar renders it for every kind that can carry a worktree.
+    /// </summary>
+    [ObservableProperty]
+    private string? _worktreeBranch;
+
+    /// <summary>
     /// Whether plugin-contributed session-header items show (AC-25/AC-37): true for a real agent session, false for
     /// a plain terminal, where a plugin session indicator has nothing to say. On the base so the one SessionHeaderBar
     /// gates the shared PluginSessionHeaderHost without needing the TTY-only IsTerminal flag.
