@@ -49,6 +49,25 @@ public static class CredentialFileHousekeeping
     }
 
     /// <summary>
+    /// Creates (truncating) the diagnostic log owner-only — the private-write treatment every file under the state
+    /// root gets (AC-46). No secret content flows to the log today, but it sits beside files that are all owner-only,
+    /// and a stock umask would otherwise leave it world-readable; defense-in-depth, not a fix for a known leak. The
+    /// <c>logs/</c> directory is created owner-only first, and the file is truncated so each run starts clean —
+    /// matching <c>FileLoggerProvider</c>'s own contract, which then only ever appends to this already-restricted file.
+    /// Lives here because this is the one public seam that reaches the file-permission logic (<c>CockpitConfigPath</c>).
+    /// </summary>
+    public static void PrepareLogFile(string logPath)
+    {
+        var directory = Path.GetDirectoryName(logPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            CockpitConfigPath.EnsurePrivateDirectory(directory);
+        }
+
+        CockpitConfigPath.WriteAllTextPrivate(logPath, string.Empty);
+    }
+
+    /// <summary>
     /// When <paramref name="configFilePath"/> is an encrypted config, deletes any <c>.bak</c>/<c>.damaged-*</c>
     /// sidecar that still holds a credential in the clear. Reads whether encryption is on straight from the config
     /// (the <c>Security</c> section is not itself a secret), so it works before anything is unlocked.
