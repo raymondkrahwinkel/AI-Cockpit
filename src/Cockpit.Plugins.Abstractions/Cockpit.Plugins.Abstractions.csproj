@@ -70,12 +70,22 @@
          the plugin's own settings (ShowSettingsAsync) or runs any action it assigns. The icon names a bundled
          MaterialIconKind (like PluginSessionAction's IconKind, AC-33). Existing plugins keep compiling (the member is
          default no-op). Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <!-- 1.13.0 (#AC-116): added the tool-activity read/observe surface — SessionToolActivity (record) plus
+         ICockpitSessionObserver.ToolActivityObserved (default no-op) and GetCurrentTurnImages (default empty), so a
+         plugin can react to a specific tool call completing (a tracker attaching the message's images to an issue the
+         agent just created) rather than scanning prose. REMOVED the AC-14 session-image sink that this supersedes:
+         SessionImageDispatch/SessionImageSinkRegistration (records) and ICockpitHost.AddSessionImageSink. Those were
+         a default-implemented push hook added one version earlier (1.11.0) with a single in-repo consumer (the
+         YouTrack plugin), updated in the same change — no installed third-party plugin used them, so
+         AbstractionsContract.Version (the gate PluginLoadPolicy enforces) stays 1 and no plugin is refused. On
+         balance additive; the SDK's package version follows suit as a minor. SessionImageAttachment stays (reused by
+         GetCurrentTurnImages). -->
     <!-- 1.17.0 (#AC-96): added the NewSessionPrefill record and ICockpitHost.ShowNewSessionDialogAsync (default-
          implemented), so a plugin can open the cockpit's New-session dialog pre-filled and get the started session's
          pane id back through an onStarted callback (or an onCancelled signal) — the operator still confirms every
          field. Existing plugins keep compiling (the member is default no-op). Additive API — still a minor; the major
-         and abstractionsVersion stay 1. Sits above AC-95's in-flight 1.13.0; a version clash at merge is Raymond's to
-         resolve. -->
+         and abstractionsVersion stay 1. (Renumbered past AC-116's 1.13.0 to avoid a version collision; 1.14.0/1.15.0
+         skipped.) -->
     <Version>1.17.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>

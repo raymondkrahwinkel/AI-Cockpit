@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Threading;
 using Cockpit.App.ViewModels;
+using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Plugins;
@@ -41,6 +42,20 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
     public event EventHandler? ActiveSessionChanged;
 
     public event EventHandler<SessionOutputText>? OutputProduced;
+
+    public event EventHandler<SessionToolActivity>? ToolActivityObserved;
+
+    public IReadOnlyList<SessionImageAttachment> GetCurrentTurnImages(string paneId)
+    {
+        // The auto-attach path calls this on the UI thread, but the fallback MCP tool calls it from the endpoint's
+        // request thread — enumerating the sessions ObservableCollection there while the UI thread adds/removes a
+        // session would throw. Marshal the read onto the UI thread (inline when already on it).
+        IReadOnlyList<SessionImageAttachment> Read() =>
+            _cockpit.Sessions.FirstOrDefault(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal))
+                ?.CurrentTurnImages ?? [];
+
+        return Dispatcher.UIThread.CheckAccess() ? Read() : Dispatcher.UIThread.Invoke(Read);
+    }
 
     private void _OnCockpitPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -87,6 +102,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
         if (_hooked.Add(session))
         {
             session.OutputTextProduced += _OnSessionOutput;
+            session.ToolActivityProduced += _OnSessionToolActivity;
             session.PropertyChanged += _OnSessionPropertyChanged;
         }
     }
@@ -96,6 +112,7 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
         if (_hooked.Remove(session))
         {
             session.OutputTextProduced -= _OnSessionOutput;
+            session.ToolActivityProduced -= _OnSessionToolActivity;
             session.PropertyChanged -= _OnSessionPropertyChanged;
         }
     }
@@ -125,6 +142,9 @@ internal sealed class PluginSessionObserver : ICockpitSessionObserver
 
         _OnUiThread(() => OutputProduced?.Invoke(this, payload));
     }
+
+    private void _OnSessionToolActivity(object? sender, SessionToolActivity activity) =>
+        _OnUiThread(() => ToolActivityObserved?.Invoke(this, activity));
 
     private void _RaiseActiveSessionChanged() =>
         _OnUiThread(() => ActiveSessionChanged?.Invoke(this, EventArgs.Empty));

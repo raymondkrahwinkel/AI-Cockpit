@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Consent;
@@ -27,6 +28,16 @@ internal sealed class ConsentService(IConsentAuditLog auditLog) : IConsentBroker
 
     public async Task<ConsentDecision> RequestConsentAsync(ConsentRequest request, CancellationToken cancellationToken = default)
     {
+        // AC-89: a request that arrived over a per-session MCP token carries a transport-verified pane id. Make it the
+        // authoritative identity — the agent's declared session (which it could forge to ride another pane's remembered
+        // approvals) is overridden here, so the remember key and the prompt routing use the session the request truly
+        // came from. Off that path (the in-process tool loop, the app's own UI-side consent) the verified id is null
+        // and the request is used exactly as given.
+        if (McpRequestContext.CurrentPaneId is { } verifiedPaneId)
+        {
+            request = request with { Source = request.Source with { PaneId = verifiedPaneId } };
+        }
+
         if (cancellationToken.IsCancellationRequested)
         {
             return await _FailClosedAsync(request).ConfigureAwait(false);

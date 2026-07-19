@@ -13,6 +13,7 @@ using Avalonia.Threading;
 using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
 using Exclr8.Terminal;
@@ -76,6 +77,13 @@ public partial class TtyView : UserControl
     private readonly IToastService? _toast =
         Design.IsDesignMode ? null : Program.Services.GetService<IToastService>();
 
+    // AC-34: the terminal-access registry this pane feeds when an agent is coupled to it — the pane registers on
+    // launch, unregisters on close, and hands its rendered output to the registry (only while coupled, so read-scope
+    // starts at the coupling). Resolved from the app container like the logger/toast, since this control is built by
+    // the view locator, not the DI graph.
+    private readonly ITerminalAccessRegistry? _terminals =
+        Design.IsDesignMode ? null : Program.Services.GetService<ITerminalAccessRegistry>();
+
     // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
     // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
     // doesn't flood the log while a reproduction (double-click + type) still has enough samples to show
@@ -117,6 +125,44 @@ public partial class TtyView : UserControl
         // is untouched. Handled only when a link is actually under the pointer, so every other click still reaches
         // claude. Not Windows-gated: the same Exclr8 control renders on every OS, so the gap and the fix are shared.
         AddHandler(InputElement.PointerPressedEvent, OnTerminalPointerPressedForLinks, RoutingStrategies.Tunnel);
+
+        // AC-34: reflect this pane's coupling on the "agent connected" bar, so it is always visible when an agent is
+        // on the pane (the counterpart to both sides being able to type). Unsubscribed on unload.
+        if (_terminals is { } terminals)
+        {
+            terminals.CouplingChanged += OnCouplingChanged;
+        }
+    }
+
+    // AC-34: a coupling changed on some pane. If it is ours, show or hide the agent bar — on the UI thread, since the
+    // event fires from an MCP request thread (couple) or a teardown (decouple).
+    private void OnCouplingChanged(TerminalCouplingChange change)
+    {
+        if (_viewModel?.PaneId is not { } paneId || !string.Equals(change.PaneId, paneId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_viewModel is null)
+            {
+                return;
+            }
+
+            _viewModel.AgentConnected = change.Coupled;
+            _viewModel.AgentConnectedLabel = change.Coupled ? $"Agent connected — {change.AgentSession}" : null;
+        });
+    }
+
+    // AC-34: the operator's Disconnect on the agent bar — the reactive kill-switch. The registry interrupts a running
+    // command and breaks the coupling, and its CouplingChanged event hides the bar again.
+    private void OnAgentDisconnect(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.PaneId is { Length: > 0 } paneId)
+        {
+            _terminals?.Disconnect(paneId);
+        }
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -632,6 +678,27 @@ public partial class TtyView : UserControl
                 _viewModel.ProcessId = pty.ProcessId;
             }
             _logger?.LogInformation("pty launched at {Columns}x{Rows}", _ptyColumns, _ptyRows);
+
+            // AC-34: this pane is now a live terminal an agent could ask to use. Register it under its pane id and the
+            // name the operator sees (so list_terminals can name it), plus the input sink that a coupled agent's
+            // send_terminal writes through — the same pty stdin the operator's own keystrokes go to.
+            if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals)
+            {
+                terminals.PaneOpened(paneId, string.IsNullOrWhiteSpace(_viewModel.Title) ? paneId : _viewModel.Title);
+                terminals.RegisterInput(paneId, bytes =>
+                {
+                    try
+                    {
+                        pty.InputStream.Write(bytes.Span);
+                        pty.InputStream.Flush();
+                    }
+                    catch (Exception)
+                    {
+                        // The pty may have exited between the agent's send and the write; the output pump observes the
+                        // exit, and SendInput already returned true — a dropped keystroke to a dead shell is not fatal.
+                    }
+                });
+            }
         }
         catch (Exception ex)
         {
@@ -816,6 +883,15 @@ public partial class TtyView : UserControl
 
         Terminal.Write(chunk);
 
+        // AC-34: while an agent is coupled to this pane, hand it the same bytes the terminal just rendered, so
+        // read_terminal returns what happened since the coupling. Gated on IsCoupled so an uncoupled pane pays nothing
+        // (no decode, no buffering) and its output is never captured. Raw terminal bytes for now — a clean-text view
+        // via the VT parser is a later refinement (design §4/§6).
+        if (_viewModel?.PaneId is { Length: > 0 } paneId && _terminals is { } terminals && terminals.IsCoupled(paneId))
+        {
+            terminals.CaptureOutput(paneId, Encoding.UTF8.GetString(chunk));
+        }
+
         // AC-75: output means the pty is still drawing (a thinking spinner ticking, text streaming), so the session
         // is visibly alive — keep its sidebar dot off a false "Done" while a long think/plan phase writes no
         // transcript line. Only reached with a non-empty chunk (this method returns early when nothing is pending).
@@ -833,6 +909,17 @@ public partial class TtyView : UserControl
         _outputCancellation?.Cancel();
         _outputCancellation?.Dispose();
         _outputCancellation = null;
+
+        // AC-34: the pane is gone (tab closed, shell exit). Deregister it so it drops out of list_terminals and any
+        // agent coupled to it is decoupled automatically, with the surviving side told rather than left reading nothing.
+        if (_terminals is { } terminals)
+        {
+            terminals.CouplingChanged -= OnCouplingChanged;
+            if (_viewModel?.PaneId is { Length: > 0 } paneId)
+            {
+                terminals.PaneClosed(paneId);
+            }
+        }
 
         _pty?.Dispose();
         _pty = null;

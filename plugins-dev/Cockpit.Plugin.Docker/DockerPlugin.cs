@@ -42,8 +42,9 @@ public sealed class DockerPlugin : ICockpitPlugin
         _engine = engine;
         var gate = new DockerAccessGate(host);
         var compose = new ComposeCli();
+        var docker = new DockerCli();
         var running = new RunningContainerRegistry(engine, () => DateTimeOffset.UtcNow);
-        var tools = new DockerMcpTools(settings, gate, engine, compose, running);
+        var tools = new DockerMcpTools(settings, gate, engine, compose, docker, running);
 
         host.AddSettings(() => new DockerSettingsControl(settings));
         host.AddToolbarAction(new ToolbarAction("Docker settings", MaterialIconKind.Docker, () => host.ShowSettingsAsync()));

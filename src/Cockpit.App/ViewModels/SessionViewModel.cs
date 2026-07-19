@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Cockpit.App.Plugins;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
@@ -25,10 +24,6 @@ namespace Cockpit.App.ViewModels;
 public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 {
     private readonly ISessionManager? _sessionManager;
-
-    // Optional (null at design time / in tests): the host routes a message's images to any plugin that registered
-    // a sink, so a tracker can attach them to the issue this session tracks (AC-14).
-    private readonly ISessionImageSinkRegistry? _imageSinkRegistry;
 
     // The session itself — driver, event pump, lifetime — lives in the runtime (#68); this panel is one of its
     // consumers, not its owner. Created once the profile (and therefore the provider) is known, in
@@ -272,11 +267,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null,
-        ISessionImageSinkRegistry? imageSinkRegistry = null)
+        ITranscriptCleanupService? cleanupService = null)
     {
         _sessionManager = sessionManager;
-        _imageSinkRegistry = imageSinkRegistry;
         _TrackPendingAttachments();
         InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
     }
@@ -736,35 +729,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _ = SpeakTurnAcknowledgmentAsync(text);
         _RecomputeStatus();
 
-        var sent = false;
+        // Remember this message's images as the turn's images (AC-116) before the send, so a tool result that
+        // races ahead of this method's continuation still sees them; a plugin reacting to a tool call later in the
+        // turn — a YouTrack tracker attaching them to an issue the agent just created — reads exactly this turn's
+        // images off the read/observe surface. Cleared when the turn completes, or here if the send never happened.
+        _RememberTurnImages(images);
+
         try
         {
             await _runtime.SendUserMessageAsync(text, images);
-            sent = true;
         }
         catch (Exception ex)
         {
+            ClearCurrentTurnImages();
             Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, $"Send failed: {ex.Message}"));
             IsBusy = false;
             IsAwaitingResponse = false;
             _RecomputeStatus();
         }
-
-        // Only once the message is actually out: offer its images to any sink in the background — a slow upload must
-        // not hold up the send or the next queued message, and a sink failure (kept isolated by the registry) must
-        // never surface as a "Send failed" on a message that did send.
-        if (sent)
-        {
-            _ = _OfferImagesToSinksAsync(images);
-        }
     }
 
-    // Hands the message's images to any plugin that registered a sink (AC-14), so a tracker can attach them to the
-    // issue this session tracks. Provider-agnostic and fail-soft (the registry isolates a sink that throws), and a
-    // no-op with no images or no registry — this session's message has already been sent either way.
-    private async Task _OfferImagesToSinksAsync(IReadOnlyList<Core.Sessions.ImageAttachment> images)
+    // Records the message's images as the current turn's images (AC-116), provider-agnostic, for the read/observe
+    // surface to hand to a plugin that reacts to a tool call this turn. A no-op with no images.
+    private void _RememberTurnImages(IReadOnlyList<Core.Sessions.ImageAttachment> images)
     {
-        if (images.Count == 0 || _imageSinkRegistry is not { } sinks)
+        if (images.Count == 0)
         {
             return;
         }
@@ -776,7 +765,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 $"pasted-image-{index + 1}.{_ImageExtension(image.MediaType)}"))
             .ToList();
 
-        await sinks.NotifyAsync(new SessionImageDispatch(PaneId, attachments));
+        SetCurrentTurnImages(attachments);
     }
 
     private static string _ImageExtension(string mediaType)
@@ -1021,6 +1010,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // Tool output is where a shelled-out `gh pr create`/`git push` prints its pull-request url, so
                 // it is the primary channel the PR watcher scans (the read/observe surface).
                 RaiseOutputText(toolResult.Content);
+
+                // And, coupled with its call, the structured tool-activity signal (AC-116): the tool-use row we
+                // just found carries the name and input, the result carries the content — together they let a
+                // plugin react to a specific tool completing (a YouTrack tracker attaching this turn's images to
+                // an issue the agent created) rather than pattern-matching prose. Only raised when the matching
+                // tool-use is in view, so the name is known.
+                if (toolUseEntry is { ToolName: { } toolName })
+                {
+                    RaiseToolActivity(toolName, toolUseEntry.InputJson ?? "{}", toolResult.Content, toolResult.IsError);
+                }
+
                 break;
 
             case PermissionRequested permission:
@@ -1058,6 +1058,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _currentTurnAssistantEntries.Clear();
                 _readAloudFlushedLength = 0;
                 _currentAssistantEntry = null;
+                // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
+                // tool call attaches nothing stale.
+                ClearCurrentTurnImages();
                 _hasCompletedATurn = true;
                 IsBusy = false;
                 _AccumulateUsage(turn);
@@ -1081,6 +1084,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             case SessionError error:
                 _RemoveCurrentThinkingEntry();
                 Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message));
+                // A session error ends the turn without a TurnCompleted, so drop this turn's images here too —
+                // otherwise a later image-less turn's tool call could attach the errored turn's stale images (AC-116).
+                ClearCurrentTurnImages();
                 IsBusy = false;
                 _RecomputeStatus();
                 break;

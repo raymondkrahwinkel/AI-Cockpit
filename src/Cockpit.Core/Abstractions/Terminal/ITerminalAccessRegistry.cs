@@ -6,6 +6,9 @@ public sealed record TerminalPane(string PaneId, string Name);
 /// <summary>A pane as <c>list_terminals</c> reports it to one agent session — the pane plus whether that session is already coupled to it.</summary>
 public sealed record TerminalPaneView(string PaneId, string Name, bool Coupled);
 
+/// <summary>Raised when a pane's coupling changes, so the pane's UI can show or hide its "agent connected" bar. <paramref name="AgentSession"/> is the coupled session, or null when it just decoupled.</summary>
+public sealed record TerminalCouplingChange(string PaneId, bool Coupled, string? AgentSession);
+
 /// <summary>
 /// The source of truth for terminal-pane access (AC-34). The TTY layer registers the panes that exist and feeds their
 /// rendered output; the <c>cockpit-terminal</c> MCP tools read through the consumer side. Coupling is exclusive (one
@@ -29,6 +32,15 @@ public interface ITerminalAccessRegistry
     /// <summary>Whether the pane is coupled to any agent — the cheap gate the producer uses so it only decodes/pushes output that will actually be read.</summary>
     bool IsCoupled(string paneId);
 
+    /// <summary>Registers the sink that writes bytes into this pane's pty stdin (its keystroke channel), so a coupled agent's <c>send_terminal</c> reaches the shell. Cleared when the pane closes.</summary>
+    void RegisterInput(string paneId, Action<ReadOnlyMemory<byte>> writeToPty);
+
+    /// <summary>Raised on the coupling changing (coupled, or decoupled by close/session-end/operator Disconnect) so the pane can show or hide its "agent connected" bar.</summary>
+    event Action<TerminalCouplingChange>? CouplingChanged;
+
+    /// <summary>The operator's Disconnect on a pane: sends the shell an interrupt (Ctrl-C) so a running command stops, then breaks the coupling — "no more access" is immediate and hard.</summary>
+    void Disconnect(string paneId);
+
     // ---- Consumer side (the cockpit-terminal MCP tools) ----
 
     /// <summary>The open panes as this agent session sees them, each flagged with whether this session is coupled to it.</summary>
@@ -48,6 +60,9 @@ public interface ITerminalAccessRegistry
 
     /// <summary>The output captured since this session coupled to the pane, or null when this session does not hold the coupling.</summary>
     string? ReadCoupled(string sessionId, string paneId);
+
+    /// <summary>Writes bytes into a coupled pane's pty stdin (a keystroke, Ctrl-C, a command). Returns false when this session does not hold the coupling or the pane has no input sink.</summary>
+    bool SendInput(string sessionId, string paneId, ReadOnlyMemory<byte> data);
 
     /// <summary>Breaks every coupling this agent session held (its session ended or crashed).</summary>
     void SessionEnded(string sessionId);
