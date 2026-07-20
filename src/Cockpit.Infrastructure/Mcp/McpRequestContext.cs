@@ -8,7 +8,7 @@ namespace Cockpit.Infrastructure.Mcp;
 /// async call chain from the middleware through the tool into the broker, and is null off that path (the in-process
 /// tool loop, the app's own UI-side consent) — where the broker keeps its previous behaviour.
 /// </summary>
-internal static class McpRequestContext
+public static class McpRequestContext
 {
     private static readonly AsyncLocal<string?> Current = new();
 

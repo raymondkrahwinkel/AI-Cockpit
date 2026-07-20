@@ -8,6 +8,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.ManagedCli;
 using Cockpit.Core.Mcp;
@@ -50,6 +51,11 @@ internal sealed class CockpitHost(
     public IPluginStorage Storage => storage;
 
     public ICockpitSessionObserver Sessions => sessions;
+
+    // AC-128: the transport-verified pane behind the current in-process MCP call, read from the ambient request
+    // context the auth middleware set. A plugin's own MCP tool keys on this so it acts on the calling session, not a
+    // session id the agent named. Null off the verified path (no MCP call in flight).
+    public string? CurrentMcpCallerPaneId => McpRequestContext.CurrentPaneId;
 
     public void AddSettings(Func<Control> createView) =>
         contributionSink.AddPluginSettings(pluginId, pluginName, createView);
