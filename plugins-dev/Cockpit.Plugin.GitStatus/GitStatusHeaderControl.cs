@@ -23,11 +23,17 @@ internal sealed class GitStatusHeaderControl : UserControl
     // before re-reading.
     private static readonly TimeSpan SignalDebounce = TimeSpan.FromSeconds(2);
 
+    // A branch can change without a matching "git checkout" in the output (a shell alias, gh, an IDE or an agent
+    // tool), and the HEAD watcher can quietly fail to arm (an inotify limit) — so once a burst of session activity
+    // settles, probe the branch cheaply as a backstop. Same window as the signal debounce: fire on the lull.
+    private static readonly TimeSpan BranchProbeDebounce = TimeSpan.FromSeconds(2);
+
     private readonly ICockpitHost _host;
     private readonly IPluginSessionContext _session;
     private readonly GitStatusSettings _settings;
     private readonly GitStatusReader _reader = new();
     private readonly DispatcherTimer _signalRefresh;
+    private readonly DispatcherTimer _branchProbe;
 
     private readonly Ellipse _dot;
     private readonly TextBlock _label;
@@ -78,6 +84,13 @@ internal sealed class GitStatusHeaderControl : UserControl
             _signalRefresh.Stop();
             _ = _LoadAsync();
         };
+
+        _branchProbe = new DispatcherTimer { Interval = BranchProbeDebounce };
+        _branchProbe.Tick += (_, _) =>
+        {
+            _branchProbe.Stop();
+            _ = _ProbeBranchAsync();
+        };
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -101,6 +114,7 @@ internal sealed class GitStatusHeaderControl : UserControl
         _session.OutputProduced -= _OnSessionOutput;
         _settings.Changed -= _OnSettingsChanged;
         _signalRefresh.Stop();
+        _branchProbe.Stop();
         _DisposeHeadWatcher();
     }
 
@@ -114,10 +128,46 @@ internal sealed class GitStatusHeaderControl : UserControl
 
     private void _OnSessionOutput(object? sender, SessionOutputText output)
     {
-        // Only a git-mutating command is worth a re-read; ordinary prose about git is not.
+        // A git-mutating command reloads the whole status — its branch and its ahead/behind/changes may all move.
         if (GitSignalDetector.ContainsSignal(output.Text))
         {
             _ScheduleReload();
+            return;
+        }
+
+        // Any other activity only arms the cheap branch backstop; the debounce keeps it to one probe per lull.
+        _branchProbe.Stop();
+        _branchProbe.Start();
+    }
+
+    // The backstop armed by non-git output: re-arm the HEAD watcher if it never took, then read just the branch
+    // (cheap) and reload the full status only when it actually moved — a named-branch switch the output signal and
+    // the watcher both missed. A detached HEAD reads as empty here and is left to the watcher and git-signal paths.
+    private async Task _ProbeBranchAsync()
+    {
+        var path = _session.WorkingDirectory;
+        if (string.IsNullOrWhiteSpace(path) || _current is not { Error: null } current)
+        {
+            return;
+        }
+
+        if (_headWatcher is null)
+        {
+            await _EnsureHeadWatcherAsync();
+        }
+
+        try
+        {
+            var branch = await GitCommand.CurrentBranchAsync(path, CancellationToken.None);
+            if (branch.Length > 0 && !string.Equals(branch, current.Branch, StringComparison.Ordinal))
+            {
+                _ScheduleReload();
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort backstop, fire-and-forget: a probe failure must never surface — the badge keeps its
+            // last-known branch and the next probe, git signal or HEAD event refreshes it.
         }
     }
 
