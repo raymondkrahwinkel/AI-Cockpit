@@ -93,6 +93,8 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: pasting an image into a Claude SDK chat session was rejected with "provider does not support
+  image input" even though Claude accepts images — the paste now attaches and is sent to the model.
 - fixed: in a chat session, text the assistant writes after running a tool now appears below that tool
   in the order it happened, instead of jumping up above the tools it just used.
 
