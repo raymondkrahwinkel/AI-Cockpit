@@ -106,6 +106,36 @@ public class DelegationCallerScopingTests
         await intoAnothers.Should().ThrowAsync<DelegationRejectedException>();
     }
 
+    [Fact]
+    public async Task ADelegatedCallerMayDelegateFurtherIntoItsOwnTasksDirectory_WhenItIsNotAUiPane()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var driverFactory = Substitute.For<ISessionDriverFactory>();
+        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([_Target("qwen")]);
+        var mcpServerStore = Substitute.For<IMcpServerStore>();
+        mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+        var open = Substitute.For<ISessionWorkspaces>();
+        // Only the UI pane resolves through the workspace provider; a delegated task's id does not.
+        open.WorkingDirectoryForPane(Arg.Any<string>()).Returns((string?)null);
+        open.WorkingDirectoryForPane("parent-pane").Returns("/repo");
+        var service = new DelegationService(
+            profileStore, new SessionManager(driverFactory), mcpServerStore, Substitute.For<IDelegationAuditLog>(), open);
+
+        // A UI pane delegates T1 into /repo (resolved via the workspace provider).
+        var t1 = await service.DelegateAsync(
+            new DelegationRequest("qwen", "level 1", WorkingDirectory: "/repo"), callerPaneId: "parent-pane");
+        t1.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+
+        // T1 is a headless delegated session (caller = its own task id, not a UI pane). It delegates further into the
+        // same /repo it works in; the gate must fall back to the task's own working directory rather than refuse.
+        var t2 = await service.DelegateAsync(
+            new DelegationRequest("qwen", "level 2", WorkingDirectory: "/repo"), callerPaneId: t1.TaskId);
+        t2.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+    }
+
     private static SessionProfile _Target(string label) =>
         new(label, new ClaudeConfig(string.Empty), Delegation: new DelegationPolicy(AllowedAsTarget: true));
 

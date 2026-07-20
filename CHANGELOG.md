@@ -101,6 +101,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: an agent — whether coupled to a terminal or running as a delegated sub-agent — can no longer reach
+  another session's terminal, delegated tasks, worktree, working directory, status line or sent images by
+  naming that session's id; every in-process tool now acts on the verified calling session, closing a
+  cross-session information-disclosure and tampering gap.
+- fixed: the "agent connected" bar on a terminal now shows the session's name instead of an internal id, and
+  clears when you close the session that was driving it — it used to stay stuck on after that session was gone.
+- fixed: reading a terminal no longer doubles a command's first letter (showing "lls" for "ls") when the shell
+  redraws its input line — the plain-text view now applies the redraw instead of concatenating both drafts.
 - fixed: pasting an image into a Claude SDK chat session was rejected with "provider does not support
   image input" even though Claude accepts images — the paste now attaches and is sent to the model.
 - fixed: in a chat session, text the assistant writes after running a tool now appears below that tool
