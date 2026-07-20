@@ -36,7 +36,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
     private IReadOnlyDictionary<string, string>? _launchOptions;
     private TranscriptEntryViewModel? _currentAssistantEntry;
-    private TranscriptEntryViewModel? _currentThinkingEntry;
 
     /// <summary>Assistant-text rows added since the last <see cref="TurnCompleted"/> — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.</summary>
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
@@ -170,10 +169,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private bool _isBusy;
 
     /// <summary>
-    /// True from the moment a turn is sent until the assistant produces its first sign of activity (a text
-    /// or thinking delta, or a tool call). Drives the "Thinking…" indicator so a local model — which has no
-    /// streaming thinking and can sit silent while it loads/processes the prompt — visibly shows it is working
-    /// rather than looking hung.
+    /// True from the moment a turn is sent until the assistant produces its first sign of <em>visible</em>
+    /// activity (streamed text, or a tool call). Drives the "Thinking…" indicator above the composer so a
+    /// local model — which can sit silent while it loads/processes the prompt — visibly shows it is working
+    /// rather than looking hung. A reasoning/thinking delta deliberately does NOT clear it: the model is still
+    /// working toward its first visible output, so the indicator stays lit through the think phase.
     /// </summary>
     [ObservableProperty]
     private bool _isAwaitingResponse;
@@ -224,13 +224,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         LiveControls.Add(new LiveControlViewModel(new SessionLiveOption("effort", "Effort", ["low", "medium", "high"], "medium"), (_, _) => Task.CompletedTask));
 
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, "fix the layout bug in SessionView"));
-
-        var thinking = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking,
-            "The user wants the layout bug fixed. Let me look at the XAML structure first...")
-        {
-            IsExpanded = false,
-        };
-        Transcript.Add(thinking);
 
         // Markdown-rich sample so the previewer/Screenshotter exercise the markdown path (T9):
         // heading, bold, inline code, a fenced code block, and a list.
@@ -941,11 +934,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="_OnSessionEvent"/>.</summary>
     internal void Apply(SessionEvent evt)
     {
-        // "Thinking…" tracks the model working with no visible output yet. Any assistant output, a tool
-        // call surfacing, a pending permission, or the turn ending clears it; a completed tool result re-arms
-        // it, since the model then processes that result before its next output — so activity stays visible
-        // across the whole tool round-trip (send → think → tool → run → think → answer).
-        if (evt is AssistantThinkingDelta or AssistantTextDelta or AssistantTextCompleted or ToolUseRequested or PermissionRequested or TurnCompleted or SessionError)
+        // "Thinking…" tracks the model working with no visible output yet. Only *visible* activity clears it —
+        // streamed text, a tool call surfacing, a pending permission, or the turn ending; a completed tool result
+        // re-arms it, since the model then processes that result before its next output, so activity stays visible
+        // across the whole tool round-trip (send → think → tool → run → think → answer). A reasoning/thinking delta
+        // is deliberately NOT in this set: dousing the indicator the moment the model starts thinking left a gap
+        // where it read as idle while the answer was still coming.
+        if (evt is AssistantTextDelta or AssistantTextCompleted or ToolUseRequested or PermissionRequested or TurnCompleted or SessionError)
         {
             IsAwaitingResponse = false;
         }
@@ -982,19 +977,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
                 break;
 
-            case AssistantThinkingDelta thinking:
-                if (_currentThinkingEntry is null)
-                {
-                    _currentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty);
-                    Transcript.Add(_currentThinkingEntry);
-                }
-
-                _currentThinkingEntry.AppendText(thinking.Thinking);
-                break;
-
             case AssistantTextDelta delta:
-                // A text delta means the thinking block (if any) for this turn is done.
-                _RemoveCurrentThinkingEntry();
                 if (_currentAssistantEntry is null)
                 {
                     _currentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
@@ -1006,7 +989,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextCompleted completed:
-                _RemoveCurrentThinkingEntry();
                 if (_currentAssistantEntry is not null)
                 {
                     // Streaming deltas already built the text; nothing further to append.
@@ -1025,7 +1007,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case ToolUseRequested toolUse:
-                _RemoveCurrentThinkingEntry();
                 // Close the current assistant text row so prose that streams *after* this tool call starts a
                 // fresh row beneath the tool, in the order it happened — otherwise post-tool text appends back
                 // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
@@ -1095,7 +1076,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case TurnCompleted turn:
-                _RemoveCurrentThinkingEntry();
                 // Only surface a turn row when it failed — a plain "Turn completed (success)" row is
                 // noise in the transcript (T4). The Done status still fires below.
                 if (turn.IsError)
@@ -1133,7 +1113,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case SessionError error:
-                _RemoveCurrentThinkingEntry();
                 Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.Error, error.Message));
                 // A session error ends the turn without a TurnCompleted, so drop this turn's images here too —
                 // otherwise a later image-less turn's tool call could attach the errored turn's stale images (AC-116).
@@ -1156,6 +1135,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
+            // Reasoning/thinking deltas still arrive from providers that stream them, but the transcript no
+            // longer renders a "Thinking…" row (AC-144): a literal thinking line said little, and the pulsing
+            // indicator above the composer already signals the model is working. The event still flows through
+            // the pipeline (ConsumeEventsAsync delivers it to any subscriber); here it is ignored for rendering.
+            case AssistantThinkingDelta:
             case RateLimitInfo:
             case UnknownEvent:
                 break;
@@ -1205,21 +1189,6 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             LimitsTooltip = status.Describe();
         }
-    }
-
-    /// <summary>
-    /// Removes the in-progress "Thinking..." transcript row, if any, once real text/tool-use
-    /// output or a turn boundary makes it stale. No-op when there is no current thinking entry.
-    /// </summary>
-    private void _RemoveCurrentThinkingEntry()
-    {
-        if (_currentThinkingEntry is null)
-        {
-            return;
-        }
-
-        Transcript.Remove(_currentThinkingEntry);
-        _currentThinkingEntry = null;
     }
 
     protected override async ValueTask DisposeCoreAsync()

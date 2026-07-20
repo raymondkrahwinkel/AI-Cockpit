@@ -98,6 +98,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - changed: the New-session folder quick-pick is easier to keep tidy — each remembered folder has a ✕ to
   forget it, a divider separates your pinned favourites from the recent folders, and the recents list is
   capped at the five most recent (favourites stay unlimited and unaffected).
+- changed: when message timestamps are on, the time for your own messages and for each tool step now sits on
+  the same line as the "You" label or the tool name, instead of stacked on a separate line above the row — so
+  the transcript reads tighter.
 
 ### Fixed
 
@@ -122,5 +125,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   image input" even though Claude accepts images — the paste now attaches and is sent to the model.
 - fixed: in a chat session, text the assistant writes after running a tool now appears below that tool
   in the order it happened, instead of jumping up above the tools it just used.
+- fixed: the "Thinking…" indicator above the message box no longer switches off the moment the model starts
+  reasoning — it stays lit until the reply actually begins, so a session no longer briefly reads as idle while
+  it is still working toward its answer.
+- fixed: a long item in a bulleted or numbered list in an assistant reply no longer runs off the edge and gets
+  cut off — list items now wrap onto the next line like ordinary paragraphs.
 
 ### Removed
+
+- removed: the collapsible "Thinking…" step is no longer shown in the chat transcript. The pulsing indicator
+  above the message box already shows the model is working, so a separate reasoning line in the transcript
+  added little.

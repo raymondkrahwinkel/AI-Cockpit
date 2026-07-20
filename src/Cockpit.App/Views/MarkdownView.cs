@@ -170,7 +170,12 @@ public sealed class MarkdownView : ContentControl
                 VerticalAlignment = VerticalAlignment.Top,
             };
             var content = _InlineTextBlock(block.Items[index]);
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            // A DockPanel, not a horizontal StackPanel: a horizontal StackPanel measures its children with
+            // infinite available width, so TextWrapping=Wrap on the content never triggers and long list items
+            // (e.g. with inline-code tokens) run off and get clipped by the viewport. Docking the marker left
+            // and letting the content fill the remainder gives the text a bounded width, so it wraps (AC-144).
+            var row = new DockPanel { LastChildFill = true };
+            DockPanel.SetDock(marker, Dock.Left);
             row.Children.Add(marker);
             row.Children.Add(content);
             panel.Children.Add(row);

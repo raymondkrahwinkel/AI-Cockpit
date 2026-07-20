@@ -12,7 +12,6 @@ public enum TranscriptEntryKind
 {
     AssistantText,
     UserText,
-    Thinking,
     ToolUse,
     ToolResult,
     Question,
@@ -29,14 +28,12 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 {
     public TranscriptEntryKind Kind { get; }
 
-    public bool IsThinking => Kind == TranscriptEntryKind.Thinking;
-
     public bool IsToolResult => Kind == TranscriptEntryKind.ToolResult;
 
     public bool IsToolUse => Kind == TranscriptEntryKind.ToolUse;
 
-    /// <summary>Rows not rendered as thinking, a tool-use, or a standalone tool result — assistant/user text, questions, errors.</summary>
-    public bool IsPlainText => !IsThinking && !IsToolResult && !IsToolUse;
+    /// <summary>Rows not rendered as a tool-use or a standalone tool result — assistant/user text, questions, errors.</summary>
+    public bool IsPlainText => !IsToolResult && !IsToolUse;
 
     /// <summary>Assistant prose renders as markdown (T9).</summary>
     public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;
@@ -46,6 +43,13 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     /// <summary>Plain rows that are neither the user bubble nor markdown: questions, errors, turn results.</summary>
     public bool IsPlainNonMarkdown => IsPlainText && !IsAssistantMarkdown && !IsUserRow;
+
+    /// <summary>
+    /// Rows whose arrival timestamp renders at the top of the row (assistant prose, questions/errors/turn
+    /// results). User and tool-use rows carry their timestamp inline in their own header line instead
+    /// (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
+    /// </summary>
+    public bool IsTopTimestampRow => !IsUserRow && !IsToolUse;
 
     /// <summary>Chevron icon for a row's expand/collapse toggle, shared by the tool-use header and the standalone tool-result row.</summary>
     public MaterialIconKind ToggleIconKind => IsExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
@@ -108,7 +112,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     [ObservableProperty]
     private string _text;
 
-    /// <summary>Collapsed by default for thinking rows so they read as dimmed/collapsible, not as regular transcript text.</summary>
+    /// <summary>Collapsed by default for tool-use and standalone tool-result rows, so their input/output stays folded until the operator expands the chip.</summary>
     [ObservableProperty]
     private bool _isExpanded;
 

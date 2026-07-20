@@ -263,30 +263,32 @@
 
                                 <!-- Arrival timestamp (T7): a small faint label at the top of the row, shown
                                      only when the operator enables timestamps in Options. The toggle lives on
-                                     the session view model, so bind up to it via the ItemsControl's DataContext. -->
+                                     the session view model, so bind up to it via the ItemsControl's DataContext.
+                                     Suppressed for user and tool-use rows (AC-144): those carry the timestamp
+                                     inline in their own header line, so the top label would double it. -->
                                 <TextBlock Text="{Binding TimestampText}" FontSize="10"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}"
-                                           IsVisible="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ShowTimestamps}"/>
+                                           Foreground="{StaticResource CockpitTextFaintBrush}">
+                                    <TextBlock.IsVisible>
+                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                            <Binding Path="$parent[UserControl].((vm:SessionViewModel)DataContext).ShowTimestamps"/>
+                                            <Binding Path="IsTopTimestampRow"/>
+                                        </MultiBinding>
+                                    </TextBlock.IsVisible>
+                                </TextBlock>
 
-                                <!-- Thinking rows: a quiet chip, collapsed by default, indented under the reply
-                                     column so they read as reasoning-in-the-background rather than part of the
-                                     visible transcript flow. -->
-                                <StackPanel IsVisible="{Binding IsThinking}" Spacing="4" Margin="36,0,0,0">
-                                    <Button Content="Thinking…" Command="{Binding ToggleExpandedCommand}"
-                                            Classes="toolChip" HorizontalAlignment="Left" FontStyle="Italic"/>
-                                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                               Classes="transcript"
-                                               FontStyle="Italic"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"
-                                               IsVisible="{Binding IsExpanded}"/>
-                                </StackPanel>
-
-                                <!-- The user's own message (T2): a small "You" label over plain, selectable text;
-                                     the enclosing row Border right-aligns and tints it into a bubble
-                                     (Border.transcriptRow.userRow). -->
+                                <!-- The user's own message (T2): a header line with the timestamp left and a "You"
+                                     label right on one line (AC-144), over plain selectable text; the enclosing row
+                                     Border right-aligns and tints it into a bubble (Border.transcriptRow.userRow).
+                                     The timestamp only shows when the operator enabled timestamps; "You" stays put. -->
                                 <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2">
-                                    <TextBlock Text="You" HorizontalAlignment="Right" FontSize="10.5"
-                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding TimestampText}" FontSize="10"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ShowTimestamps}"/>
+                                        <TextBlock Grid.Column="1" Text="You" HorizontalAlignment="Right" FontSize="10.5"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    </Grid>
                                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                Classes="transcript"/>
                                 </StackPanel>
@@ -338,20 +340,28 @@
                                 <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4" Margin="36,0,0,0">
                                     <!-- Header row: the tool chip, with the allow/deny outcome trailing on the same
                                          line (T5) so a resolved call reads "Bash · dotnet build   Allowed" instead of
-                                         the verdict dropping onto its own line beneath the command. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
-                                        <Button Command="{Binding ToggleExpandedCommand}"
-                                                Classes="toolChip" HorizontalAlignment="Left">
-                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
-                                                <TextBlock Text="{Binding ToolHeader}"/>
-                                            </StackPanel>
-                                        </Button>
-                                        <TextBlock Text="{Binding PermissionDecision}" VerticalAlignment="Center"
-                                                   FontStyle="Italic" FontSize="11"
+                                         the verdict dropping onto its own line beneath the command. The arrival
+                                         timestamp sits right-aligned on this same line (AC-144), only when the
+                                         operator enabled timestamps. -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                                            <Button Command="{Binding ToggleExpandedCommand}"
+                                                    Classes="toolChip" HorizontalAlignment="Left">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                    <TextBlock Text="{Binding ToolHeader}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <TextBlock Text="{Binding PermissionDecision}" VerticalAlignment="Center"
+                                                       FontStyle="Italic" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                       IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding TimestampText}" FontSize="10"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center"
                                                    Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                   IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                    </StackPanel>
+                                                   IsVisible="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ShowTimestamps}"/>
+                                    </Grid>
                                     <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
                                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                              Classes="toolBody"

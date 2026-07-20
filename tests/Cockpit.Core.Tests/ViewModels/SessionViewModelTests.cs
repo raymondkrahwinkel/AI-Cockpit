@@ -423,13 +423,18 @@ public class SessionViewModelTests
     }
 
     [Fact]
-    public void Apply_ThinkingDelta_AddsAThinkingEntry()
+    public void Apply_ThinkingDelta_AddsNoTranscriptRow_AndLeavesTheIndicatorUp()
     {
         var vm = NewVm();
+        vm.IsAwaitingResponse = true; // a dispatched turn leaves it up until the first *visible* output
 
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.Thinking);
+        // The inline "Thinking…" row was removed (AC-144): reasoning deltas render nothing in the transcript.
+        vm.Transcript.Should().BeEmpty();
+        // And the model is still working toward its first visible output, so the indicator stays lit — dousing
+        // it the moment thinking began left a gap where the session read as idle while the answer was still coming.
+        vm.IsAwaitingResponse.Should().BeTrue();
     }
 
     [Fact]
@@ -456,31 +461,32 @@ public class SessionViewModelTests
     }
 
     [Fact]
-    public void Apply_TextDeltaAfterThinking_RemovesTheThinkingEntry()
+    public void Apply_TextDeltaAfterThinking_AddsOnlyTheAssistantRow()
     {
         var vm = NewVm();
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "Here you go." });
 
-        vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.Thinking);
-        vm.Transcript.Should().Contain(t => t.Kind == TranscriptEntryKind.AssistantText && t.Text == "Here you go.");
+        // No stray thinking row precedes it (AC-144): the assistant text row is the only row.
+        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.AssistantText && t.Text == "Here you go.");
+        vm.Transcript.Should().HaveCount(1);
     }
 
     [Fact]
-    public void Apply_ToolUseAfterThinking_RemovesTheThinkingEntry()
+    public void Apply_ToolUseAfterThinking_AddsOnlyTheToolRow()
     {
         var vm = NewVm();
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Read", InputJson = "{}" });
 
-        vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.Thinking);
-        vm.Transcript.Should().Contain(t => t.Kind == TranscriptEntryKind.ToolUse);
+        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.ToolUse);
+        vm.Transcript.Should().HaveCount(1);
     }
 
     [Fact]
-    public void Apply_TurnCompletedAfterThinking_RemovesTheThinkingEntry()
+    public void Apply_FailedTurnCompletedAfterThinking_AddsOnlyTheTurnRow()
     {
         var vm = NewVm();
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
@@ -488,8 +494,23 @@ public class SessionViewModelTests
         // A failed turn is surfaced as a row; a successful one is not (T4), so use an error here.
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error", Result = "boom", IsError = true });
 
-        vm.Transcript.Should().NotContain(t => t.Kind == TranscriptEntryKind.Thinking);
-        vm.Transcript.Should().Contain(t => t.Kind == TranscriptEntryKind.TurnCompleted);
+        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.TurnCompleted);
+        vm.Transcript.Should().HaveCount(1);
+    }
+
+    [Theory]
+    // User and tool-use rows carry their timestamp inline in their own header (AC-144), so the generic
+    // top-of-row timestamp is suppressed for them; every other kind still shows it at the top.
+    [InlineData(TranscriptEntryKind.UserText, false)]
+    [InlineData(TranscriptEntryKind.ToolUse, false)]
+    [InlineData(TranscriptEntryKind.AssistantText, true)]
+    [InlineData(TranscriptEntryKind.ToolResult, true)]
+    [InlineData(TranscriptEntryKind.Question, true)]
+    [InlineData(TranscriptEntryKind.TurnCompleted, true)]
+    [InlineData(TranscriptEntryKind.Error, true)]
+    public void IsTopTimestampRow_IsFalseForUserAndToolUse_TrueForEveryOtherKind(TranscriptEntryKind kind, bool expected)
+    {
+        new TranscriptEntryViewModel(kind, "x").IsTopTimestampRow.Should().Be(expected);
     }
 
     [Fact]
