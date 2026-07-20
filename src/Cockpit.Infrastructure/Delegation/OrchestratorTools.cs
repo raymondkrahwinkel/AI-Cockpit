@@ -110,8 +110,8 @@ internal sealed class OrchestratorTools
         {
             var task = await _delegation.DelegateAsync(
                 new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission),
-                cancellationToken,
-                McpRequestContext.CurrentPaneId);
+                McpRequestContext.CurrentPaneId,
+                cancellationToken);
 
             // A queued task is accepted, not rejected — but a bare "Queued" reads to a model like a failure, and
             // it re-sends the same work, piling up tasks the profile will run one after another anyway. So say
@@ -194,7 +194,7 @@ internal sealed class OrchestratorTools
     {
         try
         {
-            var task = await _delegation.SendFollowUpAsync(task_id, text, cancellationToken, McpRequestContext.CurrentPaneId);
+            var task = await _delegation.SendFollowUpAsync(task_id, text, McpRequestContext.CurrentPaneId, cancellationToken);
             return JsonSerializer.Serialize(task, SerializerOptions);
         }
         catch (DelegationRejectedException ex)

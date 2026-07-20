@@ -271,7 +271,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         return kept.Count > 0 ? kept : null;
     }
 
-    public async Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, CancellationToken cancellationToken = default, string? callerPaneId = null)
+    public async Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, string? callerPaneId = null, CancellationToken cancellationToken = default)
     {
         var profiles = await _profileStore.LoadAsync(cancellationToken);
         var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, request.ProfileLabel, StringComparison.OrdinalIgnoreCase))
@@ -349,7 +349,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// than accepted into the void, since a follow-up that silently does nothing is worse than an error: the
     /// caller waits for a turn that will never come.
     /// </summary>
-    public async Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default, string? callerPaneId = null)
+    public async Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, string? callerPaneId = null, CancellationToken cancellationToken = default)
     {
         var entry = _Find(taskId, callerPaneId)
             ?? throw new DelegationRejectedException($"No task '{taskId}'.");
@@ -461,7 +461,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             return _workspaces.ActiveWorkingDirectories;
         }
 
-        return _workspaces.WorkingDirectoryForPane(callerPaneId) is { Length: > 0 } directory ? [directory] : [];
+        // A UI pane's directory comes from the open-sessions provider. A delegated (headless) caller has no UI tab —
+        // its verified pane id is its own task id — so fall back to that task's own working directory. Without this,
+        // multi-level delegation (a MayDelegateFurther sub-agent delegating further into the directory it is itself
+        // working in) is refused, because the pane lookup finds no UI session (AC-128 review follow-up).
+        if (_workspaces.WorkingDirectoryForPane(callerPaneId) is { Length: > 0 } paneDirectory)
+        {
+            return [paneDirectory];
+        }
+
+        return _Find(callerPaneId)?.WorkingDirectory is { Length: > 0 } taskDirectory ? [taskDirectory] : [];
     }
 
     /// <summary>

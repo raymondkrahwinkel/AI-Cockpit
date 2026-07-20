@@ -37,7 +37,7 @@ internal sealed class DelegatedTaskEntry
     public string? RequestedPermission { get; }
 
     /// <summary>The verified pane that created this task (AC-128), or null off the verified path. Scopes the task-addressed tools and list_tasks so an agent cannot reach another session's task by naming its id (confused deputy).</summary>
-    public string? OwnerPaneId { get; set; }
+    public string? OwnerPaneId { get; init; }
 
     public ISessionRuntime? Runtime { get; private set; }
 

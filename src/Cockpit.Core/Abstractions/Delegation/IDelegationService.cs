@@ -82,7 +82,7 @@ public interface IDelegationService
     /// <see cref="DelegatedTaskStatus.Queued"/> and started when a slot frees — never silently dropped and never
     /// left hanging.
     /// </summary>
-    Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, CancellationToken cancellationToken = default, string? callerPaneId = null);
+    Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, string? callerPaneId = null, CancellationToken cancellationToken = default);
 
     /// <summary>The task's current state, without pulling its whole output.</summary>
     DelegatedTaskView? GetTask(string taskId, string? callerPaneId = null);
@@ -101,7 +101,7 @@ public interface IDelegationService
     /// alive, so it can take a follow-up; one whose session is gone is refused with a reason rather than silently
     /// accepted — a follow-up that quietly does nothing leaves the caller waiting for a turn that never comes.
     /// </summary>
-    Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default, string? callerPaneId = null);
+    Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, string? callerPaneId = null, CancellationToken cancellationToken = default);
 
     /// <summary>Stops the task and its session. Safe to call on an unknown or already-finished task.</summary>
     Task<DelegatedTaskView?> StopAsync(string taskId, string? callerPaneId = null);

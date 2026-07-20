@@ -20,7 +20,7 @@ public class OrchestratorToolsTests
         // A silent failure is the worst outcome: the agent would believe the work is under way and wait for a
         // result that is never coming.
         var delegation = Substitute.For<IDelegationService>();
-        delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<CancellationToken>())
+        delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns<Task<DelegatedTaskView>>(_ => throw new DelegationRejectedException("Profile 'private' is not available as a delegation target."));
         var tools = new OrchestratorTools(delegation);
 
@@ -37,7 +37,7 @@ public class OrchestratorToolsTests
         // Delegation is asynchronous by design: a sub-agent can run for minutes, which no MCP call should sit
         // through.
         var delegation = Substitute.For<IDelegationService>();
-        delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<CancellationToken>())
+        delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_View("task-1", DelegatedTaskStatus.Running));
         var tools = new OrchestratorTools(delegation);
 
@@ -54,7 +54,7 @@ public class OrchestratorToolsTests
         // a profile that runs them one at a time anyway (seen live with MaxConcurrent = 1). The answer has to say
         // that the work is in hand and that polling — not delegating again — is the next move.
         var delegation = Substitute.For<IDelegationService>();
-        delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<CancellationToken>())
+        delegation.DelegateAsync(Arg.Any<DelegationRequest>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(_View("task-2", DelegatedTaskStatus.Queued));
         var tools = new OrchestratorTools(delegation);
 

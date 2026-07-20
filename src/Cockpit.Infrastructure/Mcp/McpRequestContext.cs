@@ -16,5 +16,5 @@ public static class McpRequestContext
     public static string? CurrentPaneId => Current.Value;
 
     /// <summary>Sets the verified pane id for the duration of the current request's async flow.</summary>
-    public static void Set(string? paneId) => Current.Value = paneId;
+    internal static void Set(string? paneId) => Current.Value = paneId;
 }
