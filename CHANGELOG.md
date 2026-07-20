@@ -32,6 +32,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: hover an assistant reply to copy it or have it read aloud, and a "starting…" banner appears
+  while a session is still coming up — so long-running actions and a launching session both show they
+  are working rather than sitting silent.
 - added: a visual verify loop. An agent can run a command you register for a project (in the sidebar
   menu → Verify runners) that renders your UI, and gets it back as a text snapshot — control
   positions, colours and text — plus a screenshot for image-capable providers, so it checks its UI
@@ -68,6 +71,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the chat transcript (SDK and local-model sessions) got an identity and look pass — each
+  reply shows the model's avatar and name and your own messages a "You" label, a fresh session shows a
+  model card (name, provider, connected tools) instead of a bare "Ready" line, tool steps and thinking
+  read as quiet chips, and a tool's allow/deny outcome now sits inline after the command instead of on
+  a line below it.
+- changed: the SDK session header is calmer — the model, effort and permission-mode pickers fold behind
+  one settings icon, and Stop moved down beside the message box and only appears while the assistant is
+  working.
 - changed: a consent request now dims the whole session and shows the Approve/Deny card centred on top,
   instead of a small banner wedged above the terminal. The old banner changed the content's height when
   it appeared and cleared, so the terminal (or transcript) visibly jumped; it was also easy to miss. As
@@ -81,5 +92,8 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   capped at the five most recent (favourites stay unlimited and unaffected).
 
 ### Fixed
+
+- fixed: in a chat session, text the assistant writes after running a tool now appears below that tool
+  in the order it happened, instead of jumping up above the tools it just used.
 
 ### Removed

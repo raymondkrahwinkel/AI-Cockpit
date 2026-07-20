@@ -582,6 +582,25 @@ public class SessionViewModelTests
     }
 
     [Fact]
+    public void Apply_TextThatStreamsAfterAToolCall_StartsANewRowBeneathTheTool_NotMergedAbove()
+    {
+        var vm = NewVm();
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 0, Text = "Let me check. " });
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Read", InputJson = "{}" });
+        vm.Apply(new ToolResult { SessionId = "S1", ToolUseId = "toolu_1", Content = "file contents", IsError = false });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "Here is the summary." });
+
+        var assistantRows = vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.AssistantText).ToList();
+        assistantRows.Should().HaveCount(2, "prose before and after the tool call are separate replies, not one merged block");
+        assistantRows[0].Text.Should().Be("Let me check. ");
+        assistantRows[1].Text.Should().Be("Here is the summary.");
+
+        var toolIndex = vm.Transcript.IndexOf(vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.ToolUse));
+        var postToolIndex = vm.Transcript.IndexOf(assistantRows[1]);
+        postToolIndex.Should().BeGreaterThan(toolIndex, "text that streamed after the tool call must render below it, in order");
+    }
+
+    [Fact]
     public void ToolHeader_CompactsToToolNameAndAShortHint()
     {
         var vm = NewVm();
