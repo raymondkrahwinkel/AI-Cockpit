@@ -8,6 +8,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -270,7 +271,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         return kept.Count > 0 ? kept : null;
     }
 
-    public async Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, CancellationToken cancellationToken = default)
+    public async Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, CancellationToken cancellationToken = default, string? callerPaneId = null)
     {
         var profiles = await _profileStore.LoadAsync(cancellationToken);
         var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, request.ProfileLabel, StringComparison.OrdinalIgnoreCase))
@@ -289,7 +290,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             throw;
         }
 
-        var entry = new DelegatedTaskEntry(profile, request);
+        var entry = new DelegatedTaskEntry(profile, request) { OwnerPaneId = callerPaneId };
         lock (_tasksLock)
         {
             if (_tasks.Count(task => task.Status == DelegatedTaskStatus.Queued) >= MaxQueued)
@@ -313,23 +314,25 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         return entry.ToView();
     }
 
-    public DelegatedTaskView? GetTask(string taskId) => _Find(taskId)?.ToView();
+    public DelegatedTaskView? GetTask(string taskId, string? callerPaneId = null) => _Find(taskId, callerPaneId)?.ToView();
 
-    public IReadOnlyList<DelegatedTaskView> ListTasks(DelegatedTaskStatus? status = null)
+    public IReadOnlyList<DelegatedTaskView> ListTasks(DelegatedTaskStatus? status = null, string? callerPaneId = null)
     {
         lock (_tasksLock)
         {
             return _tasks
                 .Where(task => status is null || task.Status == status)
+                // AC-128: an agent lists only the tasks it created; a null caller (operator/UI/off-path) sees every one.
+                .Where(task => callerPaneId is null || task.OwnerPaneId == callerPaneId)
                 .OrderByDescending(task => task.CreatedAt)
                 .Select(task => task.ToView())
                 .ToList();
         }
     }
 
-    public (IReadOnlyList<SessionEvent> Events, int NextCursor, bool Done) GetOutput(string taskId, int cursor = 0)
+    public (IReadOnlyList<SessionEvent> Events, int NextCursor, bool Done) GetOutput(string taskId, int cursor = 0, string? callerPaneId = null)
     {
-        var entry = _Find(taskId);
+        var entry = _Find(taskId, callerPaneId);
         if (entry?.Runtime is null)
         {
             return ([], cursor, entry?.IsFinished ?? true);
@@ -346,9 +349,9 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// than accepted into the void, since a follow-up that silently does nothing is worse than an error: the
     /// caller waits for a turn that will never come.
     /// </summary>
-    public async Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default)
+    public async Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default, string? callerPaneId = null)
     {
-        var entry = _Find(taskId)
+        var entry = _Find(taskId, callerPaneId)
             ?? throw new DelegationRejectedException($"No task '{taskId}'.");
 
         if (entry.Runtime is not { IsRunning: true })
@@ -386,9 +389,9 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         return entry.ToView();
     }
 
-    public async Task<DelegatedTaskView?> StopAsync(string taskId)
+    public async Task<DelegatedTaskView?> StopAsync(string taskId, string? callerPaneId = null)
     {
-        var entry = _Find(taskId);
+        var entry = _Find(taskId, callerPaneId);
         if (entry is null)
         {
             return null;
@@ -502,7 +505,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 effectiveCeiling,
                 model: null,
                 enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
-                workingDirectory: entry.WorkingDirectory);
+                workingDirectory: entry.WorkingDirectory,
+                // AC-128/AC-89: give the delegated session its own verified MCP identity, keyed on the task id, so the
+                // driver mints it a per-session SessionMcpKeyring token instead of the shared app key. Without this a
+                // sub-agent's own orchestrator calls arrive as a null — unscoped — caller and could reach every
+                // session's tasks: the confused deputy the owner-scoping closes, reopened for the one actor that runs
+                // agent-driven end to end (a MayDelegateFurther sub-agent).
+                launchOptions: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [WellKnownPluginSessionOptions.PaneId] = entry.TaskId,
+                });
 
             // The ceiling above governs a CLI session's own permission handling, but a local-model session
             // (OpenAiCompatSessionDriver) treats permissionMode as a no-op and gates every MCP tool call through
@@ -769,11 +781,15 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         }
     }
 
-    private DelegatedTaskEntry? _Find(string taskId)
+    // Scope a task lookup to the pane that created it (AC-128): a task only exists for its owner, so an agent cannot
+    // read, continue, or stop another session's task by naming its id (confused deputy). A null caller — the
+    // operator/UI, or the off-path in-process loop where no middleware set a verified pane — sees every task.
+    private DelegatedTaskEntry? _Find(string taskId, string? callerPaneId = null)
     {
         lock (_tasksLock)
         {
-            return _tasks.FirstOrDefault(task => task.TaskId == taskId);
+            var entry = _tasks.FirstOrDefault(task => task.TaskId == taskId);
+            return entry is not null && callerPaneId is not null && entry.OwnerPaneId != callerPaneId ? null : entry;
         }
     }
 }
