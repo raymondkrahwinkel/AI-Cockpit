@@ -7,6 +7,12 @@ namespace Cockpit.Core.Abstractions.Delegation;
 /// The engine behind the orchestrator (#67): a running session asks it to hand a task to another profile, and it
 /// enforces what that profile allows before a process is ever spawned. The MCP tool surface is a thin shell over
 /// this — the rules live here, not in the tool definitions, so they hold however the engine is reached.
+/// <para>
+/// Task-addressed calls take a <c>callerPaneId</c> — the transport-verified pane behind the request (AC-128). When
+/// set, a task is only reachable by the pane that created it, so an agent cannot read, continue, stop, or list
+/// another session's task by naming its id (confused deputy). A null caller — the operator/UI, or the off-path
+/// in-process loop where no middleware set a verified pane — is unscoped and sees every task.
+/// </para>
 /// </summary>
 public interface IDelegationService
 {
@@ -76,29 +82,29 @@ public interface IDelegationService
     /// <see cref="DelegatedTaskStatus.Queued"/> and started when a slot frees — never silently dropped and never
     /// left hanging.
     /// </summary>
-    Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, CancellationToken cancellationToken = default);
+    Task<DelegatedTaskView> DelegateAsync(DelegationRequest request, CancellationToken cancellationToken = default, string? callerPaneId = null);
 
     /// <summary>The task's current state, without pulling its whole output.</summary>
-    DelegatedTaskView? GetTask(string taskId);
+    DelegatedTaskView? GetTask(string taskId, string? callerPaneId = null);
 
     /// <summary>Every task this cockpit knows about, newest first.</summary>
-    IReadOnlyList<DelegatedTaskView> ListTasks(DelegatedTaskStatus? status = null);
+    IReadOnlyList<DelegatedTaskView> ListTasks(DelegatedTaskStatus? status = null, string? callerPaneId = null);
 
     /// <summary>
     /// The events produced since <paramref name="cursor"/>, for a caller that wants to watch progress rather than
     /// wait for the answer. Returns the cursor to pass next time, and whether the task is finished.
     /// </summary>
-    (IReadOnlyList<SessionEvent> Events, int NextCursor, bool Done) GetOutput(string taskId, int cursor = 0);
+    (IReadOnlyList<SessionEvent> Events, int NextCursor, bool Done) GetOutput(string taskId, int cursor = 0, string? callerPaneId = null);
 
     /// <summary>
     /// Continues a task with another turn on the same session. A task that has answered is Completed but still
     /// alive, so it can take a follow-up; one whose session is gone is refused with a reason rather than silently
     /// accepted — a follow-up that quietly does nothing leaves the caller waiting for a turn that never comes.
     /// </summary>
-    Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default);
+    Task<DelegatedTaskView> SendFollowUpAsync(string taskId, string text, CancellationToken cancellationToken = default, string? callerPaneId = null);
 
     /// <summary>Stops the task and its session. Safe to call on an unknown or already-finished task.</summary>
-    Task<DelegatedTaskView?> StopAsync(string taskId);
+    Task<DelegatedTaskView?> StopAsync(string taskId, string? callerPaneId = null);
 }
 
 /// <summary>

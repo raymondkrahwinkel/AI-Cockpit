@@ -3,6 +3,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Delegation;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -109,7 +110,8 @@ internal sealed class OrchestratorTools
         {
             var task = await _delegation.DelegateAsync(
                 new DelegationRequest(profile, prompt, task_type, label, working_directory, requested_permission),
-                cancellationToken);
+                cancellationToken,
+                McpRequestContext.CurrentPaneId);
 
             // A queued task is accepted, not rejected — but a bare "Queued" reads to a model like a failure, and
             // it re-sends the same work, piling up tasks the profile will run one after another anyway. So say
@@ -143,7 +145,7 @@ internal sealed class OrchestratorTools
     public string GetTaskStatus(
         [Description("The task id returned by delegate_task.")] string task_id)
     {
-        var task = _delegation.GetTask(task_id);
+        var task = _delegation.GetTask(task_id, McpRequestContext.CurrentPaneId);
         return task is null
             ? JsonSerializer.Serialize(new { error = $"No task '{task_id}'." }, SerializerOptions)
             : JsonSerializer.Serialize(task, SerializerOptions);
@@ -154,7 +156,7 @@ internal sealed class OrchestratorTools
     public string GetTaskResult(
         [Description("The task id returned by delegate_task.")] string task_id)
     {
-        var task = _delegation.GetTask(task_id);
+        var task = _delegation.GetTask(task_id, McpRequestContext.CurrentPaneId);
         if (task is null)
         {
             return JsonSerializer.Serialize(new { error = $"No task '{task_id}'." }, SerializerOptions);
@@ -171,7 +173,7 @@ internal sealed class OrchestratorTools
         [Description("The task id returned by delegate_task.")] string task_id,
         [Description("The cursor from the previous call; omit or pass 0 to start from the beginning.")] int cursor = 0)
     {
-        var (events, nextCursor, done) = _delegation.GetOutput(task_id, cursor);
+        var (events, nextCursor, done) = _delegation.GetOutput(task_id, cursor, McpRequestContext.CurrentPaneId);
 
         return JsonSerializer.Serialize(
             new
@@ -192,7 +194,7 @@ internal sealed class OrchestratorTools
     {
         try
         {
-            var task = await _delegation.SendFollowUpAsync(task_id, text, cancellationToken);
+            var task = await _delegation.SendFollowUpAsync(task_id, text, cancellationToken, McpRequestContext.CurrentPaneId);
             return JsonSerializer.Serialize(task, SerializerOptions);
         }
         catch (DelegationRejectedException ex)
@@ -207,7 +209,7 @@ internal sealed class OrchestratorTools
     public async Task<string> StopTaskAsync(
         [Description("The task id returned by delegate_task.")] string task_id)
     {
-        var task = await _delegation.StopAsync(task_id);
+        var task = await _delegation.StopAsync(task_id, McpRequestContext.CurrentPaneId);
         return task is null
             ? JsonSerializer.Serialize(new { error = $"No task '{task_id}'." }, SerializerOptions)
             : JsonSerializer.Serialize(task, SerializerOptions);
@@ -222,7 +224,7 @@ internal sealed class OrchestratorTools
             ? parsed
             : null;
 
-        return JsonSerializer.Serialize(_delegation.ListTasks(filter), SerializerOptions);
+        return JsonSerializer.Serialize(_delegation.ListTasks(filter, McpRequestContext.CurrentPaneId), SerializerOptions);
     }
 
     // Only the events worth reading back to an agent carry text; the rest are reported by type alone, so a
