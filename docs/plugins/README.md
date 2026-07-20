@@ -24,8 +24,9 @@ The official plugin store is
 **[github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins)**,
 pre-seeded into a fresh cockpit install; the example plugins under
 [`plugins-dev/`](../../plugins-dev) — UI plugins (GitHub Issues, GitHub Pull Requests, YouTrack, Git Status,
-Prompt Library, Claude Transcript Search), widget plugins (Clock, System Monitor) and provider plugins
-(Gemini/OpenAI, GitHub Models, CLI Agent/Codex) — are published there.
+GitHub Actions, Session Review, Prompt Library, Claude Transcript Search), MCP plugins (Docker, Kubernetes),
+widget plugins (Clock, System Monitor) and provider plugins (Gemini/OpenAI, GitHub Models,
+CLI Agent/Codex) — are published there.
 
 **Git Status, Claude Transcript Search and the Clock ship with the app.** The first two used to be core
 features, and bundling them means you have them without having to know they exist. The clock is there so a new

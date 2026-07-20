@@ -113,8 +113,7 @@ calling agent cannot delegate to what it cannot see.
   first use rather than bundled for every platform, which took a self-contained `win-x64` publish from **1.8 GB to
   294 MB** (measured, both ways, on one machine). The model (`large-v3-turbo`, ~1.6 GB) is fetched on first
   dictation and cached, and unloads again after five minutes with nothing to transcribe — it is 1.5 GB resident,
-  which is a lot to hold on a machine also running local models. Build with
-  `-p:BundleGpuWhisperRuntimes=false` for a slim CPU-only publish. Details and the measurements:
+  which is a lot to hold on a machine also running local models. Details and the measurements:
   [binary size & on-demand runtimes](docs/binary-size-and-on-demand-runtimes.md).
 - **Open-mic mode:** continuous listening with Silero VAD-based endpointing (configurable silence timeout) — no
   push-to-talk needed.
@@ -149,7 +148,8 @@ A **workspace** is a named, persisted pane layout, switched from a strip of tabs
 kinds, and the kind decides what a workspace can hold — so there are no dead controls, and widgets never end up
 mixed into a grid of sessions:
 
-- **💬 Sessions** — the work surface: your AI sessions, arranged the way you left them.
+- **💬 Sessions** — the work surface: your AI sessions (each optionally isolated in its own git worktree), plus
+  plain terminal panes (`pwsh`/`bash`/…) beside them, arranged the way you left them.
 - **📊 Dashboard** — a grid of **widgets**, for what you want to glance at rather than talk to.
 
 Tabs are reorderable by dragging and renamable in place; Ctrl+Shift+Left / Ctrl+Shift+Right walk between them.
@@ -254,6 +254,14 @@ loose DLLs and hunting for the executable:
 None of them need a .NET runtime installed, and none of them need an installer. Your settings live in
 `cockpit.json` (see below), not next to the binary, so replacing the binary keeps everything.
 
+> **macOS — "is damaged and can't be opened":** the app is ad-hoc signed but not notarized, so a freshly
+> downloaded copy is quarantined by Gatekeeper. After dragging it onto /Applications, clear the quarantine flag
+> once, then open it normally:
+>
+> ```
+> xattr -cr /Applications/AI-Cockpit.app
+> ```
+
 ### Linux
 
 The **AppImage** is one file: make it executable and run it.
@@ -344,9 +352,11 @@ dotnet test
 - **Official plugin store:**
   [github.com/raymondkrahwinkel/AI-Cockpit-Plugins](https://github.com/raymondkrahwinkel/AI-Cockpit-Plugins) — the
   [`plugins-dev/`](plugins-dev) example plugins, published. UI plugins (GitHub Issues, GitHub Pull Requests,
-  YouTrack, Git Status, Prompt Library, Transcript Search), widgets (Clock, System Monitor), providers
-  (Gemini/OpenAI, GitHub Models, CLI Agent/Codex) and **Workflows** — a canvas where flows are drawn and an
-  engine that runs them, which other plugins contribute their own steps and triggers to.
+  YouTrack, Git Status, GitHub Actions, Session Review, Prompt Library, Transcript Search), MCP plugins
+  (Docker, Kubernetes), widgets (Clock, System Monitor), providers (Gemini/OpenAI, GitHub Models,
+  CLI Agent/Codex) and **Workflows** — a canvas where flows are drawn and an engine that runs them, which
+  other plugins contribute their own steps and triggers to. (Usage Trend is a bundled example widget under
+  `plugins-dev/`, not yet published to the store.)
 - **Scaffold a new plugin:** `dotnet new install ./templates/cockpit-plugin` then
   `dotnet new cockpit-plugin -n My.Plugin -o plugins-dev/My.Plugin`.
 

@@ -90,6 +90,13 @@ public interface ICockpitHost
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
                    string? actionLabel = null, Action? onAction = null);        // default no-op
+    void AddSessionHeaderAction(PluginSessionAction action);                     // default no-op
+    void AddToolbarAction(ToolbarAction action);                                 // default no-op
+    void AddShortcut(PluginShortcut shortcut);                                   // default no-op
+    void AddWorkflowTemplate(WorkflowTemplate template);                         // default no-op
+    void AddTtyProvider(TtyProviderRegistration registration);                   // default no-op
+    void AddManagedCli(ManagedCliDescriptor descriptor);                         // default no-op
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null); // default no-op
 }
 ```
 
@@ -550,6 +557,34 @@ public sealed record ConsentDecision(ConsentOutcome Outcome, bool Remembered = f
 ```
 
 ---
+
+### `void AddSessionHeaderAction(PluginSessionAction action)`
+
+A quick action button on a session's header bar (AC-37) — hides itself when it has nothing to show. Used by the Session Review plugin. Default no-op.
+
+### `void AddToolbarAction(ToolbarAction action)`
+
+Drops a quick action onto the app toolbar, provider-neutral — any plugin adds one the same way. Used by the Docker and Kubernetes plugins. Default no-op.
+
+### `void AddShortcut(PluginShortcut shortcut)`
+
+Registers a keyboard shortcut, shown alongside the built-in ones in Options and rebindable there. Only fires when the operator is not typing into a text field or the terminal. Default no-op.
+
+### `void AddWorkflowTemplate(WorkflowTemplate template)`
+
+Offers a prebuilt flow — a template — in the Workflows plugin's "New flow" picker under this plugin's name, instead of an empty canvas. Default no-op.
+
+### `void AddTtyProvider(TtyProviderRegistration registration)`
+
+Registers a terminal (TTY) provider, so a plugin can back a terminal pane with its own process or shell. Default no-op.
+
+### `void AddManagedCli(ManagedCliDescriptor descriptor)`
+
+Registers a CLI the host downloads and unpacks on demand; a machine with no managed copy falls back to the one on `PATH`. Default no-op.
+
+### `Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null)`
+
+Registers an **in-process** MCP server (AC-12) exposing the methods on `tools` — distinct from `AddMcpServer`, which points the cockpit at an external MCP process. `isEnabled` gates it live on the plugin's own setting (read each time servers are gathered, so a toggle takes effect at once; `null` = always on). Call it fire-and-forget from `Initialize`. Used by the Docker and Kubernetes plugins. Default no-op.
 
 ## `ICockpitActions`
 

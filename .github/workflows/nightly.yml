@@ -236,6 +236,10 @@ jobs:
               echo
               git log --no-merges --pretty='- %s' -n 20
             fi
+            echo
+            echo "---"
+            echo
+            echo "**macOS — \"is damaged and can't be opened\":** the download is ad-hoc signed, not notarized, so Gatekeeper quarantines it. After dragging it onto /Applications, clear the flag once with \`xattr -cr /Applications/AI-Cockpit.app\`, then open it normally."
           } > nightly-notes.md
 
       # Delete and recreate rather than update: an existing release keeps its old assets and — the part that

@@ -145,6 +145,19 @@ jobs:
         with:
           name: release-notes
 
+      # A downloaded macOS .dmg is ad-hoc signed, so Gatekeeper quarantines it ("is damaged and can't be
+      # opened"). The fix is one command, and the release page is where a macOS downloader actually is — so
+      # append the note to the curated body rather than leaving it only in the README.
+      - name: Append the macOS quarantine note
+        shell: bash
+        run: |
+          {
+            echo
+            echo "---"
+            echo
+            echo "**macOS — \"is damaged and can't be opened\":** the download is ad-hoc signed, not notarized, so Gatekeeper quarantines it. After dragging it onto /Applications, clear the flag once with \`xattr -cr /Applications/AI-Cockpit.app\`, then open it normally."
+          } >> release-notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
