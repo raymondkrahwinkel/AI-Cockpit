@@ -8,6 +8,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.Infrastructure.Delegation;
 
@@ -504,7 +505,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 effectiveCeiling,
                 model: null,
                 enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
-                workingDirectory: entry.WorkingDirectory);
+                workingDirectory: entry.WorkingDirectory,
+                // AC-128/AC-89: give the delegated session its own verified MCP identity, keyed on the task id, so the
+                // driver mints it a per-session SessionMcpKeyring token instead of the shared app key. Without this a
+                // sub-agent's own orchestrator calls arrive as a null — unscoped — caller and could reach every
+                // session's tasks: the confused deputy the owner-scoping closes, reopened for the one actor that runs
+                // agent-driven end to end (a MayDelegateFurther sub-agent).
+                launchOptions: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [WellKnownPluginSessionOptions.PaneId] = entry.TaskId,
+                });
 
             // The ceiling above governs a CLI session's own permission handling, but a local-model session
             // (OpenAiCompatSessionDriver) treats permissionMode as a no-op and gates every MCP tool call through

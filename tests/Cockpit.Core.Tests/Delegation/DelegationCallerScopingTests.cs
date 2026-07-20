@@ -6,6 +6,7 @@ using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
 using Cockpit.Infrastructure.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using FluentAssertions;
 using NSubstitute;
 
@@ -38,6 +39,40 @@ public class DelegationCallerScopingTests
 
         // The operator/UI (a null caller) is unscoped and still sees it.
         service.GetTask(task.TaskId).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ADelegatedSession_IsLaunchedWithItsOwnVerifiedPaneIdentity_KeyedOnTheTaskId()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var driverFactory = Substitute.For<ISessionDriverFactory>();
+        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([_Target("qwen")]);
+        var mcpServerStore = Substitute.For<IMcpServerStore>();
+        mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+        var open = Substitute.For<ISessionWorkspaces>();
+        open.ActiveWorkingDirectories.Returns(["/home/raymond/work"]);
+        var service = new DelegationService(
+            profileStore, new SessionManager(driverFactory), mcpServerStore, Substitute.For<IDelegationAuditLog>(), open);
+
+        var task = await service.DelegateAsync(
+            new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/work"),
+            callerPaneId: "parent-pane");
+
+        // The delegated session is started with its own pane identity (the task id), so the driver mints it a
+        // per-session MCP token instead of the shared app key — its own orchestrator calls are then scoped, not null.
+        await driver.Received().StartAsync(
+            Arg.Any<SessionProfile?>(),
+            Arg.Any<string?>(),
+            Arg.Any<string?>(),
+            Arg.Any<IReadOnlySet<string>?>(),
+            Arg.Any<string?>(),
+            Arg.Any<SessionResume?>(),
+            Arg.Is<IReadOnlyDictionary<string, string>?>(options =>
+                options != null && options[WellKnownPluginSessionOptions.PaneId] == task.TaskId),
+            Arg.Any<CancellationToken>());
     }
 
     private static SessionProfile _Target(string label) =>
