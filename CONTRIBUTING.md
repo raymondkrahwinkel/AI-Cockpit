@@ -75,6 +75,9 @@ one release to the next it is clear what actually changed — without reading th
 - The commit types above map straight onto the changelog sections: `added:` → **Added**, `changed:` /
   `refactored:` → **Changed**, `fixed:` → **Fixed**, `removed:` → **Removed**. Reuse the wording; keep
   it operator-facing (what changed for the person running the cockpit, not the class that changed).
+- **No internal tracker numbers.** A reader on GitHub cannot follow an `AC-…`, so keep them out of the
+  changelog and the release notes; link a public GitHub issue only when one exists. A commit message may
+  keep a tracker reference for internal traceability — the published changelog stays clean.
 - Add to `[Unreleased]` — never write a version heading yourself.
 - **Releasing is a tag.** Push a `v*` tag (`git tag v1.2.3 && git push origin v1.2.3`) and the Release
   workflow rolls `[Unreleased]` into a dated `## [1.2.3]` section, commits that back, and uses the same

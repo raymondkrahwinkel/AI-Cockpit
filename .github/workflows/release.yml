@@ -164,7 +164,9 @@ jobs:
           body_path: release-notes.md
           draft: false
           prerelease: false
-          generate_release_notes: true
+          # The curated changelog IS the release note; do not let GitHub append its raw commit list
+          # underneath it — those subjects are internal (ticket-only) and read as noise to a downloader.
+          generate_release_notes: false
 
   # Only now that every platform has published: move the [Unreleased] entries under the version that
   # just shipped and open a fresh empty section, committed back to the default branch. After the

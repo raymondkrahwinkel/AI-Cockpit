@@ -230,11 +230,11 @@ jobs:
             echo "### Changes since the previous nightly"
             echo
             if [ -n "$previous" ] && git cat-file -e "${previous}^{commit}" 2>/dev/null; then
-              git log --no-merges --pretty='- %s' "${previous}..HEAD"
+              bash scripts/nightly-notes.sh "${previous}..HEAD"
             else
               echo "_No previous nightly in history — the most recent commits:_"
               echo
-              git log --no-merges --pretty='- %s' -n 20
+              bash scripts/nightly-notes.sh -n 20
             fi
             echo
             echo "---"
