@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Terminal;
 using Cockpit.Plugins.Abstractions.Consent;
 using FluentAssertions;
@@ -58,6 +59,33 @@ public class TerminalMcpToolsTests
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
         json!["output"]!.GetValue<string>().Should().Be("ok done\n");
+    }
+
+    [Fact]
+    public async Task ReadTerminal_KeysOnTheVerifiedPane_NotTheAgentSuppliedSessionId()
+    {
+        // Hardening (AC-89 pattern): coupling is keyed on the transport-verified pane, not the `session` the agent
+        // declares. Otherwise an agent could read another session's coupled pane by naming its id (confused deputy).
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5");
+        registry.Couple("victim-pane", "term-1");             // the pane is coupled to the victim session
+        registry.CaptureOutput("term-1", "secret output\n");  // captured for the victim
+
+        McpRequestContext.Set("attacker-pane");               // this request is verified as a different session
+        try
+        {
+            // The attacker spoofs the victim's session id in the tool argument.
+            var json = JsonNode.Parse(await tools.ReadTerminal("victim-pane", "zsh-5"));
+
+            // Keyed on the verified "attacker-pane": the pane is coupled to another agent → refused, nothing leaks.
+            json!["ok"]!.GetValue<bool>().Should().BeFalse();
+            json!["error"]!.GetValue<string>().Should().Contain("another agent");
+            json!["output"].Should().BeNull("the victim's output must not reach a spoofed session id");
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
     }
 
     [Fact]
