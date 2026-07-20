@@ -19,10 +19,16 @@ namespace Cockpit.App.ViewModels;
 /// </param>
 /// <param name="WorkingDirectory">Per-session working directory, or null for the global default.</param>
 /// <param name="Resume">Which conversation to pick up, or null/new for a fresh one.</param>
+/// <param name="EnabledMcpServerNames">
+/// The per-session MCP-server selection (#44) from the New-session dialog — the enabled server names the provider
+/// narrows the shared registry to, or null for no narrowing. Without this a TTY session loaded every eligible
+/// server regardless of the operator's checklist.
+/// </param>
 public sealed record TtyLaunchRequest(
     ITtyLauncher Launcher,
     ITtySessionProvider Provider,
     SessionProfile? Profile,
     IReadOnlyDictionary<string, string> Options,
     string? WorkingDirectory,
-    SessionResume? Resume);
+    SessionResume? Resume,
+    IReadOnlySet<string>? EnabledMcpServerNames = null);

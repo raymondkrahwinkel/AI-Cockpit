@@ -29,7 +29,8 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
         short rows,
         string? workingDirectory = null,
         SessionResume? resume = null,
-        string? paneId = null)
+        string? paneId = null,
+        IReadOnlySet<string>? enabledMcpServerNames = null)
     {
         var baseEnvironment = TtyEnvironment.BuildBase(CurrentProcessEnvironment());
 
@@ -83,7 +84,12 @@ internal sealed class TtyLauncher(IPtyHostFactory ptyHostFactory, McpAuthKey aut
             options,
             Path.GetFullPath(workingDirectory ?? Directory.GetCurrentDirectory()),
             resume,
-            baseEnvironment);
+            baseEnvironment)
+        {
+            // The per-session MCP checklist (#44): a provider that fans the shared registry into its config narrows
+            // to exactly these names, so an unchecked server never reaches the CLI. Null means no narrowing.
+            EnabledMcpServerNames = enabledMcpServerNames,
+        };
 
         var spec = provider.BuildLaunch(context);
 

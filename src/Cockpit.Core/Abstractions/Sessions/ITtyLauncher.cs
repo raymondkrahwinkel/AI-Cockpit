@@ -24,6 +24,12 @@ public interface ITtyLauncher
     /// <c>COCKPIT_PANE_ID</c> environment variable, so the agent can name its own session to the cockpit-session
     /// MCP server's <c>set_status</c> tool.
     /// </para>
+    /// <para>
+    /// <paramref name="enabledMcpServerNames"/> is the per-session MCP-server selection (#44): the enabled server
+    /// names to narrow the shared registry to, or <see langword="null"/> for no narrowing. Carried onto the
+    /// <see cref="TtyLaunchContext"/> so a provider that fans the registry into its config honours the operator's
+    /// checklist instead of loading every eligible server.
+    /// </para>
     /// </summary>
     IConPtyProcess Launch(
         ITtySessionProvider provider,
@@ -33,5 +39,6 @@ public interface ITtyLauncher
         short rows,
         string? workingDirectory = null,
         SessionResume? resume = null,
-        string? paneId = null);
+        string? paneId = null,
+        IReadOnlySet<string>? enabledMcpServerNames = null);
 }
