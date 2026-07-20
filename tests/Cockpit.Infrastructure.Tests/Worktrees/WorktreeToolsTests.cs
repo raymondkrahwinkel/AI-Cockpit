@@ -3,6 +3,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Infrastructure.Worktrees;
 using Cockpit.Plugins.Abstractions.Consent;
 using FluentAssertions;
@@ -17,6 +18,30 @@ namespace Cockpit.Infrastructure.Tests.Worktrees;
 /// </summary>
 public class WorktreeToolsTests
 {
+    [Fact]
+    public async Task Remove_RefusesAWorktreeOwnedByAnotherSession_KeyedOnTheVerifiedPane()
+    {
+        // AC-128: an agent may only remove a worktree it owns. Naming another session's path is a confused deputy.
+        var manager = Substitute.For<IWorktreeManager>();
+        var record = _Record("victim-pane", "/wt/victim");
+        manager.ListAsync(Arg.Any<CancellationToken>()).Returns(new List<WorktreeRecord> { record });
+        var tools = new WorktreeTools(manager);
+
+        McpRequestContext.Set("attacker-pane");
+        try
+        {
+            using var result = JsonDocument.Parse(await tools.RemoveAsync("/wt/victim"));
+
+            result.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
+            result.RootElement.GetProperty("error").GetString().Should().Contain("another session");
+            await manager.DidNotReceive().RemoveAsync(Arg.Any<WorktreeRecord>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            McpRequestContext.Set(null);
+        }
+    }
+
     private static WorktreeRecord _Record(string session, string path) =>
         new(session, "/repo", path, "cockpit/x", "abc", DateTimeOffset.UtcNow);
 

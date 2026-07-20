@@ -280,7 +280,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         var policy = profile.DelegationPolicy;
         try
         {
-            _Guard(request, policy);
+            _Guard(request, policy, callerPaneId);
         }
         catch (DelegationRejectedException ex)
         {
@@ -411,7 +411,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
     // Everything the target profile refuses is refused here, before a process exists. A caller cannot widen any
     // of it: the driver, the credentials and the environment all come from the profile, never from the call.
-    private void _Guard(DelegationRequest request, DelegationPolicy policy)
+    private void _Guard(DelegationRequest request, DelegationPolicy policy, string? callerPaneId)
     {
         if (!policy.AllowedAsTarget)
         {
@@ -430,11 +430,11 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 $"Profile '{request.ProfileLabel}' only accepts these task types: {string.Join(", ", allowedTypes)}.");
         }
 
-        if (request.WorkingDirectory is { Length: > 0 } workingDirectory && !_IsAllowedWorkingDirectory(workingDirectory, policy))
+        if (request.WorkingDirectory is { Length: > 0 } workingDirectory && !_IsAllowedWorkingDirectory(workingDirectory, policy, callerPaneId))
         {
             // Name what *is* allowed, not just what was refused (AC-114): a caller cannot see the profile's
             // allowed dirs or the active-session dirs from the MCP surface, so a bare refusal leaves it guessing.
-            var allowed = _AllowedWorkingDirectories(policy);
+            var allowed = _AllowedWorkingDirectories(policy, callerPaneId);
             var where = allowed.Count == 0
                 ? "This profile has no allowed working directories configured, and no cockpit session is currently " +
                   "working in one. Set the profile's allowed working directories, or delegate from a session that " +
@@ -446,9 +446,23 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         }
     }
 
-    /// <summary>The directories a delegated task may run in: the profile's own allow-list plus the dirs cockpit sessions are actively working in. Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.</summary>
-    private IReadOnlyList<string> _AllowedWorkingDirectories(DelegationPolicy policy) =>
-        [.. (policy.AllowedWorkingDirs ?? []).Concat(_workspaces.ActiveWorkingDirectories)];
+    /// <summary>The directories a delegated task may run in: the profile's own allow-list plus the dir the calling session is itself working in (AC-128 — scoped to the caller, not every open session). Surfaced in the rejection reason (AC-114) so a refused caller can see where it may go.</summary>
+    private IReadOnlyList<string> _AllowedWorkingDirectories(DelegationPolicy policy, string? callerPaneId) =>
+        [.. (policy.AllowedWorkingDirs ?? []).Concat(_CallerWorkspace(callerPaneId))];
+
+    // AC-128: an agent may delegate into the directory ITS OWN session is working in — not any directory some other
+    // open session happens to be in. The old union let a pane confined to /repoX place a sub-agent in /repoY merely
+    // because an unrelated pane was open there. Off the verified path (operator/in-process/tests) there is no single
+    // caller, so the whole active set stands (the operator delegating on their own behalf).
+    private IReadOnlyList<string> _CallerWorkspace(string? callerPaneId)
+    {
+        if (callerPaneId is null)
+        {
+            return _workspaces.ActiveWorkingDirectories;
+        }
+
+        return _workspaces.WorkingDirectoryForPane(callerPaneId) is { Length: > 0 } directory ? [directory] : [];
+    }
 
     /// <summary>
     /// Where a delegated task may run: the directories the target profile allows, and the ones the cockpit's own
@@ -456,9 +470,9 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     /// a session in a repository, and that session can already read and write there, so the sub-agent it starts
     /// reaches nothing its caller did not have. Everywhere else still needs the profile's own say-so.
     /// </summary>
-    private bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy)
+    private bool _IsAllowedWorkingDirectory(string workingDirectory, DelegationPolicy policy, string? callerPaneId)
     {
-        var allowed = _AllowedWorkingDirectories(policy);
+        var allowed = _AllowedWorkingDirectories(policy, callerPaneId);
 
         if (allowed.Count == 0)
         {

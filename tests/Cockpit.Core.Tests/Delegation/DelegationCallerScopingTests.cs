@@ -2,6 +2,7 @@ using Cockpit.Core.Abstractions.Delegation;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Delegation;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Delegation;
@@ -54,6 +55,7 @@ public class DelegationCallerScopingTests
         mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
         var open = Substitute.For<ISessionWorkspaces>();
         open.ActiveWorkingDirectories.Returns(["/home/raymond/work"]);
+        open.WorkingDirectoryForPane(Arg.Any<string>()).Returns("/home/raymond/work");
         var service = new DelegationService(
             profileStore, new SessionManager(driverFactory), mcpServerStore, Substitute.For<IDelegationAuditLog>(), open);
 
@@ -75,6 +77,35 @@ public class DelegationCallerScopingTests
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task AnAgentMayDelegateOnlyIntoItsOwnSessionsDirectory_NotAnotherOpenSessions()
+    {
+        var driver = Substitute.For<ISessionDriver>();
+        driver.Events.Returns(_EmptyStream());
+        var driverFactory = Substitute.For<ISessionDriverFactory>();
+        driverFactory.Create(Arg.Any<SessionProfile?>()).Returns(driver);
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([_Target("qwen")]);
+        var mcpServerStore = Substitute.For<IMcpServerStore>();
+        mcpServerStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([]);
+        var open = Substitute.For<ISessionWorkspaces>();
+        // Two sessions open in different repos; the caller ("caller-pane") is working only in "mine".
+        open.ActiveWorkingDirectories.Returns(["/home/raymond/mine", "/home/raymond/other"]);
+        open.WorkingDirectoryForPane("caller-pane").Returns("/home/raymond/mine");
+        var service = new DelegationService(
+            profileStore, new SessionManager(driverFactory), mcpServerStore, Substitute.For<IDelegationAuditLog>(), open);
+
+        // Into its own session's directory: allowed.
+        var mine = await service.DelegateAsync(
+            new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/mine"), callerPaneId: "caller-pane");
+        mine.Status.Should().NotBe(DelegatedTaskStatus.Failed);
+
+        // Into another open session's directory: refused — the old union allowed this, AC-128 scopes to the caller.
+        var intoAnothers = async () => await service.DelegateAsync(
+            new DelegationRequest("qwen", "work", WorkingDirectory: "/home/raymond/other"), callerPaneId: "caller-pane");
+        await intoAnothers.Should().ThrowAsync<DelegationRejectedException>();
+    }
+
     private static SessionProfile _Target(string label) =>
         new(label, new ClaudeConfig(string.Empty), Delegation: new DelegationPolicy(AllowedAsTarget: true));
 
@@ -94,6 +125,7 @@ public class DelegationCallerScopingTests
 
         var open = Substitute.For<ISessionWorkspaces>();
         open.ActiveWorkingDirectories.Returns(workspaces);
+        open.WorkingDirectoryForPane(Arg.Any<string>()).Returns(workspaces.Count > 0 ? workspaces[0] : null);
 
         return new DelegationService(
             profileStore,

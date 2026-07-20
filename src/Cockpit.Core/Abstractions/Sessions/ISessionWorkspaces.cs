@@ -13,6 +13,9 @@ namespace Cockpit.Core.Abstractions.Sessions;
 public interface ISessionWorkspaces
 {
     IReadOnlyList<string> ActiveWorkingDirectories { get; }
+
+    /// <summary>The directory a single session (by its pane id) is working in, or null — so delegation can scope a caller to its own directory (AC-128) rather than granting every open session's.</summary>
+    string? WorkingDirectoryForPane(string paneId);
 }
 
 /// <summary>No sessions, so nothing is granted on their account — what a consumer without a cockpit (tests, headless tools) sees.</summary>
@@ -21,4 +24,6 @@ public sealed class NoSessionWorkspaces : ISessionWorkspaces
     public static readonly NoSessionWorkspaces Instance = new();
 
     public IReadOnlyList<string> ActiveWorkingDirectories => [];
+
+    public string? WorkingDirectoryForPane(string paneId) => null;
 }
