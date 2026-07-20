@@ -4009,14 +4009,46 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void ClearSessionStatus(SessionPanelViewModel session) => session.Statusline = string.Empty;
 
+    /// <summary>
+    /// Reorders <paramref name="session"/> to sit at <paramref name="targetVisibleIndex"/> among the sessions the
+    /// sidebar is actually showing (the active workspace's <see cref="VisibleSessions"/>) — the primitive behind
+    /// both the drag-reorder (AC-115) and the Move up/down menu items.
+    /// </summary>
+    /// <remarks>
+    /// The backing <see cref="Sessions"/> collection is global and can interleave other workspaces' sessions, so
+    /// the move is anchored to the target visible row's real position in <see cref="Sessions"/> rather than to a
+    /// raw ±1 index — otherwise a step could swap with a session hidden on another workspace and do nothing (or the
+    /// wrong thing) on screen. Order is kept only in this in-memory collection: sessions themselves do not survive
+    /// a restart (there is no persisted session list), so neither does their order — by design for AC-115.
+    /// </remarks>
+    public void MoveSessionToVisibleIndex(SessionPanelViewModel session, int targetVisibleIndex)
+    {
+        var visible = VisibleSessions.ToList();
+        var currentVisibleIndex = visible.IndexOf(session);
+        if (currentVisibleIndex < 0
+            || targetVisibleIndex < 0
+            || targetVisibleIndex >= visible.Count
+            || targetVisibleIndex == currentVisibleIndex)
+        {
+            return;
+        }
+
+        var from = Sessions.IndexOf(session);
+        var to = Sessions.IndexOf(visible[targetVisibleIndex]);
+        if (from >= 0 && to >= 0)
+        {
+            Sessions.Move(from, to);
+        }
+    }
+
     /// <summary>Context-menu Move up: shift the session one place earlier in the sidebar order.</summary>
     [RelayCommand]
     private void MoveSessionUp(SessionPanelViewModel session)
     {
-        var index = Sessions.IndexOf(session);
+        var index = VisibleSessions.ToList().IndexOf(session);
         if (index > 0)
         {
-            Sessions.Move(index, index - 1);
+            MoveSessionToVisibleIndex(session, index - 1);
         }
     }
 
@@ -4024,10 +4056,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private void MoveSessionDown(SessionPanelViewModel session)
     {
-        var index = Sessions.IndexOf(session);
-        if (index >= 0 && index < Sessions.Count - 1)
+        var visible = VisibleSessions.ToList();
+        var index = visible.IndexOf(session);
+        if (index >= 0 && index < visible.Count - 1)
         {
-            Sessions.Move(index, index + 1);
+            MoveSessionToVisibleIndex(session, index + 1);
         }
     }
 
