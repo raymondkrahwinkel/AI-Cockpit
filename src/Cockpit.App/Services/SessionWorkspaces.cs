@@ -28,4 +28,8 @@ internal sealed class SessionWorkspaces(IServiceProvider services) : ISessionWor
         .Select(directory => directory!)
         .Distinct(StringComparer.Ordinal)
         .ToList();
+
+    public string? WorkingDirectoryForPane(string paneId) => services.GetRequiredService<CockpitViewModel>().Sessions
+        .FirstOrDefault(session => string.Equals(session.PaneId, paneId, StringComparison.Ordinal))?
+        .WorkingDirectory;
 }

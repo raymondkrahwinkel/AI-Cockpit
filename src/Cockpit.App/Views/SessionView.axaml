@@ -33,31 +33,35 @@
                  overflow this redesign fixes. Same bar height as before (hard constraint). -->
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0,0,0">
-                    <Button Content="Stop" Command="{Binding StopCommand}" Classes="Compact"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="Interrupts the running turn (control_request/interrupt)"/>
                     <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
-                         driver and rendered generically. Now that Claude is a provider plugin like Codex, both drive
-                         their live switches through this one panel — the driver names, labels and values each control,
-                         so the header offers them without any built-in provider vocabulary. -->
-                    <ItemsControl ItemsSource="{Binding LiveControls}" IsVisible="{Binding HasLiveControls}"
-                                  VerticalAlignment="Center">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="6"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:LiveControlViewModel">
-                                <ComboBox ItemsSource="{Binding ChoiceItems}"
-                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding SelectedValue, Mode=TwoWay}"
-                                          DisplayMemberBinding="{Binding Label}"
-                                          PlaceholderText="{Binding Label}" Classes="Compact" MinWidth="90"
-                                          VerticalAlignment="Center"
-                                          ToolTip.Tip="{Binding Label}"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                         driver and rendered generically. An SDK session can carry three of them, which crowded the
+                         header — so they collapse behind a single sliders icon that opens a flyout to change them.
+                         The driver still names, labels and values each control; the header keeps no built-in
+                         provider vocabulary, and the values live in the flyout rather than on the bar. -->
+                    <Button IsVisible="{Binding HasLiveControls}" Classes="toolChip" VerticalAlignment="Center"
+                            Padding="6,4" ToolTip.Tip="This session's model and turn settings — click to change">
+                        <materialIcons:MaterialIcon Kind="Tune" Width="15" Height="15" VerticalAlignment="Center"
+                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <Button.Flyout>
+                            <Flyout Placement="Bottom">
+                                <ItemsControl ItemsSource="{Binding LiveControls}" MinWidth="200" Margin="4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LiveControlViewModel">
+                                            <StackPanel Spacing="3" Margin="0,0,0,8">
+                                                <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <ComboBox ItemsSource="{Binding ChoiceItems}"
+                                                          SelectedValueBinding="{Binding Value}" SelectedValue="{Binding SelectedValue, Mode=TwoWay}"
+                                                          DisplayMemberBinding="{Binding Label}"
+                                                          PlaceholderText="{Binding Label}" Classes="Compact"
+                                                          HorizontalAlignment="Stretch"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
                     <!-- A speaker, struck through when off (#73): the header is a strip, and the word cost more
                          room than the thing it names. The tooltip carries what the icon cannot say. -->
                     <ToggleButton IsChecked="{Binding ReadResponsesAloud}" Classes="Compact"
@@ -108,26 +112,29 @@
         <!-- Input bar: queued-message chips, then pending-attachment chips, then dark multiline textbox + accent Send. -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="True">
 
+            <!-- "Still starting" banner: shown only while the session is actively launching (IsStarting), so it
+                 never sits stuck after a failed start. It signals the session is coming up; a message typed too
+                 early is answered by the composer's own "not started" notice rather than promised a send. -->
+            <Border DockPanel.Dock="Top" IsVisible="{Binding IsStarting}" Margin="0,0,0,8"
+                    Background="{StaticResource CockpitSecondaryBgBrush}"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitControlRadius}" Padding="10,6">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="9" Height="9"
+                               VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
+                    <TextBlock Text="Starting the session — one moment…" FontSize="12"
+                               VerticalAlignment="Center" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
+
             <!-- "Thinking…" indicator: shown from send until the assistant's first output, so a local model
                  that sits silent while it loads/processes visibly signals it is working rather than hung. The
                  dot pulses so it reads as live activity. -->
             <Border DockPanel.Dock="Top" IsVisible="{Binding IsAwaitingResponse}" Margin="2,0,0,8"
                     HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <materialIcons:MaterialIcon Kind="Circle" Width="10" Height="10" VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitAccentBrush}">
-                        <materialIcons:MaterialIcon.Styles>
-                            <Style Selector="materialIcons|MaterialIcon">
-                                <Style.Animations>
-                                    <Animation Duration="0:0:1.1" IterationCount="INFINITE">
-                                        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
-                                        <KeyFrame Cue="50%"><Setter Property="Opacity" Value="1.0"/></KeyFrame>
-                                        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
-                                    </Animation>
-                                </Style.Animations>
-                            </Style>
-                        </materialIcons:MaterialIcon.Styles>
-                    </materialIcons:MaterialIcon>
+                    <materialIcons:MaterialIcon Kind="Circle" Classes="pulse" Width="10" Height="10"
+                               VerticalAlignment="Center" Foreground="{StaticResource CockpitAccentBrush}"/>
                     <TextBlock Text="Thinking…" FontSize="12" VerticalAlignment="Center"
                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                 </StackPanel>
@@ -196,17 +203,44 @@
                  being blocked. CanSend gates on there being text/an image, so it is not a dead control. -->
             <Button DockPanel.Dock="Right" Content="Send" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"
                     Classes="Accent" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
+            <!-- Stop sits by the composer, as an icon, only while a turn is actually running — so interrupting the
+                 current turn (control_request/interrupt) is where the eye is, not a button parked in the header that
+                 reads as live even when nothing is. Send stays put beside it so a follow-up can still be queued. -->
+            <Button DockPanel.Dock="Right" Command="{Binding StopCommand}" IsVisible="{Binding IsBusy}"
+                    Classes="Compact" VerticalAlignment="Bottom" Margin="8,0,0,0" Padding="8,6"
+                    ToolTip.Tip="Stop the current turn (interrupt)">
+                <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15"/>
+            </Button>
             <TextBox x:Name="InputBox" Text="{Binding InputText}"
                      PlaceholderText="Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
         </DockPanel>
 
         <Grid>
-        <!-- Empty-state hint fills the transcript area until the first row arrives, so a fresh session
-             is a calm prompt rather than a black void (L6). -->
-        <TextBlock Text="Ready — type a message below to start." IsVisible="{Binding !HasTranscript}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="13"
-                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+        <!-- Empty-state card fills the transcript area until the first row arrives, so a fresh session
+             reads as an introduced, connected model rather than a black void (L6): the model's own
+             avatar, its name, provider/kind and connected-tools summary, then the prompt to start. -->
+        <StackPanel IsVisible="{Binding !HasTranscript}" MaxWidth="420" Spacing="12"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Border Classes="avatarBadge" Width="52" Height="52" CornerRadius="14" HorizontalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="Creation" Width="26" Height="26"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Foreground="{StaticResource CockpitAccentBrush}"/>
+            </Border>
+            <TextBlock Text="{Binding Title}" HorizontalAlignment="Center" TextAlignment="Center"
+                       TextWrapping="Wrap" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+            <TextBlock Text="{Binding KindLabel}" HorizontalAlignment="Center" FontSize="12.5"
+                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                       IsVisible="{Binding KindLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="{Binding ConnectedToolsHeading}" HorizontalAlignment="Center" FontSize="11.5"
+                       TextAlignment="Center" TextWrapping="Wrap"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding ConnectedToolsHeading, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <TextBlock Text="Type a message below to start." HorizontalAlignment="Center" FontSize="12.5"
+                       IsVisible="{Binding IsSessionReady}"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+        </StackPanel>
         <ScrollViewer x:Name="TranscriptScroll" IsVisible="{Binding HasTranscript}">
             <!-- Virtualised (#memory): an ItemsControl builds a control tree for every row a session has ever
                  produced and keeps it alive forever — hundreds of megabytes of UI nobody is looking at, in a long
@@ -234,12 +268,12 @@
                                            Foreground="{StaticResource CockpitTextFaintBrush}"
                                            IsVisible="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ShowTimestamps}"/>
 
-                                <!-- Thinking rows: dimmed, collapsed to a toggle by default so they read as
-                                     reasoning-in-the-background rather than part of the visible transcript flow. -->
-                                <StackPanel IsVisible="{Binding IsThinking}" Spacing="4">
-                                    <Button Content="Thinking..." Command="{Binding ToggleExpandedCommand}"
-                                            Classes="Subtle toolRow" FontStyle="Italic"
-                                            Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                <!-- Thinking rows: a quiet chip, collapsed by default, indented under the reply
+                                     column so they read as reasoning-in-the-background rather than part of the
+                                     visible transcript flow. -->
+                                <StackPanel IsVisible="{Binding IsThinking}" Spacing="4" Margin="36,0,0,0">
+                                    <Button Content="Thinking…" Command="{Binding ToggleExpandedCommand}"
+                                            Classes="toolChip" HorizontalAlignment="Left" FontStyle="Italic"/>
                                     <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                Classes="transcript"
                                                FontStyle="Italic"
@@ -247,51 +281,77 @@
                                                IsVisible="{Binding IsExpanded}"/>
                                 </StackPanel>
 
-                                <!-- The user's own message (T2): plain, selectable text; the enclosing row Border
-                                     right-aligns and tints it into a bubble (Border.transcriptRow.userRow). -->
-                                <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                           Classes="transcript"
-                                           IsVisible="{Binding IsUserRow}"/>
+                                <!-- The user's own message (T2): a small "You" label over plain, selectable text;
+                                     the enclosing row Border right-aligns and tints it into a bubble
+                                     (Border.transcriptRow.userRow). -->
+                                <StackPanel IsVisible="{Binding IsUserRow}" Spacing="2">
+                                    <TextBlock Text="You" HorizontalAlignment="Right" FontSize="10.5"
+                                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                               Classes="transcript"/>
+                                </StackPanel>
 
-                                <!-- Questions / errors / turn-result rows: plain wrapped text, not a bubble or markdown. -->
+                                <!-- Questions / errors / turn-result rows: plain wrapped text, not a bubble or
+                                     markdown; indented to sit in the reply column. -->
                                 <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                                           Classes="transcript"
+                                           Classes="transcript" Margin="36,0,0,0"
                                            IsVisible="{Binding IsPlainNonMarkdown}"/>
 
-                                <!-- Assistant prose renders as markdown via the cockpit's own thin renderer
-                                     (MarkdownView) — themed to match, with selectable text and clickable
-                                     links, replacing Markdown.Avalonia (T9 / look&feel pass). -->
-                                <views:MarkdownView Markdown="{Binding Text}"
-                                                    HorizontalAlignment="Stretch"
-                                                    IsVisible="{Binding IsAssistantMarkdown}"/>
-
-                                <!-- On-demand read-aloud (#35): works even when the session's Read-aloud
-                                     toggle is off — an explicit per-row request to hear this one reply. -->
-                                <Button Classes="Subtle Compact" HorizontalAlignment="Left"
-                                        FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                        IsVisible="{Binding IsAssistantMarkdown}"
-                                        Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ReadAloudCommand}"
-                                        CommandParameter="{Binding}"
-                                        ToolTip.Tip="Read this reply aloud">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <materialIcons:MaterialIcon Kind="VolumeHigh" Width="12" Height="12"/>
-                                        <TextBlock Text="Read aloud" FontSize="11"/>
+                                <!-- Assistant reply (T9 / look&feel pass): the model's avatar badge sits left,
+                                     with its name over the prose (MarkdownView — the cockpit's own themed
+                                     renderer, selectable text, clickable links). The per-reply actions
+                                     (copy · read aloud) sit below and fade in on hover/focus (rowActions). -->
+                                <Grid IsVisible="{Binding IsAssistantMarkdown}" ColumnDefinitions="Auto,*">
+                                    <Border Grid.Column="0" Classes="avatarBadge" Margin="0,1,10,0">
+                                        <materialIcons:MaterialIcon Kind="Creation" Width="14" Height="14"
+                                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                    Foreground="{StaticResource CockpitAccentBrush}"/>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Spacing="3">
+                                        <TextBlock Classes="senderName" MaxWidth="280" HorizontalAlignment="Left"
+                                                   Text="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).Title}"/>
+                                        <views:MarkdownView Markdown="{Binding Text}" HorizontalAlignment="Stretch"/>
+                                        <!-- On-demand read-aloud (#35) works even when the session Read-aloud toggle
+                                             is off; Copy hands over the reply's markdown source verbatim. -->
+                                        <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="2"
+                                                    HorizontalAlignment="Left">
+                                            <Button Classes="Subtle Compact" Click="_OnCopyMessageClick"
+                                                    Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                    ToolTip.Tip="Copy this reply">
+                                                <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13"/>
+                                            </Button>
+                                            <Button Classes="Subtle Compact"
+                                                    Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                    Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).ReadAloudCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="Read this reply aloud">
+                                                <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13"/>
+                                            </Button>
+                                        </StackPanel>
                                     </StackPanel>
-                                </Button>
+                                </Grid>
 
                                 <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
                                      to the full input plus the coupled result (L14, matched on tool_use_id).
                                      A structured/code result renders in a monospace code box with a copy
                                      button (T6); a plain result stays inline text. -->
-                                <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4">
-                                    <Button Command="{Binding ToggleExpandedCommand}"
-                                            Classes="Subtle toolRow" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitTextSecondaryBrush}">
-                                        <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
-                                            <TextBlock Text="{Binding ToolHeader}"/>
-                                        </StackPanel>
-                                    </Button>
+                                <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4" Margin="36,0,0,0">
+                                    <!-- Header row: the tool chip, with the allow/deny outcome trailing on the same
+                                         line (T5) so a resolved call reads "Bash · dotnet build   Allowed" instead of
+                                         the verdict dropping onto its own line beneath the command. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                                        <Button Command="{Binding ToggleExpandedCommand}"
+                                                Classes="toolChip" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                                <TextBlock Text="{Binding ToolHeader}"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <TextBlock Text="{Binding PermissionDecision}" VerticalAlignment="Center"
+                                                   FontStyle="Italic" FontSize="11"
+                                                   Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                   IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
                                     <StackPanel IsVisible="{Binding IsExpanded}" Spacing="6" Margin="14,2,0,2">
                                         <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
                                                              Classes="toolBody"
@@ -316,10 +376,9 @@
                                 </StackPanel>
 
                                 <!-- Standalone (orphan) tool results: collapsed by default; expand via chevron. -->
-                                <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4">
+                                <StackPanel IsVisible="{Binding IsToolResult}" Spacing="4" Margin="36,0,0,0">
                                     <Button Command="{Binding ToggleExpandedCommand}"
-                                            Classes="Subtle toolRow" HorizontalAlignment="Left"
-                                            Foreground="{StaticResource CockpitTextSecondaryBrush}">
+                                            Classes="toolChip" HorizontalAlignment="Left">
                                         <StackPanel Orientation="Horizontal" Spacing="4">
                                             <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
                                             <TextBlock Text="{Binding ToggleLabel}"/>
@@ -350,10 +409,6 @@
                                             Command="{Binding $parent[UserControl].((vm:SessionViewModel)DataContext).AllowAlwaysWildcardToolCommand}"
                                             CommandParameter="{Binding}"/>
                                 </WrapPanel>
-                                <TextBlock Text="{Binding PermissionDecision}"
-                                           FontStyle="Italic" FontSize="11"
-                                           Foreground="{StaticResource CockpitTextFaintBrush}"
-                                           IsVisible="{Binding PermissionDecision, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>

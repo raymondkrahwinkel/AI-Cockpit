@@ -37,12 +37,17 @@ internal sealed class YouTrackAttachTools
             return "No issue id was given.";
         }
 
-        if (string.IsNullOrWhiteSpace(session))
+        // AC-128: act on the transport-verified caller pane, not the agent-declared `session` — otherwise an agent
+        // could read another session's current-turn images by naming its id (confused deputy) and upload them to an
+        // issue. The `session` argument is a fallback only off the verified path (in-process/tests), where there is
+        // no MCP caller context to trust.
+        var caller = _host.CurrentMcpCallerPaneId ?? session?.Trim();
+        if (string.IsNullOrWhiteSpace(caller))
         {
             return "No session id was given — pass the COCKPIT_PANE_ID from this session's own environment as `session`.";
         }
 
-        var images = _host.Sessions.GetCurrentTurnImages(session.Trim());
+        var images = _host.Sessions.GetCurrentTurnImages(caller);
         if (images.Count == 0)
         {
             return "The current message carried no images to attach.";

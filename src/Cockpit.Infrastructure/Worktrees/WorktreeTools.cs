@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Worktrees;
@@ -42,9 +43,13 @@ internal sealed class WorktreeTools
     {
         try
         {
+            // Tie the worktree to the transport-verified pane (AC-89/AC-128), not the agent-declared `session`: the
+            // owner keys its teardown (CloseSessionAsync releases by pane id), so a forged id would mis-attribute
+            // cleanup. Falls back to `session` off the verified path (the in-process tool loop / tests).
+            var owner = McpRequestContext.CurrentPaneId ?? session;
             var record = string.IsNullOrWhiteSpace(branch)
-                ? await _worktreeManager.CreateForSessionAsync(session, null, directory)
-                : await _worktreeManager.CreateAsync(session, branch, directory);
+                ? await _worktreeManager.CreateForSessionAsync(owner, null, directory)
+                : await _worktreeManager.CreateAsync(owner, branch, directory);
 
             return _Serialize(new { ok = true, path = record.Path, branch = record.Branch });
         }
@@ -85,6 +90,15 @@ internal sealed class WorktreeTools
         if (record is null)
         {
             return _Serialize(new { ok = false, error = "No managed worktree at that path — call worktree_list for the current paths." });
+        }
+
+        // AC-128: an agent may only remove a worktree it owns (created for its own verified pane). Removing another
+        // session's checkout by naming its path is a confused deputy — cross-session cleanup is the operator's, done
+        // from the managed panel, not an agent's. Off the verified path (operator/in-process) there is no caller to
+        // scope to, so the panel's own removals are unaffected.
+        if (McpRequestContext.CurrentPaneId is { } caller && !string.Equals(record.SessionId, caller, StringComparison.Ordinal))
+        {
+            return _Serialize(new { ok = false, error = "That worktree belongs to another session — you can only remove a worktree you created." });
         }
 
         // Never remove a worktree whose owning session is still running — that pulls the working directory out from

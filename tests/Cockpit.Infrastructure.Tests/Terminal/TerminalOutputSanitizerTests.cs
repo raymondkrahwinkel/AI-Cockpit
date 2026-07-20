@@ -27,11 +27,30 @@ public class TerminalOutputSanitizerTests
     }
 
     [Fact]
-    public void KeepsNewlinesAndTabs_FoldsCrlf_DropsLoneCarriageReturnAndOtherControls()
+    public void KeepsNewlinesAndTabs_AndFoldsCrlf()
     {
-        var raw = "line1\r\nline2\tcol\rdropped";
+        var raw = "line1\r\nline2\tcol";
 
-        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("line1\nline2\tcoldropped");
+        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("line1\nline2\tcol");
+    }
+
+    [Fact]
+    public void AppliesALoneCarriageReturnAsAColumnZeroOverwrite()
+    {
+        // "abc\rXY" redraws from column 0 → "XYc" on a real terminal, so read_terminal must match, not concatenate.
+        var raw = "abc\rXY";
+
+        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("XYc");
+    }
+
+    [Fact]
+    public void CollapsesAShellsLineRedraw_SoAnEchoedCommandIsNotDoubled()
+    {
+        // The shell echoes a key then reprints the whole line from column 0; without applying the CR the two drafts
+        // concatenated and read_terminal showed "lls" for "ls" (AC-34).
+        var raw = "l\rls\n";
+
+        TerminalOutputSanitizer.ToPlainText(raw).Should().Be("ls\n");
     }
 
     [Fact]

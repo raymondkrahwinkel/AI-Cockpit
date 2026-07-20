@@ -975,11 +975,25 @@ public class CockpitViewModelTests
         vm.SelectedSession.Should().Be(vm.Sessions[1]);
     }
 
+    [Fact]
+    public async Task ClosingASession_ReleasesTheTerminalCouplingsItDrove()
+    {
+        var terminals = Substitute.For<ITerminalAccessRegistry>();
+        var vm = NewVm(terminals: terminals);
+        await vm.NewSessionCommand.ExecuteAsync(null);
+        var session = vm.Sessions[0];
+
+        await vm.ConfirmCloseSessionCommand.ExecuteAsync(session);
+
+        terminals.Received(1).SessionEnded(session.PaneId);
+    }
+
     private static CockpitViewModel NewVm(
         ISessionDialogService? dialogService = null,
         ITerminalSettingsStore? terminalSettingsStore = null,
         ILayoutSettingsStore? layoutSettingsStore = null,
-        IPluginDialogHost? pluginDialogHost = null)
+        IPluginDialogHost? pluginDialogHost = null,
+        ITerminalAccessRegistry? terminals = null)
     {
         var captureService = Substitute.For<IAudioCaptureService>();
         var playbackService = Substitute.For<IAudioPlaybackService>();
@@ -1017,7 +1031,8 @@ public class CockpitViewModelTests
             layoutSettingsStore,
             voiceSettingsStore,
             terminalSettingsStore,
-            pluginDialogHost: pluginDialogHost);
+            pluginDialogHost: pluginDialogHost,
+            terminals: terminals);
     }
 
     private static ISessionDialogService DefaultDialogService()
