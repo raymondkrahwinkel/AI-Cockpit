@@ -387,16 +387,66 @@ public partial class CockpitView : UserControl
         return false;
     }
 
-    /// <summary>Sidebar item click → select that session. Plain event handler (not a command) since the
-    /// clicked session is the DataContext of the <see cref="Border"/> raising the event, not the item passed
-    /// as a bindable CommandParameter — simplest wiring for a whole-row click target.</summary>
+    /// <summary>Sidebar item click → select that session, and arm a possible drag-reorder (AC-115). Plain event
+    /// handler (not a command) since the clicked session is the DataContext of the <see cref="Border"/> raising the
+    /// event, not the item passed as a bindable CommandParameter — simplest wiring for a whole-row click target.</summary>
     private void OnSessionItemPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is Border { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
+        if (sender is not Border { DataContext: SessionPanelViewModel session } || DataContext is not CockpitViewModel cockpit)
         {
-            cockpit.SelectSessionCommand.Execute(session);
+            return;
         }
+
+        cockpit.SelectSessionCommand.Execute(session);
+
+        // Don't arm a drag from the inline rename box — there a press-and-drag is selecting text, not moving the
+        // row. Selection above still happened, so a plain click keeps working.
+        if (e.Source is Control source && source.FindAncestorOfType<TextBox>(includeSelf: true) is not null)
+        {
+            return;
+        }
+
+        // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did what a
+        // click does, rather than the row needing two gestures to both select and move.
+        _draggingSession = session;
+        _sessionDragOrigin = SessionListStrip?.ItemsPanelRoot is { } panel ? e.GetPosition(panel) : default;
     }
+
+    // Session reordering (AC-115), mirroring the workspace tab strip: two fields and a threshold rather than a full
+    // drag-drop session, since the sidebar is one vertical column of rows. The dragged view model instance is
+    // stable across a move (unlike a rebuilt tab), so it is held directly and needs no re-resolve by id.
+    private SessionPanelViewModel? _draggingSession;
+    private Point _sessionDragOrigin;
+    private const double SessionDragThreshold = 6;
+
+    private void OnSessionItemPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_draggingSession is null || SessionListStrip?.ItemsPanelRoot is not { } panel || DataContext is not CockpitViewModel cockpit)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(panel);
+        if (Math.Abs(position.Y - _sessionDragOrigin.Y) < SessionDragThreshold)
+        {
+            return;
+        }
+
+        // Which row container the pointer is over decides the drop position — measured against the rows themselves
+        // (their Bounds are in the panel's own coordinates) rather than arithmetic on a fixed row height. The
+        // container order matches the visible session order, so this index is a VisibleSessions index.
+        var containers = panel.GetVisualChildren().OfType<Control>().ToList();
+        var targetIndex = containers.FindIndex(child => position.Y >= child.Bounds.Top && position.Y <= child.Bounds.Bottom);
+        if (targetIndex < 0)
+        {
+            return;
+        }
+
+        cockpit.MoveSessionToVisibleIndex(_draggingSession, targetIndex);
+        _sessionDragOrigin = position;
+    }
+
+    private void OnSessionItemPointerReleased(object? sender, PointerReleasedEventArgs e) => _draggingSession = null;
 
     // The awareness banner's "Enable now" (AC-41). Same two-clicks-plus-password path as Options → Security, and
     // the same copy: the password dialog already carries the irreversibility warning, so the banner needs no

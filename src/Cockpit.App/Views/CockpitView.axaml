@@ -325,8 +325,13 @@
 
                 <ScrollViewer>
                     <!-- The sidebar lists only the workspace now showing, so it never offers a session the grid
-                         is hiding. Safe to filter here, unlike the grid below: these rows carry no pty. -->
-                    <ItemsControl ItemsSource="{Binding VisibleSessions}">
+                         is hiding. Safe to filter here, unlike the grid below: these rows carry no pty.
+                         Drag-reorder (AC-115): the move/release handlers sit on the ItemsControl, not the row —
+                         a move rebuilds the row containers, so a per-row handler would stop firing mid-drag. Each
+                         row only arms the drag on PointerPressed. Mirrors the workspace tab strip. -->
+                    <ItemsControl x:Name="SessionListStrip" ItemsSource="{Binding VisibleSessions}"
+                                  PointerMoved="OnSessionItemPointerMoved"
+                                  PointerReleased="OnSessionItemPointerReleased">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:SessionPanelViewModel">
                                 <!-- Selection + attention are driven entirely by the style classes below
