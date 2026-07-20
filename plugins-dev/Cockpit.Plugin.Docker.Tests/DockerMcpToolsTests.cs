@@ -20,6 +20,7 @@ public sealed class DockerMcpToolsTests
         List<ConsentRequest> Asked,
         FakeDockerEngine Engine,
         FakeComposeCli Compose,
+        FakeDockerCli Docker,
         RunningContainerRegistry Running);
 
     private static Harness _Build(ConsentOutcome outcome, bool allowExec = false)
@@ -31,8 +32,9 @@ public sealed class DockerMcpToolsTests
         var gate = new DockerAccessGate(host);
         var engine = new FakeDockerEngine();
         var compose = new FakeComposeCli();
+        var docker = new FakeDockerCli();
         var running = new RunningContainerRegistry(engine, () => DateTimeOffset.UnixEpoch);
-        return new Harness(new DockerMcpTools(settings, gate, engine, compose, running), asked, engine, compose, running);
+        return new Harness(new DockerMcpTools(settings, gate, engine, compose, docker, running), asked, engine, compose, docker, running);
     }
 
     // ---- Reads -------------------------------------------------------------------------------------------------
@@ -288,5 +290,119 @@ public sealed class DockerMcpToolsTests
         json!["ok"]!.GetValue<bool>().Should().BeTrue();
         h.Compose.Calls[0].Args.Should().Equal("logs", "--no-color", "--no-log-prefix", "--tail", "100", "--", "web");
         h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
+    }
+
+    // ---- AC-93 remaining tiers: consent levels ----------------------------------------------------------------
+
+    [Fact]
+    public async Task Inspect_And_Stats_And_Top_And_Volumes_And_Networks_And_ComposePs_AreReads()
+    {
+        // Every read needs only the one-time connection consent (LowRisk, remembered).
+        foreach (var read in new Func<Harness, Task<string>>[]
+        {
+            h => h.Tools.Inspect(Session, "web"),
+            h => h.Tools.Stats(Session, "web"),
+            h => h.Tools.Top(Session, "web"),
+            h => h.Tools.ListVolumes(Session),
+            h => h.Tools.ListNetworks(Session),
+            h => h.Tools.ComposePs(Session, "/srv/app"),
+        })
+        {
+            var h = _Build(ConsentOutcome.Approved);
+            var json = JsonNode.Parse(await read(h));
+            json!["ok"]!.GetValue<bool>().Should().BeTrue();
+            h.Asked.Should().ContainSingle();
+            h.Asked[0].Risk.Should().Be(ConsentRisk.LowRisk);
+            h.Asked[0].AllowRemember.Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public async Task Tag_IsAMutation_Dangerous_NeverRemembered_ShowingBothReferences()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.Tag(Session, "myapp:latest", "reg/myapp:1.2"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        h.Engine.Tagged.Should().ContainSingle().Which.Should().Be(("myapp:latest", "reg/myapp:1.2"));
+        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
+        h.Asked.Last().AllowRemember.Should().BeFalse();
+        h.Asked.Last().Action.Should().Contain("reg/myapp:1.2");
+    }
+
+    [Fact]
+    public async Task RemoveVolume_IsDestructive_Dangerous_ShowingTheVolume()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.RemoveVolume(Session, "pgdata", force: true));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        h.Engine.RemovedVolumes.Should().ContainSingle().Which.Should().Be(("pgdata", true));
+        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
+        h.Asked.Last().Action.Should().Contain("pgdata");
+    }
+
+    [Fact]
+    public async Task Prune_AsksDangerousShowingTheTarget_AndReportsReclaimed()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.Prune(Session, "volumes"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        json["spaceReclaimedBytes"]!.GetValue<long>().Should().Be(4096);
+        h.Engine.Pruned.Should().ContainSingle().Which.Should().Be(PruneTarget.Volumes);
+        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
+        h.Asked.Last().Action.Should().Contain("volumes");
+    }
+
+    [Fact]
+    public async Task Prune_InvalidTarget_ErrorsWithoutAsking()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.Prune(Session, "everything"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        h.Asked.Should().BeEmpty();
+        h.Engine.Pruned.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Push_IsDangerous_NeverRemembered_AndRunsTheDockerCli()
+    {
+        var h = _Build(ConsentOutcome.Approved);
+
+        var json = JsonNode.Parse(await h.Tools.Push(Session, "reg/myapp:1.2"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        h.Docker.Calls.Should().ContainSingle().Which.Should().Equal("push", "reg/myapp:1.2");
+        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
+        h.Asked.Last().AllowRemember.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task BuildImage_And_Cp_AreBlockedWhenExecIsOff()
+    {
+        var h = _Build(ConsentOutcome.Approved, allowExec: false);
+
+        JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest"))!["ok"]!.GetValue<bool>().Should().BeFalse();
+        JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>().Should().BeFalse();
+        h.Docker.Calls.Should().BeEmpty("exec-gated tools never reach the CLI while the capability is off");
+    }
+
+    [Fact]
+    public async Task BuildImage_And_Cp_RunTheDockerCli_WhenExecOnAndApproved()
+    {
+        var h = _Build(ConsentOutcome.Approved, allowExec: true);
+
+        JsonNode.Parse(await h.Tools.BuildImage(Session, "/ctx", "myapp:latest", dockerfile: "Dockerfile.prod"))!["ok"]!.GetValue<bool>().Should().BeTrue();
+        JsonNode.Parse(await h.Tools.Cp(Session, "web:/app/log", "/tmp/log"))!["ok"]!.GetValue<bool>().Should().BeTrue();
+
+        h.Docker.Calls[0].Should().Equal("build", "-t", "myapp:latest", "-f", "Dockerfile.prod", "/ctx");
+        h.Docker.Calls[1].Should().Equal("cp", "web:/app/log", "/tmp/log");
+        h.Asked.Last().Risk.Should().Be(ConsentRisk.Dangerous);
     }
 }

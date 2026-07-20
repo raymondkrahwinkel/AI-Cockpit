@@ -843,6 +843,14 @@
                                       ToolTip.Tip="When your screen locks, AI-Cockpit locks too: it clears the password from memory and asks for it again, exactly as it does at startup. On by default; the sessions you left running keep running behind the lock screen."/>
 
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
+                                <TextBlock Text="Let an agent read a terminal" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="When on, an agent can ask to read a terminal pane you have open — you approve each pane, watch every line live, and it reads only from the moment you approve (never the earlier scrollback). It cannot type into a terminal yet. Off by default: while off the feature is not offered to any agent at all."/>
+                            </StackPanel>
+                            <CheckBox Content="Allow agents to read my open terminals (with per-pane approval)"
+                                      IsChecked="{Binding Security.TerminalAccessEnabled}"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,12,0,0">
                                 <TextBlock Text="If you forget the password" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="Nobody can decrypt your tokens — the password is stored nowhere, and that is the whole point. The lock screen offers one way back: clear the credentials and enter them again. Your profiles, sessions, layout and shortcuts are untouched by that."/>

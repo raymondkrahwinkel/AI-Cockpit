@@ -111,6 +111,9 @@
                             <DataTemplate x:DataType="vm:RememberedPathOption">
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <materialIcons:MaterialIcon Kind="Star" Width="11" Height="11" IsVisible="{Binding IsFavorite}"/>
+                                    <materialIcons:MaterialIcon Kind="SourceBranchPlus" Width="12" Height="12"
+                                                                Foreground="{StaticResource CockpitAccentBrush}"
+                                                                IsVisible="{Binding IsCloneAction}"/>
                                     <TextBlock Text="{Binding Path}"/>
                                 </StackPanel>
                             </DataTemplate>

@@ -8,6 +8,7 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core;
+using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Configuration;
 using Cockpit.Infrastructure;
@@ -190,6 +191,11 @@ sealed class Program
         // marked retained, and git's stale admin entries are pruned. Fire-and-forget so it never delays the window;
         // it is the background net for a crash or a hard exit that missed a session's own teardown.
         _ = Services.GetRequiredService<IWorktreeManager>().ReconcileAsync([]);
+
+        // Reconcile the repository-clone registry too (AC-90): forget any clone whose folder disappeared since last
+        // run so the reuse check and the list reflect what is on disk. Fire-and-forget, and it only drops registry
+        // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
+        _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
 
         try
         {

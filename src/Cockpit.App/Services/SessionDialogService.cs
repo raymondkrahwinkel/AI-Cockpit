@@ -7,13 +7,16 @@ using Cockpit.App.Plugins;
 using Cockpit.App.ViewModels;
 using Cockpit.App.Views;
 using Cockpit.Core.Abstractions;
+using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
 
@@ -37,6 +40,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly ITtySessionProviderResolver _ttyProviderResolver;
     private readonly IPluginTtyProviderRegistry _ttyProviderRegistry;
     private readonly IWorktreeManager _worktreeManager;
+    private readonly IRepositoryCloneManager _cloneManager;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -51,7 +55,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         DelegatedTasksViewModel delegatedTasks,
         ITtySessionProviderResolver ttyProviderResolver,
         IPluginTtyProviderRegistry ttyProviderRegistry,
-        IWorktreeManager worktreeManager)
+        IWorktreeManager worktreeManager,
+        IRepositoryCloneManager cloneManager)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -66,9 +71,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
         _worktreeManager = worktreeManager;
+        _cloneManager = cloneManager;
     }
 
-    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(string? initialWorkingDirectory = null)
+    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -82,11 +88,43 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager);
         await viewModel.LoadAsync();
 
-        // Reattach (AC-85): pre-fill the folder with the existing worktree, and turn isolation on, so starting the
-        // session re-owns that worktree rather than picking a fresh folder.
-        if (!string.IsNullOrWhiteSpace(initialWorkingDirectory))
+        // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,
+        // and setting properties earlier would be overwritten by the load's own defaulting. Every field is optional
+        // and the operator can still change all of them; a profile label that matches nothing leaves the default pick.
+        if (prefill is not null)
         {
-            viewModel.WorkingDirectory = initialWorkingDirectory;
+            if (!string.IsNullOrWhiteSpace(prefill.ProfileLabel)
+                && viewModel.Profiles.FirstOrDefault(profile =>
+                    string.Equals(profile.Label, prefill.ProfileLabel, StringComparison.OrdinalIgnoreCase)) is { } matched)
+            {
+                viewModel.SelectedProfile = matched;
+            }
+
+            if (!string.IsNullOrWhiteSpace(prefill.WorkingDirectory))
+            {
+                viewModel.WorkingDirectory = prefill.WorkingDirectory;
+            }
+
+            if (!string.IsNullOrWhiteSpace(prefill.SessionName))
+            {
+                viewModel.SessionName = prefill.SessionName;
+            }
+
+            // Only a Claude profile keeps a resumable history; the dialog hides the resume controls for every other
+            // provider (ShowResumeOptions). Gate the prefill the same way — otherwise a plugin could push the dialog
+            // into resume-by-id on a provider that ignores it, or silently start a resume the operator never saw the
+            // controls for. Resolved against whichever profile is selected now (the prefilled one, or the default).
+            if (!string.IsNullOrWhiteSpace(prefill.ResumeSessionId) && viewModel.IsClaudeProfile)
+            {
+                viewModel.ResumeSessionId = prefill.ResumeSessionId;
+                viewModel.ResumeMode = SessionResumeMode.BySessionId;
+            }
+        }
+
+        // Reattach (AC-85): turn isolation on for the pre-filled folder, so starting the session re-owns that
+        // existing worktree rather than picking a fresh folder. Only meaningful with a folder to isolate.
+        if (isolateInWorktree && !string.IsNullOrWhiteSpace(viewModel.WorkingDirectory))
+        {
             viewModel.IsolateInWorktree = true;
         }
 
@@ -109,6 +147,25 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             }
         };
 
+        // Clone from a Git URL (AC-90): open the clone dialog over the New-session dialog, and on success drop the
+        // local clone path into the folder field, from where isolation (AC-85) and the session start pick it up. The
+        // clone dialog owns the failure path, so nothing is set here unless a real directory came back.
+        // async void via the event: guard it so a clone/dialog failure can't tear the process down.
+        viewModel.CloneFromUrlRequested += async () =>
+        {
+            try
+            {
+                if (await ShowCloneFromGitUrlAsync(dialog) is { Length: > 0 } clonePath)
+                {
+                    viewModel.WorkingDirectory = clonePath;
+                }
+            }
+            catch
+            {
+                // Cloning is best-effort from here; a failure must not crash the app.
+            }
+        };
+
         return await dialog.ShowDialog<NewSessionResult?>(owner);
     }
 
@@ -118,6 +175,16 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         {
             await ShowManageProfilesAsync(owner);
         }
+    }
+
+    // Shows the clone-from-URL dialog over the New-session dialog and returns the local clone path, or null if the
+    // operator cancelled. The dialog runs the clone itself (through the injected manager) and surfaces its own
+    // failures, so this only ever hands back a directory that is actually on disk.
+    private async Task<string?> ShowCloneFromGitUrlAsync(Window owner)
+    {
+        var viewModel = new CloneFromGitUrlDialogViewModel(_cloneManager);
+        var dialog = new CloneFromGitUrlDialog { DataContext = viewModel };
+        return await dialog.ShowDialog<string?>(owner);
     }
 
     private async Task ShowManageProfilesAsync(Window owner)

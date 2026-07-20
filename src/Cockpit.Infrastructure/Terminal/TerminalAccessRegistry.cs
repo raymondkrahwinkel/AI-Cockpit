@@ -19,9 +19,15 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
     /// <summary>Cap on a coupling's captured text — enough to be useful, bounded so a streaming pane cannot exhaust memory. Oldest output is dropped first.</summary>
     private const int MaxCaptureChars = 256 * 1024;
 
+    /// <summary>The interrupt a Disconnect sends before breaking the coupling, so a running command stops at once (ETX / Ctrl-C).</summary>
+    private static readonly byte[] Interrupt = [0x03];
+
     private readonly object _lock = new();
     private readonly Dictionary<string, string> _panes = new(StringComparer.Ordinal); // paneId -> name
     private readonly Dictionary<string, Coupling> _couplings = new(StringComparer.Ordinal); // paneId -> coupling
+    private readonly Dictionary<string, Action<ReadOnlyMemory<byte>>> _inputSinks = new(StringComparer.Ordinal); // paneId -> pty writer
+
+    public event Action<TerminalCouplingChange>? CouplingChanged;
 
     public void PaneOpened(string paneId, string name)
     {
@@ -33,11 +39,72 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
 
     public void PaneClosed(string paneId)
     {
+        bool wasCoupled;
         lock (_lock)
         {
             _panes.Remove(paneId);
-            _couplings.Remove(paneId);
+            _inputSinks.Remove(paneId);
+            wasCoupled = _couplings.Remove(paneId);
         }
+
+        if (wasCoupled)
+        {
+            CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: false, AgentSession: null));
+        }
+    }
+
+    public void RegisterInput(string paneId, Action<ReadOnlyMemory<byte>> writeToPty)
+    {
+        lock (_lock)
+        {
+            _inputSinks[paneId] = writeToPty;
+        }
+    }
+
+    public bool SendInput(string sessionId, string paneId, ReadOnlyMemory<byte> data)
+    {
+        Action<ReadOnlyMemory<byte>>? sink;
+        lock (_lock)
+        {
+            if (!(_couplings.TryGetValue(paneId, out var coupling) && coupling.SessionId == sessionId)
+                || !_inputSinks.TryGetValue(paneId, out sink))
+            {
+                return false;
+            }
+        }
+
+        // Invoked outside the lock: the sink writes to the pty, which must never run under the registry lock.
+        sink(data);
+        return true;
+    }
+
+    public void Disconnect(string paneId)
+    {
+        Action<ReadOnlyMemory<byte>>? sink;
+        bool wasCoupled;
+        lock (_lock)
+        {
+            _inputSinks.TryGetValue(paneId, out sink);
+            wasCoupled = _couplings.Remove(paneId);
+        }
+
+        if (!wasCoupled)
+        {
+            return;
+        }
+
+        // Interrupt first, then drop the coupling: a Disconnect must stop a running command, not just deny the next
+        // one. Best-effort — a pane whose pty is already gone still gets decoupled.
+        try
+        {
+            sink?.Invoke(Interrupt);
+        }
+        catch (Exception)
+        {
+            // The pty may have exited; breaking the coupling is the part that has to land.
+        }
+
+        CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: false, AgentSession: null));
     }
 
     public void CaptureOutput(string paneId, string text)
@@ -125,11 +192,13 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
                     throw new InvalidOperationException($"Terminal pane '{paneId}' is already coupled to another agent.");
                 }
 
-                return; // Same session re-couples: idempotent, keep the existing capture.
+                return; // Same session re-couples: idempotent, keep the existing capture and do not re-announce.
             }
 
             _couplings[paneId] = new Coupling(sessionId);
         }
+
+        CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: true, AgentSession: sessionId));
     }
 
     public string? ReadCoupled(string sessionId, string paneId)
@@ -144,12 +213,19 @@ internal sealed class TerminalAccessRegistry : ITerminalAccessRegistry, ISinglet
 
     public void SessionEnded(string sessionId)
     {
+        List<string> dropped;
         lock (_lock)
         {
-            foreach (var paneId in _couplings.Where(entry => entry.Value.SessionId == sessionId).Select(entry => entry.Key).ToList())
+            dropped = _couplings.Where(entry => entry.Value.SessionId == sessionId).Select(entry => entry.Key).ToList();
+            foreach (var paneId in dropped)
             {
                 _couplings.Remove(paneId);
             }
+        }
+
+        foreach (var paneId in dropped)
+        {
+            CouplingChanged?.Invoke(new TerminalCouplingChange(paneId, Coupled: false, AgentSession: null));
         }
     }
 

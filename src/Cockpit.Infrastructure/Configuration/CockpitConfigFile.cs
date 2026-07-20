@@ -59,6 +59,9 @@ internal sealed class CockpitConfigFile
 
     public LayoutSettingsEntry? Layout { get; set; }
 
+    /// <summary>The terminal-access master switch (AC-34); owned by the terminal-access settings store. Absent/false means the cockpit-terminal MCP is not advertised to any session.</summary>
+    public TerminalAccessSettingsEntry? TerminalAccess { get; set; }
+
     /// <summary>The workspaces and which one is active; owned by the workspace-settings store.</summary>
     public WorkspaceSettingsEntry? Workspaces { get; set; }
 
@@ -126,4 +129,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Worktree settings (AC-85) — the operator's root-location override; owned by the worktree-settings store. Separate from the <see cref="Worktrees"/> registry above.</summary>
     public WorktreeSettingsEntry? WorktreeSettings { get; set; }
+
+    /// <summary>Repositories cloned from a URL into the managed clones area (AC-90); owned by the repository-clone-registry store. The source of truth for reuse and startup reconciliation, so it outlives the process that cloned them.</summary>
+    public List<RepositoryCloneEntry> Clones { get; set; } = [];
 }

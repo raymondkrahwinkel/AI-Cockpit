@@ -46,6 +46,21 @@ public class TerminalMcpToolsTests
     }
 
     [Fact]
+    public async Task ReadTerminal_StripsAnsiEscapes_ReturningPlainText()
+    {
+        // AC-34: the pane captures raw pty bytes with colour codes; read_terminal returns readable text.
+        var esc = ((char)0x1b).ToString();
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Approved);
+        registry.PaneOpened("term-1", "zsh-5");
+        await tools.ReadTerminal(Session, "zsh-5");                 // couple
+        registry.CaptureOutput("term-1", $"{esc}[32mok{esc}[0m done\n");
+
+        var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
+
+        json!["output"]!.GetValue<string>().Should().Be("ok done\n");
+    }
+
+    [Fact]
     public async Task ReadTerminal_WhenDenied_ReturnsError_AndDoesNotCouple()
     {
         var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
@@ -94,6 +109,36 @@ public class TerminalMcpToolsTests
         var json = JsonNode.Parse(await tools.ReadTerminal(Session, "zsh-5"));
 
         json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        registry.IsCoupled("term-1").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SendTerminal_FirstTime_AsksConsent_ThenWritesToPty_WithEnterWhenSubmit()
+    {
+        var (tools, registry, _, asked) = _Build(ConsentOutcome.Approved);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5");
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+
+        var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "echo hi", submit: true));
+
+        json!["ok"]!.GetValue<bool>().Should().BeTrue();
+        asked.Should().ContainSingle("touching a pane asks once, for read and drive together");
+        System.Text.Encoding.UTF8.GetString(written.Should().ContainSingle().Subject).Should().Be("echo hi\r");
+    }
+
+    [Fact]
+    public async Task SendTerminal_WhenDenied_DoesNotWrite()
+    {
+        var (tools, registry, _, _) = _Build(ConsentOutcome.Denied);
+        var written = new List<byte[]>();
+        registry.PaneOpened("term-1", "zsh-5");
+        registry.RegisterInput("term-1", bytes => written.Add(bytes.ToArray()));
+
+        var json = JsonNode.Parse(await tools.SendTerminal(Session, "zsh-5", "rm -rf /"));
+
+        json!["ok"]!.GetValue<bool>().Should().BeFalse();
+        written.Should().BeEmpty();
         registry.IsCoupled("term-1").Should().BeFalse();
     }
 
