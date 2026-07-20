@@ -304,6 +304,8 @@
                                           ToolTip.Tip="Add, edit or remove session profiles"/>
                                 <MenuItem Header="MCP servers" Command="{Binding OpenMcpServersCommand}"
                                           ToolTip.Tip="Add, edit or remove shared MCP servers"/>
+                                <MenuItem Header="Verify runners" Command="{Binding OpenVerifyRunnersCommand}"
+                                          ToolTip.Tip="Register the per-project command the visual verify loop may run"/>
                                 <MenuItem Header="Command palette" Command="{Binding ShowCommandPaletteCommand}"
                                           InputGesture="Ctrl+K"
                                           ToolTip.Tip="Run any app or plugin command by name"/>

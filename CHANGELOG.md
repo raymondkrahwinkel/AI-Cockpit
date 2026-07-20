@@ -32,6 +32,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a visual verify loop. An agent can run a command you register for a project (in the sidebar
+  menu → Verify runners) that renders your UI, and gets it back as a text snapshot — control
+  positions, colours and text — plus a screenshot for image-capable providers, so it checks its UI
+  work against what actually rendered instead of guessing. Every run asks for your approval and shows
+  the exact command; the agent can only trigger a command you registered, never write one.
 - added: an awareness banner for unencrypted credentials. When your API keys and tokens are stored in
   the clear, a dismissible amber bar under the title bar offers to turn on encryption in one click
   (the same password flow as Options → Security). Dismissing it hides it until you add a new

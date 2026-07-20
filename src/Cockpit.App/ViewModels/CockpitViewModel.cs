@@ -4141,6 +4141,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await _dialogService.ShowMcpServersDialogAsync();
     }
 
+    /// <summary>Opens the Verify-runners dialog (AC-86) from the sidebar to register the per-project command the visual verify loop may run.</summary>
+    [RelayCommand]
+    private async Task OpenVerifyRunnersAsync()
+    {
+        if (_dialogService is null)
+        {
+            return;
+        }
+
+        await _dialogService.ShowVerifyRunnersDialogAsync();
+    }
+
     /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
     [RelayCommand]
     private async Task OptionsAsync()

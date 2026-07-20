@@ -163,20 +163,28 @@ sealed class Program
             }
 
             // Optional "--size WxH" so a docs render can use a window big enough to show a session's
-            // transcript, and "--scene <name>" to render a dialog instead of the main window.
+            // transcript, "--scene <name>" to render a dialog instead of the main window, and
+            // "--snapshot <path>" to also dump the laid-out visual tree as text (AC-86 verify loop).
             var sceneIndex = Array.IndexOf(args, "--scene");
             var scene = sceneIndex >= 0 && sceneIndex + 1 < args.Length ? args[sceneIndex + 1] : null;
+
+            var snapshotIndex = Array.IndexOf(args, "--snapshot");
+            var snapshotPath = snapshotIndex >= 0 && snapshotIndex + 1 < args.Length ? args[snapshotIndex + 1] : null;
+
+            // "--snapshot-target <x:Name>" scopes the text snapshot to one control's subtree.
+            var targetIndex = Array.IndexOf(args, "--snapshot-target");
+            var snapshotTarget = targetIndex >= 0 && targetIndex + 1 < args.Length ? args[targetIndex + 1] : null;
 
             var sizeIndex = Array.IndexOf(args, "--size");
             if (sizeIndex >= 0 && sizeIndex + 1 < args.Length &&
                 args[sizeIndex + 1].Split('x') is [var rawWidth, var rawHeight] &&
                 int.TryParse(rawWidth, out var width) && int.TryParse(rawHeight, out var height))
             {
-                Screenshotter.Run(args[screenshotIndex + 1], width, height, scene);
+                Screenshotter.Run(args[screenshotIndex + 1], width, height, scene, snapshotPath, snapshotTarget);
                 return;
             }
 
-            Screenshotter.Run(args[screenshotIndex + 1], scene: scene);
+            Screenshotter.Run(args[screenshotIndex + 1], scene: scene, snapshotPath: snapshotPath, snapshotTarget: snapshotTarget);
             return;
         }
 

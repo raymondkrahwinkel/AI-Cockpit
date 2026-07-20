@@ -702,6 +702,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
     }
 
+    /// <summary>
+    /// Pushes a visual verify screenshot (AC-86) into this session as a real user turn — the text snapshot rides the
+    /// verify tool result instead, so this is only the image a tool result cannot carry. An SDK session on a vision
+    /// provider shows it; a TTY session (no image in a pty) and a non-vision provider ignore it. Returns true only
+    /// when the screenshot was actually shown. This is the per-kind half of the host verify-feed capability.
+    /// </summary>
+    public abstract Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng);
+
     /// <summary>Theme brush resource key for the status dot — resolved in the view via a converter.</summary>
     public string SessionStatusBrushKey => SessionStatus switch
     {

@@ -1,0 +1,140 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.VerifyRunnersDialog"
+        x:DataType="vm:VerifyRunnersViewModel"
+        Title="Verify runners"
+        Width="720" Height="560"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:VerifyRunnersViewModel/>
+    </Design.DataContext>
+
+    <DockPanel Margin="16">
+
+        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,12">
+            <TextBlock Text="Verify runners" FontWeight="SemiBold" FontSize="14"/>
+            <TextBlock Text="A verify runner is the command an agent may run to see the UI it changed: it renders the app and writes a text snapshot (and optionally a screenshot), which the cockpit feeds back into the session. The agent can only trigger a registered runner — it never chooses the command — and every run asks for your approval first."
+                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- List footer: only in the resting (list) state, so it never sits under the editor's own buttons. -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,0" IsVisible="{Binding !IsEditing}">
+            <Button Grid.Column="0" Classes="Subtle Compact" HorizontalAlignment="Left"
+                    Command="{Binding NewRunnerCommand}" Content="Add runner"/>
+            <Button Grid.Column="2" Content="Close" Click="OnClose"/>
+        </Grid>
+
+        <Panel>
+            <!-- Resting state: the list of registered runners (or an empty-state hint). -->
+            <Border IsVisible="{Binding !IsEditing}"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPanelRadius}" Padding="4">
+                <Panel>
+                    <TextBlock Text="No verify runners yet. Add one so an agent can see the UI it changes instead of guessing."
+                               Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="360"
+                               TextAlignment="Center" IsVisible="{Binding !HasRunners}"/>
+
+                    <ScrollViewer IsVisible="{Binding HasRunners}">
+                        <ItemsControl ItemsSource="{Binding Runners}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:VerifyRunnerRowViewModel">
+                                    <Border Padding="10,8" Margin="3,2" CornerRadius="{StaticResource CockpitControlRadius}"
+                                            Background="{StaticResource CockpitSecondaryBgBrush}">
+                                        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                                            <StackPanel Grid.Column="0" Spacing="3">
+                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" FontSize="12"
+                                                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                                                <TextBlock Text="{Binding WorkingDirectory}" FontSize="11"
+                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="420"/>
+                                                <TextBlock Text="{Binding CommandLine}" FontSize="11"
+                                                           Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="420"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <Button Classes="RowAction" Content="Edit"
+                                                        Command="{Binding ((vm:VerifyRunnersViewModel)DataContext).BeginEditCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Classes="RowAction" Content="Remove"
+                                                        Command="{Binding ((vm:VerifyRunnersViewModel)DataContext).RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Panel>
+            </Border>
+
+            <!-- Editing state: the add/edit form takes over the body with its own Cancel/Save. -->
+            <Border IsVisible="{Binding IsEditing}"
+                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1"
+                    CornerRadius="{StaticResource CockpitPanelRadius}" Padding="14"
+                    Background="{StaticResource CockpitSecondaryBgBrush}">
+                <DockPanel>
+                    <!-- Save/Cancel pinned to the foot so they stay reachable while the fields scroll. -->
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8"
+                                HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button Classes="Subtle Compact" Content="Cancel" Command="{Binding CancelEditCommand}"/>
+                        <Button Content="Save" Command="{Binding SaveCommand}"/>
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding ValidationError}"
+                               Foreground="{StaticResource CockpitStatusWaitingBrush}"
+                               FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                               IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+                    <ScrollViewer>
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="Runner" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Classes="Subtle Compact" Content="Use the Cockpit example"
+                                        Command="{Binding FillCockpitExampleCommand}"
+                                        ToolTip.Tip="Fill the command that renders Cockpit itself, so you have a working example to adapt"/>
+                            </Grid>
+                            <TextBlock Text="The command runs in the project directory and must write the snapshot file below (paths are relative to that directory). For Cockpit itself, the built-in headless screenshotter does this — “Use the Cockpit example” fills it in."
+                                       Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="11" TextWrapping="Wrap"/>
+
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Name" FontSize="11" FontWeight="Medium" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox PlaceholderText="e.g. Cockpit" Text="{Binding EditLabel}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Project directory" FontSize="11" FontWeight="Medium" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox PlaceholderText="Absolute path the command runs in" Text="{Binding EditWorkingDirectory}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Command" FontSize="11" FontWeight="Medium" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox PlaceholderText="Executable, e.g. dotnet" Text="{Binding EditCommand}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Arguments" FontSize="11" FontWeight="Medium" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox PlaceholderText="One argument per line" Text="{Binding EditArguments}"
+                                         AcceptsReturn="True" TextWrapping="NoWrap" Height="88"
+                                         VerticalContentAlignment="Top"/>
+                                <TextBlock Text="One per line — passed through verbatim, never a shell string."
+                                           Foreground="{StaticResource CockpitTextFaintBrush}" FontSize="10"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Snapshot file" FontSize="11" FontWeight="Medium" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox PlaceholderText="File the command writes, e.g. out.txt — fed back to the agent as text" Text="{Binding EditSnapshotPath}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Screenshot file — optional" FontSize="11" FontWeight="Medium" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                <TextBox PlaceholderText="e.g. out.png — shown to image-capable providers" Text="{Binding EditScreenshotPath}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Panel>
+    </DockPanel>
+</Window>

@@ -34,6 +34,9 @@ public interface ISessionDialogService
     /// <summary>Shows the MCP-servers dialog (#26), over the main window, for editing the shared MCP-server registry.</summary>
     Task ShowMcpServersDialogAsync();
 
+    /// <summary>Shows the Verify-runners dialog (AC-86), over the main window, for registering the per-project command the visual verify loop may run.</summary>
+    Task ShowVerifyRunnersDialogAsync();
+
     /// <summary>
     /// Shows the plugin store dialog (#62) over the currently active window (typically the Options dialog
     /// it was opened from, so it centers over the dialog stack rather than jumping behind it to the main
