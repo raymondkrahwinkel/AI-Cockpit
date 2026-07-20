@@ -23,11 +23,17 @@ internal sealed class GitStatusHeaderControl : UserControl
     // before re-reading.
     private static readonly TimeSpan SignalDebounce = TimeSpan.FromSeconds(2);
 
+    // A branch can change without a matching "git checkout" in the output (a shell alias, gh, an IDE or an agent
+    // tool), and the HEAD watcher can quietly fail to arm (an inotify limit) — so once a burst of session activity
+    // settles, probe the branch cheaply as a backstop. Same window as the signal debounce: fire on the lull.
+    private static readonly TimeSpan BranchProbeDebounce = TimeSpan.FromSeconds(2);
+
     private readonly ICockpitHost _host;
     private readonly IPluginSessionContext _session;
     private readonly GitStatusSettings _settings;
     private readonly GitStatusReader _reader = new();
     private readonly DispatcherTimer _signalRefresh;
+    private readonly DispatcherTimer _branchProbe;
 
     private readonly Ellipse _dot;
     private readonly TextBlock _label;
@@ -35,6 +41,7 @@ internal sealed class GitStatusHeaderControl : UserControl
 
     private GitRepoStatus? _current;
     private int _loadToken;
+    private bool _isAttached;
 
     private FileSystemWatcher? _headWatcher;
     private string? _watchedHeadDirectory;
@@ -78,11 +85,19 @@ internal sealed class GitStatusHeaderControl : UserControl
             _signalRefresh.Stop();
             _ = _LoadAsync();
         };
+
+        _branchProbe = new DispatcherTimer { Interval = BranchProbeDebounce };
+        _branchProbe.Tick += (_, _) =>
+        {
+            _branchProbe.Stop();
+            _ = _ProbeBranchAsync();
+        };
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _isAttached = true;
         _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
         _session.OutputProduced += _OnSessionOutput;
         // Toggling "show branch name" (AC-36) takes effect at once on every live header. Subscribed here and dropped
@@ -97,10 +112,12 @@ internal sealed class GitStatusHeaderControl : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        _isAttached = false;
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
         _session.OutputProduced -= _OnSessionOutput;
         _settings.Changed -= _OnSettingsChanged;
         _signalRefresh.Stop();
+        _branchProbe.Stop();
         _DisposeHeadWatcher();
     }
 
@@ -114,10 +131,57 @@ internal sealed class GitStatusHeaderControl : UserControl
 
     private void _OnSessionOutput(object? sender, SessionOutputText output)
     {
-        // Only a git-mutating command is worth a re-read; ordinary prose about git is not.
+        // A git-mutating command reloads the whole status — its branch and its ahead/behind/changes may all move.
         if (GitSignalDetector.ContainsSignal(output.Text))
         {
             _ScheduleReload();
+            return;
+        }
+
+        // Any other activity only arms the cheap branch backstop; the debounce keeps it to one probe per lull.
+        _branchProbe.Stop();
+        _branchProbe.Start();
+    }
+
+    // The backstop armed by non-git output: re-arm the HEAD watcher if it never took, then read just the branch
+    // (cheap) and reload the full status only when it actually moved — a named-branch switch the output signal and
+    // the watcher both missed. A detached HEAD reads as empty here and is left to the watcher and git-signal paths.
+    private async Task _ProbeBranchAsync()
+    {
+        var path = _session.WorkingDirectory;
+        if (string.IsNullOrWhiteSpace(path) || _current is not { Error: null })
+        {
+            return;
+        }
+
+        try
+        {
+            if (_headWatcher is null)
+            {
+                await _EnsureHeadWatcherAsync();
+                if (!_isAttached)
+                {
+                    return;
+                }
+            }
+
+            var branch = await GitCommand.CurrentBranchAsync(path, CancellationToken.None);
+            // Re-check after the awaits rather than trusting a pre-await snapshot: detach may have torn the control
+            // down, and a concurrent reload may already have applied this branch. Compare against the live _current.
+            if (!_isAttached || branch.Length == 0 || _current is not { Error: null } current)
+            {
+                return;
+            }
+
+            if (!string.Equals(branch, current.Branch, StringComparison.Ordinal))
+            {
+                _ScheduleReload();
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort backstop, fire-and-forget: a probe failure must never surface — the badge keeps its
+            // last-known branch and the next probe, git signal or HEAD event refreshes it.
         }
     }
 
@@ -131,6 +195,14 @@ internal sealed class GitStatusHeaderControl : UserControl
             ? null
             : await GitHeadLocator.ResolveHeadFileAsync(path, CancellationToken.None);
         var directory = headFile is null ? null : System.IO.Path.GetDirectoryName(headFile);
+
+        // Detached while the git directory was resolving: OnDetachedFromVisualTree has already torn the control
+        // down, so arming a watcher here would leak it (nothing disposes it a second time). Bail before touching
+        // watcher state. Guards every caller, including the higher-frequency branch probe.
+        if (!_isAttached)
+        {
+            return;
+        }
 
         if (directory is null)
         {
