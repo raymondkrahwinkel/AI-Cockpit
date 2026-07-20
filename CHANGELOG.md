@@ -101,6 +101,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the per-session MCP-server checklist is now honoured by both session kinds. A terminal (TTY)
+  session ignored it and loaded every configured server regardless of what you ticked, while an SDK
+  session got none of your cockpit-configured servers at all. Both now start with exactly the servers
+  selected for that session, and unticking the orchestrator also stops that session from delegating.
 - fixed: an agent — whether coupled to a terminal or running as a delegated sub-agent — can no longer reach
   another session's terminal, delegated tasks, worktree, working directory, status line or sent images by
   naming that session's id; every in-process tool now acts on the verified calling session, closing a
