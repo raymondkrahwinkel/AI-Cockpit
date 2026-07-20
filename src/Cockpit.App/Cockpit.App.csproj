@@ -94,6 +94,12 @@
     <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.UsageTrend\Cockpit.Plugin.UsageTrend.csproj"
                       ReferenceOutputAssembly="false" Private="false"
                       SetConfiguration="Configuration=$(Configuration)" />
+    <!-- The example workspace (AC-122): bundled so the plugin-owned full-surface workspace type is there out of
+         the box, and it exercises the workspace-type SDK — a plugin drawing a whole workspace with a real host
+         session embedded in it — from a real plugin, the way UsageTrend exercises the widget SDK. -->
+    <ProjectReference Include="..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\Cockpit.Plugin.ExampleWorkspace.csproj"
+                      ReferenceOutputAssembly="false" Private="false"
+                      SetConfiguration="Configuration=$(Configuration)" />
     <!-- Claude as a provider plugin (Fase 4): Claude used to be a core feature and is now a plugin like the
          others here, so an operator gets it out of the box. Both its routes register — the interactive TUI (TTY)
          and the headless SDK route, whose tool approvals ride the control protocol in-band. -->
@@ -154,6 +160,16 @@
         <LogicalName>bundled-plugins/usage-trend/plugin.json</LogicalName>
       </EmbeddedResource>
 
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.dll">
+        <LogicalName>bundled-plugins/example-workspace/Cockpit.Plugin.ExampleWorkspace.dll</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.deps.json">
+        <LogicalName>bundled-plugins/example-workspace/Cockpit.Plugin.ExampleWorkspace.deps.json</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\plugin.json">
+        <LogicalName>bundled-plugins/example-workspace/plugin.json</LogicalName>
+      </EmbeddedResource>
+
       <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll">
         <LogicalName>bundled-plugins/claude-provider/Cockpit.Plugin.ClaudeProvider.dll</LogicalName>
       </EmbeddedResource>
@@ -180,6 +196,9 @@
       <UsageTrendFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.dll;
                                $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.UsageTrend.deps.json;
                                $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.UsageTrend\plugin.json" />
+      <ExampleWorkspaceFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.dll;
+                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ExampleWorkspace.deps.json;
+                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ExampleWorkspace\plugin.json" />
       <ClaudeProviderFiles Include="$(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.dll;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\bin\$(Configuration)\$(TargetFramework)\Cockpit.Plugin.ClaudeProvider.deps.json;
                                     $(MSBuildThisFileDirectory)..\..\plugins-dev\Cockpit.Plugin.ClaudeProvider\plugin.json" />
@@ -188,6 +207,7 @@
     <Copy SourceFiles="@(GitStatusFiles)" DestinationFolder="$(OutDir)bundled-plugins\git-status" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ClockFiles)" DestinationFolder="$(OutDir)bundled-plugins\clock" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(UsageTrendFiles)" DestinationFolder="$(OutDir)bundled-plugins\usage-trend" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ExampleWorkspaceFiles)" DestinationFolder="$(OutDir)bundled-plugins\example-workspace" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(ClaudeProviderFiles)" DestinationFolder="$(OutDir)bundled-plugins\claude-provider" SkipUnchangedFiles="true" />
 
     <!-- Publish takes a different output root, and a release bundle without its bundled plugins would ship a

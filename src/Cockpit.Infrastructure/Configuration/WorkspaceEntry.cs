@@ -24,7 +24,7 @@ internal sealed class WorkspaceEntry
     {
         Id = workspace.Id,
         Name = workspace.Name,
-        Type = workspace.Type.ToString(),
+        Type = workspace.Type.Id,
         // Each type writes only the settings it reads: a setting in the file that nothing acts on is one an
         // operator editing by hand would reasonably expect to do something.
         Layout = workspace.Type == WorkspaceType.Dashboard ? DashboardLayoutEntry.FromDomain(workspace.Layout) : null,
@@ -34,14 +34,16 @@ internal sealed class WorkspaceEntry
     };
 
     /// <summary>
-    /// This entry as a domain record. An unparseable type falls back to <see cref="WorkspaceType.Sessions"/>,
-    /// and a pane the resulting type cannot hold is dropped rather than thrown on: a config that disagrees
-    /// with itself (a widget in a Sessions workspace) is recoverable by ignoring the pane, but not by
+    /// This entry as a domain record. A blank type falls back to <see cref="WorkspaceType.Sessions"/>; a plugin
+    /// type whose plugin is not installed keeps its id (so the workspace returns intact when the plugin does)
+    /// rather than being rewritten to a host type — see <see cref="WorkspaceType.FromId"/>. A pane the resulting
+    /// type cannot hold is dropped rather than thrown on: a config that disagrees with itself (a widget in a
+    /// Sessions workspace, any grid pane in a plugin workspace) is recoverable by ignoring the pane, but not by
     /// refusing to start.
     /// </summary>
     public Workspace ToDomain()
     {
-        var type = Enum.TryParse<WorkspaceType>(Type, ignoreCase: true, out var parsed) ? parsed : WorkspaceType.Sessions;
+        var type = WorkspaceType.FromId(Type);
         return new Workspace(Id, Name, type)
         {
             Layout = Layout?.ToDomain() ?? DashboardLayout.Default,

@@ -8,6 +8,7 @@ using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Widgets;
 using Cockpit.Plugins.Abstractions.Workflows;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugins.Abstractions;
 
@@ -404,6 +405,25 @@ public interface ICockpitHost
     /// A plugin that is not building that gallery has no reason to call this. Default empty.
     /// </summary>
     IReadOnlyList<WidgetRegistration> Widgets => [];
+
+    /// <summary>
+    /// Registers a full-surface workspace type (see <see cref="WorkspaceTypeRegistration"/>) — the plugin owns
+    /// the whole workspace body, where <see cref="AddWidget"/> owns only one grid cell. It becomes an entry in the
+    /// tab strip's "+" menu, and choosing it creates a workspace of that type whose body the registration's own
+    /// factory builds. The host draws the tab and the frame; what the body shows, and any session it embeds
+    /// (<see cref="IWorkspaceContext.EmbedSession"/>), is the plugin's business. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host renders it.
+    /// </summary>
+    void AddWorkspaceType(WorkspaceTypeRegistration registration)
+    {
+    }
+
+    /// <summary>
+    /// The workspace types every plugin has contributed — what the tab strip's "+" menu reads. A plugin that is
+    /// not building that menu has no reason to call this. Default empty.
+    /// </summary>
+    IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [];
 
     /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds

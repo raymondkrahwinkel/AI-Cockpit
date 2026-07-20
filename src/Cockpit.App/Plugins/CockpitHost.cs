@@ -23,6 +23,7 @@ using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Widgets;
+using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
 
@@ -114,6 +115,25 @@ internal sealed class CockpitHost(
 
     public IReadOnlyList<WidgetRegistration> Widgets =>
         services.GetRequiredService<IWidgetRegistry>().Widgets;
+
+    // This plugin's own storage and observe surface travel with the registration, the same way a widget's do: a
+    // workspace of this type builds its context long after load, and by then the type id is the only thing linking
+    // it back here.
+    public void AddWorkspaceType(WorkspaceTypeRegistration registration)
+    {
+        // Refused means another plugin already contributes this type id. Logged rather than thrown: a plugin cannot
+        // know what else is installed, and taking the cockpit down over a name clash is a worse answer than the
+        // type being the one that was already there.
+        if (!services.GetRequiredService<IWorkspaceTypeRegistry>().Register(registration, storage, sessions))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                "Workspace type '{WorkspaceTypeId}' is already contributed by another plugin; this registration is ignored",
+                registration.Id);
+        }
+    }
+
+    public IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes =>
+        services.GetRequiredService<IWorkspaceTypeRegistry>().WorkspaceTypes;
 
     public void AddWorkflowStep(IWorkflowStep step) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Register(step);

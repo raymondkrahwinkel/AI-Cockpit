@@ -8,11 +8,22 @@ namespace Cockpit.Core.Workspaces;
 /// </summary>
 public static class WorkspaceTypeRules
 {
-    /// <summary>Whether <paramref name="kind"/> may live in a workspace of <paramref name="type"/>.</summary>
-    public static bool Accepts(WorkspaceType type, PaneKind kind) => type switch
+    /// <summary>
+    /// Whether <paramref name="kind"/> may live in a workspace of <paramref name="type"/>. Only the two host
+    /// types hold grid panes; a plugin-registered type owns its whole body and accepts none.
+    /// </summary>
+    public static bool Accepts(WorkspaceType type, PaneKind kind)
     {
-        WorkspaceType.Sessions => kind is PaneKind.AiSession or PaneKind.Terminal,
-        WorkspaceType.Dashboard => kind is PaneKind.Widget,
-        _ => false,
-    };
+        if (type == WorkspaceType.Sessions)
+        {
+            return kind is PaneKind.AiSession or PaneKind.Terminal;
+        }
+
+        if (type == WorkspaceType.Dashboard)
+        {
+            return kind is PaneKind.Widget;
+        }
+
+        return false;
+    }
 }

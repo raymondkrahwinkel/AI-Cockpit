@@ -32,6 +32,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: plugins can provide a whole workspace of their own — not just a widget in the dashboard grid,
+  but the entire surface, drawn and driven by the plugin, picked from the workspace "+" menu beside
+  Sessions and Dashboard. Such a workspace can embed a live session inside its own layout; and if the
+  plugin that provides it is not installed, the workspace shows a placeholder and comes back intact once
+  the plugin is.
 - added: hover an assistant reply to copy it or have it read aloud, and a "starting…" banner appears
   while a session is still coming up — so long-running actions and a launching session both show they
   are working rather than sitting silent.
