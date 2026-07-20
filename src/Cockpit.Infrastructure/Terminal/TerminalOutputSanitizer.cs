@@ -9,8 +9,9 @@ namespace Cockpit.Infrastructure.Terminal;
 /// sequence split across two pty writes is already rejoined before it is stripped.
 /// <para>
 /// A pragmatic strip rather than a full terminal emulation: it removes CSI (colours, cursor moves), OSC (title/
-/// clipboard), and the other escape forms, folds CRLF to LF, and drops the remaining control bytes (a lone CR's
-/// overwrite, a backspace, a bell) — enough to read a shell's output cleanly. It does not reconstruct a redrawn TUI
+/// clipboard), and the other escape forms, folds CRLF to LF, applies a lone CR as a column-0 overwrite (so a shell's
+/// line redraw reads as the final text, not both drafts concatenated — AC-34), and drops the remaining control bytes
+/// (a backspace, a bell) — enough to read a shell's output cleanly. It does not reconstruct a redrawn TUI
 /// (htop, vim); a cell-accurate view of those is a later refinement.
 /// </para>
 /// </summary>
@@ -40,6 +41,57 @@ internal static class TerminalOutputSanitizer
         text = Osc.Replace(text, string.Empty);
         text = OtherEscape.Replace(text, string.Empty);
         text = text.Replace("\r\n", "\n");
+        text = _ApplyCarriageReturns(text);
         return OtherControls.Replace(text, string.Empty);
+    }
+
+    // A lone carriage return moves the cursor to column 0 and later characters overwrite what is already there, so a
+    // shell that redraws its input line (echoes a key, then CR and reprints the whole line) reads as the final visible
+    // text — not both drafts concatenated, which turned "ls" into "lls" (AC-34). Run before the control-byte strip so
+    // the CR is applied, not dropped. Off the happy path (no CR present) it is a no-op.
+    private static string _ApplyCarriageReturns(string text)
+    {
+        if (!text.Contains('\r'))
+        {
+            return text;
+        }
+
+        var lines = text.Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            if (lines[index].Contains('\r'))
+            {
+                lines[index] = _OverwriteOnCarriageReturn(lines[index]);
+            }
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    // shortcut: a tab and a wide char each count as one cell here, matching this sanitizer's non-emulation contract —
+    // a cell-accurate redraw (tab stops, double-width glyphs) stays out of scope; upgrade = a real VT parser.
+    private static string _OverwriteOnCarriageReturn(string line)
+    {
+        var cells = new char[line.Length];
+        var written = 0;
+        var cursor = 0;
+        foreach (var character in line)
+        {
+            if (character == '\r')
+            {
+                cursor = 0;
+            }
+            else
+            {
+                cells[cursor] = character;
+                cursor++;
+                if (cursor > written)
+                {
+                    written = cursor;
+                }
+            }
+        }
+
+        return new string(cells, 0, written);
     }
 }
