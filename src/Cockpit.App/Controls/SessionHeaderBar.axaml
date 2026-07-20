@@ -32,14 +32,18 @@
                 </ToolTip.Tip>
             </materialIcons:MaterialIcon>
 
-            <!-- Worktree branch chip (AC-85), next to the cwd icon when the session runs in an isolated worktree.
-                 Soft purple so it reads apart from the grey kind chip and the green/yellow status colours. -->
+            <!-- Worktree mode chip: reads "isolated", not the branch name. The live branch is the GitStatus pill's
+                 job, so this never duplicates it or goes stale after a checkout; the worktree's own branch stays in
+                 the tooltip as the host-side fallback for when that plugin is off or hidden (a plain terminal pane).
+                 Soft purple, apart from the grey kind chip and the status colours. -->
             <Border Background="#332B47" VerticalAlignment="Center"
                     CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
-                    IsVisible="{Binding WorktreeBranch, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                    ToolTip.Tip="This session runs in an isolated git worktree on its own branch (AC-85)">
-                <TextBlock Text="{Binding WorktreeBranch, StringFormat='⑂ {0}'}" FontSize="10"
-                           Foreground="#BCA8E0"/>
+                    IsVisible="{Binding WorktreeBranch, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <ToolTip.Tip>
+                    <TextBlock MaxWidth="320" TextWrapping="Wrap"
+                               Text="{Binding WorktreeBranch, StringFormat='Isolated git worktree on branch ‘{0}’. A private copy: commits here stay on this branch until you merge or discard it, leaving your main checkout untouched.'}"/>
+                </ToolTip.Tip>
+                <TextBlock Text="⑂ isolated" FontSize="10" Foreground="#BCA8E0"/>
             </Border>
 
             <!-- Branch (plugin-contributed, e.g. git-status): sizes to its own content so it never renders past a
