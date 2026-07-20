@@ -342,6 +342,15 @@ public interface ICockpitHost
     ICockpitSessionObserver Sessions => NullCockpitSessionObserver.Instance;
 
     /// <summary>
+    /// The pane id of the session behind the in-process MCP call currently being handled — the transport-verified
+    /// caller (AC-128), so a plugin's own MCP tool can act on the calling session rather than on a session id the
+    /// agent hands it (a confused deputy). Null outside an MCP call, and on an older host that predates this — so a
+    /// plugin uses the agent-supplied id only as a fallback when this is null. Default null keeps existing
+    /// <see cref="ICockpitHost"/> implementations compiling untouched; only the app's own host supplies it.
+    /// </summary>
+    string? CurrentMcpCallerPaneId => null;
+
+    /// <summary>
     /// The cockpit's configured session profiles (#9): what identities exist and where each keeps its
     /// provider state on disk. Read fresh on every call, so a profile added or edited after the plugin
     /// initialised is picked up without a restart. Default returns an empty list so existing
