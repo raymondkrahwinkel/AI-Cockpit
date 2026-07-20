@@ -41,7 +41,7 @@ internal sealed class SessionDriverFactory(IServiceProvider services, IPluginPro
     private ISessionDriver _CreatePluginDriver(string providerId, string configJson)
     {
         var registration = pluginProviderRegistry.Resolve(providerId)
-            ?? throw new InvalidOperationException($"No plugin session provider is registered for '{providerId}'.");
+            ?? throw new InvalidOperationException(_ProviderNotRegisteredMessage(providerId));
 
         var driver = registration.CreateDriverFactory(services).Create(configJson);
 
@@ -50,5 +50,25 @@ internal sealed class SessionDriverFactory(IServiceProvider services, IPluginPro
         // not GetRequiredService: the store is always registered in the running app, and its absence (a unit test
         // that wires only the registry) simply means no fan-out, which the adapter already handles.
         return new PluginSessionDriverAdapter(driver, registration.Capabilities, services.GetRequiredService<Mcp.McpAuthKey>(), services.GetService<IMcpServerCatalog>(), services.GetService<ILogger<PluginSessionDriverAdapter>>(), services.GetService<Mcp.SessionMcpKeyring>());
+    }
+
+    // A provider going missing is almost never "no such provider" — it is a provider plugin that did not load:
+    // disabled, or awaiting re-approval after an update changed its bytes (its consent pin no longer matches), or
+    // built against a different contract. The raw "not registered for 'claude'" reads like a bug in the app; this
+    // says where to look and what is actually available instead, so a vanished provider is a pointer, not a wall.
+    private string _ProviderNotRegisteredMessage(string providerId)
+    {
+        var available = pluginProviderRegistry.Registrations
+            .Select(registration => registration.ProviderId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var availableClause = available.Count == 0
+            ? "No session providers are loaded at all."
+            : $"Available providers: {string.Join(", ", available)}.";
+
+        return $"The '{providerId}' provider is not available — its plugin is installed but did not load "
+            + $"(it may be disabled, awaiting approval after an update, or built for a different contract version). "
+            + $"Open Plugin Manager to check its status. {availableClause}";
     }
 }

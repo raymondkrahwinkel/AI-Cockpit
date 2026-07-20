@@ -87,6 +87,16 @@ internal sealed class CockpitConfigFile
     public Dictionary<string, PluginRegistrationEntry> Plugins { get; set; } = [];
 
     /// <summary>
+    /// The folder ids of bundled plugins this build has already put in place at least once — the seed-once ledger.
+    /// A bundled plugin ships as an ordinary, store-updatable plugin: it is copied into the operator's plugins
+    /// directory on its first appearance and then never touched by the bundle again — the store owns every later
+    /// version. This is what "first appearance" is measured against, so the seed survives an uninstall (a plugin
+    /// the operator removed does not silently return next start) and a store update (a newer version the bundle
+    /// still ships is not rolled back or re-pinned). Mirror of <see cref="PluginStoresDefaultSeeded"/>, per id.
+    /// </summary>
+    public List<string> SeededBundledPlugins { get; set; } = [];
+
+    /// <summary>
     /// Per plugin id, the storage keys it keeps a credential in beyond the names the host recognises by itself
     /// (a <c>pat</c>, a <c>credential</c>) — declared in its <c>plugin.json</c> or by calling
     /// <c>IPluginStorage.SetSecret</c>. The names themselves are not secrets, and they have to be readable before

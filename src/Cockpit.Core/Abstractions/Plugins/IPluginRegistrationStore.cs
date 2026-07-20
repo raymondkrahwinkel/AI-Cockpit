@@ -23,6 +23,19 @@ public interface IPluginRegistrationStore
 
     Task RemoveAsync(string folderId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The folder ids of bundled plugins already seeded at least once — the seed-once ledger the bundled
+    /// installer measures "first appearance" against. Empty on a config that predates the ledger.
+    /// </summary>
+    Task<IReadOnlySet<string>> LoadSeededBundledIdsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records that the given bundled plugin ids have been seeded, so they are never auto-installed again — not
+    /// after an operator uninstall, not to roll back a newer store version. Merged into the existing ledger;
+    /// ids already present are a no-op. Leaves every other config section untouched.
+    /// </summary>
+    Task MarkBundledSeededAsync(IEnumerable<string> folderIds, CancellationToken cancellationToken = default);
+
     /// <summary>Loads a plugin's own key/value storage slice (its <see cref="Cockpit.Plugins.Abstractions.IPluginStorage"/> data); empty when the plugin has stored nothing.</summary>
     Task<IReadOnlyDictionary<string, string>> LoadDataAsync(string folderId, CancellationToken cancellationToken = default);
 

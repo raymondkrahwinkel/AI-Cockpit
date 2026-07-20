@@ -65,6 +65,37 @@ internal sealed class PluginRegistrationStore : IPluginRegistrationStore, ISingl
     public Task RemoveAsync(string folderId, CancellationToken cancellationToken = default) =>
         _configFile.UpdateAsync(file => file.Plugins.Remove(folderId), cancellationToken);
 
+    public async Task<IReadOnlySet<string>> LoadSeededBundledIdsAsync(CancellationToken cancellationToken = default)
+    {
+        var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);
+        return configFile?.SeededBundledPlugins is { } seeded
+            ? new HashSet<string>(seeded, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+    }
+
+    public Task MarkBundledSeededAsync(IEnumerable<string> folderIds, CancellationToken cancellationToken = default)
+    {
+        // Materialize before the update callback so the write owns only the merge, not the enumeration.
+        var ids = folderIds as IReadOnlyCollection<string> ?? [.. folderIds];
+        if (ids.Count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _configFile.UpdateAsync(file =>
+        {
+            // Preserve order and dedupe: the ledger is a set, kept as a list for a stable, diff-friendly file.
+            var known = new HashSet<string>(file.SeededBundledPlugins, StringComparer.Ordinal);
+            foreach (var id in ids)
+            {
+                if (known.Add(id))
+                {
+                    file.SeededBundledPlugins.Add(id);
+                }
+            }
+        }, cancellationToken);
+    }
+
     public async Task<IReadOnlyDictionary<string, string>> LoadDataAsync(string folderId, CancellationToken cancellationToken = default)
     {
         var configFile = await _configFile.ReadAsync(cancellationToken).ConfigureAwait(false);

@@ -214,5 +214,20 @@ public class PluginSourceInstallerTests : IDisposable
 
         public Task SaveDataAsync(string folderId, IReadOnlyDictionary<string, string> data, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+
+        public HashSet<string> Seeded { get; } = new(StringComparer.Ordinal);
+
+        public Task<IReadOnlySet<string>> LoadSeededBundledIdsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<string>>(Seeded);
+
+        public Task MarkBundledSeededAsync(IEnumerable<string> folderIds, CancellationToken cancellationToken = default)
+        {
+            foreach (var id in folderIds)
+            {
+                Seeded.Add(id);
+            }
+
+            return Task.CompletedTask;
+        }
     }
 }

@@ -6,10 +6,12 @@ using FluentAssertions;
 namespace Cockpit.Core.Tests.Plugins;
 
 /// <summary>
-/// The plugins that ship with the app: they land in the operator's plugins directory on startup and are
-/// pre-approved (they came out of the very build that would otherwise ask whether you trust them), a newer
-/// bundled version replaces an older installed one — and none of that overrides a decision the operator made:
-/// a plugin they turned off stays off, and a version they updated past ours is not rolled back.
+/// The plugins that ship with the app: they are seeded into the operator's plugins directory on their first
+/// appearance and pre-approved (they came out of the very build that would otherwise ask whether you trust
+/// them), and after that first seed the bundle never touches them again — a bundled plugin is an ordinary,
+/// store-updatable plugin that merely comes pre-installed. So a newer bundled version does not replace an
+/// installed one, a rebuild does not re-pin it, a version the operator updated is not rolled back, one they
+/// disabled stays disabled, and one they uninstalled does not silently return.
 /// </summary>
 public class BundledPluginInstallerTests : IDisposable
 {
@@ -38,10 +40,13 @@ public class BundledPluginInstallerTests : IDisposable
         File.Exists(Path.Combine(_plugins, "transcript-search", "plugin.json")).Should().BeTrue();
         _registrations.Saved["transcript-search"].Enabled.Should().BeTrue();
         _registrations.Saved["transcript-search"].PinnedSha256.Should().NotBeEmpty();
+        _registrations.Seeded.Should().Contain("transcript-search", "a seeded plugin is recorded so it is never seeded again");
     }
 
+    // The store owns every version after the first seed: a newer bundled build arriving in a later app version
+    // must not overwrite what the operator is running, or a store update would be silently undone each start.
     [Fact]
-    public async Task ANewerBundledVersion_ReplacesTheInstalledOne()
+    public async Task ANewerBundledVersion_DoesNotReplaceTheInstalledOne()
     {
         _WriteInstalled("transcript-search", "1.0.0");
         _registrations.Saved["transcript-search"] = new PluginRegistration(Enabled: true, PinnedSha256: "old");
@@ -49,9 +54,10 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().Equal("transcript-search");
-        _InstalledVersion("transcript-search").Should().Be("1.1.0");
-        _registrations.Saved["transcript-search"].PinnedSha256.Should().NotBe("old");
+        installed.Should().BeEmpty();
+        _InstalledVersion("transcript-search").Should().Be("1.0.0");
+        _registrations.Saved["transcript-search"].PinnedSha256.Should().Be("old");
+        _registrations.Seeded.Should().Contain("transcript-search", "an existing install is adopted into the ledger");
     }
 
     // The operator updated it from the store past what we ship; a new app build must not drag them back.
@@ -85,13 +91,12 @@ public class BundledPluginInstallerTests : IDisposable
     }
 
     /// <summary>
-    /// A developer rebuilding a bundled plugin does not bump its version — there is nothing to bump it to. The
-    /// version was standing in for "is this different", and at equal versions it answered no every time: the
-    /// rebuilt assembly sat in bundled-plugins/ and the cockpit went on loading the old one, saying nothing.
-    /// Raymond hit this from the other side too, by copying a dll into plugins/ by hand, which broke the pin.
+    /// Once seeded, the bundle keeps its hands off — a rebuilt bundled assembly does not overwrite the installed
+    /// one or move its pin. Refreshing an already-installed first-party plugin from freshly built bytes is the
+    /// dev inner loop's job (DevPluginInstaller, DEBUG only), not the bundle's: the bundle only ever seeds.
     /// </summary>
     [Fact]
-    public async Task ARebuiltBundledPlugin_Lands_EvenThoughItsVersionDidNotChange()
+    public async Task ARebuiltBundledPlugin_IsLeftAlone_AndNotRePinned()
     {
         _WriteInstalled("clock", "1.0.0");
         _registrations.Saved["clock"] = new PluginRegistration(Enabled: true, PinnedSha256: "the-old-bytes");
@@ -99,12 +104,13 @@ public class BundledPluginInstallerTests : IDisposable
 
         var installed = await NewSut().InstallAsync(_bundled, _plugins);
 
-        installed.Should().Equal("clock");
-        _InstalledAssembly("clock").Should().Be("clock-rebuilt");
-        _registrations.Saved["clock"].PinnedSha256.Should().NotBe("the-old-bytes", "the new bytes are what the operator consented to by running this build");
+        installed.Should().BeEmpty();
+        _InstalledAssembly("clock").Should().Be("clock-1.0.0", "the bundle does not overwrite an install it already seeded");
+        _registrations.Saved["clock"].PinnedSha256.Should().Be("the-old-bytes");
+        _registrations.Seeded.Should().Contain("clock");
     }
 
-    /// <summary>The other side of the same coin: identical bytes are not a reason to copy anything, or this would rewrite the plugins folder on every single start.</summary>
+    /// <summary>An identical, already-installed plugin is adopted into the ledger but its bytes and pin are untouched.</summary>
     [Fact]
     public async Task AnIdenticalBundledPlugin_IsLeftWhereItIs()
     {
@@ -127,6 +133,41 @@ public class BundledPluginInstallerTests : IDisposable
         var second = await NewSut().InstallAsync(_bundled, _plugins);
 
         second.Should().BeEmpty();
+    }
+
+    // The point of the seed ledger: seeding is a first-appearance event, not a "is it on disk" check. A plugin
+    // the operator uninstalled (folder and registration gone) must not quietly reappear on the next start.
+    [Fact]
+    public async Task AnUninstalledBundledPlugin_IsNotReSeeded()
+    {
+        _WriteBundled("transcript-search", "1.1.0");
+        (await NewSut().InstallAsync(_bundled, _plugins)).Should().Equal("transcript-search");
+
+        // Simulate an uninstall: the folder and the registration go, but the seed ledger remembers it was here.
+        Directory.Delete(Path.Combine(_plugins, "transcript-search"), recursive: true);
+        _registrations.Saved.Remove("transcript-search");
+
+        var second = await NewSut().InstallAsync(_bundled, _plugins);
+
+        second.Should().BeEmpty();
+        Directory.Exists(Path.Combine(_plugins, "transcript-search")).Should().BeFalse("an uninstalled bundled plugin does not silently return");
+    }
+
+    // Existing installs from before the ledger existed (or ones the operator installed themselves) are adopted:
+    // recorded as seeded so the bundle never later overwrites them, without their bytes being rewritten now.
+    [Fact]
+    public async Task AnExistingInstall_IsAdoptedIntoTheLedger_WithoutRewriting()
+    {
+        _WriteInstalled("git-status", "1.0.0");
+        _registrations.Saved["git-status"] = new PluginRegistration(Enabled: true, PinnedSha256: "theirs");
+        _WriteBundled("git-status", "1.0.0", assemblyContent: "git-status-bundled");
+
+        var installed = await NewSut().InstallAsync(_bundled, _plugins);
+
+        installed.Should().BeEmpty();
+        _InstalledAssembly("git-status").Should().Be("git-status-1.0.0", "adoption records the seed but does not rewrite the install");
+        _registrations.Saved["git-status"].PinnedSha256.Should().Be("theirs");
+        _registrations.Seeded.Should().Contain("git-status");
     }
 
     [Fact]
@@ -213,5 +254,20 @@ public class BundledPluginInstallerTests : IDisposable
 
         public Task SaveDataAsync(string folderId, IReadOnlyDictionary<string, string> data, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+
+        public HashSet<string> Seeded { get; } = new(StringComparer.Ordinal);
+
+        public Task<IReadOnlySet<string>> LoadSeededBundledIdsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<string>>(Seeded);
+
+        public Task MarkBundledSeededAsync(IEnumerable<string> folderIds, CancellationToken cancellationToken = default)
+        {
+            foreach (var id in folderIds)
+            {
+                Seeded.Add(id);
+            }
+
+            return Task.CompletedTask;
+        }
     }
 }

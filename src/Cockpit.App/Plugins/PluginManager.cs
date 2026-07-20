@@ -48,6 +48,7 @@ internal sealed class PluginManager(
         {
             if (candidate.Decision != PluginLoadDecision.Load)
             {
+                _NoteSkipped(candidate);
                 continue;
             }
 
@@ -84,6 +85,47 @@ internal sealed class PluginManager(
 
             _loaded.Add((candidate, plugin));
             _WarnIfBuiltAgainstNewerHost(candidate, plugin);
+        }
+    }
+
+    // A plugin discovery decided not to load leaves no other trace — the loop simply skips it — so a provider that
+    // silently vanished (a Claude update that dropped to needs-consent, an abstractions mismatch) became an
+    // unexplained "no such provider" downstream with nothing in the log to explain it. This is that breadcrumb.
+    // The refused decisions (abstractions/host) are also recorded for the plugin manager to surface; the everyday
+    // ones (disabled, awaiting consent) are a log line only — the manager already shows those states.
+    private void _NoteSkipped(DiscoveredPlugin candidate)
+    {
+        switch (candidate.Decision)
+        {
+            case PluginLoadDecision.AbstractionsMajorMismatch:
+                logger.LogWarning(
+                    "Plugin {PluginId} was built against a different Cockpit contract major and was not loaded.",
+                    candidate.FolderId);
+                diagnostics.Record(
+                    candidate.FolderId, candidate.Manifest.Name, "load",
+                    "Built against a different Cockpit contract version than this app — update the app or reinstall the plugin build made for it.",
+                    PluginIssueSeverity.Warning);
+                break;
+
+            case PluginLoadDecision.HostTooOld:
+                logger.LogWarning(
+                    "Plugin {PluginId} needs a newer cockpit than this one (its minHostVersion) and was not loaded.",
+                    candidate.FolderId);
+                diagnostics.Record(
+                    candidate.FolderId, candidate.Manifest.Name, "load",
+                    "This plugin needs a newer version of the app than you are running — update the app to use it.",
+                    PluginIssueSeverity.Warning);
+                break;
+
+            case PluginLoadDecision.NeedsConsent:
+                logger.LogInformation(
+                    "Plugin {PluginId} is awaiting approval (new, or its bytes changed since you approved it) and was not loaded until you approve it in Plugin Manager.",
+                    candidate.FolderId);
+                break;
+
+            case PluginLoadDecision.Disabled:
+                logger.LogInformation("Plugin {PluginId} is disabled and was not loaded.", candidate.FolderId);
+                break;
         }
     }
 

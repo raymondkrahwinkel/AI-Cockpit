@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Plugins;
 
 namespace Cockpit.Infrastructure.Plugins;
 
@@ -10,14 +11,18 @@ namespace Cockpit.Infrastructure.Plugins;
 /// rather than having to know they exist — while the code stays a plugin, so it can be turned off and does not
 /// drag one provider's file format back into a multi-provider core.
 ///
-/// They are copied from the app's <c>bundled-plugins/</c> folder into the operator's plugins directory on
-/// startup, and pre-approved: the consent dialog exists to ask "do you trust this third-party code", and these
-/// came out of the very build that is asking. A newer bundled version replaces an older installed one — as does
-/// a rebuild of the same version, which is what a developer produces all day and what the version number cannot
-/// see. Either way the plugin keeps its enabled state and its settings, and its pin follows the new bytes.
+/// <para>
+/// A bundled plugin is an ordinary, store-updatable plugin that merely comes pre-seeded. It is copied from the
+/// app's <c>bundled-plugins/</c> folder into the operator's plugins directory on its <em>first appearance</em>
+/// only, and pre-approved (the consent dialog asks "do you trust this third-party code"; these came out of the
+/// very build that is asking). After that first seed the bundle never touches it again: later versions arrive
+/// through the store like any other plugin's, and a version the operator installed is neither rolled back nor
+/// re-pinned by a new app build. The seed is recorded per id in <see cref="Cockpit.Infrastructure.Configuration.CockpitConfigFile.SeededBundledPlugins"/>,
+/// so it survives both an uninstall (a plugin the operator removed does not silently return next start) and a
+/// store update (a newer installed version is left where it is).
+/// </para>
 ///
-/// It never overrides the operator: a plugin they disabled stays disabled and is left untouched on disk, and a
-/// version they updated past ours is not rolled back.
+/// It never overrides the operator: a plugin they disabled stays disabled and is left untouched on disk.
 /// </summary>
 public sealed class BundledPluginInstaller : ISingletonService
 {
@@ -62,11 +67,57 @@ public sealed class BundledPluginInstaller : ISingletonService
             }
         }
 
-        // Each immediate subfolder of the bundled root is one plugin (its dll, deps.json and plugin.json). A
-        // bundled plugin ships, so it is installed even when not there yet (installNew), while the shared rule
-        // still respects a disabled plugin and an operator's newer version.
-        return await new PluginSourceInstaller(_registrations, _logger)
-            .InstallFromSourceFoldersAsync(Directory.EnumerateDirectories(bundledRoot), pluginsRoot, installNew: true, cancellationToken)
-            .ConfigureAwait(false);
+        var seeded = await _registrations.LoadSeededBundledIdsAsync(cancellationToken).ConfigureAwait(false);
+        var saved = await _registrations.LoadAllAsync(cancellationToken).ConfigureAwait(false);
+
+        // Classify each bundled source by whether it has appeared before. An id already in the seed ledger is the
+        // store's to manage now — the bundle never touches it again. An id not yet seeded but already installed
+        // (a folder or a saved registration) is an existing install from before this ledger existed, or one the
+        // operator installed themselves: adopt it — record the seed, but do not overwrite its bytes. Only a source
+        // that is genuinely absent is copied in fresh.
+        var freshSeedSources = new List<string>();
+        var toRecord = new List<string>();
+        foreach (var source in Directory.EnumerateDirectories(bundledRoot))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (await _ReadManifestIdAsync(source, cancellationToken).ConfigureAwait(false) is not { } id
+                || seeded.Contains(id))
+            {
+                continue;
+            }
+
+            toRecord.Add(id);
+            var alreadyInstalled = saved.ContainsKey(id) || Directory.Exists(Path.Combine(pluginsRoot, id));
+            if (!alreadyInstalled)
+            {
+                freshSeedSources.Add(source);
+            }
+        }
+
+        // The genuinely-absent sources are the only ones copied. Their targets do not exist, so the shared
+        // installer's replace/re-pin rules never fire — this is a clean first install and nothing else.
+        var installed = freshSeedSources.Count == 0
+            ? (IReadOnlyList<string>)[]
+            : await new PluginSourceInstaller(_registrations, _logger)
+                .InstallFromSourceFoldersAsync(freshSeedSources, pluginsRoot, installNew: true, cancellationToken)
+                .ConfigureAwait(false);
+
+        // Record every classified id — freshly seeded and adopted alike — so none is ever seeded again.
+        await _registrations.MarkBundledSeededAsync(toRecord, cancellationToken).ConfigureAwait(false);
+
+        return installed;
+    }
+
+    private static async Task<string?> _ReadManifestIdAsync(string folder, CancellationToken cancellationToken)
+    {
+        var manifestPath = Path.Combine(folder, "plugin.json");
+        if (!File.Exists(manifestPath))
+        {
+            return null;
+        }
+
+        var json = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
+        return PluginManifest.TryParse(json, out var manifest, out _) && manifest is not null ? manifest.Id : null;
     }
 }
