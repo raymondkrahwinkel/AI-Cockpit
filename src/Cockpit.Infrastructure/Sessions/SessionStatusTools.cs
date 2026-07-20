@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Mcp;
 
 namespace Cockpit.Infrastructure.Sessions;
 
@@ -29,7 +30,11 @@ internal sealed class SessionStatusTools
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session,
         [Description("The status to show, e.g. 'AC-13' or 'reviewing the diff'. An empty string clears it.")] string status)
     {
-        var applied = await _statuslineSink.SetStatuslineAsync(session, status ?? string.Empty);
+        // Key on the transport-verified pane (AC-89/AC-128), not the agent-declared `session`: an agent must not be
+        // able to spoof or clear another session's statusline by naming its id (confused deputy). Falls back to
+        // `session` off the verified path (the in-process tool loop / tests), where there is no middleware to trust.
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var applied = await _statuslineSink.SetStatuslineAsync(caller, status ?? string.Empty);
         return applied
             ? JsonSerializer.Serialize(new { ok = true, status = status ?? string.Empty }, SerializerOptions)
             : JsonSerializer.Serialize(new { ok = false, error = "No session matched that id — pass the COCKPIT_PANE_ID from this session's own environment as `session`." }, SerializerOptions);

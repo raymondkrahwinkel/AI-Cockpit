@@ -4,6 +4,7 @@ using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Worktrees;
@@ -42,9 +43,13 @@ internal sealed class WorktreeTools
     {
         try
         {
+            // Tie the worktree to the transport-verified pane (AC-89/AC-128), not the agent-declared `session`: the
+            // owner keys its teardown (CloseSessionAsync releases by pane id), so a forged id would mis-attribute
+            // cleanup. Falls back to `session` off the verified path (the in-process tool loop / tests).
+            var owner = McpRequestContext.CurrentPaneId ?? session;
             var record = string.IsNullOrWhiteSpace(branch)
-                ? await _worktreeManager.CreateForSessionAsync(session, null, directory)
-                : await _worktreeManager.CreateAsync(session, branch, directory);
+                ? await _worktreeManager.CreateForSessionAsync(owner, null, directory)
+                : await _worktreeManager.CreateAsync(owner, branch, directory);
 
             return _Serialize(new { ok = true, path = record.Path, branch = record.Branch });
         }
