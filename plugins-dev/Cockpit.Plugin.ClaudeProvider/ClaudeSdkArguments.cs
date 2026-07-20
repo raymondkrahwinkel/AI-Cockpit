@@ -2,13 +2,15 @@ namespace Cockpit.Plugin.ClaudeProvider;
 
 /// <summary>
 /// Builds the <c>claude</c> CLI argument list for the SDK/session-driver route (Fase 4, weg A) — a port of the host's
-/// <c>ClaudeCliProcess.BuildArguments</c> with one deliberate divergence: <em>no</em> <c>--permission-prompt-tool</c>
-/// /<c>--mcp-config</c>/<c>--strict-mcp-config</c> permission wiring. The plugin cannot reach the host's shared
-/// permission MCP server (weg A: the plugin owns its own machinery), and it does not need to — spawning in
-/// bidirectional stream-json mode without a permission-prompt tool makes the CLI route approvals back over the control
-/// protocol as <c>can_use_tool</c> requests (<see cref="ClaudeControlProtocol"/>), exactly the way Codex's app-server
-/// route surfaces its own in-band approvals. Extracted and <c>internal</c> so the flag construction is unit-testable
-/// without spawning a real process.
+/// <c>ClaudeCliProcess.BuildArguments</c> with one deliberate divergence in the <em>permission</em> wiring: no
+/// host-owned permission MCP server. The plugin cannot reach the host's shared permission MCP server (weg A: the
+/// plugin owns its own machinery), and it does not need to — spawning in bidirectional stream-json mode with
+/// <c>--permission-prompt-tool stdio</c> makes the CLI route approvals back over the control protocol as
+/// <c>can_use_tool</c> requests (<see cref="ClaudeControlProtocol"/>), exactly the way Codex's app-server route
+/// surfaces its own in-band approvals. The user's own cockpit-configured MCP servers (#26/#44) <em>are</em> fanned in
+/// via <c>--mcp-config</c> (without <c>--strict-mcp-config</c>) — that is orthogonal to the permission wiring, and
+/// dropping it is what previously left an SDK session with no registry servers. Extracted and <c>internal</c> so the
+/// flag construction is unit-testable without spawning a real process.
 /// </summary>
 internal static class ClaudeSdkArguments
 {
@@ -33,7 +35,8 @@ internal static class ClaudeSdkArguments
         string? model,
         string? resumeSessionId,
         bool continueMostRecent,
-        string? delegationSystemPrompt = null)
+        string? delegationSystemPrompt = null,
+        string? mcpConfigPath = null)
     {
         var effectiveMode = string.IsNullOrWhiteSpace(permissionMode) ? "default" : permissionMode;
 
@@ -66,7 +69,16 @@ internal static class ClaudeSdkArguments
             arguments.Add("--continue");
         }
 
-        // No permission-prompt-tool/mcp-config here — see the type remarks: approvals ride the control protocol.
+        // Fan the shared MCP registry into the SDK spawn — the user's own cockpit-configured servers (#26/#44).
+        // Deliberately without --strict-mcp-config, so they add on top of the CLI's own user/project config rather
+        // than replacing it, exactly like the TTY route. This is independent of the permission wiring above: the
+        // permission MCP server is (correctly) absent because approvals ride the control protocol, but that is no
+        // reason to drop the operator's real servers — omitting this is what left an SDK session with none of them.
+        if (!string.IsNullOrWhiteSpace(mcpConfigPath))
+        {
+            arguments.Add("--mcp-config");
+            arguments.Add(mcpConfigPath);
+        }
 
         if (!string.IsNullOrWhiteSpace(model))
         {

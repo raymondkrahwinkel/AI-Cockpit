@@ -679,7 +679,9 @@ public partial class TtyView : UserControl
                 _pendingLaunch.WorkingDirectory,
                 _pendingLaunch.Resume,
                 // AC-13: the pane id becomes COCKPIT_PANE_ID in the CLI's environment, so the agent can set its own statusline.
-                _viewModel?.PaneId);
+                _viewModel?.PaneId,
+                // #44: the per-session MCP checklist, so the provider narrows the registry to the operator's selection.
+                _pendingLaunch.EnabledMcpServerNames);
             _pty = pty;
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;

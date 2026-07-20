@@ -57,6 +57,12 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
     private IReadOnlyList<PluginSessionLaunchOption> _liveOptions = [];
     private IReadOnlyDictionary<string, string>? _profileEnvironment;
 
+    // The per-session --mcp-config file this launch wrote (the shared registry fanned in), or null when the session
+    // has no registry servers. Deleted on dispose: it can hold a user API-key server's bearer header, and a config
+    // for a session that has ended is nobody's business (the TTY route hands the same file to the host to clean up;
+    // the SDK driver owns its own process lifetime, so it owns this file's lifetime too).
+    private string? _mcpConfigPath;
+
     public ClaudeSdkSessionDriver(Func<IClaudeSdkSubprocess> subprocessFactory, ClaudeProviderConfig config, string executablePath)
     {
         _subprocessFactory = subprocessFactory;
@@ -112,7 +118,12 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // nothing able to answer it — in the .claude.json the CLI reads for this spawn.
         ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, Path.GetFullPath(resolvedWorkingDirectory));
 
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false);
+        // Fan the shared MCP registry (already narrowed to this session's selection by the host adapter) into a
+        // --mcp-config file, exactly as the TTY route does — without this the SDK session reaches none of the
+        // operator's cockpit-configured servers.
+        _mcpConfigPath = mcpServers is { Count: > 0 } servers ? ClaudeMcpConfig.Write(servers) : null;
+
+        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, mcpConfigPath: _mcpConfigPath);
         var environment = _BuildEnvironment(userHome);
 
         // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the
@@ -449,6 +460,20 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         finally
         {
             _lifetime.Dispose();
+
+            // Delete the --mcp-config we wrote (it can hold a bearer header) — best-effort, since a failure to unlink
+            // a temp file must never surface out of dispose.
+            if (_mcpConfigPath is not null)
+            {
+                try
+                {
+                    File.Delete(_mcpConfigPath);
+                }
+                catch (Exception)
+                {
+                    // A locked/already-gone temp file is not worth failing dispose over.
+                }
+            }
         }
     }
 }

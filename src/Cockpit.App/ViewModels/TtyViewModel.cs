@@ -39,6 +39,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private string? _configuredWorkingDirectory;
     private bool _isLaunchConfigured;
     private SessionResume? _configuredResume;
+    private IReadOnlySet<string>? _configuredEnabledMcpServerNames;
     private bool _launched;
 
     /// <summary>
@@ -255,10 +256,12 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         string? effort,
         string? workingDirectory = null,
         SessionResume? resume = null,
-        IReadOnlyDictionary<string, string>? pluginOptions = null)
+        IReadOnlyDictionary<string, string>? pluginOptions = null,
+        IReadOnlySet<string>? enabledMcpServerNames = null)
     {
         _configuredProfile = profile;
         _configuredResume = resume;
+        _configuredEnabledMcpServerNames = enabledMcpServerNames;
         _configuredWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory;
         // Show and publish the effective working directory: the per-session override when given, else the
         // global resolution. Keeps the header and the read/observe surface pointing where the TUI actually runs.
@@ -356,7 +359,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             _configuredProfile,
             _LaunchOptions(),
             _configuredWorkingDirectory,
-            _configuredResume));
+            _configuredResume,
+            _configuredEnabledMcpServerNames));
     }
 
     /// <summary>

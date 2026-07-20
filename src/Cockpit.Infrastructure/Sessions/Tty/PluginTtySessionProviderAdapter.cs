@@ -31,7 +31,7 @@ internal sealed class PluginTtySessionProviderAdapter(
 
     public TtyLaunchSpec BuildLaunch(TtyLaunchContext context)
     {
-        var (mcpServers, canDelegate) = _ResolveRegistry();
+        var (mcpServers, canDelegate) = _ResolveRegistry(context.EnabledMcpServerNames);
 
         // The base environment is handed straight through: the host (TtyLauncher) has already put this run's MCP
         // auth key on it (COCKPIT_MCP_KEY, AC-40) so a cockpit-hosted server's config can reference the env var
@@ -57,12 +57,15 @@ internal sealed class PluginTtySessionProviderAdapter(
     }
 
     /// <summary>
-    /// The agent-eligible MCP servers and whether the orchestrator is enabled — read once per launch. The TTY route
-    /// fans the whole eligible registry (no per-session narrowing, matching the in-tree Claude provider). Sync
-    /// (the spawn path is synchronous) and best-effort: no store (a unit test wiring none) or a read failure means
-    /// no servers and no delegation, rather than blocking the launch.
+    /// The agent-eligible MCP servers and whether the orchestrator is enabled — read once per launch. The
+    /// per-session selection (#44) narrows the eligible registry to the operator's checklist first (an unchecked
+    /// server never reaches the CLI), exactly as the SDK route's <c>PluginSessionDriverAdapter</c> does; a
+    /// <see langword="null"/> selection means no narrowing. Delegation is judged on the <em>selected</em> set: if
+    /// the operator unchecked the orchestrator server, this session cannot delegate. Sync (the spawn path is
+    /// synchronous) and best-effort: no store (a unit test wiring none) or a read failure means no servers and no
+    /// delegation, rather than blocking the launch.
     /// </summary>
-    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry()
+    private (IReadOnlyList<PluginMcpServer> McpServers, bool CanDelegate) _ResolveRegistry(IReadOnlySet<string>? enabledServerNames)
     {
         if (mcpServerCatalog is null)
         {
@@ -72,12 +75,13 @@ internal sealed class PluginTtySessionProviderAdapter(
         try
         {
             var registry = mcpServerCatalog.GetServersAsync().GetAwaiter().GetResult();
-            var servers = registry
+            var selected = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames);
+            var servers = selected
                 .Where(McpConfigFile.IsAgentEligible)
                 .Select(_ToPluginMcpServer)
                 .OfType<PluginMcpServer>()
                 .ToList();
-            var canDelegate = registry.Any(server =>
+            var canDelegate = selected.Any(server =>
                 server.Enabled && string.Equals(server.Name, DelegationMcp.ServerName, StringComparison.OrdinalIgnoreCase));
             return (servers, canDelegate);
         }

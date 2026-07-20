@@ -3937,7 +3937,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 isClaudeProfile ? result.Effort.Value : null,
                 workingDirectory,
                 result.Resume,
-                result.PluginTtyOptions);
+                result.PluginTtyOptions,
+                // #44: the per-session MCP checklist, so a TTY session honours the operator's selection instead of
+                // loading every eligible server (the same set the SDK path passes to StartConfiguredAsync above).
+                result.EnabledMcpServerNames);
             paneId = session.PaneId;
         }
 

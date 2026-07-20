@@ -29,7 +29,17 @@ public sealed record TtyLaunchContext(
     IReadOnlyDictionary<string, string> Options,
     string WorkingDirectory,
     SessionResume? Resume,
-    IReadOnlyDictionary<string, string> BaseEnvironment);
+    IReadOnlyDictionary<string, string> BaseEnvironment)
+{
+    /// <summary>
+    /// The per-session MCP-server selection (#44) the operator made in the New-session dialog: the enabled server
+    /// names to narrow the shared registry to. <see langword="null"/> means no narrowing (every eligible server
+    /// passes) — the same convention <see cref="Cockpit.Core.Mcp.McpServerRegistryFilter.ApplySessionSelection"/>
+    /// reads. An init property rather than a positional parameter so the many existing constructor call sites keep
+    /// compiling; only the launcher fills it in.
+    /// </summary>
+    public IReadOnlySet<string>? EnabledMcpServerNames { get; init; }
+}
 
 /// <summary>
 /// The option keys the cockpit's own New-session dialog fills in today. They are Claude's words, and that is
