@@ -71,6 +71,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: the plugins that ship with the cockpit (the Claude provider and the rest) are now ordinary,
+  store-updatable plugins that simply come pre-installed. They are put in place once, the first time
+  they appear, and after that a newer version arrives through the plugin store like any other plugin's —
+  a new app build no longer replaces or rolls back the version you are running, and a plugin you
+  uninstalled stays gone instead of quietly returning on the next start. If a provider plugin ever fails
+  to load after an update — for example it is waiting for you to re-approve it because its files changed —
+  the session now says so and points you to the plugin manager, instead of failing with a cryptic "no
+  such provider" message.
 - changed: the chat transcript (SDK and local-model sessions) got an identity and look pass — each
   reply shows the model's avatar and name and your own messages a "You" label, a fresh session shows a
   model card (name, provider, connected tools) instead of a bare "Ready" line, tool steps and thinking
