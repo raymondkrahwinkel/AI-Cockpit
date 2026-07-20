@@ -41,6 +41,7 @@ internal sealed class GitStatusHeaderControl : UserControl
 
     private GitRepoStatus? _current;
     private int _loadToken;
+    private bool _isAttached;
 
     private FileSystemWatcher? _headWatcher;
     private string? _watchedHeadDirectory;
@@ -96,6 +97,7 @@ internal sealed class GitStatusHeaderControl : UserControl
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _isAttached = true;
         _session.WorkingDirectoryChanged += _OnWorkingDirectoryChanged;
         _session.OutputProduced += _OnSessionOutput;
         // Toggling "show branch name" (AC-36) takes effect at once on every live header. Subscribed here and dropped
@@ -110,6 +112,7 @@ internal sealed class GitStatusHeaderControl : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        _isAttached = false;
         _session.WorkingDirectoryChanged -= _OnWorkingDirectoryChanged;
         _session.OutputProduced -= _OnSessionOutput;
         _settings.Changed -= _OnSettingsChanged;
@@ -146,20 +149,31 @@ internal sealed class GitStatusHeaderControl : UserControl
     private async Task _ProbeBranchAsync()
     {
         var path = _session.WorkingDirectory;
-        if (string.IsNullOrWhiteSpace(path) || _current is not { Error: null } current)
+        if (string.IsNullOrWhiteSpace(path) || _current is not { Error: null })
         {
             return;
         }
 
-        if (_headWatcher is null)
-        {
-            await _EnsureHeadWatcherAsync();
-        }
-
         try
         {
+            if (_headWatcher is null)
+            {
+                await _EnsureHeadWatcherAsync();
+                if (!_isAttached)
+                {
+                    return;
+                }
+            }
+
             var branch = await GitCommand.CurrentBranchAsync(path, CancellationToken.None);
-            if (branch.Length > 0 && !string.Equals(branch, current.Branch, StringComparison.Ordinal))
+            // Re-check after the awaits rather than trusting a pre-await snapshot: detach may have torn the control
+            // down, and a concurrent reload may already have applied this branch. Compare against the live _current.
+            if (!_isAttached || branch.Length == 0 || _current is not { Error: null } current)
+            {
+                return;
+            }
+
+            if (!string.Equals(branch, current.Branch, StringComparison.Ordinal))
             {
                 _ScheduleReload();
             }
@@ -181,6 +195,14 @@ internal sealed class GitStatusHeaderControl : UserControl
             ? null
             : await GitHeadLocator.ResolveHeadFileAsync(path, CancellationToken.None);
         var directory = headFile is null ? null : System.IO.Path.GetDirectoryName(headFile);
+
+        // Detached while the git directory was resolving: OnDetachedFromVisualTree has already torn the control
+        // down, so arming a watcher here would leak it (nothing disposes it a second time). Bail before touching
+        // watcher state. Guards every caller, including the higher-frequency branch probe.
+        if (!_isAttached)
+        {
+            return;
+        }
 
         if (directory is null)
         {
