@@ -15,6 +15,8 @@
         <vm:TtyViewModel/>
     </Design.DataContext>
 
+    <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
+    <Grid>
     <DockPanel Margin="16">
 
         <!-- Compact one-row session header: the session data (TTY tag with render diagnostics on hover,
@@ -48,9 +50,6 @@
                 </controls:SessionHeaderBar>
             </DockPanel>
         </Border>
-
-        <!-- Consent banner (#AC-47): shown under the header, above the terminal, when a request is waiting on this session. -->
-        <controls:ConsentBannerHost DockPanel.Dock="Top" Margin="0,0,0,6"/>
 
         <!-- AC-34: the "agent connected" bar — always visible while an agent is coupled to this pane through the
              terminal-access MCP, the counterpart to both the operator and the agent being able to type. Its
@@ -91,4 +90,10 @@
             <term:TerminalControl x:Name="Terminal" FontFamily="Cascadia Mono, Consolas, monospace" FontSize="13"/>
         </Border>
     </DockPanel>
+
+    <!-- Consent overlay (#AC-47): dims the whole pane and centres the Approve/Deny card when a request
+         is waiting on this session, so it plainly takes over rather than a banner that shifted the TUI
+         and was easy to miss. Collapsed and hit-transparent while idle. -->
+    <controls:ConsentBannerHost/>
+    </Grid>
 </UserControl>

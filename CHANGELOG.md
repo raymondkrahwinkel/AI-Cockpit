@@ -58,6 +58,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: a consent request now dims the whole session and shows the Approve/Deny card centred on top,
+  instead of a small banner wedged above the terminal. The old banner changed the content's height when
+  it appeared and cleared, so the terminal (or transcript) visibly jumped; it was also easy to miss. As
+  a full-pane overlay nothing shifts underneath and it is unmistakable that the session is waiting on
+  your decision (AC-47).
 - changed: the Release workflow now builds its notes from the changelog and rolls `[Unreleased]` into
   the tagged version after a successful release, instead of publishing only the auto-generated commit
   list.

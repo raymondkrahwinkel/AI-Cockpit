@@ -9,6 +9,11 @@
     <!-- The one Approve/Deny consent surface (#AC-47): the literal action shown verbatim, a coloured left edge
          (amber for a dangerous action, accent for low-risk), and the operator's decision. Hosted in the pane
          chrome above the session content, so it reads on the session it belongs to. -->
+    <!-- Outer wrapper carries the BoxShadow (no clip — ClipToBounds would clip the shadow away): the
+         shadow gives the card lift now that it overlays the terminal (AC-47) rather than docking in the
+         chrome, separating it from the text scrolling behind it. The inner card keeps ClipToBounds so the
+         coloured left edge is rounded into the corners. -->
+    <Border CornerRadius="{StaticResource CockpitControlRadius}" BoxShadow="0 6 20 0 #66000000">
     <Border CornerRadius="{StaticResource CockpitControlRadius}" ClipToBounds="True"
             Background="{StaticResource CockpitPanelBgBrush}"
             BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
@@ -51,5 +56,6 @@
                 </DockPanel>
             </StackPanel>
         </DockPanel>
+    </Border>
     </Border>
 </UserControl>

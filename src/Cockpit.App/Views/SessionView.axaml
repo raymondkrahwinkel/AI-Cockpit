@@ -16,6 +16,8 @@
         <vm:SessionViewModel/>
     </Design.DataContext>
 
+    <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
+    <Grid>
     <DockPanel Margin="12">
 
         <!-- Compact one-row session header (AC-37): the shared SessionHeaderBar (identity · activity · cwd · branch
@@ -102,9 +104,6 @@
                 </controls:SessionHeaderBar>
             </DockPanel>
         </Border>
-
-        <!-- Consent banner (#AC-47): shown under the header, above the transcript, when a request is waiting on this session. -->
-        <controls:ConsentBannerHost DockPanel.Dock="Top" Margin="0,0,0,6"/>
 
         <!-- Input bar: queued-message chips, then pending-attachment chips, then dark multiline textbox + accent Send. -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="True">
@@ -376,4 +375,10 @@
         </Grid>
 
     </DockPanel>
+
+    <!-- Consent overlay (#AC-47): dims the whole pane and centres the Approve/Deny card when a request
+         is waiting on this session, so it plainly takes over rather than a banner that shifted the
+         transcript and was easy to miss. Collapsed and hit-transparent while idle. -->
+    <controls:ConsentBannerHost/>
+    </Grid>
 </UserControl>

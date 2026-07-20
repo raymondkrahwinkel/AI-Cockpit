@@ -5,14 +5,22 @@
              x:Class="Cockpit.App.Controls.ConsentBannerHost"
              x:DataType="vm:SessionPanelViewModel">
 
-    <!-- Hosts the consent banner for a session pane (#AC-47): bound to the pane's PendingConsent, hidden when there
-         is none. Included once per pane view (SessionView, TtyView) so the wrapper is not duplicated across them. -->
-    <ContentControl Content="{Binding PendingConsent}"
-                    IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}">
-        <ContentControl.ContentTemplate>
-            <DataTemplate x:DataType="vm:ConsentPromptViewModel">
-                <controls:ConsentBanner/>
-            </DataTemplate>
-        </ContentControl.ContentTemplate>
-    </ContentControl>
+    <!-- Full-pane consent overlay (#AC-47): a dimming scrim over the whole session pane with the
+         Approve/Deny card centred on top, so a pending request unmistakably takes over the session
+         until it is answered — rather than a small banner that is easy to miss. Placed as the last
+         (top-most) child of each pane's root Grid so it covers the header, body and input alike.
+         When there is no request the scrim is collapsed, so it takes no space and is hit-test
+         transparent — clicks pass straight through to the session underneath. -->
+    <Border Background="#B3000000"
+            IsVisible="{Binding PendingConsent, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <ContentControl Content="{Binding PendingConsent}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        MaxWidth="560" Margin="24">
+            <ContentControl.ContentTemplate>
+                <DataTemplate x:DataType="vm:ConsentPromptViewModel">
+                    <controls:ConsentBanner/>
+                </DataTemplate>
+            </ContentControl.ContentTemplate>
+        </ContentControl>
+    </Border>
 </UserControl>
