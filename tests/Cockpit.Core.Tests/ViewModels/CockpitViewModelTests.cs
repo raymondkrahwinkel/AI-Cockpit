@@ -248,6 +248,19 @@ public class CockpitViewModelTests
     }
 
     [Fact]
+    public async Task CombineQueuedMessages_TogglesOpenSdkSessionsLive_AndSeedsNewOnes()
+    {
+        var vm = NewVm();
+        await vm.NewSessionCommand.ExecuteAsync(null);
+
+        vm.CombineQueuedMessages = true; // reaches the already-open session live
+        await vm.NewSessionCommand.ExecuteAsync(null); // and is seeded onto a session created afterwards
+
+        vm.Sessions.OfType<SessionViewModel>().Should().NotBeEmpty();
+        vm.Sessions.OfType<SessionViewModel>().Should().OnlyContain(s => s.CombineQueuedMessages);
+    }
+
+    [Fact]
     public void ShowSinglePane_IsTrueWhenEitherZoomedOrSingleLayout()
     {
         var vm = NewVm();

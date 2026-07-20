@@ -124,6 +124,12 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="The message is still sent; the session closes once that turn finishes."/>
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <CheckBox Content="Combine messages queued during a turn into one"
+                                          IsChecked="{Binding CombineQueuedMessages}"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="When you type several messages while the agent is working, send them together as one follow-up when the turn finishes, instead of one at a time. Off: each queued message gets its own turn."/>
+                            </StackPanel>
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 

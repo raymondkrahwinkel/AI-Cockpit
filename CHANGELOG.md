@@ -73,6 +73,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   in its project folder, instead of setting both by hand every time. Both are set in Manage profiles and
   stay changeable when you start the session; left unset they keep today's behaviour (every enabled
   server, and no default folder).
+- added: an option (Options → Sessions) to combine the messages you queue while the agent is working into
+  a single follow-up, sent together when the turn finishes — so a few quick follow-ups reach the agent as
+  one turn instead of each getting its own. Off by default, which keeps today's one-turn-per-message
+  behaviour.
 
 ### Changed
 

@@ -87,6 +87,15 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public bool HasQueuedMessages => QueuedMessages.Count > 0;
 
     /// <summary>
+    /// When on, every message queued while a turn was in flight is dispatched together as a single follow-up
+    /// turn once the turn completes (AC-145), instead of one-per-turn. Seeded from the operator's
+    /// session-behaviour setting at creation and kept live by the cockpit. SDK/chat-session only — TTY has no
+    /// local send queue.
+    /// </summary>
+    [ObservableProperty]
+    private bool _combineQueuedMessages;
+
+    /// <summary>
     /// True when there is text or an image to act on, so Send is enabled exactly when it will do
     /// something. It does not gate on <see cref="IsBusy"/>: while a turn runs, Send queues the message
     /// (T8) rather than being disabled, so you can keep typing ahead without losing input.
@@ -827,6 +836,22 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     {
         if (QueuedMessages.Count == 0)
         {
+            return;
+        }
+
+        // Combine mode (AC-145): drain the whole queue into one follow-up turn so the agent sees every queued
+        // message at once, instead of answering each as its own turn. Texts join with a blank line between them
+        // (empties — image-only chips — are dropped from the text); images carry over in queue order and land as
+        // one echo row via _DispatchMessageAsync. Consequence: a queued "exit" merged with other text no longer
+        // auto-closes (the combined text is not exactly "exit"); a lone queued "exit" is a count of 1, so it falls
+        // through to the single-dispatch path below and still closes as before.
+        if (CombineQueuedMessages && QueuedMessages.Count > 1)
+        {
+            var combinedText = string.Join(
+                "\n\n", QueuedMessages.Select(m => m.Text).Where(text => !string.IsNullOrWhiteSpace(text)));
+            var combinedImages = QueuedMessages.SelectMany(m => m.Images).ToList();
+            QueuedMessages.Clear();
+            _ = _DispatchMessageAsync(combinedText, combinedImages);
             return;
         }
 
