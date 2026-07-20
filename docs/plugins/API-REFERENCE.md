@@ -86,6 +86,8 @@ public interface ICockpitHost
     void AddSessionProvider(SessionProviderRegistration registration); // default no-op
     void AddWidget(WidgetRegistration registration);             // default no-op
     IReadOnlyList<WidgetRegistration> Widgets { get; }           // default []
+    void AddWorkspaceType(WorkspaceTypeRegistration registration);   // default no-op
+    IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; } // default []
     Task AddMcpServer(McpServerContribution contribution);       // default no-op, returns Task.CompletedTask
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();   // default returns []
     void ShowToast(string message, PluginToastSeverity severity = PluginToastSeverity.Information,
@@ -257,6 +259,94 @@ public interface IWidgetContext
   so a widget can follow the active session's working directory or output without the core knowing what it is.
 - `RefreshRequested` — raised when the host asks this instance to refresh, including after its settings are
   saved. A widget polling on its own timer can ignore it; one showing a snapshot should re-read.
+
+### `void AddWorkspaceType(WorkspaceTypeRegistration registration)`
+Registers a **full-surface workspace type** — the workspace equivalent of `AddWidget`, one level up. Where a
+widget fills one cell of a Dashboard's grid, a workspace type owns its **whole body**: the host draws the tab
+and the frame and persists the workspace's namespaced type id, and your `CreateBody` draws everything inside.
+It appears in the tab strip's "+" menu beside **Sessions** and **Dashboard**; choosing it creates a workspace
+of that type. See [`WorkspaceTypeRegistration`](#workspacetyperegistration) and
+[`IWorkspaceContext`](#iworkspacecontext).
+- **Parameter** `registration` — the type's id, title, body factory, and optional icon/description.
+- Default no-op, so existing `ICockpitHost` implementations (test fakes, older plugin builds) keep compiling
+  untouched — only the app's own host renders it.
+```csharp
+host.AddWorkspaceType(new WorkspaceTypeRegistration("my-plugin.pipeline", "Pipeline", context => new PipelineBody(context))
+{
+    Icon = "🚀",
+    Description = "A whole workspace my plugin draws and drives.",
+});
+```
+
+### `IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes { get; }`
+Every workspace type all plugins have contributed — what the tab strip's "+" menu reads. A plugin not building
+that menu has no reason to touch it. Default empty.
+
+### `WorkspaceTypeRegistration`
+In `Cockpit.Plugins.Abstractions.Workspaces`.
+```csharp
+public sealed record WorkspaceTypeRegistration(string Id, string Title, Func<IWorkspaceContext, Control> CreateBody)
+{
+    public string Icon { get; init; } = "🧩";
+    public MaterialIconKind? IconKind { get; init; }
+    public string Description { get; init; } = string.Empty;
+}
+```
+- `Id` — stable, unique id for the workspace **type**, namespaced by your plugin (`"autopilot.run"`). It is
+  persisted with every workspace of this type so a saved desk rebuilds after a restart; **changing it orphans
+  existing workspaces** — they render as a placeholder until the id comes back — so treat it as an API surface.
+  Unique across installed plugins too: the first to claim an id keeps it, and a later claim is refused and
+  logged. An unknown type (its plugin uninstalled) shows a placeholder rather than crashing the workspace.
+- `CreateBody` — builds the whole workspace body on the UI thread, handed that workspace's own
+  `IWorkspaceContext`. Called once per workspace; the body owns its layout and lifetime from there.
+- `IconKind` — a bundled vector icon for the "+" menu and the tab, preferred over `Icon` when set so it reads
+  as part of the theme; `Icon` is the emoji fallback.
+- `Description` — one line for the "+" menu.
+
+### `IWorkspaceContext`
+Handed to a workspace's body factory — what one full-surface workspace needs that its plugin cannot reach on
+its own.
+```csharp
+public interface IWorkspaceContext
+{
+    string WorkspaceId { get; }                 // this workspace instance
+    IPluginStorage Storage { get; }             // scoped to WorkspaceId, under your plugin's storage
+    ICockpitSessionObserver Sessions { get; }   // same surface as host.Sessions
+    IEmbeddedSession EmbedSession(EmbeddedSessionRequest request);  // a live host session in your layout
+    event EventHandler RefreshRequested;
+}
+```
+- `WorkspaceId` — the key this workspace's state is stored under, distinct from the workspace *type* id.
+- `Storage` — per-workspace, so two workspaces of the same type keep separate state.
+- `Sessions` — the same observe surface as `host.Sessions`.
+- `EmbedSession` — starts a real host session and returns a control embedding its live view, for your body to
+  place wherever it wants (see [`IEmbeddedSession`](#iembeddedsession)). **The host owns the session's
+  lifetime** — it keeps it out of the session grid and ends it when the workspace (or the app) closes; your body
+  owns only the place, never the lifetime.
+- `RefreshRequested` — raised when the host asks this workspace to refresh.
+- **Deliberately narrow, like `IWidgetContext`.** Cross-plugin intents (`host.SendIntent`), dialogs and the
+  theme are already yours to reach: the body factory is a closure created in `Initialize`, where you captured
+  the `ICockpitHost`, and the theme is app resources any control binds with `DynamicResource` — so they are not
+  repeated here.
+
+### `IEmbeddedSession`
+```csharp
+public interface IEmbeddedSession
+{
+    Control View { get; }    // the session's live view — drop it into your body's layout
+    string PaneId { get; }   // act on this exact session through ICockpitHost (statusline, intents, name)
+}
+```
+The host owns the session, so there is nothing here to dispose — you hold the place, not the lifetime.
+
+### `EmbeddedSessionRequest`
+```csharp
+public sealed record EmbeddedSessionRequest
+{
+    public string? ProfileId { get; init; }         // the profile to run — matched by its Label; null → the first configured profile
+    public string? WorkingDirectory { get; init; }  // null → the app's own working directory
+}
+```
 
 ### `Task AddMcpServer(McpServerContribution contribution)`
 Registers (or updates) an HTTP MCP server in the **shared registry** (#60) — e.g. a remote MCP endpoint your

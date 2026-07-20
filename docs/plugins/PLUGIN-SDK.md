@@ -91,6 +91,7 @@ A plugin implements one interface, `ICockpitPlugin`, and contributes through the
 | Read the profiles | `host.GetProfilesAsync()` | The configured session profiles (label, provider, config directory) — how you find where a provider keeps its state on disk instead of guessing. |
 | Session provider | `host.AddSessionProvider(registration)` | Registers a new selectable **session provider** (#45) — your own `IPluginSessionDriver` becomes a picker entry alongside Claude CLI/Ollama/LM Studio. See [Provider plugins](#provider-plugins--registering-a-session-driver). |
 | Dashboard widget | `host.AddWidget(registration)` | Registers a widget type; it appears in a **Dashboard** workspace's "Add widget" gallery, and each placed instance gets its own view, config and storage. See [Widget plugins](#widget-plugins--a-pane-on-a-dashboard-workspace). |
+| Full-surface workspace | `host.AddWorkspaceType(registration)` | Registers a **workspace type** your plugin draws entirely — it appears in the tab strip's **"+"** menu beside Sessions and Dashboard, and its body can even embed a live host session. See [Workspace plugins](#workspace-plugins--a-whole-workspace-surface). |
 | MCP server | `host.AddMcpServer(contribution)` | Upserts an HTTP MCP server into the **shared registry** (#60) so sessions can use its tools without the user adding it by hand. See [MCP server registration](#mcp-server-registration). |
 | Act on the session | `host.Actions` | Inject text into the active session's prompt, or set the clipboard. |
 | Observe the sessions | `host.Sessions` | The **selection-following** read surface: the active session's working directory, its `ActivePaneId`, and a stream of every session's output. (For one *specific* session, use a session header item's context instead — and match its `PaneId` against `ActivePaneId` when a dialog acts "on the current session".) |
@@ -133,6 +134,7 @@ public interface ICockpitHost
     Task<ConsentDecision> RequestConsentAsync(ConsentRequest request);  // operator Approve/Deny before a risky action
     void AddSessionProvider(SessionProviderRegistration registration); // register a new session provider (#45)
     void AddWidget(WidgetRegistration registration);            // a widget type for Dashboard workspaces
+    void AddWorkspaceType(WorkspaceTypeRegistration registration); // a whole workspace surface the plugin draws
     Task AddMcpServer(McpServerContribution contribution);      // upsert an MCP server into the registry (#60)
     Task<IReadOnlyList<PluginProfileInfo>> GetProfilesAsync();  // the configured profiles and where they keep state
     ICockpitSessionObserver Sessions { get; }                   // the selection-following read surface
@@ -321,6 +323,63 @@ does for `AddSettings` — so implement `IPluginSettingsView` if you want a Save
 Set the store entry's **`"category": "Widgets"`** and it lands in the store's own Widgets section. That is the
 whole of it — the store builds its sidebar from `PluginStoreEntry.Category`, so there is no widget-specific
 publishing path, no extra field, and no code involved. See [The index — `index.json`](#the-index--indexjson).
+
+## Workspace plugins — a whole workspace surface
+
+A plugin can own an **entire workspace**, not just a pane in one. Where `AddWidget` fills one cell of a
+Dashboard's grid, `host.AddWorkspaceType(...)` registers a type whose **whole body** the plugin draws: the core
+draws the tab and the frame and persists the workspace's namespaced type id, and your `CreateBody` draws
+everything inside. It appears in the tab strip's **"+"** menu beside Sessions and Dashboard; choosing it creates
+a workspace of that type. Like a widget, it ships inside an ordinary plugin — no separate package, no second
+installer. The worked reference is
+[`plugins-dev/Cockpit.Plugin.ExampleWorkspace`](../../plugins-dev/Cockpit.Plugin.ExampleWorkspace), which draws a
+header and embeds a live session under it — proof of the surface end to end from outside the host.
+
+```csharp
+public void Initialize(ICockpitHost host)
+{
+    host.AddWorkspaceType(new WorkspaceTypeRegistration("my-plugin.pipeline", "Pipeline", context => new PipelineBody(context))
+    {
+        Icon = "🚀",                     // or IconKind = MaterialIconKind.… for a bundled vector icon
+        Description = "A whole workspace my plugin draws and drives.",
+    });
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `Id` | Stable, unique id for the workspace **type**, namespaced by your plugin (`"autopilot.run"`). Persisted with every workspace of this type, so **changing it orphans existing workspaces** — they show a placeholder until the id returns — treat it as an API surface. Unique across installed plugins: the first to claim it keeps it, a later claim is refused and logged. |
+| `Title` | Shown in the "+" menu and as a new workspace's default tab label. |
+| `CreateBody` | Builds the whole workspace body on the UI thread, handed that workspace's own `IWorkspaceContext`. Called once per workspace; the body owns its layout from there. |
+| `Icon` / `IconKind` | The "+" menu and tab icon; `IconKind` (a bundled vector icon) wins over the `Icon` emoji when set. Defaults: `🧩` / none. |
+| `Description` | One line for the "+" menu. |
+
+### Embedding a live session
+
+The reason a workspace type is more than a widget: `IWorkspaceContext.EmbedSession(...)` starts a **real host
+session** and hands you a `Control` to drop into your own layout, plus its `PaneId` to act on it (set its
+statusline, send it an intent). **The host owns the session's lifetime** — it keeps it out of the session grid
+and ends it when the workspace (or the app) closes; your body owns only the place.
+
+```csharp
+public interface IWorkspaceContext
+{
+    string WorkspaceId { get; }                 // this workspace instance — the key its state is stored under
+    IPluginStorage Storage { get; }             // scoped to WorkspaceId, under your plugin's storage
+    ICockpitSessionObserver Sessions { get; }   // same observe surface as host.Sessions
+    IEmbeddedSession EmbedSession(EmbeddedSessionRequest request);
+    event EventHandler RefreshRequested;
+}
+
+var embedded = context.EmbedSession(new EmbeddedSessionRequest { ProfileId = "Claude" });
+myLayout.Children.Add(embedded.View);   // place it; the host runs and disposes it
+```
+
+`IWorkspaceContext` is deliberately narrow, like `IWidgetContext`: cross-plugin intents (`host.SendIntent`),
+dialogs and the theme are already yours — the body factory is a closure created in `Initialize` where you
+captured the `ICockpitHost`, and the theme is app resources any control binds with `DynamicResource` — so they
+are not repeated on the context. `EmbeddedSessionRequest` takes a `ProfileId` (matched by the profile's Label;
+null starts the first configured profile) and an optional `WorkingDirectory`.
 
 ## Session header items — status that belongs to one session
 
@@ -872,7 +931,7 @@ it is the ordinary plugin loader, with the files put in place beforehand.
 
 ## Examples
 
-The example plugins under [`plugins-dev/`](../../plugins-dev) — eighteen and counting — are each built exactly as
+The example plugins under [`plugins-dev/`](../../plugins-dev) — nineteen and counting — are each built exactly as
 described above (compile-only shared refs, code-built views, settings persisted via `host.Storage`). Between them
 they exercise the main contribution points:
 
