@@ -1,0 +1,291 @@
+name: Publish plugin to store
+
+# A "smart publish button" for a store plugin (#AC). Publishing a plugin has always been a manual chore:
+# build Release, zip it, hash it, copy the zip into the separate store repo, hand-edit its index.json, commit.
+# This does all of that from one click in the Actions tab — pick a plugin, run — and opens a PR against the
+# store repo rather than pushing, so the zip + index diff still gets a human glance before users can install it.
+#
+# The one thing it refuses to do is publish a plugin the current host cannot run: a plugin whose
+# minHostVersion is newer than any published app (release or nightly) would install and then be refused with
+# "Needs a newer AI-Cockpit", so the gate below blocks it and tells you to ship the app/nightly first. That
+# check is the actual point — it moves "will this even work yet?" out of the operator's head and into the
+# pipeline. minHostVersion is only as honest as the discipline of bumping it when a plugin starts needing a
+# new host API; the gate assumes you do.
+#
+# Deliberately manual (workflow_dispatch), not on-push: a plugin and the host change it depends on often land
+# together, and a human is the right judge of "is the host out yet". The same gate + steps would make an
+# auto-on-merge trigger safe later; only the trigger would change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: The plugin id to publish (its plugin.json version is what gets published)
+        required: true
+        type: choice
+        options:
+          - claude-provider
+          - cli-agent-provider
+          - clock
+          - gemini-provider
+          - github-actions
+          - github-issues
+          - github-models-provider
+          - github-pull-requests
+          - git-status
+          - prompt-library
+          - session-review
+          - system-monitor
+          - transcript-search
+          - workflows
+          - youtrack
+      notes:
+        description: Release notes for this version (optional; shown in the store's version history)
+        required: false
+        type: string
+      dry_run:
+        description: Build, hash and show the index diff, but do not open a PR
+        required: false
+        type: boolean
+        default: false
+
+# The store lives in its own repo. STORE_PUBLISH_TOKEN is a fine-grained PAT (or GitHub App token) with
+# contents:write + pull-requests:write on that repo — the default GITHUB_TOKEN only reaches this repo.
+env:
+  STORE_REPO: raymondkrahwinkel/AI-Cockpit-Plugins
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history + tags: the host-version gate reads the v* release tags and the nightly commit.
+      - name: Check out this repo
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check out the store repo
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.STORE_REPO }}
+          token: ${{ secrets.STORE_PUBLISH_TOKEN }}
+          path: store
+
+      # Find the plugin folder by its manifest id (not its .csproj name — the two differ), and read the
+      # fields the publish needs straight from plugin.json, the source of truth the app enforces. The id
+      # arrives via an env var, never interpolated into the script, so nothing it contains can be executed.
+      - name: Resolve the plugin from its id
+        id: resolve
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+        shell: bash
+        run: |
+          dir=""
+          for f in plugins-dev/Cockpit.Plugin.*/plugin.json; do
+            if [ "$(jq -r '.id' "$f")" = "$PLUGIN" ]; then dir="$(dirname "$f")"; break; fi
+          done
+          if [ -z "$dir" ]; then
+            echo "::error::No plugin with id '$PLUGIN' found under plugins-dev/."
+            exit 1
+          fi
+
+          manifest="$dir/plugin.json"
+          {
+            echo "dir=$dir"
+            echo "manifest=$manifest"
+            echo "version=$(jq -r '.version' "$manifest")"
+            echo "min_host=$(jq -r '.minHostVersion // ""' "$manifest")"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Resolved '$PLUGIN' -> $dir"
+
+      # The gate. What is the newest host anyone can actually download? The highest v* release, and the base
+      # version baked into the current nightly (read from Directory.Build.props at the nightly's commit). If
+      # neither reaches the plugin's minHostVersion, the plugin would install and be refused — so stop here.
+      - name: Gate on host availability (minHostVersion)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIN: ${{ steps.resolve.outputs.min_host }}
+          PLUGIN: ${{ inputs.plugin }}
+        shell: bash
+        run: |
+          if [ -z "$MIN" ]; then
+            echo "Plugin declares no minHostVersion — nothing to gate on."
+            exit 0
+          fi
+
+          stable="$(git tag -l 'v*' | sed 's/^v//' | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -1 || true)"
+
+          nightly_base=""
+          nsha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/nightly" -q .object.sha 2>/dev/null || echo "")"
+          if [ -n "$nsha" ]; then
+            # \K drops the tag opener from the match; the [0-9] anchor skips the "<VersionPrefix>" that also
+            # appears in a comment in that file, matching only the real element's value.
+            nightly_base="$(git show "$nsha:Directory.Build.props" 2>/dev/null | grep -oP '<VersionPrefix>\K[0-9][^<]*' | head -1 || true)"
+          fi
+
+          available="$(printf '%s\n%s\n' "$stable" "$nightly_base" | grep -vE '^$' | sort -V | tail -1 || true)"
+          echo "Highest stable release: ${stable:-none} · nightly base: ${nightly_base:-none} · newest available host: ${available:-none}"
+
+          if [ -z "$available" ]; then
+            echo "::error::Could not determine any published host version (no v* release, no nightly). Cannot verify the plugin will run."
+            exit 1
+          fi
+
+          lowest="$(printf '%s\n%s\n' "$available" "$MIN" | sort -V | head -1)"
+          if [ "$lowest" != "$MIN" ]; then
+            echo "::error::$PLUGIN needs host >= $MIN but the newest published host is $available. Publish the app release or nightly that carries the host change first, then re-run this."
+            exit 1
+          fi
+
+          echo "Gate passed: newest published host $available satisfies minHostVersion $MIN."
+
+      # A version already in the index is immutable — users may have installed it and pinned its sha256. If it
+      # is there, there is nothing to do, and the build/PR steps below are skipped.
+      - name: Is this version already published?
+        id: check
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        shell: bash
+        run: |
+          skip=false
+          if [ -f store/index.json ]; then
+            present="$(jq -r --arg id "$PLUGIN" --arg v "$VERSION" \
+              '.plugins[]? | select(.id==$id) | .versions[]?.version | select(.==$v)' store/index.json | head -1)"
+            if [ "$present" = "$VERSION" ]; then
+              echo "::notice::$PLUGIN $VERSION is already in the store index — nothing to publish."
+              skip=true
+            fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
+      - name: Build the plugin (Release)
+        if: steps.check.outputs.skip != 'true'
+        shell: bash
+        run: dotnet build "${{ steps.resolve.outputs.dir }}" --configuration Release -warnaserror
+
+      # Zip everything the build produced except the .pdb, with plugin.json at the zip root (the layout the
+      # installer expects). Shared assemblies are already kept out of the output by ExcludeAssets, so "zip
+      # everything" ships the plugin and any real third-party dependency without shipping a host DLL.
+      - name: Package the zip and hash it
+        id: package
+        if: steps.check.outputs.skip != 'true'
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          DIR: ${{ steps.resolve.outputs.dir }}
+        shell: bash
+        run: |
+          out="$DIR/bin/Release/net10.0"
+          rel="$PLUGIN/$PLUGIN-$VERSION.zip"
+          dest="$GITHUB_WORKSPACE/store/$rel"
+          mkdir -p "$(dirname "$dest")"
+          rm -f "$dest"
+
+          ( cd "$out" && zip -r -X "$dest" . -x '*.pdb' >/dev/null )
+
+          sha="$(sha256sum "$dest" | cut -d' ' -f1)"
+          echo "Packaged $rel ($(du -h "$dest" | cut -f1)), sha256 $sha"
+          {
+            echo "rel=$rel"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update the store index.json
+        if: steps.check.outputs.skip != 'true'
+        env:
+          MANIFEST: ${{ steps.resolve.outputs.manifest }}
+          DIR: ${{ steps.resolve.outputs.dir }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          MIN_HOST: ${{ steps.resolve.outputs.min_host }}
+          SHA: ${{ steps.package.outputs.sha }}
+          REL: ${{ steps.package.outputs.rel }}
+          NOTES: ${{ inputs.notes }}
+        shell: bash
+        run: |
+          args=(
+            --index store/index.json
+            --id "$(jq -r '.id' "$MANIFEST")"
+            --name "$(jq -r '.name' "$MANIFEST")"
+            --description "$(jq -r '.description // empty' "$MANIFEST")"
+            --author "$(jq -r '.author // empty' "$MANIFEST")"
+            --version "$VERSION"
+            --min-host-version "$MIN_HOST"
+            --sha256 "$SHA"
+            --path "$REL"
+            --published "$(date -u +%Y-%m-%d)"
+          )
+
+          abs="$(jq -r '.abstractionsVersion // empty' "$MANIFEST")"
+          if [ -n "$abs" ]; then args+=(--abstractions-version "$abs"); fi
+          if [ -n "$NOTES" ]; then args+=(--notes "$NOTES"); fi
+          if [ -f "$DIR/store.json" ]; then
+            args+=(--store-json "$DIR/store.json")
+            echo "Using editorial fields from $DIR/store.json"
+          fi
+
+          python3 scripts/store-index-upsert.py "${args[@]}"
+
+          echo "::group::index.json diff"
+          git -C store --no-pager diff -- index.json || true
+          echo "::endgroup::"
+
+      # Open a PR against the store repo rather than pushing to its main: publishing to a store users install
+      # from is outward-facing, and the zip + index diff is exactly what a reviewer wants to see. Dry runs stop
+      # before this. The PR body is built into a file so no interpolation lands in a shell string.
+      - name: Open a PR against the store repo
+        if: steps.check.outputs.skip != 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ secrets.STORE_PUBLISH_TOKEN }}
+          PLUGIN: ${{ inputs.plugin }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          MIN_HOST: ${{ steps.resolve.outputs.min_host }}
+          SHA: ${{ steps.package.outputs.sha }}
+        shell: bash
+        run: |
+          branch="publish/$PLUGIN-$VERSION"
+
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          Automated publish from [AI-Cockpit](https://github.com/${GITHUB_REPOSITORY}) run [#${GITHUB_RUN_NUMBER}](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}).
+
+          - Plugin: \`$PLUGIN\`
+          - Version: \`$VERSION\`
+          - minHostVersion: \`$MIN_HOST\`
+          - sha256: \`$SHA\`
+
+          Review the added zip and the \`index.json\` diff, then merge to publish.
+          EOF
+
+          cd store
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add "$PLUGIN/$PLUGIN-$VERSION.zip" index.json
+          git commit -m "Publish $PLUGIN $VERSION"
+          # A throwaway publish branch; force so a re-run after a failed attempt overwrites cleanly.
+          git push --force origin "$branch"
+
+          gh pr create \
+            --repo "$STORE_REPO" \
+            --head "$branch" \
+            --title "Publish $PLUGIN $VERSION" \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            || echo "::warning::Branch pushed; a PR may already exist for $branch."
+
+      - name: Dry-run summary
+        if: steps.check.outputs.skip != 'true' && inputs.dry_run == true
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          SHA: ${{ steps.package.outputs.sha }}
+        shell: bash
+        run: echo "Dry run — built $PLUGIN $VERSION (sha $SHA) and updated the index locally, but opened no PR."
