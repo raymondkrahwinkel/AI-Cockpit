@@ -2052,7 +2052,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         WorktreesViewModel? worktrees = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
         LiveSessionRegistry? liveSessions = null,
-        IUsagePillSettingsStore? usagePillSettingsStore = null)
+        IUsagePillSettingsStore? usagePillSettingsStore = null,
+        ITerminalAccessSwitch? terminalAccessSwitch = null,
+        ITerminalAccessSettingsStore? terminalAccessSettingsStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2065,7 +2067,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
         // the tab simply reports "not encrypted" then rather than the dialog failing to open at all.
-        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets());
+        Security = new SecurityOptionsViewModel(secretProtection ?? new UnprotectedSecrets(), terminalAccessSwitch, terminalAccessSettingsStore);
         _ = Security.RefreshAsync();
 
         // The awareness banner (AC-41) has to re-evaluate the moment a credential is written in the clear — a new
@@ -3784,27 +3786,60 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             WorkingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
             SdkLaunchOptions: profile.Defaults?.OptionDefaults);
 
-        await _LaunchSessionFromResultAsync(result);
+        var paneId = await _LaunchSessionFromResultAsync(result);
 
         // The prompt goes in after the session exists, through the same seam a plugin's inject uses — a session that
-        // is not up yet cannot be typed into, and pretending otherwise loses the prompt.
-        if (!string.IsNullOrWhiteSpace(prompt))
+        // is not up yet cannot be typed into, and pretending otherwise loses the prompt. Target the started pane by its
+        // id rather than "the last one added", so a session opened concurrently cannot catch the prompt by accident.
+        if (paneId is not null && !string.IsNullOrWhiteSpace(prompt))
         {
-            Sessions.LastOrDefault()?.InjectText(prompt);
+            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(prompt);
         }
 
         return name;
     }
 
+    /// <summary>
+    /// Opens the New-session dialog on a plugin's behalf (#AC-96), optionally pre-filled from <paramref name="prefill"/>,
+    /// starts the session the operator confirms, and returns its <see cref="SessionPanelViewModel.PaneId"/> — or null when
+    /// the operator cancels or nothing could be started. The whole dialog is shown, so the operator sees and can change
+    /// every field before anything starts; a <see cref="NewSessionPrefill.InitialPrompt"/> is injected into the started
+    /// session through the same seam a plugin's inject uses, so it lands in the composer for the operator to send.
+    /// </summary>
+    public async Task<string?> ShowNewSessionDialogForPluginAsync(NewSessionPrefill? prefill)
+    {
+        if (_dialogService is null)
+        {
+            return null;
+        }
+
+        var result = await _dialogService.ShowNewSessionDialogAsync(prefill);
+        if (result is null)
+        {
+            return null;
+        }
+
+        var paneId = await _LaunchSessionFromResultAsync(result);
+        if (paneId is not null && !string.IsNullOrWhiteSpace(prefill?.InitialPrompt))
+        {
+            Sessions.FirstOrDefault(session => session.PaneId == paneId)?.InjectText(prefill.InitialPrompt);
+        }
+
+        return paneId;
+    }
+
     // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording
-    // the result on the panel so the context-menu Duplicate can replay it.
-    private async Task _LaunchSessionFromResultAsync(NewSessionResult result)
+    // the result on the panel so the context-menu Duplicate can replay it. Returns the started session's PaneId
+    // (#AC-96) so a caller that opened the dialog on a plugin's behalf can hand that id back — null when nothing
+    // started (no factories, or isolation failed and running unisolated was declined).
+    private async Task<string?> _LaunchSessionFromResultAsync(NewSessionResult result)
     {
         if (_sessionFactory is null || _ttySessionFactory is null)
         {
-            return;
+            return null;
         }
 
+        string paneId;
         if (result.Kind == SessionKind.Sdk)
         {
             var session = _sessionFactory();
@@ -3820,10 +3855,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 // Isolation failed and running unisolated was declined — undo the half-added session rather than
                 // starting it in the operator's real working tree.
                 await CloseSessionAsync(session);
-                return;
+                return null;
             }
 
             await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions);
+            paneId = session.PaneId;
         }
         else
         {
@@ -3840,7 +3876,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 // Isolation failed and running unisolated was declined — undo the half-added session rather than
                 // starting it in the operator's real working tree.
                 await CloseSessionAsync(session);
-                return;
+                return null;
             }
 
             // Claude's permission-mode/model/effort are its own vocabulary, not every provider's — a plugin
@@ -3855,10 +3891,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 workingDirectory,
                 result.Resume,
                 result.PluginTtyOptions);
+            paneId = session.PaneId;
         }
 
         // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
         _ = Worktrees.RefreshCountAsync();
+        return paneId;
     }
 
     // Isolation is identical for both session kinds (Raymond 2026-07-19): both take a working directory, so both
@@ -4127,7 +4165,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var result = await _dialogService.ShowNewSessionDialogAsync(record.Path);
+        var result = await _dialogService.ShowNewSessionDialogAsync(
+            new NewSessionPrefill(WorkingDirectory: record.Path), isolateInWorktree: true);
         if (result is not null)
         {
             await _LaunchSessionFromResultAsync(result);
