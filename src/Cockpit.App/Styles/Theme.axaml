@@ -161,6 +161,31 @@
         <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
     </Style>
 
+    <!-- Row-action button (Worktrees dialog list rows): unlike the chromeless Subtle buttons, these sit on the
+         lighter secondary row surface and must READ as buttons — so they keep the base panel fill + hairline
+         border and only shrink to a compact footprint. Disabled dims the whole button (fill, border and text) so
+         "you can't do this now" is unmistakable at a glance, while the button shape stays visible. -->
+    <Style Selector="Button.RowAction">
+        <Setter Property="Padding" Value="10,4"/>
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+    </Style>
+    <Style Selector="Button.RowAction:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+    </Style>
+    <!-- Disabled keeps the button shape (fill + border) so it still reads as a button, but dims the whole thing
+         and fades the text — deterministically, rather than letting the base theme paint its own grey box. -->
+    <Style Selector="Button.RowAction:disabled">
+        <Setter Property="Opacity" Value="0.5"/>
+    </Style>
+    <Style Selector="Button.RowAction:disabled /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+        <Setter Property="TextBlock.Foreground" Value="{StaticResource CockpitTextFaintBrush}"/>
+    </Style>
+
     <!-- ToggleButton (e.g. the Zoom toggle): flat like a neutral button, cockpit accent when
          checked instead of the Fluent blue, so the active state matches the theme. -->
     <Style Selector="ToggleButton">

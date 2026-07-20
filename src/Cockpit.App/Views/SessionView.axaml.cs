@@ -215,7 +215,7 @@ public partial class SessionView : UserControl
     private void _OnPushToTalkKeyDown(object? sender, KeyEventArgs e)
     {
         if (DataContext is SessionViewModel vm
-            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled)
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled, vm.OpenMicActive)
             && vm.BeginVoiceHold())
         {
             e.Handled = true;
@@ -226,7 +226,7 @@ public partial class SessionView : UserControl
     private void _OnPushToTalkKeyUp(object? sender, KeyEventArgs e)
     {
         if (DataContext is SessionViewModel vm
-            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled))
+            && PushToTalkKeyGate.ShouldHandleLocally(e.Key, vm.PushToTalkKeyName, vm.GlobalPushToTalkEnabled, vm.OpenMicActive))
         {
             e.Handled = true;
             _ = vm.EndVoiceHoldAsync(applyCleanup: true);

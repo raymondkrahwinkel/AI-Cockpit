@@ -183,7 +183,8 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         IVoicePlaybackQueue? voicePlaybackQueue = null,
         ISessionTranscriptReader? transcriptReader = null,
         ITranscriptCleanupService? cleanupService = null,
-        IOptions<CockpitOptions>? options = null)
+        IOptions<CockpitOptions>? options = null,
+        IOpenMicState? openMicState = null)
     {
         _launcher = launcher;
         _providerResolver = providerResolver;
@@ -193,7 +194,7 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
         // Also publish it on the shared base so the read/observe surface reports where this session runs — the
         // TTY working dir is known up front (unlike an SDK session, which learns it from its init event).
         WorkingDirectory = WorkingPath;
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
     }
 
     // The effective TTY working directory — the configured Claude:WorkingDirectory when set, else the process

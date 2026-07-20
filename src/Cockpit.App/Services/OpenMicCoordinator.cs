@@ -22,7 +22,7 @@ namespace Cockpit.App.Services;
 /// <see cref="Dispatcher.UIThread"/>. <see cref="InjectUtteranceAsync"/> is the (UI-thread) logic the tests
 /// drive directly, since pumping a real Avalonia dispatcher loop from a unit test is not practical.
 /// </remarks>
-public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonService
+public sealed partial class OpenMicCoordinator : ObservableObject, ISingletonService, IOpenMicState
 {
     private readonly IOpenMicListener _listener;
     private readonly CockpitViewModel _cockpit;

@@ -30,6 +30,7 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     private readonly IVoiceSettingsStore _voiceSettingsStore;
     private readonly VoiceOverlayCoordinator _overlayCoordinator;
     private readonly IVoicePushToTalkService _pushToTalk;
+    private readonly IOpenMicState? _openMicState;
     private readonly ILogger<VoicePushToTalkCoordinator> _logger;
 
     /// <summary>Whether the hold in progress actually opened a microphone — see <see cref="HandleHoldStarted"/>.</summary>
@@ -43,13 +44,15 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
         IVoiceSettingsStore voiceSettingsStore,
         VoiceOverlayCoordinator overlayCoordinator,
         IVoicePushToTalkService pushToTalk,
-        ILogger<VoicePushToTalkCoordinator> logger)
+        ILogger<VoicePushToTalkCoordinator> logger,
+        IOpenMicState? openMicState = null)
     {
         _hotkeyService = hotkeyService;
         _cockpit = cockpit;
         _voiceSettingsStore = voiceSettingsStore;
         _overlayCoordinator = overlayCoordinator;
         _pushToTalk = pushToTalk;
+        _openMicState = openMicState;
         _logger = logger;
 
         // The key and the on/off flag are read when the hotkey is armed, which happened once at startup. Saving
@@ -148,6 +151,16 @@ public sealed class VoicePushToTalkCoordinator : ISingletonService
     /// <summary>Test seam: the UI-thread logic for a hold starting — see the threading remarks on this class.</summary>
     internal void HandleHoldStarted()
     {
+        // Open-mic is already capturing and transcribing continuously; routing a hold to the session on top of it
+        // would land the same speech twice. Open-mic wins — say why and start no hold. The local per-view path
+        // stands down the same way (see PushToTalkKeyGate).
+        if (_openMicState?.IsListening == true)
+        {
+            _isRecording = false;
+            _overlayCoordinator.SetPushToTalk(VoiceOverlayState.Unavailable, "Open mic is on");
+            return;
+        }
+
         // Detached first so this cannot stack, whatever the backend does with a repeated key. Today neither of
         // them repeats a hold, so the -= finds nothing — but that is a promise another class makes, and the one
         // subscription per hold this needs should not depend on it being kept.

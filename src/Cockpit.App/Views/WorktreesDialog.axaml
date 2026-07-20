@@ -87,18 +87,18 @@
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                             <!-- Look at the files yourself in the OS file manager (read-only, always available). -->
-                                            <Button Classes="Subtle Compact" Content="Open folder"
+                                            <Button Classes="RowAction" Content="Open folder"
                                                     ToolTip.Tip="Open the worktree folder in your file manager"
                                                     Click="OnOpenFolder"/>
                                             <!-- Reattach only when the owning session is gone (Raymond: GONE only); a live tree
                                                  disables it so two sessions never land on one working tree. -->
-                                            <Button Classes="Subtle Compact" Content="Reattach"
+                                            <Button Classes="RowAction" Content="Reattach"
                                                     IsEnabled="{Binding CanReattach}"
                                                     ToolTip.ShowOnDisabled="True"
                                                     ToolTip.Tip="Start a new session in this worktree. Only for a worktree whose session is gone."
                                                     Command="{Binding ((vm:WorktreesViewModel)DataContext).ReattachCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                     CommandParameter="{Binding}"/>
-                                            <Button Classes="Subtle Compact" Content="Remove"
+                                            <Button Classes="RowAction" Content="Remove"
                                                     IsEnabled="{Binding CanRemove}"
                                                     ToolTip.ShowOnDisabled="True"
                                                     ToolTip.Tip="Remove this worktree (asks to confirm; a tree with unsaved changes warns first). Disabled while a session is still using it — close the session first."

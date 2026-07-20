@@ -422,6 +422,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private IVoiceSettingsStore? _voiceSettingsStore;
     private IVoicePlaybackQueue? _voicePlaybackQueue;
     private ITranscriptCleanupService? _cleanupService;
+    private IOpenMicState? _openMicState;
+
+    /// <summary>
+    /// Whether open-mic dictation is listening right now — read live, since the operator toggles it at runtime.
+    /// The push-to-talk key gate uses it to stand the local hotkey down while open-mic is on (see
+    /// <c>PushToTalkKeyGate</c>), so a held key does not transcribe the same speech the open mic already is.
+    /// </summary>
+    public bool OpenMicActive => _openMicState?.IsListening ?? false;
 
     /// <summary>Mirrors <see cref="Cockpit.Core.Voice.VoiceSettings.ReadAloudMode"/>: how a reply is rendered before read-aloud synthesis (verbatim / naturalized / summarized) (#35).</summary>
     [ObservableProperty]
@@ -517,12 +525,14 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         IVoicePushToTalkService? voicePushToTalk,
         IVoiceSettingsStore? voiceSettingsStore,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null)
+        ITranscriptCleanupService? cleanupService = null,
+        IOpenMicState? openMicState = null)
     {
         _voicePushToTalk = voicePushToTalk;
         _voiceSettingsStore = voiceSettingsStore;
         _voicePlaybackQueue = voicePlaybackQueue;
         _cleanupService = cleanupService;
+        _openMicState = openMicState;
 
         if (voiceSettingsStore is not null)
         {

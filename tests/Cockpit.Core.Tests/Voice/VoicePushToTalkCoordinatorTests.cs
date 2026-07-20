@@ -104,6 +104,27 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     /// <summary>
+    /// Open-mic dictation already captures and transcribes continuously; a push-to-talk hold on top would land
+    /// the same speech a second time (Raymond, out of habit, still pressing F9 while open-mic is on). The hold
+    /// stands down and the pill says why, instead of routing a second capture to the session.
+    /// </summary>
+    [Fact]
+    public void HandleHoldStarted_WhenOpenMicIsListening_StandsDown_AndStartsNoHold()
+    {
+        var voicePushToTalk = Substitute.For<IVoicePushToTalkService>();
+        var session = _CreateSdkSession(voicePushToTalk);
+        var openMic = Substitute.For<IOpenMicState>();
+        openMic.IsListening.Returns(true);
+        var coordinator = _CreateCoordinator(session, new FakeVoiceOverlayPresenter(), out var overlay, openMic);
+
+        coordinator.HandleHoldStarted();
+
+        overlay.State.Should().Be(VoiceOverlayState.Unavailable);
+        overlay.StatusText.Should().Be("Open mic is on");
+        voicePushToTalk.DidNotReceive().BeginHold();
+    }
+
+    /// <summary>
     /// Nothing was captured, so there is nothing to transcribe — flashing "Transcribing…" over an empty
     /// recording is the same lie in another word.
     /// </summary>
@@ -467,7 +488,8 @@ public class VoicePushToTalkCoordinatorTests
     }
 
     private static VoicePushToTalkCoordinator _CreateCoordinator(
-        SessionPanelViewModel? session, IVoiceOverlayPresenter overlayPresenter, out VoiceOverlayViewModel overlay)
+        SessionPanelViewModel? session, IVoiceOverlayPresenter overlayPresenter, out VoiceOverlayViewModel overlay,
+        IOpenMicState? openMicState = null)
     {
         var cockpit = NewCockpitViewModel();
         cockpit.SelectedSession = session;
@@ -476,7 +498,7 @@ public class VoicePushToTalkCoordinatorTests
         voiceSettingsStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new VoiceSettings());
         return new VoicePushToTalkCoordinator(
             new FakeGlobalHotkeyService(), cockpit, voiceSettingsStore, new VoiceOverlayCoordinator(overlay, overlayPresenter), Substitute.For<IVoicePushToTalkService>(),
-            NullLogger<VoicePushToTalkCoordinator>.Instance);
+            NullLogger<VoicePushToTalkCoordinator>.Instance, openMicState);
     }
 
     private static CockpitViewModel NewCockpitViewModel()

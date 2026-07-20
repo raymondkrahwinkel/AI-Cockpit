@@ -267,11 +267,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         IVoicePushToTalkService? voicePushToTalk = null,
         IVoiceSettingsStore? voiceSettingsStore = null,
         IVoicePlaybackQueue? voicePlaybackQueue = null,
-        ITranscriptCleanupService? cleanupService = null)
+        ITranscriptCleanupService? cleanupService = null,
+        IOpenMicState? openMicState = null)
     {
         _sessionManager = sessionManager;
         _TrackPendingAttachments();
-        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService);
+        InitializeVoice(voicePushToTalk, voiceSettingsStore, voicePlaybackQueue, cleanupService, openMicState);
     }
 
     private void _TrackPendingAttachments()
