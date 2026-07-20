@@ -372,6 +372,46 @@ public class PluginSessionDriverAdapterTests
     }
 
     [Fact]
+    public async Task StartAsync_WithNoPerSessionSelection_FallsBackToTheProfilesSavedSelection()
+    {
+        var inner = new FakePluginSessionDriver();
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "a", Transport = McpTransport.Http, Url = "http://a/mcp" },
+            new() { Name = "b", Transport = McpTransport.Http, Url = "http://b/mcp" },
+        });
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
+        var profile = new SessionProfile("dev", new ClaudeConfig("/config/dir")) { EnabledMcpServerNames = ["a"] };
+
+        // #44/AC-130: a programmatic launch (a plugin/workflow shortcut, a restored session) passes no per-session
+        // selection, so the profile's saved checklist applies instead of every eligible server. Proven red before
+        // EffectiveSessionSelection, when a null selection reached both a and b — the SDK route's half of the gap.
+        await adapter.StartAsync(profile);
+
+        inner.LastMcpServers.Should().ContainSingle().Which.Name.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task StartAsync_WithAnExplicitEmptySelection_StartsWithNoServers_EvenWhenTheProfileHasASavedSelection()
+    {
+        var inner = new FakePluginSessionDriver();
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(new List<McpServerConfig>
+        {
+            new() { Name = "a", Transport = McpTransport.Http, Url = "http://a/mcp" },
+        });
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey, catalog);
+        var profile = new SessionProfile("dev", new ClaudeConfig("/config/dir")) { EnabledMcpServerNames = ["a"] };
+
+        // A deliberate "these none" per-session selection wins over the profile's saved set — it must not fall
+        // back to it. Guards against a future "treat empty like null" simplification of EffectiveSessionSelection.
+        await adapter.StartAsync(profile, enabledMcpServerNames: new HashSet<string>());
+
+        inner.LastMcpServers.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task StartAsync_WhenTheRegistryReadFails_StartsWithoutMcpServers_RatherThanFailingTheWholeSession()
     {
         var inner = new FakePluginSessionDriver();

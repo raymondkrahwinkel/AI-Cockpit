@@ -262,6 +262,34 @@ public class OpenAiCompatSessionDriverTests
         result.Content.Should().NotContain("echoed:hi");
     }
 
+    [Fact]
+    public async Task StartAsync_WithNoPerSessionSelection_ConnectsTheToolLoopWithTheProfilesSavedMcpSelection()
+    {
+        IReadOnlySet<string>? captured = null;
+        var toolSession = Substitute.For<IMcpToolSession>();
+        toolSession.Tools.Returns([]);
+        toolSession.ConnectedServerNames.Returns(Array.Empty<string>());
+        toolSession.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
+        var toolProvider = Substitute.For<IMcpToolProvider>();
+        toolProvider
+            .ConnectAsync(Arg.Do<IReadOnlySet<string>?>(names => captured = names), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(toolSession);
+        var factory = Substitute.For<IChatClientFactory>();
+        factory.Create(Arg.Any<ProviderConfig>()).Returns(Substitute.For<IChatClient>());
+        var driver = new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
+        var profile = new SessionProfile("local", new OllamaConfig("http://localhost:11434", "llama3.1"))
+        {
+            EnabledMcpServerNames = ["cockpit-youtrack", "cockpit-session"],
+        };
+
+        // #44/AC-130: a local-model session opened programmatically (a plugin/workflow shortcut, a restored session)
+        // carries no per-session selection, so the tool loop must connect with the profile's saved checklist rather
+        // than every server. Proven red before EffectiveSessionSelection, when ConnectAsync received null.
+        await driver.StartAsync(profile);
+
+        captured.Should().BeEquivalentTo(["cockpit-youtrack", "cockpit-session"]);
+    }
+
     private static OpenAiCompatSessionDriver _CreateDriver(IChatClient chatClient, params AIFunction[] tools) =>
         _CreateDriver(chatClient, new Dictionary<string, ToolPermissionClass>(), tools);
 

@@ -86,7 +86,14 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // BySessionId resume crosses the narrow surface; MostRecent needs a provider-side "list newest" step (increment 2).
         Profile = profile;
         var resumeSessionId = resume is { Mode: SessionResumeMode.BySessionId, SessionId: { Length: > 0 } sessionId } ? sessionId : null;
-        var mcpServers = await _ResolveMcpServersAsync(enabledMcpServerNames, cancellationToken).ConfigureAwait(false);
+
+        // #44/AC-130: a launch that carries no per-session selection (a programmatic open — a plugin/workflow
+        // shortcut, a restored session — rather than the New-session dialog, which builds one from the checklist)
+        // still honours the profile's saved MCP selection instead of silently reaching every enabled server.
+        // Programmatic launches only ever take this SDK route (StartSessionForPluginAsync always starts an SDK
+        // session), so the fallback belongs here rather than on the dialog-only TTY route.
+        var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
+        var mcpServers = await _ResolveMcpServersAsync(selection, cancellationToken).ConfigureAwait(false);
 
         // The host carries the operator's permission-mode selection as a typed parameter (a Claude concept older than
         // the plugin surface, which has no such parameter). Fold it into the options map under the well-known key so a
@@ -192,14 +199,40 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         try
         {
             var registry = await mcpServerCatalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
-            return McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
+            var servers = McpServerRegistryFilter.ApplySessionSelection(registry, enabledServerNames)
                 .Where(McpConfigFile.IsAgentEligible)
                 .Select(_ToPluginMcpServer)
                 .OfType<PluginMcpServer>()
                 .ToList();
+
+            // Say what the session got and against which selection, so the next "why are my MCP servers missing?"
+            // is a log line, not a bisect (#44). A non-empty selection that resolves to nothing is almost always a
+            // wiring slip (a saved name the registry no longer has, or one filtered out as not agent-eligible), so
+            // surface that case at Warning; the ordinary fan-out stays at Information.
+            var selectionText = enabledServerNames is null ? "(no restriction)" : $"[{string.Join(", ", enabledServerNames)}]";
+            if (servers.Count == 0 && enabledServerNames is { Count: > 0 })
+            {
+                logger?.LogWarning(
+                    "Session MCP fan-out resolved no servers from selection {Selection}; the session starts with none.",
+                    selectionText);
+            }
+            else
+            {
+                logger?.LogInformation(
+                    "Session MCP fan-out: {Count} server(s) [{Names}] from selection {Selection}.",
+                    servers.Count,
+                    string.Join(", ", servers.Select(server => server.Name)),
+                    selectionText);
+            }
+
+            return servers;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            // Best-effort: a transient registry read failure launches the session without the shared servers rather
+            // than failing the whole start — but no longer silently, since "started with zero servers" read as
+            // "chose zero servers" is exactly what made this hard to see.
+            logger?.LogWarning(exception, "Resolving the session's MCP servers failed; the session starts with none.");
             return [];
         }
     }

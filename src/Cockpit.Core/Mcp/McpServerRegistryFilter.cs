@@ -25,4 +25,20 @@ public static class McpServerRegistryFilter
         enabledServerNames is null
             ? registry
             : [.. registry.Where(server => !server.Enabled || enabledServerNames.Contains(server.Name))];
+
+    /// <summary>
+    /// The per-session selection a launch should actually apply: the explicit one it was handed, or — when it has
+    /// none — the profile's own saved selection (#44/AC-130). The New-session dialog computes a selection from the
+    /// profile's checklist, but a <em>programmatic</em> launch (a plugin/workflow shortcut, a restored session) has
+    /// no dialog, so it carries none; without this fallback such a launch would reach every enabled server
+    /// (a <see langword="null"/> pass-through) rather than the set the operator saved on the profile — the SDK/local
+    /// paths' half of the per-session-selection gap the TTY route already closed. An explicit session selection
+    /// (including a deliberate empty "these none") is honoured untouched; only a truly absent one falls back.
+    /// </summary>
+    public static IReadOnlySet<string>? EffectiveSessionSelection(
+        IReadOnlySet<string>? sessionSelection,
+        IReadOnlyList<string>? profileSelection) =>
+        sessionSelection ?? (profileSelection is not null
+            ? new HashSet<string>(profileSelection, StringComparer.OrdinalIgnoreCase)
+            : null);
 }

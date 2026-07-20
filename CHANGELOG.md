@@ -105,6 +105,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   session ignored it and loaded every configured server regardless of what you ticked, while an SDK
   session got none of your cockpit-configured servers at all. Both now start with exactly the servers
   selected for that session, and unticking the orchestrator also stops that session from delegating.
+- fixed: a session opened without the New-session dialog — a workflow or shortcut that starts one on a
+  profile, or a session restored on startup — now uses that profile's saved MCP-server selection instead
+  of starting with none. Only the dialog carried the selection before, so these launches (Claude and
+  local-model alike) came up with their MCP servers missing; each session now logs which servers it
+  connected, and warns when a selection resolves to none, so a missing selection is visible rather than silent.
 - fixed: an agent — whether coupled to a terminal or running as a delegated sub-agent — can no longer reach
   another session's terminal, delegated tasks, worktree, working directory, status line or sent images by
   naming that session's id; every in-process tool now acts on the verified calling session, closing a

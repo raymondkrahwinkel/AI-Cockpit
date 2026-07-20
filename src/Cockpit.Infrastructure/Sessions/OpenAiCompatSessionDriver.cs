@@ -5,6 +5,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
 using Cockpit.Core.Profiles;
@@ -91,7 +92,32 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // connects to the cockpit endpoints on a per-session token — the consent broker then scopes on this pane, not
         // the id the local model declares.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
-        _toolSession = await _mcpToolProvider.ConnectAsync(enabledMcpServerNames, paneId, cancellationToken).ConfigureAwait(false);
+
+        // #44/AC-130: a programmatic launch (a plugin/workflow shortcut, a restored session) carries no dialog-built
+        // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
+        // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
+        var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
+        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, cancellationToken).ConfigureAwait(false);
+
+        // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
+        // which selection, so a local-model session missing its MCP servers is a log line rather than a silent
+        // gap; a non-empty selection that connected nothing is surfaced at Warning.
+        var selectionText = selection is null ? "(no restriction)" : $"[{string.Join(", ", selection)}]";
+        if (_toolSession.ConnectedServerNames.Count == 0 && selection is { Count: > 0 })
+        {
+            _logger.LogWarning(
+                "Local-model MCP fan-out connected no servers from selection {Selection}; the session starts with none.",
+                selectionText);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Local-model MCP fan-out: {Count} server(s) [{Names}] from selection {Selection}.",
+                _toolSession.ConnectedServerNames.Count,
+                string.Join(", ", _toolSession.ConnectedServerNames),
+                selectionText);
+        }
+
         _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
         Capabilities = Capabilities with { SupportsTools = _gatedTools.Count > 0 };
 
