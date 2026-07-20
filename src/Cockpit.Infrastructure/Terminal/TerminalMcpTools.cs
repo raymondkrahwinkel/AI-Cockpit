@@ -4,6 +4,7 @@ using System.Text.Json;
 using ModelContextProtocol.Server;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Infrastructure.Consent;
+using Cockpit.Infrastructure.Mcp;
 using Cockpit.Plugins.Abstractions.Consent;
 
 namespace Cockpit.Infrastructure.Terminal;
@@ -41,7 +42,11 @@ internal sealed class TerminalMcpTools
     public string ListTerminals(
         [Description("Your session id — the value of the COCKPIT_PANE_ID environment variable in this session.")] string session)
     {
-        var terminals = _registry.ListPanes(session)
+        // Key on the transport-verified pane (AC-89), not the agent-declared `session`: an agent must not be able to
+        // read another session's coupling by naming its id (confused deputy). Falls back to `session` off the verified
+        // path (the in-process tool loop / tests), where there is no middleware to trust.
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        var terminals = _registry.ListPanes(caller)
             .Select(pane => new { id = pane.PaneId, name = pane.Name, coupled = pane.Coupled });
         return _Serialize(new { ok = true, terminals });
     }
@@ -57,14 +62,15 @@ internal sealed class TerminalMcpTools
             return _Serialize(new { ok = false, error = "No such terminal pane — call list_terminals for the open panes and their ids." });
         }
 
-        if (await _EnsureCoupledAsync(session, pane).ConfigureAwait(false) is { } error)
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        if (await _EnsureCoupledAsync(caller, pane).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
         // AC-34: strip the ANSI/VT escapes from the captured bytes so the agent reads plain text, not colour codes.
         // Stripped over the whole buffer, so a sequence split across pty writes is already rejoined (see the sanitizer).
-        var output = TerminalOutputSanitizer.ToPlainText(_registry.ReadCoupled(session, pane.PaneId) ?? string.Empty);
+        var output = TerminalOutputSanitizer.ToPlainText(_registry.ReadCoupled(caller, pane.PaneId) ?? string.Empty);
         return _Serialize(new { ok = true, id = pane.PaneId, name = pane.Name, output });
     }
 
@@ -81,13 +87,14 @@ internal sealed class TerminalMcpTools
             return _Serialize(new { ok = false, error = "No such terminal pane — call list_terminals for the open panes and their ids." });
         }
 
-        if (await _EnsureCoupledAsync(session, pane).ConfigureAwait(false) is { } error)
+        var caller = McpRequestContext.CurrentPaneId ?? session;
+        if (await _EnsureCoupledAsync(caller, pane).ConfigureAwait(false) is { } error)
         {
             return _Serialize(new { ok = false, error });
         }
 
         var bytes = Encoding.UTF8.GetBytes(submit ? input + "\r" : input);
-        return _registry.SendInput(session, pane.PaneId, bytes)
+        return _registry.SendInput(caller, pane.PaneId, bytes)
             ? _Serialize(new { ok = true, id = pane.PaneId, name = pane.Name, sentBytes = bytes.Length })
             : _Serialize(new { ok = false, error = "The terminal could not be written to — it may have closed or been disconnected." });
     }
@@ -97,14 +104,14 @@ internal sealed class TerminalMcpTools
     /// time. Returns an error string to surface, or null when the session is (now) coupled. Approval grants both
     /// reading and driving under one gate — the operator's live view and Disconnect are the counterpart to that.
     /// </summary>
-    private async Task<string?> _EnsureCoupledAsync(string session, TerminalPane pane)
+    private async Task<string?> _EnsureCoupledAsync(string caller, TerminalPane pane)
     {
-        if (_registry.IsCoupledBy(session, pane.PaneId))
+        if (_registry.IsCoupledBy(caller, pane.PaneId))
         {
             return null;
         }
 
-        if (_registry.IsCoupledByAnother(session, pane.PaneId))
+        if (_registry.IsCoupledByAnother(caller, pane.PaneId))
         {
             return $"Terminal pane \"{pane.Name}\" is already being driven by another agent — only one agent at a time can use a pane.";
         }
@@ -125,7 +132,7 @@ internal sealed class TerminalMcpTools
             return "Using that terminal was not approved by the operator.";
         }
 
-        _registry.Couple(session, pane.PaneId);
+        _registry.Couple(caller, pane.PaneId);
         return null;
     }
 
