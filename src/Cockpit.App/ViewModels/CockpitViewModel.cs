@@ -79,6 +79,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly Func<SessionViewModel>? _sessionFactory;
     private readonly Func<TtyViewModel>? _ttySessionFactory;
     private readonly IWorktreeManager? _worktreeManager;
+    private readonly ITerminalAccessRegistry? _terminals;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
     private readonly IAudioCaptureService? _captureService;
@@ -2069,7 +2070,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IUsagePillSettingsStore? usagePillSettingsStore = null,
         IScreenLockSettingsStore? screenLockSettingsStore = null,
         ITerminalAccessSwitch? terminalAccessSwitch = null,
-        ITerminalAccessSettingsStore? terminalAccessSettingsStore = null)
+        ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
+        ITerminalAccessRegistry? terminals = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2101,6 +2103,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _appRestart = appRestartService;
         DelegatedTasks = delegatedTasks ?? new DelegatedTasksViewModel();
         _worktreeManager = worktreeManager;
+        _terminals = terminals;
         _liveSessions = liveSessions;
         Worktrees = worktrees ?? new WorktreesViewModel();
         // One source of "which sessions are live" (their pane ids, what worktrees are keyed on): the panel reads it,
@@ -4575,6 +4578,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Sessions.RemoveAt(index);
         await session.DisposeAsync();
+
+        // AC-34: this session may have been driving a terminal pane; releasing its couplings on close makes that pane's
+        // "agent connected" bar disappear (SessionEnded raises CouplingChanged). It is the driver-side teardown the
+        // pane's own PaneClosed cannot do — the mirror of the worktree release below, and it runs for every session.
+        _terminals?.SessionEnded(session.PaneId);
 
         // Tear down the session's worktree now that its process is gone (AC-85): a clean one is removed with its
         // branch, one that holds work is kept and marked retained (cleanup-policy A). Keyed on the pane the worktree

@@ -151,8 +151,26 @@ public partial class TtyView : UserControl
             }
 
             _viewModel.AgentConnected = change.Coupled;
-            _viewModel.AgentConnectedLabel = change.Coupled ? $"Agent connected — {change.AgentSession}" : null;
+            _viewModel.AgentConnectedLabel = change.Coupled ? $"Agent connected — {_ResolveAgentSessionName(change.AgentSession)}" : null;
         });
+    }
+
+    // AC-34: the bar shows the coupled agent session's operator-facing name (e.g. "work-6"), not the raw pane-id guid
+    // the coupling is keyed on. Resolved from the cockpit's live session list the way the plugin hosts reach it (this
+    // control is built by the view locator, not the DI graph); the guid stays as the fallback when no session matches
+    // it — e.g. the driving session has already closed.
+    private static string? _ResolveAgentSessionName(string? agentSession)
+    {
+        if (string.IsNullOrEmpty(agentSession))
+        {
+            return agentSession;
+        }
+
+        var name = (Design.IsDesignMode ? null : Program.Services.GetService<CockpitViewModel>())?
+            .Sessions.FirstOrDefault(session => string.Equals(session.PaneId, agentSession, StringComparison.Ordinal))?
+            .Title;
+
+        return string.IsNullOrWhiteSpace(name) ? agentSession : name;
     }
 
     // AC-34: the operator's Disconnect on the agent bar — the reactive kill-switch. The registry interrupts a running
