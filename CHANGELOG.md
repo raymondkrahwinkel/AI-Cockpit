@@ -43,6 +43,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   bar — new version, current build, and an "Open release" button — instead of only a startup toast
   that auto-dismisses before the window has focus and is easy to miss. Dismissing hides it until a
   newer build is found (AC-73).
+- added: macOS release downloads now carry the Gatekeeper quarantine workaround in the release notes and the
+  README. A downloaded `.app` is ad-hoc signed, so macOS quarantines it ("is damaged and can't be opened"); the
+  fix is one command (`xattr -cr /Applications/AI-Cockpit.app`), now shown where a macOS downloader sees it
+  instead of only in the packaging script's output (AC-56).
 
 ### Changed
 

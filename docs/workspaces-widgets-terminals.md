@@ -2,6 +2,10 @@
 
 *Design + implementation plan. Raised by Raymond 2026-07-14/15: lift Cockpit from an AI-chat client to a workstation shell — named workspaces along the top, plain terminals beside the AI TTYs, and dashboards of plugin-contributed widgets. Functional HTML mock-up: `Memory/Cockpit/Mockups/cockpit-workspaces-widgets-mockup.html` (AI-OS).*
 
+> **Status (2026-07): shipped.** Workspaces, the tab strip, widget dashboards, the add-widget gallery, dashboard
+> settings and plain terminal panes are all built and in the app. This note is kept for the design rationale — the
+> "not yet built" and phased-plan wording further down is historical.
+
 ## Decision (Raymond)
 
 - **One pane model, typed workspaces.** Everything is a pane in the existing draggable grid; a **workspace** is a named, persisted pane layout switched via a "Workspaces" strip above the grid.

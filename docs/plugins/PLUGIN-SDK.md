@@ -872,9 +872,9 @@ it is the ordinary plugin loader, with the files put in place beforehand.
 
 ## Examples
 
-Eight complete, working plugins live under [`plugins-dev/`](../../plugins-dev), each built exactly as described
-above (compile-only shared refs, code-built views, settings persisted via `host.Storage`). Between them they
-exercise every contribution point:
+The example plugins under [`plugins-dev/`](../../plugins-dev) — eighteen and counting — are each built exactly as
+described above (compile-only shared refs, code-built views, settings persisted via `host.Storage`). Between them
+they exercise the main contribution points:
 
 **UI contribution plugins:**
 
