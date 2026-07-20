@@ -137,6 +137,16 @@
 
                             <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
 
+                            <!-- Clone location (AC-90): where repositories cloned from a URL are checked out. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Clone location" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="Where the cockpit clones repositories from a URL (AC-90), each under a host/org/repo folder. Blank uses the default under the app's config directory; existing clones keep their location."/>
+                            </StackPanel>
+                            <TextBox Text="{Binding CloneRoot}" PlaceholderText="{Binding CloneRootPlaceholder}"/>
+
+                            <Border Height="1" Background="{StaticResource CockpitHairlineBrush}" Margin="0,4"/>
+
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Text="Layout" FontWeight="SemiBold"/>
                                 <materialIcons:MaterialIcon Classes="hint"

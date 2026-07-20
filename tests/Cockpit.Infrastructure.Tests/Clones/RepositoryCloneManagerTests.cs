@@ -52,6 +52,52 @@ public sealed class RepositoryCloneManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task CloneAsync_ExplicitTargetPath_ClonesThereAndRegistersThatPath()
+    {
+        var target = Path.Combine(_tempRoot, "chosen", "my-repo");
+
+        var record = await _manager.CloneAsync(_sourceUrl, target);
+
+        record.Path.Should().Be(Path.GetFullPath(target));
+        Directory.Exists(Path.Combine(target, ".git")).Should().BeTrue();
+        File.Exists(Path.Combine(target, "README.md")).Should().BeTrue();
+        (await _registry.ListAsync()).Should().ContainSingle().Which.Path.Should().Be(Path.GetFullPath(target));
+    }
+
+    [Fact]
+    public async Task CloneAsync_BlankTargetPath_FallsBackToManagedDefault()
+    {
+        var record = await _manager.CloneAsync(_sourceUrl, "   ");
+
+        var root = await _manager.GetEffectiveClonesRootAsync();
+        record.Path.Should().Be(_manager.BuildClonePath(root, _sourceUrl));
+        record.Path.Should().StartWith(Path.GetFullPath(_clonesRoot));
+    }
+
+    [Fact]
+    public async Task BuildClonePath_ReturnsManagedSlugPath_OrNullForAnUnparseableUrl()
+    {
+        var root = await _manager.GetEffectiveClonesRootAsync();
+
+        _manager.BuildClonePath(root, _sourceUrl).Should().StartWith(Path.GetFullPath(_clonesRoot));
+        _manager.BuildClonePath(root, "   ").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetEffectiveClonesRootAsync_UsesTheConfiguredOverride_WhenSet()
+    {
+        // The production constructor resolves the root through the settings store (AC-90): a saved override wins over
+        // the state-root default, and is returned as a full path so the dialog shows an absolute folder.
+        var settings = new CloneSettingsStore(Path.Combine(_tempRoot, "cockpit-override.json"));
+        var custom = Path.Combine(_tempRoot, "custom-clones");
+        await settings.SaveAsync(new CloneSettings { Root = custom });
+
+        var manager = new RepositoryCloneManager(_registry, settings);
+
+        (await manager.GetEffectiveClonesRootAsync()).Should().Be(Path.GetFullPath(custom));
+    }
+
+    [Fact]
     public async Task CloneAsync_AlreadyCloned_ReusesRatherThanCloningAgain()
     {
         var first = await _manager.CloneAsync(_sourceUrl);

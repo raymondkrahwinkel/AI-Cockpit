@@ -17,13 +17,29 @@ namespace Cockpit.Core.Abstractions.Clones;
 public interface IRepositoryCloneManager
 {
     /// <summary>
-    /// Clones the repository at <paramref name="url"/> into the managed clones area and returns its record, or —
-    /// when the same repository is already cloned there — reuses the existing checkout (fetching it up to date)
-    /// rather than cloning it again. Throws with what git said when the clone fails (authentication, an unreachable
-    /// host, a bad URL), or when the target slug is already occupied by a <em>different</em> repository, which is
-    /// never silently clobbered.
+    /// Clones the repository at <paramref name="url"/> into <paramref name="targetPath"/> — or, when that is null or
+    /// blank, the managed <c>host/org/repo</c> folder under the clones root (see <see cref="GetDefaultClonePath"/>) —
+    /// and returns its record, or, when the same repository is already cloned there, reuses the existing checkout
+    /// (fetching it up to date) rather than cloning it again. Throws with what git said when the clone fails
+    /// (authentication, an unreachable host, a bad URL), or when the target folder is already occupied by a
+    /// <em>different</em> repository, which is never silently clobbered.
     /// </summary>
-    Task<RepositoryClone> CloneAsync(string url, CancellationToken cancellationToken = default);
+    Task<RepositoryClone> CloneAsync(string url, string? targetPath = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The clones root in effect now — the operator's override (AC-90) if set, else the managed default under the app
+    /// state root. Resolved once when the clone dialog opens, so its target preview and the folder it shows reflect
+    /// where clones actually land without re-reading the setting on every keystroke.
+    /// </summary>
+    Task<string> GetEffectiveClonesRootAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The full managed folder <paramref name="url"/> would clone into under <paramref name="clonesRoot"/> —
+    /// <c>clonesRoot/host/org/repo</c> — or <see langword="null"/> when the URL cannot yet be parsed into one. A pure
+    /// function of its inputs (no I/O), so the dialog can pre-fill and live-update an editable target as the operator
+    /// types, sharing the one slug-parsing rule with the clone itself rather than duplicating it.
+    /// </summary>
+    string? BuildClonePath(string clonesRoot, string url);
 
     Task<IReadOnlyList<RepositoryClone>> ListAsync(CancellationToken cancellationToken = default);
 

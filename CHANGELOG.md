@@ -47,6 +47,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   README. A downloaded `.app` is ad-hoc signed, so macOS quarantines it ("is damaged and can't be opened"); the
   fix is one command (`xattr -cr /Applications/AI-Cockpit.app`), now shown where a macOS downloader sees it
   instead of only in the packaging script's output (AC-56).
+- added: the Clone-from-a-Git-URL dialog now shows the folder it will clone into, pre-filled from the
+  URL and editable, with a "Browse…" button to pick another location — so you can see and change where
+  a repository lands before cloning. Below the field it names the default folder and where to change it
+  (AC-90).
+- added: a Clone location setting (Options → Sessions) to change where repositories cloned from a URL
+  are stored, alongside the existing Worktree location. Blank keeps the default under the app's config
+  directory, and existing clones stay where they are (AC-90).
 
 ### Changed
 

@@ -17,34 +17,49 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
         new Dictionary<string, string> { ["GIT_TERMINAL_PROMPT"] = "0" };
 
     private readonly IRepositoryCloneRegistry _registry;
-    private readonly string _clonesRoot;
 
-    public RepositoryCloneManager(IRepositoryCloneRegistry registry)
-        : this(registry, CockpitConfigPath.ClonesRoot)
+    // Resolves the clones root each time it is needed: the operator's override (AC-90) if set, else the state-root
+    // default. Read on demand — not cached — so a root just changed in Options takes effect on the next clone, exactly
+    // as the worktree root does (AC-85). The test seam pins a fixed root instead.
+    private readonly Func<CancellationToken, Task<string>> _resolveRoot;
+
+    public RepositoryCloneManager(IRepositoryCloneRegistry registry, ICloneSettingsStore settings)
     {
+        _registry = registry;
+        _resolveRoot = async cancellationToken =>
+        {
+            var root = (await settings.LoadAsync(cancellationToken).ConfigureAwait(false)).Root;
+            return string.IsNullOrWhiteSpace(root) ? CockpitConfigPath.ClonesRoot : System.IO.Path.GetFullPath(root);
+        };
     }
 
-    /// <summary>Test seam: place the clones under an arbitrary fixed root instead of the app state directory.</summary>
+    /// <summary>Test seam: place the clones under an arbitrary fixed root instead of resolving the operator's setting.</summary>
     internal RepositoryCloneManager(IRepositoryCloneRegistry registry, string clonesRoot)
     {
         _registry = registry;
-        _clonesRoot = clonesRoot;
+        _resolveRoot = _ => Task.FromResult(clonesRoot);
     }
 
-    public async Task<RepositoryClone> CloneAsync(string url, CancellationToken cancellationToken = default)
+    public async Task<RepositoryClone> CloneAsync(string url, string? targetPath = null, CancellationToken cancellationToken = default)
     {
         var parsed = GitCloneUrl.Parse(url);
-        var targetPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(_clonesRoot, parsed.RelativePath));
+
+        // A blank target means the managed default under the clones root in effect now; an explicit one is the
+        // operator's choice from the dialog, taken as given (GetFullPath so a relative or ..-laden path is still
+        // resolved to one absolute folder here rather than against git's later working directory).
+        var resolvedTarget = string.IsNullOrWhiteSpace(targetPath)
+            ? _CombineTarget(await _resolveRoot(cancellationToken).ConfigureAwait(false), parsed)
+            : System.IO.Path.GetFullPath(targetPath.Trim());
 
         // De-dup: the slug is already occupied. If it holds the same repository, reuse it (fetch it up to date)
         // rather than cloning again; if it holds a *different* one, refuse — never clobber a checkout that might
         // hold work. Authoritative on the filesystem (the repo's own origin remote), so it is right even if the
         // registry drifted from disk.
-        if (Directory.Exists(targetPath))
+        if (Directory.Exists(resolvedTarget))
         {
-            if (await _IsSameRepositoryAsync(targetPath, parsed, cancellationToken).ConfigureAwait(false))
+            if (await _IsSameRepositoryAsync(resolvedTarget, parsed, cancellationToken).ConfigureAwait(false))
             {
-                return await _ReuseAsync(parsed, targetPath, cancellationToken).ConfigureAwait(false);
+                return await _ReuseAsync(parsed, resolvedTarget, cancellationToken).ConfigureAwait(false);
             }
 
             // Not the same repository — but tell the operator which of the two it is. A valid git work tree is another
@@ -52,12 +67,12 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
             // failed halfway) is broken, and saying "a different repository" there sends them looking for work that was
             // never there. Both refuse to clobber; only the wording differs.
             throw new InvalidOperationException(
-                await _IsGitWorkTreeAsync(targetPath, cancellationToken).ConfigureAwait(false)
-                    ? $"A different repository is already cloned at '{targetPath}'. Remove it first to clone {parsed.Slug} there."
-                    : $"A folder already exists at '{targetPath}' but is not a valid clone. Remove it first to clone {parsed.Slug} there.");
+                await _IsGitWorkTreeAsync(resolvedTarget, cancellationToken).ConfigureAwait(false)
+                    ? $"A different repository is already cloned at '{resolvedTarget}'. Remove it first to clone {parsed.Slug} there."
+                    : $"A folder already exists at '{resolvedTarget}' but is not a valid clone. Remove it first to clone {parsed.Slug} there.");
         }
 
-        var parent = System.IO.Path.GetDirectoryName(targetPath)!;
+        var parent = System.IO.Path.GetDirectoryName(resolvedTarget)!;
         Directory.CreateDirectory(parent);
 
         // clone with an explicit "--" so a URL that begins with "-" can never be read as an option, and the target
@@ -67,7 +82,7 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
         {
             await GitCli.RunCheckedAsync(
                 parent,
-                ["clone", "--", parsed.RemoteUrl, targetPath],
+                ["clone", "--", parsed.RemoteUrl, resolvedTarget],
                 cancellationToken,
                 _NonInteractiveEnvironment).ConfigureAwait(false);
         }
@@ -77,11 +92,32 @@ internal sealed class RepositoryCloneManager : IRepositoryCloneManager, ISinglet
         }
 
         var now = DateTimeOffset.UtcNow;
-        var record = new RepositoryClone(parsed.Slug, parsed.RemoteUrl, targetPath, now, now);
+        var record = new RepositoryClone(parsed.Slug, parsed.RemoteUrl, resolvedTarget, now, now);
         await _registry.AddAsync(record, cancellationToken).ConfigureAwait(false);
 
         return record;
     }
+
+    public Task<string> GetEffectiveClonesRootAsync(CancellationToken cancellationToken = default) =>
+        _resolveRoot(cancellationToken);
+
+    public string? BuildClonePath(string clonesRoot, string url)
+    {
+        // Parse-only preview for the dialog: a URL the operator is still typing is not an error here, so a URL that
+        // does not yet parse simply has no target to show rather than throwing. The clone itself re-parses and
+        // surfaces the real FormatException.
+        try
+        {
+            return _CombineTarget(clonesRoot, GitCloneUrl.Parse(url));
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
+    private static string _CombineTarget(string clonesRoot, GitCloneUrl parsed) =>
+        System.IO.Path.GetFullPath(System.IO.Path.Combine(clonesRoot, parsed.RelativePath));
 
     public Task<IReadOnlyList<RepositoryClone>> ListAsync(CancellationToken cancellationToken = default) =>
         _registry.ListAsync(cancellationToken);

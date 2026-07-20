@@ -33,6 +33,8 @@ using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Abstractions.Workspaces;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Worktrees;
+using Cockpit.Core.Abstractions.Clones;
+using Cockpit.Core.Clones;
 using Cockpit.Core.Abstractions.Rendering;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Rendering;
@@ -106,6 +108,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly IVoiceSettingsStore? _voiceSettingsStore;
     private readonly ITerminalSettingsStore? _terminalSettingsStore;
     private readonly IWorktreeSettingsStore? _worktreeSettingsStore;
+    private readonly ICloneSettingsStore? _cloneSettingsStore;
     private readonly IAudioDeviceProvider? _audioDeviceProvider;
     private readonly IModelCatalog? _modelCatalog;
     private readonly IVoicePlaybackQueue? _voicePlaybackQueue;
@@ -739,6 +742,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The default worktree root, shown as the folder field's placeholder so a blank value clearly means "use the default".</summary>
     public string WorktreeRootPlaceholder { get; private set; } = string.Empty;
+
+    /// <summary>The clones-root override (AC-90); blank uses the default. Bound in Options → Sessions, alongside the worktree root.</summary>
+    [ObservableProperty]
+    private string _cloneRoot = string.Empty;
+
+    [ObservableProperty]
+    private string _cloneSettingsStatus = string.Empty;
+
+    /// <summary>The default clones root, shown as the folder field's placeholder so a blank value clearly means "use the default".</summary>
+    public string CloneRootPlaceholder { get; private set; } = string.Empty;
 
     /// <summary>Sentinel item in the font-family dropdown (#40) that switches to a free-text box for any font not in the curated list.</summary>
     public const string CustomFontChoice = "Custom…";
@@ -2051,6 +2064,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IWorktreeManager? worktreeManager = null,
         WorktreesViewModel? worktrees = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
+        ICloneSettingsStore? cloneSettingsStore = null,
         LiveSessionRegistry? liveSessions = null,
         IUsagePillSettingsStore? usagePillSettingsStore = null,
         IScreenLockSettingsStore? screenLockSettingsStore = null,
@@ -2100,6 +2114,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _worktreeSettingsStore = worktreeSettingsStore;
         WorktreeRootPlaceholder = worktreeSettingsStore?.DefaultRoot ?? string.Empty;
         _ = LoadWorktreeSettingsAsync();
+        _cloneSettingsStore = cloneSettingsStore;
+        CloneRootPlaceholder = cloneSettingsStore?.DefaultRoot ?? string.Empty;
+        _ = LoadCloneSettingsAsync();
         _audioDeviceProvider = audioDeviceProvider;
         _modelCatalog = modelCatalog;
         _voicePlaybackQueue = voicePlaybackQueue;
@@ -3222,6 +3239,31 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         WorktreeSettingsStatus = "Saved";
     }
 
+    private async Task LoadCloneSettingsAsync()
+    {
+        if (_cloneSettingsStore is null)
+        {
+            return;
+        }
+
+        CloneRoot = (await _cloneSettingsStore.LoadAsync()).Root ?? string.Empty;
+    }
+
+    /// <summary>Persists the clones-root override (AC-90); a blank field clears the override, keeping the default.</summary>
+    [RelayCommand]
+    private async Task SaveCloneSettingsAsync()
+    {
+        if (_cloneSettingsStore is null)
+        {
+            return;
+        }
+
+        var root = string.IsNullOrWhiteSpace(CloneRoot) ? null : CloneRoot.Trim();
+        await _cloneSettingsStore.SaveAsync(new CloneSettings { Root = root });
+        CloneRoot = root ?? string.Empty;
+        CloneSettingsStatus = "Saved";
+    }
+
     private async Task LoadTerminalSettingsAsync()
     {
         if (_terminalSettingsStore is null)
@@ -4295,6 +4337,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         await SaveDebugSettingsCommand.ExecuteAsync(null);
         await SaveRenderingSettingsCommand.ExecuteAsync(null);
         await SaveWorktreeSettingsCommand.ExecuteAsync(null);
+        await SaveCloneSettingsCommand.ExecuteAsync(null);
         AllSettingsStatus = "Saved";
     }
 

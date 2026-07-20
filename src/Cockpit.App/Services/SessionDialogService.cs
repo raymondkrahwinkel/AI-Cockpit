@@ -182,7 +182,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     // failures, so this only ever hands back a directory that is actually on disk.
     private async Task<string?> ShowCloneFromGitUrlAsync(Window owner)
     {
-        var viewModel = new CloneFromGitUrlDialogViewModel(_cloneManager);
+        // Resolve the clones root once, here, so the dialog's target preview and its "Default:" hint reflect the
+        // operator's override (AC-90) without the view model re-reading the setting on every keystroke.
+        var clonesRoot = await _cloneManager.GetEffectiveClonesRootAsync();
+        var viewModel = new CloneFromGitUrlDialogViewModel(_cloneManager, clonesRoot);
         var dialog = new CloneFromGitUrlDialog { DataContext = viewModel };
         return await dialog.ShowDialog<string?>(owner);
     }

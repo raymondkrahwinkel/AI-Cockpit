@@ -132,4 +132,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Repositories cloned from a URL into the managed clones area (AC-90); owned by the repository-clone-registry store. The source of truth for reuse and startup reconciliation, so it outlives the process that cloned them.</summary>
     public List<RepositoryCloneEntry> Clones { get; set; } = [];
+
+    /// <summary>Clone settings (AC-90) — the operator's clones-root-location override; owned by the clone-settings store. Separate from the <see cref="Clones"/> registry above.</summary>
+    public CloneSettingsEntry? CloneSettings { get; set; }
 }
