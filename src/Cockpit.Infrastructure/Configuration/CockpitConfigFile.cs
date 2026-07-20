@@ -135,4 +135,7 @@ internal sealed class CockpitConfigFile
 
     /// <summary>Clone settings (AC-90) — the operator's clones-root-location override; owned by the clone-settings store. Separate from the <see cref="Clones"/> registry above.</summary>
     public CloneSettingsEntry? CloneSettings { get; set; }
+
+    /// <summary>The registered verify runners (AC-86) — the per-project command the visual verify loop may run; owned by the verify-runner-registry store. The agent triggers a runner but never supplies the command, so this list is also the boundary against arbitrary command execution.</summary>
+    public List<VerifyRunnerEntry> VerifyRunners { get; set; } = [];
 }

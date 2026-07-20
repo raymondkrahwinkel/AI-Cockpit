@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Core.Sessions;
@@ -41,6 +42,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IPluginTtyProviderRegistry _ttyProviderRegistry;
     private readonly IWorktreeManager _worktreeManager;
     private readonly IRepositoryCloneManager _cloneManager;
+    private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -56,7 +58,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         ITtySessionProviderResolver ttyProviderResolver,
         IPluginTtyProviderRegistry ttyProviderRegistry,
         IWorktreeManager worktreeManager,
-        IRepositoryCloneManager cloneManager)
+        IRepositoryCloneManager cloneManager,
+        IVerifyRunnerRegistry verifyRunnerRegistry)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -72,6 +75,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _ttyProviderRegistry = ttyProviderRegistry;
         _worktreeManager = worktreeManager;
         _cloneManager = cloneManager;
+        _verifyRunnerRegistry = verifyRunnerRegistry;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false)
@@ -211,6 +215,20 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
         var dialog = new McpServersDialog { DataContext = viewModel };
         viewModel.CloseRequested += dialog.Close;
+        await dialog.ShowDialog(owner);
+    }
+
+    public async Task ShowVerifyRunnersDialogAsync()
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        var viewModel = new VerifyRunnersViewModel(_verifyRunnerRegistry);
+        await viewModel.LoadAsync();
+
+        var dialog = new VerifyRunnersDialog { DataContext = viewModel };
         await dialog.ShowDialog(owner);
     }
 

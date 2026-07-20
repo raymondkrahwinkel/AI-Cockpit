@@ -21,6 +21,8 @@ public class PluginSessionUsageObserverTests
         {
         }
 
+        public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
+
         protected override ValueTask DisposeCoreAsync() => ValueTask.CompletedTask;
     }
 

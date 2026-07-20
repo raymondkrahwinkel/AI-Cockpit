@@ -632,6 +632,31 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         }
     }
 
+    /// <summary>
+    /// Shows a verify screenshot (AC-86) as a real user turn, captioned, only when this provider can see images
+    /// (<see cref="CanPasteImages"/>) — the same vision gate a pasted image passes through; the text snapshot already
+    /// reached the agent on the tool result. A turn already in flight queues it (T8), so it lands as the next user
+    /// turn rather than erroring against the mid-turn input the CLI rejects. Returns whether the screenshot was shown.
+    /// </summary>
+    public override async Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng)
+    {
+        if (_runtime is not { IsRunning: true } || !CanPasteImages)
+        {
+            return false;
+        }
+
+        IReadOnlyList<Core.Sessions.ImageAttachment> images = [Core.Sessions.ImageAttachment.FromBytes(screenshotPng, "image/png")];
+
+        if (IsBusy)
+        {
+            QueuedMessages.Add(new QueuedMessageViewModel(caption, images, message => QueuedMessages.Remove(message)));
+            return true;
+        }
+
+        await _DispatchMessageAsync(caption, images);
+        return true;
+    }
+
     [RelayCommand]
     private async Task SendAsync()
     {

@@ -20,7 +20,7 @@ internal static class Screenshotter
     private const int DefaultWindowWidth = 1100;
     private const int DefaultWindowHeight = 760;
 
-    public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null)
+    public static void Run(string outputPngPath, int width = DefaultWindowWidth, int height = DefaultWindowHeight, string? scene = null, string? snapshotPath = null, string? snapshotTarget = null)
     {
         BuildHeadlessAvaloniaApp().SetupWithoutStarting();
 
@@ -32,6 +32,8 @@ internal static class Screenshotter
             "shortcuts" => _OptionsOnTab("Shortcuts"),
             "debug" => _OptionsOnTab("Debug"),
             "profiles" => new ManageProfilesDialog { DataContext = new ViewModels.ManageProfilesDialogViewModel(), Height = 900 },
+            "verify-runners" => new VerifyRunnersDialog { DataContext = new ViewModels.VerifyRunnersViewModel() },
+            "verify-runners-edit" => _VerifyRunnersEditing(),
             "new-session" => new NewSessionDialog { DataContext = new ViewModels.NewSessionDialogViewModel() },
             "plugin-store" => _PluginStore(),
             "manage-stores" => _ManageStores(),
@@ -67,7 +69,36 @@ internal static class Screenshotter
         }
 
         frame.Save(outputPngPath);
+
+        if (!string.IsNullOrEmpty(snapshotPath))
+        {
+            _WriteSnapshot(window, snapshotPath, snapshotTarget);
+        }
+
         window.Close();
+    }
+
+    private static void _WriteSnapshot(Visual root, string snapshotPath, string? target)
+    {
+        var directory = Path.GetDirectoryName(Path.GetFullPath(snapshotPath));
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(snapshotPath, VisualTreeSnapshot.Capture(root, target));
+    }
+
+    // Renders the Verify-runners dialog with the add/edit form open and pre-filled, so the labelled fields and the
+    // form's own buttons are verifiable headless (the default scene shows the resting list state).
+    private static VerifyRunnersDialog _VerifyRunnersEditing()
+    {
+        var viewModel = new ViewModels.VerifyRunnersViewModel();
+        viewModel.NewRunnerCommand.Execute(null);
+        viewModel.FillCockpitExampleCommand.Execute(null);
+        viewModel.EditWorkingDirectory = "/home/me/AI-Cockpit";
+
+        return new VerifyRunnersDialog { DataContext = viewModel };
     }
 
     // Renders the Options dialog with one of its tabs selected, so a tab other than the first one can be

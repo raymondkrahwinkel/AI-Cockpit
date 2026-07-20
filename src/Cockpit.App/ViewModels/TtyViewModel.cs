@@ -222,6 +222,13 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     protected override void OnVoiceSubmitRequested() => _scheduleAutoSubmit(() => VoiceTranscriptReady?.Invoke("\r"));
 
+    /// <summary>
+    /// A TTY session takes nothing here (AC-86): the text snapshot already reached the agent on the verify tool
+    /// result, and a pty carries no image. Typing the multi-line snapshot into the pty would let its embedded line
+    /// breaks submit as stray Enters, so the screenshot is simply dropped for a TTY. Returns false — nothing shown.
+    /// </summary>
+    public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
+
     private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
 
     /// <summary>Test seam (AC-64): run the auto-submit action inline instead of after the ~60 ms UI-thread gap, so the transcript-then-CR ordering is assertable without a real timer.</summary>

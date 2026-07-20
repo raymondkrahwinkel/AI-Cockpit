@@ -31,6 +31,12 @@ public static class DependencyInjection
         // it up when done. Its own server, like cockpit-session, so a delegated sub-agent has it too.
         services.AddSingleton(new CockpitMcpEndpoint("cockpit-worktrees", typeof(Worktrees.WorktreeTools)));
 
+        // cockpit-verify (AC-86): the visual verify loop — runs the project's registered render command behind an
+        // operator consent and feeds the rendered UI back into the session as a text snapshot (plus a screenshot
+        // where the provider can see it), so UI work is not delivered blind (Iron Law #9). Its own server, like
+        // cockpit-worktrees; the agent can only trigger a registered runner, never choose the command.
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-verify", typeof(Verify.VerifyMcpTools)));
+
         // cockpit-terminal (AC-34, phase 1): lets an agent read a terminal pane the operator has open, live and gated
         // by an Approve/Deny consent. Behind the master switch — while it is off (the default) the endpoint is hosted
         // but not advertised to any session, so for an agent the feature does not exist. Registered via a factory so
