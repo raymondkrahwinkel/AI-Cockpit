@@ -92,6 +92,15 @@ internal sealed class WorktreeTools
             return _Serialize(new { ok = false, error = "No managed worktree at that path — call worktree_list for the current paths." });
         }
 
+        // AC-128: an agent may only remove a worktree it owns (created for its own verified pane). Removing another
+        // session's checkout by naming its path is a confused deputy — cross-session cleanup is the operator's, done
+        // from the managed panel, not an agent's. Off the verified path (operator/in-process) there is no caller to
+        // scope to, so the panel's own removals are unaffected.
+        if (McpRequestContext.CurrentPaneId is { } caller && !string.Equals(record.SessionId, caller, StringComparison.Ordinal))
+        {
+            return _Serialize(new { ok = false, error = "That worktree belongs to another session — you can only remove a worktree you created." });
+        }
+
         // Never remove a worktree whose owning session is still running — that pulls the working directory out from
         // under it. The panel enforces the same guard; close the session first, or let its own teardown remove it.
         if (_liveSessions is not null && _liveSessions.LiveSessionIds.Contains(record.SessionId))
