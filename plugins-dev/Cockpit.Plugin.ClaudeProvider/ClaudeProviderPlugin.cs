@@ -17,7 +17,7 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
     public PluginMetadata Metadata { get; } = new(
         Id: "claude-provider",
         DisplayName: "Claude (bundled)",
-        Version: "0.4.0",
+        Version: "0.4.1",
         Author: "Cockpit",
         Description: "Claude as a provider plugin. Runs the real interactive Claude TUI in a pane (TTY), with the "
             + "cockpit's workspace-trust, shared MCP servers, usage limits and the operator's own statusline preserved. "
@@ -68,7 +68,11 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             ProviderId: ClaudeProviderIds.Claude,
             DisplayName: "Claude",
             CreateDriverFactory: _ => new ClaudeSdkSessionDriverFactory(host.ResolveManagedCliPath),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
+            // These registration capabilities are the ones the host actually honours: SessionDriverFactory builds the
+            // PluginSessionDriverAdapter from registration.Capabilities, not from the driver instance's own Capabilities.
+            // So SupportsVision must be declared here — the SDK driver already builds base64 image content blocks, but
+            // without this the host gates a pasted image off ("provider does not support image input") anyway.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =

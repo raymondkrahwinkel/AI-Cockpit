@@ -61,6 +61,10 @@ public class ClaudeProviderPluginLoadTests
         sessionRegistration.ProviderId.Should().Be("claude");
         sessionRegistration.DisplayName.Should().Be("Claude");
         sessionRegistration.Capabilities.SupportsPermissions.Should().BeTrue();
+        // Vision rides the registration capabilities, which is the object the host honours: SessionDriverFactory
+        // builds the driver adapter from registration.Capabilities, not the driver instance's own. Regression guard
+        // for the pasted image being gated off ("provider does not support image input") when this was left false.
+        sessionRegistration.Capabilities.SupportsVision.Should().BeTrue();
         sessionRegistration.Options.Should().Contain(option => option.Key == "permission-mode");
         sessionRegistration.Options.Should().Contain(option => option.Key == "model");
         sessionRegistration.CreateDriverFactory(host.Services).Should().NotBeNull();
