@@ -7,6 +7,7 @@ namespace Cockpit.Core.Shortcuts;
 public enum ShortcutAction
 {
     NewSession,
+    NewTerminal,
     DuplicateSession,
     ManageProfiles,
     McpServers,
