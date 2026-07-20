@@ -13,6 +13,13 @@ namespace Cockpit.App.ViewTests;
 /// type id wins, a body is built only for a registered type and scoped to its workspace, and an unregistered id
 /// resolves to null so the view shows a placeholder rather than crashing.
 /// </summary>
+/// <remarks>
+/// In the "avalonia" collection because <see cref="CreateBody_ARegisteredType_BuildsAContextScopedToTheWorkspace"/>
+/// spins up the headless Avalonia platform: without it, xUnit runs this class in parallel with the other UI tests,
+/// two threads race <c>AvaloniaHeadlessPlatform.Initialize</c>, and the test host crashes ("a different thread owns
+/// it"). The collection serialises every Avalonia-touching class onto one thread.
+/// </remarks>
+[Collection("avalonia")]
 public class WorkspaceTypeRegistryTests
 {
     private static WorkspaceTypeRegistry _NewRegistry() =>
