@@ -771,6 +771,96 @@ public class SessionViewModelTests
     }
 
     [Fact]
+    public async Task TurnCompleted_WithCombineOn_DispatchesAllQueuedMessagesAsOneTurn()
+    {
+        var (vm, session) = await StartedVm();
+        vm.CombineQueuedMessages = true;
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null); // dispatched immediately, turn now in flight
+        vm.InputText = "second";
+        await vm.SendCommand.ExecuteAsync(null); // queued
+        vm.InputText = "third";
+        await vm.SendCommand.ExecuteAsync(null); // queued
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        // Both queued messages leave together as a single follow-up turn (AC-145), joined by a blank line —
+        // not "second" now and "third" after the next turn.
+        vm.QueuedMessages.Should().BeEmpty();
+        await session.Received(1).SendUserMessageAsync("second\n\nthird", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        await session.DidNotReceive().SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task TurnCompleted_WithCombineOn_AndASingleQueuedMessage_DispatchesItAsIs()
+    {
+        var (vm, session) = await StartedVm();
+        vm.CombineQueuedMessages = true;
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.InputText = "second";
+        await vm.SendCommand.ExecuteAsync(null); // the only queued message
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        // A single queued message is dispatched verbatim. (Joining one element is identity, so the output can't
+        // by itself prove which path ran — this just asserts the plain result and that nothing is left queued.)
+        vm.QueuedMessages.Should().BeEmpty();
+        await session.Received(1).SendUserMessageAsync("second", Arg.Any<IReadOnlyList<ImageAttachment>>(), Arg.Any<CancellationToken>());
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task TurnCompleted_WithCombineOn_MergesImagesFromAllQueuedMessagesInOrder()
+    {
+        var (vm, session) = await StartedVm();
+        vm.CombineQueuedMessages = true;
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null); // dispatched immediately, turn now in flight
+
+        // Queue two messages carrying images — one with text, one image-only — directly on the send queue.
+        var imageA = ImageAttachment.FromBytes([1], "image/png");
+        var imageB = ImageAttachment.FromBytes([2], "image/png");
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("look at these", [imageA], m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("", [imageB], m => vm.QueuedMessages.Remove(m)));
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        // The empty text is dropped from the joined prose; both images carry over in queue order.
+        await session.Received(1).SendUserMessageAsync(
+            "look at these",
+            Arg.Is<IReadOnlyList<ImageAttachment>>(images => images.Count == 2 && images[0] == imageA && images[1] == imageB),
+            Arg.Any<CancellationToken>());
+        vm.QueuedMessages.Should().BeEmpty();
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task TurnCompleted_WithCombineOn_AllImageOnly_SendsEmptyTextWithEveryImage()
+    {
+        var (vm, session) = await StartedVm();
+        vm.CombineQueuedMessages = true;
+        vm.InputText = "first";
+        await vm.SendCommand.ExecuteAsync(null);
+
+        var imageA = ImageAttachment.FromBytes([1], "image/png");
+        var imageB = ImageAttachment.FromBytes([2], "image/png");
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("", [imageA], m => vm.QueuedMessages.Remove(m)));
+        vm.QueuedMessages.Add(new QueuedMessageViewModel("   ", [imageB], m => vm.QueuedMessages.Remove(m)));
+
+        vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "success", Result = "done", IsError = false });
+
+        // Every queued chip was image-only, so the combined text is empty but all images still go out together.
+        await session.Received(1).SendUserMessageAsync(
+            "",
+            Arg.Is<IReadOnlyList<ImageAttachment>>(images => images.Count == 2),
+            Arg.Any<CancellationToken>());
+        vm.QueuedMessages.Should().BeEmpty();
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public async Task RecallLastQueuedMessage_PullsTheNewestQueuedMessageBackIntoTheInput()
     {
         var (vm, _) = await StartedVm();

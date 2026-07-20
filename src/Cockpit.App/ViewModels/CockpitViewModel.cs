@@ -1063,6 +1063,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _autoCloseOnExit;
 
+    /// <summary>When true, messages queued mid-turn are sent together as one follow-up turn instead of one-per-turn (AC-145). Applied to all open SDK/chat sessions.</summary>
+    [ObservableProperty]
+    private bool _combineQueuedMessages;
+
     [ObservableProperty]
     private string _sessionBehaviorSettingsStatus = string.Empty;
 
@@ -1867,6 +1871,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>Pushes the combine-queued-messages toggle to every open SDK/chat session as it changes (AC-145); TTY sessions have no send queue.</summary>
+    partial void OnCombineQueuedMessagesChanged(bool value)
+    {
+        foreach (var session in Sessions)
+        {
+            if (session is SessionViewModel sdk)
+            {
+                sdk.CombineQueuedMessages = value;
+            }
+        }
+    }
+
     /// <summary>Keeps each session's <see cref="SessionViewModel.IsSelected"/> in sync with the active selection.</summary>
     partial void OnSelectedSessionChanged(SessionPanelViewModel? oldValue, SessionPanelViewModel? newValue)
     {
@@ -2567,6 +2583,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var settings = await _sessionBehaviorSettingsStore.LoadAsync();
         AutoCloseOnExit = settings.AutoCloseOnExit;
+        CombineQueuedMessages = settings.CombineQueuedMessages;
     }
 
     /// <summary>Persists the session-behaviour settings edited in the Options flyout to <c>cockpit.json</c>.</summary>
@@ -2578,7 +2595,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = AutoCloseOnExit });
+        await _sessionBehaviorSettingsStore.SaveAsync(new SessionBehaviorSettings
+        {
+            AutoCloseOnExit = AutoCloseOnExit,
+            CombineQueuedMessages = CombineQueuedMessages,
+        });
         SessionBehaviorSettingsStatus = "Saved";
     }
 
@@ -4377,6 +4398,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // Same for the auto-close-on-exit behaviour (T10); the session raises CloseRequested when an
         // "exit" turn completes and the cockpit runs its normal close flow.
         session.AutoCloseOnExit = AutoCloseOnExit;
+        // Seed the combine-queued-messages behaviour (AC-145); OnCombineQueuedMessagesChanged keeps it live
+        // afterwards. SDK/chat sessions only — a TTY session has no local send queue.
+        if (session is SessionViewModel sdkSession)
+        {
+            sdkSession.CombineQueuedMessages = CombineQueuedMessages;
+        }
         // Seed the diagnostic-controls preference (#73); OnShowDebugControlsChanged keeps it live afterwards.
         session.ShowDebugControls = ShowDebugControls;
         // Seed a TTY session with the current global terminal-appearance preference (#40); further

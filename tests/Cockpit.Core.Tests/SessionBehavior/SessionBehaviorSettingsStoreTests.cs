@@ -33,6 +33,7 @@ public class SessionBehaviorSettingsStoreTests : IDisposable
         var settings = await store.LoadAsync();
 
         settings.AutoCloseOnExit.Should().BeFalse();
+        settings.CombineQueuedMessages.Should().BeFalse();
     }
 
     [Fact]
@@ -40,10 +41,11 @@ public class SessionBehaviorSettingsStoreTests : IDisposable
     {
         var store = new SessionBehaviorSettingsStore(_configFilePath);
 
-        await store.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = true });
+        await store.SaveAsync(new SessionBehaviorSettings { AutoCloseOnExit = true, CombineQueuedMessages = true });
         var loaded = await store.LoadAsync();
 
         loaded.AutoCloseOnExit.Should().BeTrue();
+        loaded.CombineQueuedMessages.Should().BeTrue();
     }
 
     [Fact]
