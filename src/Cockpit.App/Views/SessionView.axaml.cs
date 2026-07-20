@@ -81,14 +81,20 @@ public partial class SessionView : UserControl
         ScrollToBottomButton.IsVisible = false;
     }
 
-    /// <summary>Copies a tool result's formatted text to the clipboard (T6) — the button sits on the row,
-    /// so its DataContext is the row whose result was rendered.</summary>
-    private void _OnCopyResultClick(object? sender, RoutedEventArgs e)
+    /// <summary>Copies a tool result's formatted text to the clipboard (T6).</summary>
+    private void _OnCopyResultClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.ResultDisplayText);
+
+    /// <summary>Copies an assistant reply's markdown source to the clipboard — the per-reply hover action.</summary>
+    private void _OnCopyMessageClick(object? sender, RoutedEventArgs e) => _CopyRowText(sender, entry => entry.Text);
+
+    /// <summary>Both copy buttons sit on a transcript row, so the sender's DataContext is that row — copy the
+    /// selected text from it to the clipboard.</summary>
+    private void _CopyRowText(object? sender, Func<TranscriptEntryViewModel, string> select)
     {
         if (sender is Control { DataContext: TranscriptEntryViewModel entry }
             && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
         {
-            _ = clipboard.SetTextAsync(entry.ResultDisplayText);
+            _ = clipboard.SetTextAsync(select(entry));
         }
     }
 

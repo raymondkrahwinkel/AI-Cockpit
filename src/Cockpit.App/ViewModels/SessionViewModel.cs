@@ -56,6 +56,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// <summary>False until the first transcript row arrives, so the panel can show a calm empty-state hint instead of a void.</summary>
     public bool HasTranscript => Transcript.Count > 0;
 
+    /// <summary>True once the runtime is up and can accept a turn. Gates the empty-state's "type to start" prompt
+    /// so it only invites input once the session is actually ready.</summary>
+    public bool IsSessionReady => _runtime is { IsRunning: true };
+
+    /// <summary>True from launch until the runtime settles — up <em>or</em> failed. Drives the "still starting"
+    /// banner so it shows only while the session is actively coming up, and never sits stuck reading "starting"
+    /// after a launch that failed (where the runtime is assigned but never running).</summary>
+    [ObservableProperty]
+    private bool _isStarting;
+
     /// <summary>Images pasted into the input, sent with the next message and cleared afterwards.</summary>
     public ObservableCollection<ImageAttachmentViewModel> PendingAttachments { get; } = [];
 
@@ -333,6 +343,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             IsPermissionModeLocked = false;
             SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
         }
+
+        // Refresh the ready-gate (the empty-state's "type to start" prompt) now the launch has settled:
+        // true on a live runtime, false when it failed.
+        OnPropertyChanged(nameof(IsSessionReady));
     }
 
     private async Task StartWithProfileAsync(SessionProfile? profile, string? workingDirectory = null, SessionResume? resume = null)
@@ -356,6 +370,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             WorkingDirectory = workingDirectory;
         }
 
+        IsStarting = true;
         Status = "Starting...";
 
         try
@@ -417,6 +432,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             // The profile is shown separately (ActiveProfileLabel), so keep the status itself clean
             // rather than repeating it — "Session started. · personal" read as a duplicate (L6).
             Status = "Session started.";
+            // The runtime is up: stop signalling "still starting". IsSessionReady is refreshed by the single
+            // caller (StartConfiguredAsync) right after this returns, so it is not raised again here.
+            IsStarting = false;
 
             // Thinking budget has no launch flag — the control request is the only path — so apply
             // the selected effort once the session is live, otherwise it runs at the CLI default
@@ -426,6 +444,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         catch (Exception ex)
         {
             Status = $"Failed to start: {ex.Message}";
+            // The launch failed — clear the "still starting" banner so it does not sit there implying the
+            // session is about to come up. IsSessionReady stays false (no running runtime); the caller settles it.
+            IsStarting = false;
         }
     }
 
@@ -1005,6 +1026,10 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             case ToolUseRequested toolUse:
                 _RemoveCurrentThinkingEntry();
+                // Close the current assistant text row so prose that streams *after* this tool call starts a
+                // fresh row beneath the tool, in the order it happened — otherwise post-tool text appends back
+                // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
+                _currentAssistantEntry = null;
                 Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.ToolUse,
                     $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
@@ -1212,6 +1237,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         _runtime.EventAppended -= _OnSessionEvent;
         var runtime = _runtime;
         _runtime = null;
+        OnPropertyChanged(nameof(IsSessionReady));
 
         if (_sessionManager is not null)
         {
