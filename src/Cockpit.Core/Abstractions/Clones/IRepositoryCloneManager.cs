@@ -18,7 +18,7 @@ public interface IRepositoryCloneManager
 {
     /// <summary>
     /// Clones the repository at <paramref name="url"/> into <paramref name="targetPath"/> — or, when that is null or
-    /// blank, the managed <c>host/org/repo</c> folder under the clones root (see <see cref="GetDefaultClonePath"/>) —
+    /// blank, the managed <c>host/org/repo</c> folder under the clones root (see <see cref="BuildClonePath"/>) —
     /// and returns its record, or, when the same repository is already cloned there, reuses the existing checkout
     /// (fetching it up to date) rather than cloning it again. Throws with what git said when the clone fails
     /// (authentication, an unreachable host, a bad URL), or when the target folder is already occupied by a
