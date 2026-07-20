@@ -8,8 +8,8 @@ namespace Cockpit.Core.WorkingPaths;
 /// </summary>
 public sealed record WorkingPathHistory(IReadOnlyList<string> Recent, IReadOnlyList<string> Favorites)
 {
-    /// <summary>How many recent paths are kept; older ones fall off the end.</summary>
-    public const int MaxRecent = 10;
+    /// <summary>How many recent paths are kept; older ones fall off the end. Favorites are separate and uncapped.</summary>
+    public const int MaxRecent = 5;
 
     public static WorkingPathHistory Empty { get; } = new([], []);
 
@@ -47,6 +47,26 @@ public sealed record WorkingPathHistory(IReadOnlyList<string> Recent, IReadOnlyL
         }
 
         return this with { Favorites = favorites };
+    }
+
+    /// <summary>
+    /// Removes <paramref name="path"/> from the remembered directories entirely — dropped from both
+    /// <see cref="Recent"/> and <see cref="Favorites"/> (AC-131), so the New-session quick-pick's ✕ forgets it in one
+    /// go regardless of which list it was in. A blank path is ignored (returns this unchanged).
+    /// </summary>
+    public WorkingPathHistory WithoutPath(string? path)
+    {
+        var trimmed = path?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return this;
+        }
+
+        return this with
+        {
+            Recent = Recent.Where(existing => !_SamePath(existing, trimmed)).ToList(),
+            Favorites = Favorites.Where(existing => !_SamePath(existing, trimmed)).ToList(),
+        };
     }
 
     /// <summary>True when <paramref name="path"/> is currently pinned.</summary>

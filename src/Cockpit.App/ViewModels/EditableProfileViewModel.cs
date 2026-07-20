@@ -31,6 +31,21 @@ public partial class EditableProfileViewModel : ViewModelBase
     private string _purpose;
 
     /// <summary>
+    /// The working directory a New session under this profile pre-fills (AC-130) — a per-project profile lands in
+    /// its project folder without picking one each time. Empty means no default (the folder field opens empty).
+    /// </summary>
+    [ObservableProperty]
+    private string _defaultWorkingDirectory;
+
+    /// <summary>
+    /// Whether this profile pre-selects a specific set of MCP servers (AC-130). Off — the default — means no
+    /// restriction: a New session ticks every enabled server, as before. On reveals <see cref="McpServers"/> and
+    /// persists exactly the ticked ones, so a project profile need not re-toggle them each time.
+    /// </summary>
+    [ObservableProperty]
+    private bool _restrictMcpServers;
+
+    /// <summary>
     /// A ceiling on the session CLI's memory, in MB — 0 means none, which is what it is unless someone types a
     /// number. The Claude CLI is Node, and a long conversation grows its heap past half a gigabyte; this makes it
     /// collect harder instead. It is also the one setting here that can kill a session mid-turn, which is why it is
@@ -170,6 +185,19 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// supports injection (<see cref="SupportsEnvVars"/>).
     /// </summary>
     public ObservableCollection<ProfileEnvironmentVariableViewModel> EnvironmentVariables { get; } = [];
+
+    /// <summary>
+    /// One checkbox row per available MCP server (registry + plugin-provided) for the profile's pre-selection
+    /// (AC-130). Ticked according to the profile's saved selection, or all-ticked when it has none. Only shown when
+    /// <see cref="RestrictMcpServers"/> is on; hidden entirely when there are no servers to choose from.
+    /// </summary>
+    public ObservableCollection<McpServerSelectionItemViewModel> McpServers { get; } = [];
+
+    /// <summary>Whether there are any MCP servers to pre-select — the gate is hidden entirely when the catalog is empty.</summary>
+    public bool HasMcpServers => McpServers.Count > 0;
+
+    /// <summary>Saved pre-selected servers the catalog did not offer at load (disabled/absent), so the checklist can't represent them; preserved verbatim by <see cref="ToProfile"/> so a save never silently drops them.</summary>
+    private readonly IReadOnlyList<string> _carriedOverMcpServerNames;
 
     /// <summary>
     /// Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) — the
@@ -316,18 +344,36 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <param name="canChooseProvider">Only a freshly added profile may pick its provider (#26).</param>
     /// <param name="providers">The full provider picker (#45) — built-ins plus any plugin-registered providers; falls back to <see cref="SessionProviderCatalog.Providers"/> (built-ins only) when not supplied.</param>
     /// <param name="pluginProviderRegistry">Resolves a plugin provider's config view, for a <see cref="PluginProviderConfig"/> profile or when the operator picks a plugin provider while adding one; <see langword="null"/> when the caller does not care about plugin providers (design-time preview, most existing tests).</param>
+    /// <param name="availableMcpServerNames">The MCP servers (registry + plugin-provided) the profile may pre-select from (AC-130); <see langword="null"/>/empty hides the MCP pre-selection entirely (design-time preview, a caller that does not surface it).</param>
     public EditableProfileViewModel(
         SessionProfile profile,
         bool isLoggedIn,
         bool canChooseProvider = false,
         IReadOnlyList<SessionProviderOption>? providers = null,
-        IPluginProviderRegistry? pluginProviderRegistry = null)
+        IPluginProviderRegistry? pluginProviderRegistry = null,
+        IReadOnlyList<string>? availableMcpServerNames = null)
     {
         _label = profile.Label;
         _configDir = profile.Claude?.ConfigDir ?? string.Empty;
         _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;
         _purpose = profile.Purpose ?? string.Empty;
+        _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
         _memoryLimitMb = profile.MemoryLimitMb ?? 0;
+
+        // MCP pre-selection (AC-130): a non-null saved set restricts; null means "all servers" (the gate stays off).
+        // Each available server is ticked when the profile has no restriction or when its selection names the server.
+        _restrictMcpServers = profile.EnabledMcpServerNames is not null;
+        var available = new HashSet<string>(availableMcpServerNames ?? [], StringComparer.OrdinalIgnoreCase);
+        var selected = profile.EnabledMcpServerNames is { } names ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase) : null;
+        foreach (var name in availableMcpServerNames ?? [])
+        {
+            McpServers.Add(new McpServerSelectionItemViewModel(name) { IsEnabledForSession = selected?.Contains(name) ?? true });
+        }
+
+        // A saved server the catalog no longer offers (temporarily disabled, or a plugin not loaded right now) is not
+        // shown, so the checklist cannot speak for it. Carry it through untouched on save rather than let a Save silently
+        // drop a selection the operator can't even see here — the alternative wiped it the moment its server went absent.
+        _carriedOverMcpServerNames = selected is null ? [] : [.. selected.Where(name => !available.Contains(name))];
         // The typed permission/model/effort selections back the retired Claude-CLI editor block (hidden now that Claude
         // is a plugin); a plugin profile's real defaults come from OptionDefaults via PluginOptionDefaults. Seed the
         // typed fields with the app defaults rather than the profile's legacy typed values, which are migration-only.
@@ -408,6 +454,13 @@ public partial class EditableProfileViewModel : ViewModelBase
             EnvironmentVariables = EnvironmentVariables.Count > 0
                 ? [.. EnvironmentVariables.Select(row => row.ToDomain())]
                 : null,
+            // Off is "no restriction" — null, so every enabled server is ticked and future ones are included. On
+            // persists the ticked servers plus any saved names the catalog didn't offer here (carried over untouched),
+            // as this profile's explicit pre-selection.
+            EnabledMcpServerNames = RestrictMcpServers
+                ? [.. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name), .. _carriedOverMcpServerNames]
+                : null,
+            DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory.Trim(),
         };
     }
 

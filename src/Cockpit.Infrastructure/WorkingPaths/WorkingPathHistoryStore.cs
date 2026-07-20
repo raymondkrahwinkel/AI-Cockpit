@@ -39,6 +39,9 @@ internal sealed class WorkingPathHistoryStore : IWorkingPathHistoryStore, ISingl
     public Task<WorkingPathHistory> SetFavoriteAsync(string path, bool favorite, CancellationToken cancellationToken = default) =>
         _MutateAsync(history => history.WithFavorite(path, favorite), cancellationToken);
 
+    public Task<WorkingPathHistory> RemoveAsync(string path, CancellationToken cancellationToken = default) =>
+        _MutateAsync(history => history.WithoutPath(path), cancellationToken);
+
     private async Task<WorkingPathHistory> _MutateAsync(Func<WorkingPathHistory, WorkingPathHistory> mutate, CancellationToken cancellationToken)
     {
         var current = await LoadAsync(cancellationToken).ConfigureAwait(false);

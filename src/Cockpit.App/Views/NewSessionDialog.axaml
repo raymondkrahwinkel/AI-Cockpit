@@ -107,15 +107,42 @@
                               SelectedItem="{Binding SelectedRememberedPath}"
                               PlaceholderText="Recent / favorite folders…"
                               IsVisible="{Binding HasRememberedPaths}">
+                        <!-- The favorites/recents ruler (AC-131) is inert: disable its container so it can't be
+                             selected, keyboard-navigated onto, or fill the folder field. -->
+                        <ComboBox.Styles>
+                            <Style Selector="ComboBoxItem" x:DataType="vm:RememberedPathOption">
+                                <Setter Property="IsEnabled" Value="{Binding IsSelectable}"/>
+                            </Style>
+                        </ComboBox.Styles>
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:RememberedPathOption">
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <materialIcons:MaterialIcon Kind="Star" Width="11" Height="11" IsVisible="{Binding IsFavorite}"/>
-                                    <materialIcons:MaterialIcon Kind="SourceBranchPlus" Width="12" Height="12"
-                                                                Foreground="{StaticResource CockpitAccentBrush}"
-                                                                IsVisible="{Binding IsCloneAction}"/>
-                                    <TextBlock Text="{Binding Path}"/>
-                                </StackPanel>
+                                <Panel>
+                                    <!-- Ruler between the favorites (above) and the recents (below). -->
+                                    <Border Height="1" Margin="0,4" VerticalAlignment="Center"
+                                            Background="{StaticResource CockpitHairlineBrush}"
+                                            IsVisible="{Binding IsSeparator}"/>
+                                    <!-- A folder or the clone action, with a ✕ to forget a remembered folder. -->
+                                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !IsSeparator}">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                            <materialIcons:MaterialIcon Kind="Star" Width="11" Height="11" IsVisible="{Binding IsFavorite}"/>
+                                            <materialIcons:MaterialIcon Kind="SourceBranchPlus" Width="12" Height="12"
+                                                                        Foreground="{StaticResource CockpitAccentBrush}"
+                                                                        IsVisible="{Binding IsCloneAction}"/>
+                                            <TextBlock Text="{Binding Path}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <!-- The ✕ forgets this folder (AC-131). A Button handles its own pointer press,
+                                             so clicking it removes the row without selecting it (the folder field is
+                                             never filled by the same click). Hidden for the clone action. -->
+                                        <Button Grid.Column="1" Classes="Subtle" Padding="4,0" Margin="8,0,0,0"
+                                                VerticalAlignment="Center" IsVisible="{Binding IsRemovable}"
+                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                Command="{Binding $parent[ComboBox].((vm:NewSessionDialogViewModel)DataContext).RemoveRememberedPathCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Forget this folder">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="11" Height="11"/>
+                                        </Button>
+                                    </Grid>
+                                </Panel>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>

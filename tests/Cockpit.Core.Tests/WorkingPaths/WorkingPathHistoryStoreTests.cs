@@ -58,6 +58,21 @@ public class WorkingPathHistoryStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveAsync_ForgetsThePathFromBothListsAndRoundTrips()
+    {
+        var store = new WorkingPathHistoryStore(_configFilePath);
+        await store.RecordRecentAsync(@"C:\a");
+        await store.SetFavoriteAsync(@"C:\a", favorite: true);
+        await store.RecordRecentAsync(@"C:\b");
+
+        await store.RemoveAsync(@"C:\a");
+
+        var loaded = await store.LoadAsync();
+        loaded.Recent.Should().Equal(@"C:\b");
+        loaded.Favorites.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task RecordRecentAsync_LeavesTheOtherSectionsIntact()
     {
         var notificationStore = new NotificationSettingsStore(_configFilePath);

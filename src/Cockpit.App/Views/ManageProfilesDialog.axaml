@@ -182,6 +182,19 @@
                         <TextBox Text="{Binding Purpose}"/>
                     </StackPanel>
 
+                    <!-- Default working directory (AC-130): a per-project profile lands a New session in its project
+                         folder without picking one each time. Empty = no default; still editable at session start. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Default working directory" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Content="Browse" Classes="Compact" Margin="6,0,0,0"
+                                    Click="OnBrowseWorkingDirectory"/>
+                            <TextBox Text="{Binding DefaultWorkingDirectory}" FontFamily="{StaticResource CockpitMonoFont}"
+                                     PlaceholderText="Optional — pre-fills a new session's folder for this profile"/>
+                        </DockPanel>
+                    </StackPanel>
+
                     <!-- A memory ceiling for the session CLI. Off unless someone types a number, and the warning is
                          not decoration: a capped session that needs more memory than the cap dies mid-turn. -->
                     <StackPanel Spacing="4">
@@ -351,6 +364,30 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </StackPanel>
+
+                    <!-- MCP server pre-selection (AC-130): a project profile can remember exactly which MCP servers
+                         a New session ticks, instead of re-toggling them each time. Off = no restriction (every
+                         enabled server ticked, future ones included). Hidden entirely when there are no servers. -->
+                    <StackPanel Spacing="11" IsVisible="{Binding HasMcpServers}">
+                        <TextBlock Text="MCP SERVERS" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <CheckBox Content="Pre-select MCP servers for this profile"
+                                  IsChecked="{Binding RestrictMcpServers}"
+                                  ToolTip.Tip="Off: a new session ticks every enabled server (and future ones). On: only the servers ticked below."/>
+                        <StackPanel Spacing="4" IsVisible="{Binding RestrictMcpServers}">
+                            <TextBlock Text="Ticked servers are pre-selected for every new session under this profile; each can still be changed when a session is started."
+                                       FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            <ItemsControl ItemsSource="{Binding McpServers}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
+                                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- Per-profile environment variables (AC-22), injected into every session spawned under this

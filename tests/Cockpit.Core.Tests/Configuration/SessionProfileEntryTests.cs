@@ -107,6 +107,44 @@ public class SessionProfileEntryTests
     }
 
     [Fact]
+    public void RoundTrip_KeepsTheMcpPreSelectionAndDefaultWorkingDirectory()
+    {
+        var profile = new SessionProfile("work", ClaudePluginProfile.Create("/home/raymond/.claude-work", null))
+        {
+            EnabledMcpServerNames = ["youtrack", "docker"],
+            DefaultWorkingDirectory = "/home/raymond/RiderProjects/App",
+        };
+
+        var roundTripped = SessionProfileEntry.FromDomain(profile).ToDomain();
+
+        roundTripped.EnabledMcpServerNames.Should().Equal("youtrack", "docker");
+        roundTripped.DefaultWorkingDirectory.Should().Be("/home/raymond/RiderProjects/App");
+    }
+
+    [Fact]
+    public void RoundTrip_KeepsAnEmptyMcpPreSelection_DistinctFromNoRestriction()
+    {
+        // "these none" is a real choice the operator can make (restrict on, everything unticked); it must survive as an
+        // empty list, not collapse to null (which means "no restriction — all servers").
+        var restricted = new SessionProfile("work", ClaudePluginProfile.Create("/x", null)) { EnabledMcpServerNames = [] };
+        SessionProfileEntry.FromDomain(restricted).ToDomain().EnabledMcpServerNames.Should().NotBeNull().And.BeEmpty();
+
+        var unrestricted = new SessionProfile("work", ClaudePluginProfile.Create("/x", null));
+        SessionProfileEntry.FromDomain(unrestricted).ToDomain().EnabledMcpServerNames.Should().BeNull();
+    }
+
+    [Fact]
+    public void ToDomain_WithoutTheNewFields_LeavesThemUnset_SoOlderConfigsKeepWorking()
+    {
+        var entry = new SessionProfileEntry { Label = "work", ConfigDir = "/home/raymond/.claude-work" };
+
+        var profile = entry.ToDomain();
+
+        profile.EnabledMcpServerNames.Should().BeNull();
+        profile.DefaultWorkingDirectory.Should().BeNull();
+    }
+
+    [Fact]
     public void ToDomain_MigratesALegacyClaudeProfilesTypedDefaults_IntoTheGenericOptionDefaults()
     {
         var entry = new SessionProfileEntry

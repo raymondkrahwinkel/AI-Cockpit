@@ -60,6 +60,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - added: a Clone location setting (Options → Sessions) to change where repositories cloned from a URL
   are stored, alongside the existing Worktree location. Blank keeps the default under the app's config
   directory, and existing clones stay where they are.
+- added: a profile can now pre-select which MCP servers a new session uses and a default working
+  directory to launch it in — so a per-project profile opens with its servers already ticked and lands
+  in its project folder, instead of setting both by hand every time. Both are set in Manage profiles and
+  stay changeable when you start the session; left unset they keep today's behaviour (every enabled
+  server, and no default folder).
 
 ### Changed
 
@@ -71,6 +76,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - changed: the Release workflow now builds its notes from the changelog and rolls `[Unreleased]` into
   the tagged version after a successful release, instead of publishing only the auto-generated commit
   list.
+- changed: the New-session folder quick-pick is easier to keep tidy — each remembered folder has a ✕ to
+  forget it, a divider separates your pinned favourites from the recent folders, and the recents list is
+  capped at the five most recent (favourites stay unlimited and unaffected).
 
 ### Fixed
 

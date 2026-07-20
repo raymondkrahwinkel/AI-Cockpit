@@ -92,4 +92,31 @@ public class WorkingPathHistoryTests
         history.Favorites.Should().Equal(@"C:\fav");
         history.Recent.Should().Equal(@"C:\other");
     }
+
+    [Fact]
+    public void MaxRecent_IsFive_SeparateFromTheUncappedFavorites()
+        => WorkingPathHistory.MaxRecent.Should().Be(5);
+
+    [Fact]
+    public void WithoutPath_RemovesFromBothRecentAndFavorites()
+    {
+        // A path can sit in both lists (a pinned favorite that was also just used); the ✕ forgets it wherever it is,
+        // case- and trailing-separator-insensitively like the rest of the history.
+        var history = new WorkingPathHistory([@"C:\proj", @"C:\other"], [@"C:\proj"])
+            .WithoutPath(@"c:\proj\");
+
+        history.Recent.Should().Equal(@"C:\other");
+        history.Favorites.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void WithoutPath_IgnoresBlankPaths(string? path)
+    {
+        var history = new WorkingPathHistory([@"C:\a"], [@"C:\fav"]);
+
+        history.WithoutPath(path).Should().BeEquivalentTo(history);
+    }
 }

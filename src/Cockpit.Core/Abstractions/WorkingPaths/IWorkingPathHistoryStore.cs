@@ -17,4 +17,7 @@ public interface IWorkingPathHistoryStore
 
     /// <summary>Pins or unpins <paramref name="path"/> as a favorite and saves. Returns the updated history.</summary>
     Task<WorkingPathHistory> SetFavoriteAsync(string path, bool favorite, CancellationToken cancellationToken = default);
+
+    /// <summary>Forgets <paramref name="path"/> entirely — removed from both the recent and favorite lists (AC-131) — and saves. Returns the updated history.</summary>
+    Task<WorkingPathHistory> RemoveAsync(string path, CancellationToken cancellationToken = default);
 }

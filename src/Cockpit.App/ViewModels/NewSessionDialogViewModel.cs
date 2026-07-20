@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -48,6 +49,23 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
     private CancellationTokenSource? _launchOptionsRefreshCts;
     private CancellationTokenSource? _repoDetectCts;
+
+    /// <summary>
+    /// Whether the operator has set the working directory themselves (typed, browsed, cloned, resumed, or prefilled) —
+    /// after which a profile's default folder no longer replaces it (AC-130). Sticky defaults: switching profiles keeps
+    /// filling the folder from the new profile's default until the operator touches it, then their choice stands, so a
+    /// profile re-select (including the Manage-profiles round-trip that reloads the dialog) never silently wipes it.
+    /// </summary>
+    private bool _workingDirectoryTouched;
+
+    /// <summary>Set while a profile's default folder is being applied, so that programmatic set is not mistaken for the operator touching the field.</summary>
+    private bool _applyingProfileWorkingDirectory;
+
+    /// <summary>Whether the operator has changed the MCP checklist themselves — after which a profile switch no longer re-applies the profile's pre-selection over their ticks (AC-130).</summary>
+    private bool _mcpSelectionTouched;
+
+    /// <summary>Set while a profile's MCP pre-selection is being applied, so re-ticking the checklist is not mistaken for the operator toggling it.</summary>
+    private bool _applyingMcpSelection;
 
     /// <summary>
     /// Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
@@ -451,16 +469,65 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             McpServers.Clear();
             foreach (var server in registry.Where(server => server.Enabled))
             {
-                McpServers.Add(new McpServerSelectionItemViewModel(server.Name));
+                var item = new McpServerSelectionItemViewModel(server.Name);
+                item.PropertyChanged += _OnMcpServerToggled;
+                McpServers.Add(item);
             }
 
             OnPropertyChanged(nameof(HasMcpServers));
+
+            // The selected profile was set above, before this list existed, so its pre-selection (AC-130) could not
+            // apply yet — apply it now the checklist is populated, unless the operator has already edited it. On a
+            // later profile switch OnSelectedProfileChanged does the same against the already-built list.
+            if (!_mcpSelectionTouched)
+            {
+                _ApplyProfileMcpSelection();
+            }
         }
 
         if (_workingPathStore is not null)
         {
             _history = await _workingPathStore.LoadAsync();
             _RefreshRememberedPaths();
+        }
+    }
+
+    // Ticks the MCP checklist to match the selected profile's saved pre-selection (AC-130): a null restriction ticks
+    // every server (the pre-AC-130 default), a non-null set ticks exactly the servers it names. A no-op until the
+    // checklist has been populated (LoadAsync), which then re-applies it for the profile selected during the load.
+    private void _ApplyProfileMcpSelection()
+    {
+        if (McpServers.Count == 0)
+        {
+            return;
+        }
+
+        var restriction = SelectedProfile?.EnabledMcpServerNames is { } names
+            ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        // Guard so the re-ticking below does not trip the toggle handler into marking the checklist operator-touched.
+        _applyingMcpSelection = true;
+        try
+        {
+            foreach (var server in McpServers)
+            {
+                server.IsEnabledForSession = restriction?.Contains(server.Name) ?? true;
+            }
+        }
+        finally
+        {
+            _applyingMcpSelection = false;
+        }
+    }
+
+    // A tick the operator made themselves (not our own re-apply) makes the checklist sticky, so a later profile switch
+    // no longer re-applies the profile's pre-selection over their choice (AC-130 review finding 2).
+    private void _OnMcpServerToggled(object? sender, PropertyChangedEventArgs e)
+    {
+        if (!_applyingMcpSelection && e.PropertyName == nameof(McpServerSelectionItemViewModel.IsEnabledForSession))
+        {
+            _mcpSelectionTouched = true;
         }
     }
 
@@ -479,7 +546,15 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             RememberedPaths.Add(new RememberedPathOption(path, IsFavorite: true));
         }
 
-        foreach (var path in _history.Recent.Where(path => !_history.IsFavorite(path)))
+        // Recents that aren't already pinned above. A ruler (AC-131) separates the two groups, but only when both
+        // exist — no leading/trailing/lonely divider when one side is empty.
+        var recents = _history.Recent.Where(path => !_history.IsFavorite(path)).ToList();
+        if (_history.Favorites.Count > 0 && recents.Count > 0)
+        {
+            RememberedPaths.Add(new RememberedPathOption(string.Empty, IsFavorite: false, IsSeparator: true));
+        }
+
+        foreach (var path in recents)
         {
             RememberedPaths.Add(new RememberedPathOption(path, IsFavorite: false));
         }
@@ -491,6 +566,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     partial void OnWorkingDirectoryChanged(string value)
     {
+        // Any change that is not us applying a profile's default folder is the operator's own — from here on their
+        // folder is sticky and a profile switch won't overwrite it (AC-130 review finding 1).
+        if (!_applyingProfileWorkingDirectory)
+        {
+            _workingDirectoryTouched = true;
+        }
+
         OnPropertyChanged(nameof(IsWorkingDirectoryFavorite));
         OnPropertyChanged(nameof(FavoriteToggleGlyph));
         OnPropertyChanged(nameof(CanFavoriteWorkingDirectory));
@@ -501,6 +583,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     {
         if (value is null)
         {
+            return;
+        }
+
+        // The ruler between favorites and recents (AC-131) is not a folder — its container is disabled so this is
+        // rarely reached, but guard anyway: clear the selection and do nothing rather than blank the folder field.
+        if (value.IsSeparator)
+        {
+            Dispatcher.UIThread.Post(() => SelectedRememberedPath = null);
             return;
         }
 
@@ -525,6 +615,23 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Clears the working directory back to the global default for this session.</summary>
     [RelayCommand]
     private void ClearWorkingDirectory() => WorkingDirectory = string.Empty;
+
+    /// <summary>
+    /// Forgets a remembered folder from the quick-pick (AC-131): removes it from the recent and favorite lists,
+    /// persists, and rebuilds the list. The ✕ button that invokes this handles its own pointer press, so the row is
+    /// never selected (and the folder field never filled) by the same click. Ignores the clone action / separator.
+    /// </summary>
+    [RelayCommand]
+    private async Task RemoveRememberedPathAsync(RememberedPathOption? option)
+    {
+        if (option is not { IsRemovable: true } || _workingPathStore is null)
+        {
+            return;
+        }
+
+        _history = await _workingPathStore.RemoveAsync(option.Path);
+        _RefreshRememberedPaths();
+    }
 
     /// <summary>Pins or unpins the current working directory as a favorite, persisting immediately.</summary>
     [RelayCommand]
@@ -584,6 +691,28 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         SelectedPermissionMode = SessionOptionCatalog.DefaultPermissionMode;
         SelectedClaudeModel = SessionOptionCatalog.DefaultModel.Value;
         SelectedEffort = SessionOptionCatalog.DefaultEffort;
+
+        // Pre-fill the folder and the MCP checklist from the profile's saved defaults (AC-130), so a per-project
+        // profile lands in its folder with its servers ticked. Sticky: this keeps applying the newly-selected
+        // profile's defaults until the operator sets the folder / edits the checklist themselves, after which their
+        // choice stands and a profile re-select (or the Manage-profiles reload) no longer overwrites it.
+        if (!_workingDirectoryTouched)
+        {
+            _applyingProfileWorkingDirectory = true;
+            try
+            {
+                WorkingDirectory = value?.DefaultWorkingDirectory ?? string.Empty;
+            }
+            finally
+            {
+                _applyingProfileWorkingDirectory = false;
+            }
+        }
+
+        if (!_mcpSelectionTouched)
+        {
+            _ApplyProfileMcpSelection();
+        }
 
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ShowLoginHint));
@@ -842,9 +971,17 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 /// One entry in the New-session dialog's working-directory quick-pick: the remembered <see cref="Path"/> and whether
 /// it is a pinned favorite (shown with a star icon, and listed first). <see cref="IsCloneAction"/> marks the special
 /// "Clone from a Git URL…" entry (AC-90) rather than a folder — selecting it opens the clone flow instead of filling
-/// the folder field.
+/// the folder field. <see cref="IsSeparator"/> marks the non-selectable ruler between the favorites and the recents
+/// (AC-131). A real folder row (neither action nor separator) carries a ✕ to forget it.
 /// </summary>
-public sealed record RememberedPathOption(string Path, bool IsFavorite, bool IsCloneAction = false);
+public sealed record RememberedPathOption(string Path, bool IsFavorite, bool IsCloneAction = false, bool IsSeparator = false)
+{
+    /// <summary>Whether picking this entry does something — a folder or the clone action. The separator is inert, so its container is disabled and it never fills the field.</summary>
+    public bool IsSelectable => !IsSeparator;
+
+    /// <summary>Whether this entry can be forgotten via the ✕ — a real remembered folder, not the clone action or the separator (AC-131).</summary>
+    public bool IsRemovable => !IsCloneAction && !IsSeparator;
+}
 
 /// <summary>
 /// One start default a plugin TTY provider declared (<c>PluginTtyLaunchOption</c>) — <see cref="Key"/>/

@@ -60,6 +60,40 @@ public partial class ManageProfilesDialog : Window
         }
     }
 
+    // The profile's default working directory (AC-130) — same folder picker as the config directory, pre-seeded
+    // with the current value so re-browsing opens where it points. A failed/cancelled pick keeps the current value.
+    private async void OnBrowseWorkingDirectory(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ManageProfilesDialogViewModel { SelectedProfile: { } profile })
+        {
+            return;
+        }
+
+        try
+        {
+            var start = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory)
+                ? null
+                : await StorageProvider.TryGetFolderFromPathAsync(profile.DefaultWorkingDirectory);
+
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select the profile's default working directory",
+                AllowMultiple = false,
+                SuggestedStartLocation = start,
+            });
+
+            var path = folders.FirstOrDefault()?.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                profile.DefaultWorkingDirectory = path;
+            }
+        }
+        catch
+        {
+            // Picker unavailable/failed — keep the current value.
+        }
+    }
+
     private async void OnBrowseExecutable(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not ManageProfilesDialogViewModel { SelectedProfile: { } profile })

@@ -196,7 +196,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     private async Task ShowManageProfilesAsync(Window owner)
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry);
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog);
         await viewModel.LoadAsync();
 
         var dialog = new ManageProfilesDialog { DataContext = viewModel };

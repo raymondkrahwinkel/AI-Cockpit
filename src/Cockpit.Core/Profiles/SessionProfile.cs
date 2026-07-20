@@ -37,6 +37,24 @@ public sealed record SessionProfile(
     /// </summary>
     public IReadOnlyList<ProfileEnvironmentVariable>? EnvironmentVariables { get; init; }
 
+    /// <summary>
+    /// The MCP servers a New session under this profile pre-selects (AC-130): the checklist opens with exactly
+    /// these ticked instead of all-ticked, so a project profile need not re-toggle them every time.
+    /// <see langword="null"/> — the default, and what every earlier profile has — means no restriction: every
+    /// enabled server is ticked, including ones added to the registry later. A non-null list (even empty) is an
+    /// explicit selection; a name it lists that is no longer in the catalog is simply not shown. Names match a
+    /// server's <c>McpServerConfig.Name</c>. The operator can still tick/untick individual servers per session.
+    /// </summary>
+    public IReadOnlyList<string>? EnabledMcpServerNames { get; init; }
+
+    /// <summary>
+    /// The working directory a New session under this profile pre-fills (AC-130), so a per-project profile lands
+    /// in its project folder without picking one each time. <see langword="null"/>/blank means no default — the
+    /// folder field opens empty and falls back to the global default, as before. Pre-filled but still editable in
+    /// the dialog, and superseded by an explicit prefill (a resumed conversation's own folder).
+    /// </summary>
+    public string? DefaultWorkingDirectory { get; init; }
+
     /// <summary>Which backend drives this profile.</summary>
     public SessionProvider Provider => ProviderConfig.Provider;
 

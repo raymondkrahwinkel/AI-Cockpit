@@ -44,6 +44,12 @@ internal sealed class SessionProfileEntry
     /// <summary>The profile's spawn environment variables (AC-22); absent means none.</summary>
     public List<ProfileEnvironmentVariableEntry>? EnvironmentVariables { get; set; }
 
+    /// <summary>The MCP servers a New session under this profile pre-selects (AC-130); absent means no restriction (all enabled servers). An explicit list — even empty — is the operator's chosen set.</summary>
+    public List<string>? EnabledMcpServers { get; set; }
+
+    /// <summary>The working directory a New session under this profile pre-fills (AC-130); absent/blank means no default.</summary>
+    public string? DefaultWorkingDirectory { get; set; }
+
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
@@ -61,6 +67,10 @@ internal sealed class SessionProfileEntry
         EnvironmentVariables = profile.EnvironmentVariables is { Count: > 0 } variables
             ? [.. variables.Select(ProfileEnvironmentVariableEntry.FromDomain)]
             : null,
+        // A null restriction stays null (no section written); an explicit selection is persisted verbatim, empty
+        // list included — "these none" is a real choice, distinct from "no restriction".
+        EnabledMcpServers = profile.EnabledMcpServerNames is { } names ? [.. names] : null,
+        DefaultWorkingDirectory = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory) ? null : profile.DefaultWorkingDirectory,
     };
 
     public SessionProfile ToDomain()
@@ -81,6 +91,8 @@ internal sealed class SessionProfileEntry
             EnvironmentVariables = EnvironmentVariables is { Count: > 0 }
                 ? [.. EnvironmentVariables.Select(entry => entry.ToDomain())]
                 : null,
+            EnabledMcpServerNames = EnabledMcpServers is { } names ? [.. names] : null,
+            DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory,
         };
     }
 }

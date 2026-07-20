@@ -3,9 +3,11 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
+using Cockpit.Core.WorkingPaths;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
 using Cockpit.Plugins.Abstractions.Sessions;
@@ -688,6 +690,215 @@ public class NewSessionDialogViewModelTests
 
         vm.ResumeSessionId.Should().Be("sess-42");
         vm.WorkingDirectory.Should().Be("/somewhere/else");
+    }
+
+    // --- AC-130: per-profile default working directory + MCP pre-selection ---
+
+    [Fact]
+    public async Task SelectingProfile_WithADefaultWorkingDirectory_PreFillsTheFolder()
+    {
+        var profile = new SessionProfile("app", new ClaudeConfig("/home/r/.claude"))
+        {
+            DefaultWorkingDirectory = "/home/r/RiderProjects/App",
+        };
+        var vm = NewVm(out _, profile);
+
+        await vm.LoadAsync();
+
+        vm.WorkingDirectory.Should().Be("/home/r/RiderProjects/App");
+    }
+
+    [Fact]
+    public async Task SwitchingToAProfileWithoutADefaultFolder_ClearsThePreviousProfilesFolder()
+    {
+        var withFolder = new SessionProfile("app", new ClaudeConfig("/home/r/.claude")) { DefaultWorkingDirectory = "/home/r/App" };
+        var withoutFolder = new SessionProfile("plain", new ClaudeConfig("/home/r/.claude"));
+        var vm = NewVm(out _, withFolder, withoutFolder);
+        await vm.LoadAsync();
+        vm.WorkingDirectory.Should().Be("/home/r/App");
+
+        vm.SelectedProfile = withoutFolder;
+
+        vm.WorkingDirectory.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SwitchingProfiles_BeforeTheOperatorTouchesTheFolder_AppliesEachProfilesDefault()
+    {
+        var a = new SessionProfile("a", new ClaudeConfig("/home/r/.claude")) { DefaultWorkingDirectory = "/home/r/A" };
+        var b = new SessionProfile("b", new ClaudeConfig("/home/r/.claude")) { DefaultWorkingDirectory = "/home/r/B" };
+        var vm = NewVm(out _, a, b);
+        await vm.LoadAsync();
+        vm.WorkingDirectory.Should().Be("/home/r/A");
+
+        vm.SelectedProfile = b;
+
+        vm.WorkingDirectory.Should().Be("/home/r/B");
+    }
+
+    [Fact]
+    public async Task SwitchingProfiles_AfterTheOperatorSetAFolder_KeepsTheirFolder()
+    {
+        // Review finding 1: a profile switch must not silently discard a folder the operator chose. Once touched, the
+        // folder is sticky — the same guarantee that protects it across the Manage-profiles reload.
+        var a = new SessionProfile("a", new ClaudeConfig("/home/r/.claude")) { DefaultWorkingDirectory = "/home/r/A" };
+        var b = new SessionProfile("b", new ClaudeConfig("/home/r/.claude")) { DefaultWorkingDirectory = "/home/r/B" };
+        var vm = NewVm(out _, a, b);
+        await vm.LoadAsync();
+        vm.WorkingDirectory = "/home/r/chosen-by-hand";
+
+        vm.SelectedProfile = b;
+
+        vm.WorkingDirectory.Should().Be("/home/r/chosen-by-hand");
+    }
+
+    [Fact]
+    public async Task ReloadingAfterManagingProfiles_KeepsAFolderTheOperatorChose()
+    {
+        // The exact confirmed scenario: type a folder, open Manage profiles, return — which re-runs LoadAsync. The
+        // operator's folder must survive that reload rather than reset to the (default-less) first profile's blank.
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude"));
+        var vm = NewVm(out _, profile);
+        await vm.LoadAsync();
+        vm.WorkingDirectory = "/home/r/chosen-by-hand";
+
+        await vm.LoadAsync(); // the Manage-profiles round-trip reload
+
+        vm.WorkingDirectory.Should().Be("/home/r/chosen-by-hand");
+    }
+
+    [Fact]
+    public async Task SwitchingProfiles_AfterTheOperatorUntickedAnMcpServer_KeepsTheirTicks()
+    {
+        // Review finding 2: once the operator edits the checklist, flipping profiles must not re-apply a profile's
+        // pre-selection over their deliberate unticks.
+        var first = new SessionProfile("first", new ClaudeConfig("/home/r/.claude"));
+        var second = new SessionProfile("second", new ClaudeConfig("/home/r/.claude"));
+        var vm = NewVmWithMcp(out _, [first, second],
+            new McpServerConfig { Name = "server-a" },
+            new McpServerConfig { Name = "server-b" });
+        await vm.LoadAsync();
+
+        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession = false;
+        vm.SelectedProfile = second;
+        vm.SelectedProfile = first;
+
+        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithAProfileMcpPreSelection_TicksOnlyTheSelectedServers()
+    {
+        var profile = new SessionProfile("app", new ClaudeConfig("/home/r/.claude"))
+        {
+            EnabledMcpServerNames = ["server-b"],
+        };
+        var vm = NewVmWithMcp(out _, [profile],
+            new McpServerConfig { Name = "server-a" },
+            new McpServerConfig { Name = "server-b" });
+
+        await vm.LoadAsync();
+
+        vm.McpServers.Single(server => server.Name == "server-a").IsEnabledForSession.Should().BeFalse();
+        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SwitchingProfiles_ReAppliesEachProfilesMcpPreSelection()
+    {
+        var restricted = new SessionProfile("restricted", new ClaudeConfig("/home/r/.claude")) { EnabledMcpServerNames = ["server-a"] };
+        var unrestricted = new SessionProfile("open", new ClaudeConfig("/home/r/.claude"));
+        var vm = NewVmWithMcp(out _, [restricted, unrestricted],
+            new McpServerConfig { Name = "server-a" },
+            new McpServerConfig { Name = "server-b" });
+        await vm.LoadAsync();
+
+        // The restricted profile is first: only its named server is ticked.
+        vm.McpServers.Single(server => server.Name == "server-b").IsEnabledForSession.Should().BeFalse();
+
+        // Switching to the unrestricted profile re-ticks everything (null = no restriction).
+        vm.SelectedProfile = unrestricted;
+        vm.McpServers.Should().OnlyContain(server => server.IsEnabledForSession);
+    }
+
+    // --- AC-131: managing the remembered-folders quick-pick ---
+
+    [Fact]
+    public async Task RememberedPaths_WithBothFavoritesAndRecents_HasASeparatorBetweenThem()
+    {
+        var vm = NewVmWithWorkingPaths(new WorkingPathHistory([@"C:\recent"], [@"C:\fav"]), out _);
+
+        await vm.LoadAsync();
+
+        var favIndex = _IndexOf(vm, o => o.IsFavorite);
+        var sepIndex = _IndexOf(vm, o => o.IsSeparator);
+        var recentIndex = _IndexOf(vm, o => o.Path == @"C:\recent");
+
+        sepIndex.Should().BeGreaterThan(favIndex).And.BeLessThan(recentIndex);
+        vm.RememberedPaths.Single(o => o.IsSeparator).IsSelectable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RememberedPaths_WithOnlyRecents_HasNoSeparator()
+    {
+        var vm = NewVmWithWorkingPaths(new WorkingPathHistory([@"C:\recent"], []), out _);
+
+        await vm.LoadAsync();
+
+        vm.RememberedPaths.Should().NotContain(o => o.IsSeparator);
+    }
+
+    [Fact]
+    public async Task RemoveRememberedPath_ForgetsItThroughTheStoreAndDropsItFromTheList()
+    {
+        var vm = NewVmWithWorkingPaths(new WorkingPathHistory([@"C:\a", @"C:\b"], []), out var store);
+        store.RemoveAsync(@"C:\a", Arg.Any<CancellationToken>()).Returns(new WorkingPathHistory([@"C:\b"], []));
+        await vm.LoadAsync();
+
+        var target = vm.RememberedPaths.Single(o => o.Path == @"C:\a");
+        await vm.RemoveRememberedPathCommand.ExecuteAsync(target);
+
+        await store.Received(1).RemoveAsync(@"C:\a", Arg.Any<CancellationToken>());
+        vm.RememberedPaths.Should().NotContain(o => o.Path == @"C:\a");
+    }
+
+    [Fact]
+    public async Task RemoveRememberedPath_IgnoresTheCloneActionAndSeparator()
+    {
+        var vm = NewVmWithWorkingPaths(new WorkingPathHistory([@"C:\recent"], [@"C:\fav"]), out var store);
+        await vm.LoadAsync();
+
+        await vm.RemoveRememberedPathCommand.ExecuteAsync(vm.RememberedPaths.Single(o => o.IsCloneAction));
+        await vm.RemoveRememberedPathCommand.ExecuteAsync(vm.RememberedPaths.Single(o => o.IsSeparator));
+
+        await store.DidNotReceive().RemoveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    private static int _IndexOf(NewSessionDialogViewModel vm, Func<RememberedPathOption, bool> predicate)
+    {
+        for (var i = 0; i < vm.RememberedPaths.Count; i++)
+        {
+            if (predicate(vm.RememberedPaths[i]))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static NewSessionDialogViewModel NewVmWithWorkingPaths(WorkingPathHistory history, out IWorkingPathHistoryStore workingPathStore)
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
+        var store = Substitute.For<ISessionProfileStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new List<SessionProfile> { profile });
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
+        loginChecker.IsLoggedIn(profile).Returns(true);
+
+        workingPathStore = Substitute.For<IWorkingPathHistoryStore>();
+        workingPathStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(history);
+
+        return new NewSessionDialogViewModel(store, loginChecker, mcpServerCatalog: null, workingPathStore: workingPathStore);
     }
 
     private static SessionProviderRegistration _SessionRegistration(
