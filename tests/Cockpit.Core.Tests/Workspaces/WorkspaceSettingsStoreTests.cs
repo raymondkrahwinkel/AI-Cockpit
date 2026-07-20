@@ -122,15 +122,52 @@ public class WorkspaceSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_AnUnknownWorkspaceType_FallsBackToSessionsRatherThanThrowing()
+    public async Task LoadAsync_AnUnknownWorkspaceType_KeepsItsIdSoThePluginWorkspaceReturnsWhenItsPluginLoads()
     {
+        // A type the host does not know is a plugin type whose plugin is not installed yet: it is kept, not
+        // rewritten to a host type, so the workspace comes back intact once the plugin registers. Its grid panes
+        // are dropped — a plugin workspace holds none — rather than the load throwing.
         await File.WriteAllTextAsync(_configPath, """
-            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[{"Id":"w1","Name":"?","Type":"Hologram","Panes":[]}]}}
+            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[{"Id":"w1","Name":"?","Type":"autopilot.run","Panes":[{"Id":"p1","Kind":"AiSession"}]}]}}
+            """);
+
+        var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
+
+        var workspace = loaded.Workspaces.Should().ContainSingle().Which;
+        workspace.Type.Should().Be(new WorkspaceType("autopilot.run"));
+        workspace.Type.IsBuiltIn.Should().BeFalse();
+        workspace.Panes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LoadAsync_ABlankWorkspaceType_FallsBackToSessionsRatherThanThrowing()
+    {
+        // A blank type is corruption, not a plugin id — recovered to the safe host default, the way an
+        // unparseable enum used to be.
+        await File.WriteAllTextAsync(_configPath, """
+            {"Workspaces":{"ActiveWorkspaceId":"w1","Workspaces":[{"Id":"w1","Name":"?","Type":"","Panes":[]}]}}
             """);
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
         loaded.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Sessions);
+    }
+
+    [Fact]
+    public async Task LoadAsync_APluginWorkspaceType_RoundTripsThroughSaveAndLoad()
+    {
+        // The plugin type id must survive a save/load unchanged (it is an API surface), the way a widget id does.
+        var store = new WorkspaceSettingsStore(_configPath);
+        var settings = new WorkspaceSettings
+        {
+            Workspaces = [new Workspace("w1", "Autopilot", new WorkspaceType("autopilot.run"))],
+            ActiveWorkspaceId = "w1",
+        };
+
+        await store.SaveAsync(settings);
+        var loaded = await store.LoadAsync();
+
+        loaded.Workspaces.Should().ContainSingle().Which.Type.Id.Should().Be("autopilot.run");
     }
 
     [Fact]

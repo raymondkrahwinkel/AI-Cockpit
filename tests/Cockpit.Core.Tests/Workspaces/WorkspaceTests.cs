@@ -10,16 +10,62 @@ namespace Cockpit.Core.Tests.Workspaces;
 /// </summary>
 public class WorkspaceTests
 {
+    /// <summary>The two host types crossed with every pane kind — passed via <see cref="TheoryData{T1,T2,T3}"/> because <see cref="WorkspaceType"/> is a value, not an enum constant an attribute can carry.</summary>
+    public static TheoryData<WorkspaceType, PaneKind, bool> AcceptsCases => new()
+    {
+        { WorkspaceType.Sessions, PaneKind.AiSession, true },
+        { WorkspaceType.Sessions, PaneKind.Terminal, true },
+        { WorkspaceType.Sessions, PaneKind.Widget, false },
+        { WorkspaceType.Dashboard, PaneKind.Widget, true },
+        { WorkspaceType.Dashboard, PaneKind.AiSession, false },
+        { WorkspaceType.Dashboard, PaneKind.Terminal, false },
+    };
+
     [Theory]
-    [InlineData(WorkspaceType.Sessions, PaneKind.AiSession, true)]
-    [InlineData(WorkspaceType.Sessions, PaneKind.Terminal, true)]
-    [InlineData(WorkspaceType.Sessions, PaneKind.Widget, false)]
-    [InlineData(WorkspaceType.Dashboard, PaneKind.Widget, true)]
-    [InlineData(WorkspaceType.Dashboard, PaneKind.AiSession, false)]
-    [InlineData(WorkspaceType.Dashboard, PaneKind.Terminal, false)]
+    [MemberData(nameof(AcceptsCases))]
     public void Accepts_MatchesTheTypedWorkspaceRule(WorkspaceType type, PaneKind kind, bool expected)
     {
         WorkspaceTypeRules.Accepts(type, kind).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Accepts_APluginType_HoldsNoGridPanes()
+    {
+        var pluginType = new WorkspaceType("autopilot.run");
+
+        WorkspaceTypeRules.Accepts(pluginType, PaneKind.AiSession).Should().BeFalse();
+        WorkspaceTypeRules.Accepts(pluginType, PaneKind.Widget).Should().BeFalse();
+        WorkspaceTypeRules.Accepts(pluginType, PaneKind.Terminal).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("Sessions")]
+    [InlineData("sessions")]
+    [InlineData("SESSIONS")]
+    public void FromId_AHostTypeName_ResolvesToTheHostTypeCaseInsensitively(string id)
+    {
+        var type = WorkspaceType.FromId(id);
+
+        type.Should().Be(WorkspaceType.Sessions);
+        type.IsBuiltIn.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void FromId_ABlankId_FallsBackToSessions(string? id)
+    {
+        WorkspaceType.FromId(id).Should().Be(WorkspaceType.Sessions);
+    }
+
+    [Fact]
+    public void FromId_APluginId_IsKeptVerbatimAsANonBuiltInType()
+    {
+        var type = WorkspaceType.FromId("autopilot.run");
+
+        type.Id.Should().Be("autopilot.run");
+        type.IsBuiltIn.Should().BeFalse();
     }
 
     [Fact]

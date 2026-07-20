@@ -9,14 +9,22 @@ namespace Cockpit.App.ViewModels;
 /// selection changes — but it carries its own inline-rename state, the same way a session row does, since a
 /// rename lives and dies inside the tab rather than in a dialog.
 /// </summary>
-public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isActive) : ObservableObject
+public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isActive, MaterialIconKind? icon = null) : ObservableObject
 {
     public string Id => workspace.Id;
 
     public bool IsActive => isActive;
 
-    /// <summary>The icon that tells the two workspace kinds apart at a glance in the strip.</summary>
-    public MaterialIconKind Icon => workspace.Type == WorkspaceType.Dashboard ? MaterialIconKind.ViewDashboardOutline : MaterialIconKind.ChatOutline;
+    /// <summary>
+    /// The icon that tells the workspace kinds apart at a glance in the strip: a plugin type's own registered icon
+    /// when it has one, else the host icon for a Sessions/Dashboard workspace, and a neutral plugin mark for a
+    /// plugin type that registered no vector icon.
+    /// </summary>
+    public MaterialIconKind Icon =>
+        icon
+        ?? (workspace.Type == WorkspaceType.Dashboard ? MaterialIconKind.ViewDashboardOutline
+            : workspace.Type == WorkspaceType.Sessions ? MaterialIconKind.ChatOutline
+            : MaterialIconKind.PuzzleOutline);
 
     /// <summary>The tab's label. Set on commit so the strip updates before the rebuilt tabs arrive from the store.</summary>
     [ObservableProperty]

@@ -38,6 +38,15 @@ The **widget SDK contract**, mirroring the conversation-picker point exactly so 
 
 This is the plugin surface Raymond most wanted to see; it changes nothing about today's runtime.
 
+**Since extended (AC-122): a plugin can register its own *workspace type*, not just a widget.** Where a widget
+fills one cell of a Dashboard, `ICockpitHost.AddWorkspaceType(...)` + `WorkspaceTypeRegistration` +
+`IWorkspaceContext` (in `Cockpit.Plugins.Abstractions/Workspaces/`) let a plugin own a whole workspace body — it
+appears in the strip's "+" menu beside Sessions and Dashboard — and even embed a live host session inside it via
+`IWorkspaceContext.EmbedSession(...)` (the host owns the session's lifetime). `WorkspaceType` became an
+extensible value so plugin types sit beside the two host types; an unknown type whose plugin is absent shows a
+placeholder rather than crashing. Full API: [`plugins/PLUGIN-SDK.md`](plugins/PLUGIN-SDK.md#workspace-plugins--a-whole-workspace-surface)
+and [`plugins/API-REFERENCE.md`](plugins/API-REFERENCE.md#void-addworkspacetypeworkspacetyperegistration-registration).
+
 Since then, the **model, persistence and switching** landed too — still additive, still invisible until the views arrive:
 
 - `Cockpit.Core/Workspaces/` — `Workspace`, `WorkspacePane`, `WorkspaceSettings`, `WorkspaceType`, `PaneKind`, `WorkspaceTypeRules`, `DashboardLayout`, `GridCell`, `DashboardGridMath`.

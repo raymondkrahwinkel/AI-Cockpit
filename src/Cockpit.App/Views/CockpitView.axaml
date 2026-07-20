@@ -478,24 +478,30 @@
                     <Button DockPanel.Dock="Right" Classes="Subtle" Padding="8,3" Content="+"
                             ToolTip.Tip="New workspace">
                         <Button.Flyout>
-                            <!-- The type is asked up front and is an invariant afterwards: it decides which
-                                 panes the workspace can hold, so it cannot be a toggle after the fact. -->
-                            <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <MenuItem Header="Sessions" Command="{Binding Workspaces.AddWorkspaceCommand}"
-                                          CommandParameter="{x:Static ws:WorkspaceType.Sessions}"
-                                          ToolTip.Tip="AI sessions and terminals">
-                                    <MenuItem.Icon>
-                                        <materialIcons:MaterialIcon Kind="ChatOutline" Width="14" Height="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="Dashboard" Command="{Binding Workspaces.AddWorkspaceCommand}"
-                                          CommandParameter="{x:Static ws:WorkspaceType.Dashboard}"
-                                          ToolTip.Tip="Widgets">
-                                    <MenuItem.Icon>
-                                        <materialIcons:MaterialIcon Kind="ViewDashboardOutline" Width="14" Height="14"/>
-                                    </MenuItem.Icon>
-                                </MenuItem>
-                            </MenuFlyout>
+                            <!-- A plain Flyout over an ItemsControl of buttons rather than a MenuFlyout with an
+                                 ItemsSource: the latter's containers never materialise (the same shape and reason
+                                 the widget gallery uses), which a plugin-contributed type needs. Host types and
+                                 plugin types share one list and one command; the type is asked up front and is an
+                                 invariant afterwards, since it decides what the workspace can hold. -->
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <ItemsControl ItemsSource="{Binding Workspaces.WorkspaceMenuOptions}" MinWidth="200">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="vm:WorkspaceMenuOption">
+                                            <Button Classes="Subtle" HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left" Padding="8,6"
+                                                    Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).Workspaces.AddWorkspaceOptionCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="{Binding Description}">
+                                                <DockPanel>
+                                                    <materialIcons:MaterialIcon Kind="{Binding Icon}" Width="16" Height="16"
+                                                                                Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                </DockPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Flyout>
                         </Button.Flyout>
                     </Button>
 
@@ -798,6 +804,26 @@
                 <Button Content="+ New session" Command="{Binding NewSessionCommand}"
                         Classes="Accent" HorizontalAlignment="Center"/>
             </StackPanel>
+
+            <!-- Plugin workspace: the plugin owns the whole body (AC-122). Shown instead of the session/widget
+                 grids when a plugin-registered type is active. An unknown type — its plugin is not installed —
+                 shows a placeholder rather than an empty surface, and the body appears the moment the plugin
+                 registers. -->
+            <ContentControl Grid.Row="1"
+                            Content="{Binding Workspaces.ActivePluginBody}"
+                            IsVisible="{Binding Workspaces.ActivePluginBody, Converter={x:Static avconv:ObjectConverters.IsNotNull}}"/>
+            <Border Grid.Row="1" IsVisible="{Binding Workspaces.ShowUnknownPluginWorkspace}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Spacing="8" MaxWidth="360">
+                    <materialIcons:MaterialIcon Kind="PuzzleOutline" Width="28" Height="28"
+                                                HorizontalAlignment="Center" Opacity="0.6"/>
+                    <TextBlock Text="This workspace's plugin is not installed."
+                               HorizontalAlignment="Center" TextAlignment="Center" FontWeight="SemiBold"/>
+                    <TextBlock Text="Install or enable the plugin that provides it, and this workspace comes back."
+                               HorizontalAlignment="Center" TextAlignment="Center" FontSize="12"
+                               Opacity="0.7" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
 
             <!-- Session grid + zoom, shown once at least one session exists and a Sessions workspace is active. -->
             <DockPanel Grid.Row="1" Margin="12" IsVisible="{Binding ShowSessionGrid}">

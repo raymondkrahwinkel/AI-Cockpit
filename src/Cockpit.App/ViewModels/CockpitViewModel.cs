@@ -22,6 +22,7 @@ using Cockpit.Core.Abstractions.Debugging;
 using Cockpit.Core.Abstractions.Layout;
 using Cockpit.Core.Abstractions.Notifications;
 using Cockpit.Core.Abstractions.Plugins;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Secrets;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.Sessions;
@@ -54,6 +55,7 @@ using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Workspaces;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 
@@ -72,12 +74,13 @@ namespace Cockpit.App.ViewModels;
 /// </remarks>
 // Singleton: it is the single root view model behind the window, and the shutdown path resolves it
 // back to dispose the live sessions (bug #32) — that must be the same instance the window holds.
-public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsyncDisposable, IPluginContributionSink
+public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsyncDisposable, IPluginContributionSink, IEmbeddedSessionHost
 {
     private static readonly Core.Audio.AudioFormat AudioFormat = new();
 
     private readonly Func<SessionViewModel>? _sessionFactory;
     private readonly Func<TtyViewModel>? _ttySessionFactory;
+    private readonly ISessionProfileStore? _sessionProfileStore;
     private readonly IWorktreeManager? _worktreeManager;
     private readonly ITerminalAccessRegistry? _terminals;
     private readonly LiveSessionRegistry? _liveSessions;
@@ -260,7 +263,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         var loses = workspace.Type == WorkspaceType.Dashboard
             ? _Count(workspace.Panes.Count, "widget")
-            : _Count(Sessions.Count(session => session.WorkspaceId == workspace.Id), "session");
+            // A plugin workspace's sessions are embedded, so they are not in Sessions — count them too, or the
+            // prompt undercounts what closing the desk is about to stop (an agent left running is the one you most
+            // want the warning for).
+            : _Count(Sessions.Count(session => session.WorkspaceId == workspace.Id) + _EmbeddedSessionCount(workspace.Id), "session");
 
         var message = loses is null
             ? $"Close “{workspace.Name}”?"
@@ -280,6 +286,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static string? _Count(int count, string noun) =>
         count == 0 ? null : count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
+    /// <summary>How many sessions a plugin workspace runs embedded in its body — kept out of <see cref="Sessions"/>, so the close-confirmation counts them here or it undercounts what the workspace is about to stop.</summary>
+    private int _EmbeddedSessionCount(string workspaceId) =>
+        _embeddedSessions.TryGetValue(workspaceId, out var owned) ? owned.Count : 0;
+
     /// <summary>
     /// Closes a workspace and everything running on it (Raymond, 2026-07-15). Its sessions go first, through the
     /// ordinary close path so each is disposed the way it would be on its own — otherwise they keep running with
@@ -295,6 +305,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             return;
         }
+
+        // A plugin workspace's embedded sessions are not in Sessions, so the loop below never sees them — close
+        // them here or their pty and child process would outlive the desk they belonged to (AC-122).
+        CloseForWorkspace(workspaceId);
 
         // Snapshot first: closing a session mutates Sessions, and enumerating a collection you are removing from
         // is how you silently skip half of it.
@@ -533,13 +547,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// arranges panes reads this; nothing writes it.
     /// </summary>
     public bool SingleSessionLayout =>
-        Workspaces?.Active is { Type: WorkspaceType.Sessions, SingleSessionLayout: { } single }
+        Workspaces?.Active is { SingleSessionLayout: { } single } active && active.Type == WorkspaceType.Sessions
             ? single
             : GlobalSingleSessionLayout;
 
     /// <summary>The active workspace's stacking, its own override else Options'. Bound to the grid's <see cref="Controls.SessionTilePanel.StackVertically"/>.</summary>
     public bool StackSessionsVertically =>
-        Workspaces?.Active is { Type: WorkspaceType.Sessions, StackSessionsVertically: { } stack }
+        Workspaces?.Active is { StackSessionsVertically: { } stack } active && active.Type == WorkspaceType.Sessions
             ? stack
             : GlobalStackSessionsVertically;
 
@@ -550,11 +564,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public bool WorkspaceFollowsGlobalLayout
     {
-        get => Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions
+        get => Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions
             || (sessions.SingleSessionLayout is null && sessions.StackSessionsVertically is null);
         set
         {
-            if (Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions || value == WorkspaceFollowsGlobalLayout)
+            if (Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions || value == WorkspaceFollowsGlobalLayout)
             {
                 return;
             }
@@ -573,7 +587,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         get => SingleSessionLayout;
         set
         {
-            if (Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions || value == SingleSessionLayout)
+            if (Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions || value == SingleSessionLayout)
             {
                 return;
             }
@@ -589,7 +603,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         get => StackSessionsVertically;
         set
         {
-            if (Workspaces?.Active is not { Type: WorkspaceType.Sessions } sessions || value == StackSessionsVertically)
+            if (Workspaces?.Active is not { } sessions || sessions.Type != WorkspaceType.Sessions || value == StackSessionsVertically)
             {
                 return;
             }
@@ -2087,7 +2101,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         IScreenLockSettingsStore? screenLockSettingsStore = null,
         ITerminalAccessSwitch? terminalAccessSwitch = null,
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
-        ITerminalAccessRegistry? terminals = null)
+        ITerminalAccessRegistry? terminals = null,
+        ISessionProfileStore? sessionProfileStore = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2158,6 +2173,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             : new PluginManagerViewModel();
         _sessionFactory = sessionFactory;
         _ttySessionFactory = ttySessionFactory;
+        _sessionProfileStore = sessionProfileStore;
         _dialogService = dialogService;
         _captureService = captureService;
         _playbackService = playbackService;
@@ -4390,33 +4406,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // A friendly name from the dialog wins; otherwise fall back to "<profile> - <N>" so the sidebar
         // shows which profile — and therefore which provider — each session runs under.
         session.Title = string.IsNullOrWhiteSpace(name) ? $"{profileLabel} - {_sessionCounter}" : name.Trim();
-        // Start the session on the current transcript-display preference; OnShowTimestampsChanged keeps
-        // it live afterwards (T7).
-        session.ShowTimestamps = ShowTimestamps;
-        // Same for the usage-pill field selection (AC-105); ApplyUsagePillFields keeps it live afterwards.
-        session.UsagePillVisibleFields = ComposeUsagePillFields();
-        // Same for the auto-close-on-exit behaviour (T10); the session raises CloseRequested when an
-        // "exit" turn completes and the cockpit runs its normal close flow.
-        session.AutoCloseOnExit = AutoCloseOnExit;
-        // Seed the combine-queued-messages behaviour (AC-145); OnCombineQueuedMessagesChanged keeps it live
-        // afterwards. SDK/chat sessions only — a TTY session has no local send queue.
-        if (session is SessionViewModel sdkSession)
-        {
-            sdkSession.CombineQueuedMessages = CombineQueuedMessages;
-        }
-        // Seed the diagnostic-controls preference (#73); OnShowDebugControlsChanged keeps it live afterwards.
-        session.ShowDebugControls = ShowDebugControls;
-        // Seed a TTY session with the current global terminal-appearance preference (#40); further
-        // changes reach it live via OnTerminalFontFamilyChanged/OnTerminalFontSizeChanged. No effect on
-        // SDK sessions — the setting is TTY-only.
-        if (session is TtyViewModel tty)
-        {
-            tty.TerminalFontFamily = TerminalFontFamily;
-            tty.TerminalFontSize = TerminalFontSize;
-            // Seed the current stacked-vertically layout (#54); OnStackSessionsVerticallyChanged keeps it
-            // live afterwards, same pattern as the font settings above.
-            tty.IsVerticalLayout = StackSessionsVertically;
-        }
+        _SeedSessionPreferences(session);
 
         session.CloseRequested += OnSessionCloseRequested;
 
@@ -4425,6 +4415,35 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         Sessions.Add(session);
         SelectedSession = session;
+    }
+
+    /// <summary>
+    /// Seeds a freshly built session with the live global preferences it must start on — transcript display (T7),
+    /// usage-pill fields (AC-105), auto-close-on-exit (T10), diagnostic controls (#73), combine-queued-messages
+    /// (AC-145, SDK only), and, for a TTY, terminal appearance (#40) and stacked layout (#54). Each is kept current
+    /// afterwards by its own OnXChanged hook. Shared by the grid path (<see cref="AddSession"/>) and the embedded
+    /// path (<see cref="Embed"/>): the settings a session starts on are the same wherever it is shown.
+    /// </summary>
+    private void _SeedSessionPreferences(SessionPanelViewModel session)
+    {
+        session.ShowTimestamps = ShowTimestamps;
+        session.UsagePillVisibleFields = ComposeUsagePillFields();
+        session.AutoCloseOnExit = AutoCloseOnExit;
+        session.ShowDebugControls = ShowDebugControls;
+
+        // SDK/chat sessions only — a TTY session has no local send queue (AC-145).
+        if (session is SessionViewModel sdkSession)
+        {
+            sdkSession.CombineQueuedMessages = CombineQueuedMessages;
+        }
+
+        // TTY-only appearance; no effect on an SDK session.
+        if (session is TtyViewModel tty)
+        {
+            tty.TerminalFontFamily = TerminalFontFamily;
+            tty.TerminalFontSize = TerminalFontSize;
+            tty.IsVerticalLayout = StackSessionsVertically;
+        }
     }
 
     /// <summary>
@@ -4658,6 +4677,177 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    // --- IEmbeddedSessionHost (AC-122): sessions a plugin workspace runs inside its own full-surface body. ---
+    //
+    // Embedded sessions are deliberately kept out of Sessions. A session there gets a hidden grid container that
+    // would build a rival view over its pty (the TTY-rebuild hazard), plus a place in the sidebar and the
+    // selection cycle, and it is counted where the grid counts sessions. Instead the host holds them here, keyed
+    // by the plugin workspace that owns them, and tears them down when that workspace (or the app) closes.
+    private readonly Dictionary<string, List<SessionPanelViewModel>> _embeddedSessions = new(StringComparer.Ordinal);
+
+    public IEmbeddedSession Embed(string workspaceId, EmbeddedSessionRequest request)
+    {
+        // Null only in a graph with no session machinery (design-time/tests); a real host has both. The registry
+        // yields a null host in that graph, so WorkspaceContext throws before ever reaching this — but guard anyway
+        // rather than trust a caller.
+        if (_sessionFactory is null || _sessionProfileStore is null)
+        {
+            throw new InvalidOperationException("This host cannot embed sessions.");
+        }
+
+        var session = _sessionFactory();
+        // The plugin workspace, not EnsureSessionWorkspace's forced Sessions desk: that would switch focus to a
+        // Sessions tab and put the session where BelongsToActiveWorkspace shows it in the grid.
+        session.WorkspaceId = workspaceId;
+        session.Title = string.IsNullOrWhiteSpace(request.ProfileId) ? "Session" : request.ProfileId;
+        _SeedSessionPreferences(session);
+
+        // Not OnSessionCloseRequested: that routes through CloseSessionAsync, which early-returns for a session that
+        // is not in Sessions — an embedded one never is — and would leave its pty and child process running. Embedded
+        // sessions tear down through their own path.
+        session.CloseRequested += OnEmbeddedSessionCloseRequested;
+        _lastStatus[session] = session.SessionStatus;
+        session.PropertyChanged += OnSessionPropertyChanged;
+
+        if (!_embeddedSessions.TryGetValue(workspaceId, out var owned))
+        {
+            owned = [];
+            _embeddedSessions[workspaceId] = owned;
+        }
+
+        owned.Add(session);
+
+        // ViewLocator resolves SessionViewModel -> SessionView; the plugin body places this one Control. Because the
+        // VM is not in Sessions, no second grid container fights it for the same pty.
+        var view = new ContentControl { Content = session };
+
+        // Start after the view exists. The pane id is stable from construction, so it is safe to hand back now while
+        // the driver launches; a failed start leaves the session showing its own error rather than taking the app down.
+        _ = _StartEmbeddedSessionAsync(session, request);
+
+        return new EmbeddedSession(view, session.PaneId);
+    }
+
+    public void CloseForWorkspace(string workspaceId)
+    {
+        if (!_embeddedSessions.TryGetValue(workspaceId, out var owned))
+        {
+            return;
+        }
+
+        _embeddedSessions.Remove(workspaceId);
+        foreach (var session in owned)
+        {
+            _ = _TeardownEmbeddedSessionAsync(session);
+        }
+    }
+
+    private void OnEmbeddedSessionCloseRequested(object? sender, EventArgs e)
+    {
+        if (sender is not SessionPanelViewModel session)
+        {
+            return;
+        }
+
+        // A self-closing embedded session (an "exit" turn with auto-close on) drops out of its workspace's list here,
+        // so a later CloseForWorkspace does not try to tear down an already-disposed session.
+        foreach (var (workspaceId, owned) in _embeddedSessions)
+        {
+            if (owned.Remove(session))
+            {
+                if (owned.Count == 0)
+                {
+                    _embeddedSessions.Remove(workspaceId);
+                }
+
+                break;
+            }
+        }
+
+        _ = _TeardownEmbeddedSessionAsync(session);
+    }
+
+    private async Task _StartEmbeddedSessionAsync(SessionViewModel session, EmbeddedSessionRequest request)
+    {
+        if (_sessionProfileStore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var profiles = await _sessionProfileStore.LoadAsync();
+
+            // The workspace may have closed (or the app quit) while the profile store was read. A teardown in that
+            // window disposed a session that had no runtime yet — a no-op — so starting it now would spawn a pty and
+            // child process nothing tracks. Bail out if this session is no longer one we own.
+            if (!_IsEmbeddedSessionLive(session))
+            {
+                return;
+            }
+
+            // A profile's identity is its Label (SessionProfile has no id), so the request's ProfileId is matched by
+            // label; a request that names nothing, or names one that is gone, falls back to the first configured
+            // profile so the workspace still starts on a real one.
+            var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, request.ProfileId, StringComparison.OrdinalIgnoreCase))
+                ?? profiles.FirstOrDefault();
+            if (profile is null)
+            {
+                // No profiles configured at all: the session stays in its unstarted state rather than crash.
+                return;
+            }
+
+            // An SDK session on app-default mode/model/effort, with the profile's own start defaults in the generic
+            // OptionDefaults map — the same shape StartSessionForPluginAsync builds.
+            await session.StartConfiguredAsync(
+                profile,
+                SessionOptionCatalog.DefaultPermissionMode,
+                SessionOptionCatalog.DefaultModel,
+                SessionOptionCatalog.DefaultEffort,
+                enabledMcpServerNames: null,
+                workingDirectory: string.IsNullOrWhiteSpace(request.WorkingDirectory) ? null : request.WorkingDirectory,
+                resume: null,
+                launchOptions: profile.Defaults?.OptionDefaults);
+
+            // Closed while the driver was launching: the teardown that ran then disposed a session whose runtime did
+            // not exist yet, so tear it down now that it does — or its pty and child process outlive the workspace.
+            if (!_IsEmbeddedSessionLive(session))
+            {
+                await _TeardownEmbeddedSessionAsync(session);
+            }
+        }
+        catch (Exception)
+        {
+            // A failed embedded start must not take the app down; the session surfaces its own failed state.
+        }
+    }
+
+    /// <summary>Whether <paramref name="session"/> is still an embedded session this host owns — false once its workspace closed and it was torn down, which is how a start racing that teardown knows to stand down.</summary>
+    private bool _IsEmbeddedSessionLive(SessionPanelViewModel session) =>
+        _embeddedSessions.Values.Any(owned => owned.Contains(session));
+
+    private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session)
+    {
+        session.PropertyChanged -= OnSessionPropertyChanged;
+        session.CloseRequested -= OnEmbeddedSessionCloseRequested;
+        _lastStatus.Remove(session);
+        await session.DisposeAsync();
+
+        // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings and the session's worktree.
+        _terminals?.SessionEnded(session.PaneId);
+        if (_worktreeManager is not null && session.WorktreeBranch is not null)
+        {
+            try
+            {
+                await _worktreeManager.ReleaseAsync(session.PaneId);
+            }
+            catch (Exception)
+            {
+                // Left for the startup reconcile, same as the grid close path.
+            }
+        }
+    }
+
     /// <summary>
     /// Close affordance entry point (#11): a busy session flips its sidebar row to an inline Close/Keep
     /// prompt first, so a running turn is never killed on a single click; an idle/waiting/done session
@@ -4714,6 +4904,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             await session.DisposeAsync();
         }
 
+        // Embedded sessions (AC-122) live outside Sessions, so they need disposing here too or their pty outlives
+        // the app.
+        foreach (var session in _embeddedSessions.Values.SelectMany(owned => owned))
+        {
+            session.PropertyChanged -= OnSessionPropertyChanged;
+            session.CloseRequested -= OnEmbeddedSessionCloseRequested;
+            await session.DisposeAsync();
+        }
+
+        _embeddedSessions.Clear();
         Sessions.Clear();
         _lastStatus.Clear();
     }
