@@ -106,6 +106,74 @@
         <Setter Property="MaxWidth" Value="520"/>
     </Style>
 
+    <!-- Sender identity: a small model avatar badge to the left of a reply, so a glance tells you who
+         is speaking (the SDK/Local-LLM chat had no such cue). Subtle by design — panel fill + hairline,
+         the glyph carries the accent. Sized for the per-reply badge; the empty-state reuses it larger. -->
+    <Style Selector="Border.avatarBadge">
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="CornerRadius" Value="7"/>
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="VerticalAlignment" Value="Top"/>
+    </Style>
+
+    <!-- The "who" line above a reply — quiet secondary text, trims rather than pushes the reply down. -->
+    <Style Selector="TextBlock.senderName">
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+
+    <!-- Per-reply action row (copy · read aloud): hidden until the row is hovered or focused, so a
+         resting transcript stays calm and the controls surface where the eye already is (Claude web).
+         Kept in the visual tree (opacity, not collapse) so the layout never jumps as it fades in. -->
+    <Style Selector="StackPanel.rowActions">
+        <Setter Property="Opacity" Value="0"/>
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.12"/>
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Border.transcriptRow:pointerover StackPanel.rowActions">
+        <Setter Property="Opacity" Value="1"/>
+    </Style>
+    <Style Selector="Border.transcriptRow:focus-within StackPanel.rowActions">
+        <Setter Property="Opacity" Value="1"/>
+    </Style>
+
+    <!-- Tool-use / thinking toggles as a quiet chip rather than bare text, so background activity reads
+         as a discrete, secondary object indented under the reply it belongs to. -->
+    <Style Selector="Button.toolChip">
+        <Setter Property="Background" Value="{StaticResource CockpitSecondaryBgBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CockpitHairlineBrush}"/>
+        <Setter Property="BorderThickness" Value="{StaticResource CockpitHairlineThickness}"/>
+        <Setter Property="CornerRadius" Value="{StaticResource CockpitControlRadius}"/>
+        <Setter Property="Padding" Value="8,3"/>
+        <!-- Mono for the command/tool text (e.g. "Bash · dotnet build") so it reads as code, not prose. -->
+        <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="Button.toolChip:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
+    </Style>
+
+    <!-- A slowly pulsing dot, reused by the "still starting" banner and the "Thinking…" indicator so the
+         opacity keyframes live in one place rather than being copied inline at each call site. -->
+    <Style Selector="materialIcons|MaterialIcon.pulse">
+        <Style.Animations>
+            <Animation Duration="0:0:1.1" IterationCount="INFINITE">
+                <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
+                <KeyFrame Cue="50%"><Setter Property="Opacity" Value="1.0"/></KeyFrame>
+                <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
+            </Animation>
+        </Style.Animations>
+    </Style>
+
     <!-- Buttons: flat, hairline border, rounded corners. Accent reserved for primary actions
          via the "Accent" style class (applied explicitly, not globally). -->
     <Style Selector="Button">
@@ -295,12 +363,6 @@
         <Setter Property="FontSize" Value="12.5"/>
     </Style>
 
-    <!-- Tool rows (Bash(cmd…), Edit(…), tool results): mono, dimmed, one-line-feel toggles so they
-         read as quiet, collapsible tool blocks rather than prose. -->
-    <Style Selector="Button.toolRow">
-        <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
-        <Setter Property="FontSize" Value="12"/>
-    </Style>
     <Style Selector=":is(TextBlock).toolBody">
         <Setter Property="FontFamily" Value="{StaticResource CockpitMonoFont}"/>
         <Setter Property="FontSize" Value="12"/>
