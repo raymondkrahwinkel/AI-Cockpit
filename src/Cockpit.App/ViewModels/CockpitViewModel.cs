@@ -2458,6 +2458,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         System.Windows.Input.ICommand? command = action switch
         {
             ShortcutAction.NewSession => NewSessionCommand,
+            ShortcutAction.NewTerminal => NewTerminalCommand,
             ShortcutAction.ManageProfiles => ManageProfilesCommand,
             ShortcutAction.McpServers => OpenMcpServersCommand,
             ShortcutAction.PluginStore => OpenPluginStoreCommand,

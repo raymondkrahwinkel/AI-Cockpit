@@ -21,6 +21,10 @@ public static class ShortcutCatalog
     public static IReadOnlyList<ShortcutDescriptor> All { get; } =
     [
         new(ShortcutAction.NewSession, "New session", "Ctrl+N"),
+        // Unbound by default (palette-only): a terminal is opened far less often than a session, and every free
+        // Ctrl+letter is one the shell wants — so it earns a palette entry beside New session, and an operator who
+        // opens terminals often binds it in Options.
+        new(ShortcutAction.NewTerminal, "New terminal", ""),
         new(ShortcutAction.DuplicateSession, "Duplicate active session", "Ctrl+D"),
         new(ShortcutAction.ManageProfiles, "Manage profiles", "Ctrl+R"),
         new(ShortcutAction.McpServers, "MCP servers", "Ctrl+M"),
