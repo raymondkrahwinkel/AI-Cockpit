@@ -32,7 +32,11 @@ notes() {
       s=0; while (s < n && buf[s]=="") s++;       # trim the leading blank
       for (i=s; i<n; i++) print buf[i]
     }
-  ' "$FILE"
+  ' "$FILE" | sed -E \
+    -e 's/[[:space:]]*\(AC-[0-9]+[^)]*\)//g' \
+    -e 's/ +([.,;:)])/\1/g'
+  # ^ Backstop: a public release note must carry no internal tracker id, even if one slips into the
+  #   changelog. The entries should already be clean (see CONTRIBUTING); this just guarantees it.
 }
 
 # Rename [Unreleased] to [VERSION] - DATE and open a fresh, empty [Unreleased] above it. The entries
