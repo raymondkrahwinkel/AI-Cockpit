@@ -32,6 +32,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: when an agent delegates a task, it can now restrict that one task to a subset of the target
+  profile's MCP servers — so a sub-agent runs with just the tools its job needs. It can only narrow within
+  what the profile already allows, never grant more: asking for a server the profile does not have refuses
+  the delegation outright. The available servers per profile are listed alongside the profiles, so the choice
+  is an informed one.
 - added: plugins can provide a whole workspace of their own — not just a widget in the dashboard grid,
   but the entire surface, drawn and driven by the plugin, picked from the workspace "+" menu beside
   Sessions and Dashboard. Such a workspace can embed a live session inside its own layout; and if the

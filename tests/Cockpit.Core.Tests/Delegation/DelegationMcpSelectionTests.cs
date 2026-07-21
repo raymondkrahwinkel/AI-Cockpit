@@ -109,6 +109,54 @@ public class DelegationMcpSelectionTests
         servers.Should().BeEquivalentTo("filesystem");
     }
 
+    [Fact]
+    public async Task APerTaskSelection_NarrowsWithinTheProfileSelection()
+    {
+        // AC-136: the per-task layer intersects on top of the profile selection — the effective set is what the
+        // task asked for, bounded by what the profile allows.
+        var service = _ServiceWithRegistry(_Enabled("filesystem"), _Enabled("youtrack"), _Enabled("git"));
+
+        var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem", "youtrack"]), ["filesystem"]);
+
+        servers.Should().BeEquivalentTo("filesystem");
+    }
+
+    [Fact]
+    public async Task APerTaskSelection_CannotWidenPastWhatIsAllowed()
+    {
+        // A per-task name the profile selection excludes is dropped by the intersection — the pure layer can only
+        // narrow. (DelegateAsync additionally refuses such an escalation up front; see DelegationPerTaskMcpTests.)
+        var service = _ServiceWithRegistry(_Enabled("filesystem"), _Enabled("git"));
+
+        var servers = await service._ToolsForAsync(_Profile(selection: ["filesystem"]), ["filesystem", "git"]);
+
+        servers.Should().BeEquivalentTo("filesystem");
+    }
+
+    [Fact]
+    public async Task APerTaskSelectionOfTheOrchestrator_IsStillDroppedWithoutMayDelegateFurther()
+    {
+        // The recursion guard applies to the per-task layer too: even naming the orchestrator per task cannot get
+        // it past the !MayDelegateFurther removal.
+        var service = _ServiceWithRegistry(_Enabled("filesystem"), _Enabled(Orchestrator));
+
+        var servers = await service._ToolsForAsync(
+            _Profile(selection: ["filesystem", Orchestrator]), [Orchestrator, "filesystem"]);
+
+        servers.Should().BeEquivalentTo("filesystem");
+    }
+
+    [Fact]
+    public async Task APerTaskSelectionOfTheOrchestrator_IsKeptWithMayDelegateFurther()
+    {
+        var service = _ServiceWithRegistry(_Enabled("filesystem"), _Enabled(Orchestrator));
+
+        var servers = await service._ToolsForAsync(
+            _Profile(selection: ["filesystem", Orchestrator], mayDelegateFurther: true), [Orchestrator]);
+
+        servers.Should().BeEquivalentTo(Orchestrator);
+    }
+
     private static McpServerConfig _Enabled(string name) => new() { Name = name, Enabled = true };
 
     private static McpServerConfig _Disabled(string name) => new() { Name = name, Enabled = false };
