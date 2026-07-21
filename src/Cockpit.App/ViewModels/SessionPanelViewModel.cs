@@ -672,6 +672,22 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     }
 
     /// <summary>
+    /// Injects text into this session's input surface and submits it — what a self-driving embedded run (AC-152) uses
+    /// to hand its agent a work brief without a human turn, unlike <see cref="InjectText"/> which only places the text
+    /// for the operator to send. A blank text does nothing.
+    /// </summary>
+    public void InjectAndSubmit(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        OnVoiceTextReady(text);
+        OnVoiceSubmitRequested();
+    }
+
+    /// <summary>
     /// Injects an open-mic transcript into this session and submits it when <see cref="AutoSubmitAfterVoice"/>
     /// is on — the finished-transcript half of <see cref="EndVoiceHoldAsync"/>, for the hands-free open-mic
     /// path that produces text without a hold.

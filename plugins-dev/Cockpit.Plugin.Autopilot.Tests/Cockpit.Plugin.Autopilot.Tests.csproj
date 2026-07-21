@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the Autopilot plugin: the AC-149 settings model (global round-trip, per-project override
+       resolution, the change signal) and the AC-150 trigger (run parsing, the run controller, and the "start"
+       intent wiring through a substituted host). Kept outside Cockpit.slnx like the other plugin test projects. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Substituting ICockpitHost and loading the plugin pull in their Avalonia- and DI-typed members, which the
+         plugin itself references compile-only (ExcludeAssets=runtime, host-provided). The test host has no host to
+         provide them, so it carries the runtime copies — the same way the other host-faking plugin test projects do. -->
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.5" />
+    <!-- The screenshot render (AutopilotScreenshotTests) captures real pixels, which needs a drawing backend; the
+         text-only render tests do not, but the headless platform is process-global so the whole collection shares it. -->
+    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="3.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cockpit.Plugin.Autopilot\Cockpit.Plugin.Autopilot.csproj" />
+    <!-- Test-only reference to the host app, purely so the render tests resolve the real Cockpit theme (its brushes
+         and fonts live in avares://Cockpit.App). This does NOT reverse the plugin's isolation: the shipped app still
+         does not reference the plugin's types (ReferenceOutputAssembly=false); only this test project reaches for the
+         app, and only to render the plugin's own workspace body the way an operator would actually see it. -->
+    <ProjectReference Include="..\..\src\Cockpit.App\Cockpit.App.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -18,4 +18,12 @@ public interface IEmbeddedSession
     /// (set its statusline, send it an intent, name it) through <see cref="ICockpitHost"/>.
     /// </summary>
     string PaneId { get; }
+
+    /// <summary>
+    /// Ends this one embedded session now — tears down its runtime and releases its worktree — without waiting for
+    /// the workspace to close. What a body calls when it replaces one run's session with another's on the same
+    /// surface, so the previous run's session and worktree are not left orphaned. Closing the workspace still ends
+    /// any session left embedded; this is the finer-grained handle.
+    /// </summary>
+    Task CloseAsync();
 }

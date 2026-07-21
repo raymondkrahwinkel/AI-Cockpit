@@ -32,6 +32,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: Autopilot — start a tracker issue (YouTrack or GitHub Issues) straight toward a merge-ready
+  pull request. From an issue you kick off a visible, self-driving agent session in its own isolated
+  worktree; it works the item behind a quality gate — visual verify, code review, security review and a
+  conventions check — and only reports merge-ready once the hard gates pass. It posts progress and
+  questions back as issue comments and moves the issue's stage as it goes; when it hits a decision only
+  you can make it asks and waits for your reply. You approve the run before it starts, and you always do
+  the merge yourself — Autopilot stops at a merge-ready PR and never merges.
 - added: the New-session dialog and the profile's MCP pre-selection now show a rough estimate of the prompt
   tokens the ticked MCP servers' tools add — a per-server figure and a live running total — so you can see a
   heavy selection heading toward a context limit before you start, instead of only hitting an error mid-turn.

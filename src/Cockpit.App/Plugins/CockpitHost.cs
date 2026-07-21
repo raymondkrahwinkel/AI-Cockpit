@@ -23,6 +23,7 @@ using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Widgets;
+using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
@@ -134,6 +135,33 @@ internal sealed class CockpitHost(
 
     public IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes =>
         services.GetRequiredService<IWorkspaceTypeRegistry>().WorkspaceTypes;
+
+    // The programmatic "+" for a plugin's own workspace type: a plugin that received an intent surfaces its
+    // workspace so the operator lands on it. Marshalled to the UI thread since a plugin may dispatch from any
+    // thread; a design-time/headless host (no view model resolved) simply does nothing.
+    public async Task OpenWorkspaceAsync(string workspaceTypeId)
+    {
+        if (services.GetService<WorkspacesViewModel>() is not { } workspaces)
+        {
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenPluginWorkspaceAsync(workspaceTypeId));
+    }
+
+    public void AddTrackerProvider(ITrackerProvider provider)
+    {
+        // First registration for a tracker id wins; a later one is logged and ignored rather than added beside it.
+        if (!services.GetRequiredService<ITrackerProviderRegistry>().Register(provider))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                "Tracker '{TrackerId}' is already contributed by another plugin; this registration is ignored",
+                provider.TrackerId);
+        }
+    }
+
+    public IReadOnlyList<ITrackerProvider> TrackerProviders =>
+        services.GetRequiredService<ITrackerProviderRegistry>().Providers;
 
     public void AddWorkflowStep(IWorkflowStep step) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Register(step);
@@ -329,6 +357,11 @@ internal sealed class CockpitHost(
             ? Task.CompletedTask
             : _MutateSessionAsync(paneId, session => session.Title = name.Trim());
 
+    public Task SendToSessionAsync(string paneId, string text) =>
+        string.IsNullOrEmpty(text)
+            ? Task.CompletedTask
+            : _MutateSessionAsync(paneId, session => session.InjectAndSubmit(text));
+
     // Find the session pane by its id and mutate it on the UI thread. A plugin or workflow may call from any
     // thread, and the target may already be gone (a closed session) — a no-op then, never an error.
     private Task _MutateSessionAsync(string paneId, Action<SessionPanelViewModel> mutate)
@@ -340,7 +373,7 @@ internal sealed class CockpitHost(
 
         void Apply()
         {
-            if (cockpit.Sessions.FirstOrDefault(session => session.PaneId == paneId) is { } target)
+            if (cockpit.FindSession(paneId) is { } target)
             {
                 mutate(target);
             }

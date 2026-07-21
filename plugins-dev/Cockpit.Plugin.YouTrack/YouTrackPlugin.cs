@@ -53,6 +53,10 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
 
         host.AddSettings(() => new YouTrackSettingsControl(settings));
 
+        // The writing half (AC-154): a consumer (Autopilot) posts evidence and moves an issue's stage back to YouTrack
+        // through this, tracker-neutrally.
+        host.AddTrackerProvider(new YouTrackTrackerProvider(settings));
+
         void OpenIssues() =>
             _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links, stateChanges), 1040, 700);
 

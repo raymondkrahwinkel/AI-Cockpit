@@ -296,6 +296,15 @@ public interface ICockpitHost
     Task SetSessionName(string paneId, string name) => Task.CompletedTask;
 
     /// <summary>
+    /// Sends <paramref name="text"/> to the session named by <paramref name="paneId"/> as a submitted turn — the seam
+    /// a plugin uses to hand a started session (including one it embedded in its own workspace) a prompt without a
+    /// human turn, e.g. an Autopilot run's work brief once the operator has approved the run. A paneId that matches no
+    /// live session is a no-op, never an error. Marshals to the UI thread itself. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched.
+    /// </summary>
+    Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
+
+    /// <summary>
     /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>, and
     /// starts the session the operator confirms — the plugin equivalent of the operator pressing "New session", with
     /// the fields it knows already offered. The operator keeps full control: they see and can change every field
@@ -424,6 +433,32 @@ public interface ICockpitHost
     /// not building that menu has no reason to call this. Default empty.
     /// </summary>
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [];
+
+    /// <summary>
+    /// Brings the workspace of type <paramref name="workspaceTypeId"/> — one the plugin registered with
+    /// <see cref="AddWorkspaceType"/> — to the front, opening one when none is present, and makes it the active
+    /// workspace. The programmatic half of the operator picking that type from the "+" menu: a plugin that has just
+    /// received an intent (say "Start in Autopilot", AC-150) uses it to surface its own workspace so the operator
+    /// lands on the run instead of having to open it by hand. An existing workspace of the type is activated in
+    /// place rather than duplicated. What the body then shows is the plugin's business; this only puts it on screen.
+    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
+    /// compiling untouched — only the app's own host opens a workspace.
+    /// </summary>
+    Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers a tracker a plugin can post back to (AC-154) — the writing half of an issue tracker (YouTrack, GitHub
+    /// Issues), so a consumer (Autopilot) can leave evidence and move an issue's stage tracker-neutrally. First
+    /// registration for a <see cref="Tracking.ITrackerProvider.TrackerId"/> wins; a later one for the same id is
+    /// ignored. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds)
+    /// keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void AddTrackerProvider(Tracking.ITrackerProvider provider)
+    {
+    }
+
+    /// <summary>The trackers every plugin has contributed — what a consumer reads to find the one for an issue's tracker id. Default empty.</summary>
+    IReadOnlyList<Tracking.ITrackerProvider> TrackerProviders => [];
 
     /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds
