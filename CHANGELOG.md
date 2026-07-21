@@ -85,6 +85,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: a local model whose runtime can't do tool-calling no longer just fails a tool-enabled turn. When
+  the model rejects the request because its chat template can't handle tools (seen with some LM Studio GGUFs),
+  the session says so plainly and retries that turn once without tools, so a plain question still gets an
+  answer — with a visible note that tools were off for that turn. Turn the profile's MCP servers off to stop
+  offering them at all.
 - changed: the plugins that ship with the cockpit (the Claude provider and the rest) are now ordinary,
   store-updatable plugins that simply come pre-installed. They are put in place once, the first time
   they appear, and after that a newer version arrives through the plugin store like any other plugin's —

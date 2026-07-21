@@ -159,64 +159,136 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     private async Task _RunTurnAsync(string text, CancellationToken cancellationToken)
     {
         _history.Add(new ChatMessage(ChatRole.User, text));
-        var options = new ChatOptions { ModelId = _model, Tools = _gatedTools.Count > 0 ? _gatedTools : null };
-        var assistant = new StringBuilder();
+        var toolsAvailable = _gatedTools.Count > 0;
         _turnHadToolActivity = false;
 
         try
         {
-            await foreach (var update in _agent!.GetStreamingResponseAsync(_history, options, cancellationToken).ConfigureAwait(false))
-            {
-                var delta = update.Text;
-                if (!string.IsNullOrEmpty(delta))
-                {
-                    assistant.Append(delta);
-                    _events.Writer.TryWrite(new AssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta });
-                }
-            }
-
-            var reply = assistant.ToString();
-            var hasText = !string.IsNullOrWhiteSpace(reply);
-
-            // A turn that streamed no visible text and made no tool call is not a success to show silently: a
-            // failed request can end the stream empty (or whitespace-only) without throwing — a server answering
-            // 200 with an empty body, or an error the SDK swallowed — and the old code emitted a blank success so
-            // the beurt just vanished. Surface a visible notice instead (AC-132).
-            if (!hasText && !_turnHadToolActivity)
-            {
-                _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = "The model returned no response — no text and no tool calls." });
-                _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
-                return;
-            }
-
-            // Only a turn that produced text carries an assistant message into the history: appending an empty
-            // reply (a no-response, or an empty answer after a tool call) would seed a blank assistant turn that
-            // rides along in every later request — which some OpenAI-compatible servers reject outright (AC-132).
-            if (hasText)
-            {
-                _history.Add(new ChatMessage(ChatRole.Assistant, reply));
-            }
-
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "success", Result = reply, IsError = false });
+            await _StreamTurnAsync(toolsAvailable ? _gatedTools : null, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // A genuine user interrupt — the token this turn runs under was cancelled. Keep the clean
             // "interrupted" turn with no error row. An OperationCanceledException the SDK throws while ABORTING
             // the stream on a non-2xx response leaves the token uncancelled, so it fails this filter and falls
-            // through to the error branch below rather than masquerading as an interrupt (AC-132).
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
+            // through to an error branch rather than masquerading as an interrupt (AC-132).
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
         }
         catch (Exception ex)
         {
-            // Read the response body so the operator sees the actual reason (e.g. exceed_context_size_error, or
-            // an unparseable tool template) rather than a bare "HTTP 400 (Bad Request)" (AC-132).
             var message = _DescribeError(ex);
+
+            // AC-135: the model rejected the request because it cannot do tool-calling in this runtime — a GGUF
+            // chat template whose tool-parser generation fails the moment `tools` are sent (seen with mistral-nemo
+            // in LM Studio). Rather than fail the turn, note it and retry once with no tools, so a plain question
+            // still gets an answer. The note is streamed as assistant text, NOT a SessionError: a SessionError
+            // reads to the UI as the turn ending (it clears the busy state), which would let a second turn start
+            // against this turn's history while the retry is still streaming.
+            if (toolsAvailable && _IsToolTemplateError(message))
+            {
+                _logger.LogWarning(ex, "Local model rejected tools ({Message}); retrying without tools", message);
+                _events.Writer.TryWrite(new AssistantTextDelta
+                {
+                    SessionId = _sessionId,
+                    BlockIndex = 0,
+                    Text = "_(This model does not support tool-calling in this runtime — answering without tools. Turn off this profile's MCP servers to stop offering them.)_\n\n",
+                });
+                // The retry sends no tools, so it can raise no tool activity; clear any flag the failed attempt set
+                // so the retry's own no-response check is not suppressed.
+                _turnHadToolActivity = false;
+
+                try
+                {
+                    await _StreamTurnAsync(tools: null, cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = null, IsError = false, StopReason = "interrupt" });
+                }
+                catch (Exception retryEx)
+                {
+                    _EmitError(retryEx);
+                }
+
+                return;
+            }
+
             _logger.LogWarning(ex, "OpenAI-compatible chat request failed: {Message}", message);
             _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = message, Exception = ex });
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
     }
+
+    /// <summary>
+    /// Streams one model turn under <paramref name="tools"/> (null = no tools), emitting the assistant deltas and a
+    /// terminal <see cref="TurnCompleted"/>. A turn that produces no visible text and no tool call surfaces a
+    /// "no response" notice rather than a silent success, and only a turn with text is carried into the history so a
+    /// blank assistant message never rides along in later requests (AC-132). Exceptions propagate to the caller,
+    /// which decides between an interrupt, a tool-unsupported retry, and a plain error.
+    /// </summary>
+    private async Task _StreamTurnAsync(IReadOnlyList<AITool>? tools, CancellationToken cancellationToken)
+    {
+        var options = new ChatOptions { ModelId = _model, Tools = tools is { Count: > 0 } ? [.. tools] : null };
+        var assistant = new StringBuilder();
+
+        await foreach (var update in _agent!.GetStreamingResponseAsync(_history, options, cancellationToken).ConfigureAwait(false))
+        {
+            var delta = update.Text;
+            if (!string.IsNullOrEmpty(delta))
+            {
+                assistant.Append(delta);
+                _events.Writer.TryWrite(new AssistantTextDelta { SessionId = _sessionId, BlockIndex = 0, Text = delta });
+            }
+        }
+
+        var reply = assistant.ToString();
+        var hasText = !string.IsNullOrWhiteSpace(reply);
+
+        if (!hasText && !_turnHadToolActivity)
+        {
+            _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = "The model returned no response — no text and no tool calls." });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            return;
+        }
+
+        if (hasText)
+        {
+            _history.Add(new ChatMessage(ChatRole.Assistant, reply));
+        }
+
+        _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "success", Result = reply, IsError = false });
+    }
+
+    private void _EmitError(Exception ex)
+    {
+        // Read the response body so the operator sees the actual reason (e.g. exceed_context_size_error, or an
+        // unparseable tool template) rather than a bare "HTTP 400 (Bad Request)" (AC-132).
+        var message = _DescribeError(ex);
+        _logger.LogWarning(ex, "OpenAI-compatible chat request failed: {Message}", message);
+        _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = message, Exception = ex });
+        _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+    }
+
+    /// <summary>
+    /// Whether a failed request looks like the local runtime refusing tool-calling itself — a GGUF/chat-template
+    /// tool-parser that cannot be generated, or a server saying tools are unsupported — as opposed to an ordinary
+    /// request error. A heuristic over the response body (AC-135): the message wording is the only signal a local
+    /// OpenAI-compatible server gives, and only weighed when tools were actually sent this turn.
+    /// </summary>
+    internal static bool _IsToolTemplateError(string message) =>
+        _ToolTemplateErrorSignals.Any(signal => message.Contains(signal, StringComparison.OrdinalIgnoreCase));
+
+    private static readonly string[] _ToolTemplateErrorSignals =
+    [
+        // The LM Studio GGUF-template tool-parser failure (its message also names the "Tool call IDs" rule, but
+        // this phrase is the distinctive part). A bare "tool call id" is deliberately not a signal: a server that
+        // does support tools can reject a malformed id, which is not a can't-do-tools condition.
+        "parser for this template",
+        "does not support tool",
+        "tools are not supported",
+        "tool calling is not supported",
+        "tool_use is not supported",
+    ];
 
     /// <summary>
     /// The most useful message for a failed turn: the exception message, plus — for a
