@@ -32,6 +32,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: Autopilot — start a tracker issue (YouTrack or GitHub Issues) straight toward a merge-ready
+  pull request. From an issue you kick off a visible, self-driving agent session in its own isolated
+  worktree; it works the item behind a quality gate — visual verify, code review, security review and a
+  conventions check — and only reports merge-ready once the hard gates pass. It posts progress and
+  questions back as issue comments and moves the issue's stage as it goes; when it hits a decision only
+  you can make it asks and waits for your reply. You approve the run before it starts, and you always do
+  the merge yourself — Autopilot stops at a merge-ready PR and never merges.
 - added: plugins can provide a whole workspace of their own — not just a widget in the dashboard grid,
   but the entire surface, drawn and driven by the plugin, picked from the workspace "+" menu beside
   Sessions and Dashboard. Such a workspace can embed a live session inside its own layout; and if the
