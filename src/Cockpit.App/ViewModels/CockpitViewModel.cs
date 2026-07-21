@@ -148,6 +148,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
+    /// <summary>
+    /// The sidebar's own display order (AC-115). Kept apart from <see cref="Sessions"/> on purpose: the session
+    /// grid binds straight to <see cref="Sessions"/> and keeps its own positional cell layout, so reordering the
+    /// strip must never touch <see cref="Sessions"/> — moving an item there rebuilds its pane (a fresh TTY with no
+    /// pty → a black terminal) and drags the grid tiles along with the strip. This list is reconciled against
+    /// <see cref="Sessions"/> on read: new sessions append, closed ones drop out, and a drag only re-slots it here.
+    /// In-memory only, like the sessions it orders.
+    /// </summary>
+    private readonly List<SessionPanelViewModel> _sidebarOrder = [];
+
     /// <summary>Left-menu accordion sections contributed by plugins (#14), shown under the session list. Empty = nothing rendered.</summary>
     public ObservableCollection<PluginSideSection> PluginSideSections { get; } = [];
 
@@ -1949,8 +1959,40 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 || (session.WorkspaceId.Length == 0 && Workspaces.Settings.Workspaces[0].Id == active.Id));
     }
 
-    /// <summary>The sessions on the workspace now showing — what the sidebar lists, so it never offers a session the grid is hiding.</summary>
-    public IEnumerable<SessionPanelViewModel> VisibleSessions => Sessions.Where(BelongsToActiveWorkspace);
+    /// <summary>
+    /// The sessions on the workspace now showing, in the sidebar's own order — what the strip lists, so it never
+    /// offers a session the grid is hiding. Reads from <see cref="_sidebarOrder"/> (reconciled on access) rather
+    /// than from <see cref="Sessions"/>, so a drag-reorder of the strip leaves the grid's tiles where they are.
+    /// Returns a snapshot rather than a deferred query: the getter reconciles <see cref="_sidebarOrder"/> as a
+    /// side effect, so handing back a live view over that same field would risk a "collection modified" the moment
+    /// a later read reconciles again mid-enumeration.
+    /// </summary>
+    public IEnumerable<SessionPanelViewModel> VisibleSessions
+    {
+        get
+        {
+            _ReconcileSidebarOrder();
+            return _sidebarOrder.Where(BelongsToActiveWorkspace).ToList();
+        }
+    }
+
+    /// <summary>
+    /// Brings <see cref="_sidebarOrder"/> back in line with <see cref="Sessions"/>: drops sessions that have
+    /// closed and appends any that appeared, keeping the operator's chosen order for everything already tracked.
+    /// Idempotent and cheap (a handful of sessions), so it is safe to run on every <see cref="VisibleSessions"/>
+    /// read — no dependency on when <see cref="Sessions"/>'s change event happens to fire.
+    /// </summary>
+    private void _ReconcileSidebarOrder()
+    {
+        _sidebarOrder.RemoveAll(session => !Sessions.Contains(session));
+        foreach (var session in Sessions)
+        {
+            if (!_sidebarOrder.Contains(session))
+            {
+                _sidebarOrder.Add(session);
+            }
+        }
+    }
 
     /// <summary>
     /// Ties the session content to the strip: which workspace is active decides which panes belong on screen
@@ -4101,11 +4143,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// both the drag-reorder (AC-115) and the Move up/down menu items.
     /// </summary>
     /// <remarks>
-    /// The backing <see cref="Sessions"/> collection is global and can interleave other workspaces' sessions, so
-    /// the move is anchored to the target visible row's real position in <see cref="Sessions"/> rather than to a
-    /// raw ±1 index — otherwise a step could swap with a session hidden on another workspace and do nothing (or the
-    /// wrong thing) on screen. Order is kept only in this in-memory collection: sessions themselves do not survive
-    /// a restart (there is no persisted session list), so neither does their order — by design for AC-115.
+    /// The reorder lands in <see cref="_sidebarOrder"/>, never in <see cref="Sessions"/>: the session grid binds to
+    /// <see cref="Sessions"/> and keeps its own positional cell layout, so touching that collection would rebuild
+    /// panes and drag the grid tiles along with the strip — the very coupling this separation removes. The order is
+    /// global and can interleave other workspaces' sessions, so the move anchors to the target visible row's real
+    /// position rather than a raw ±1 index — otherwise a step could swap with a session hidden on another workspace
+    /// and do nothing (or the wrong thing) on screen. Order is kept only in this in-memory list: sessions
+    /// themselves do not survive a restart (there is no persisted session list), so neither does their order — by
+    /// design for AC-115.
     /// </remarks>
     public void MoveSessionToVisibleIndex(SessionPanelViewModel session, int targetVisibleIndex)
     {
@@ -4119,11 +4164,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        var from = Sessions.IndexOf(session);
-        var to = Sessions.IndexOf(visible[targetVisibleIndex]);
+        var from = _sidebarOrder.IndexOf(session);
+        var to = _sidebarOrder.IndexOf(visible[targetVisibleIndex]);
         if (from >= 0 && to >= 0)
         {
-            Sessions.Move(from, to);
+            _sidebarOrder.RemoveAt(from);
+            _sidebarOrder.Insert(to, session);
+            OnPropertyChanged(nameof(VisibleSessions));
         }
     }
 

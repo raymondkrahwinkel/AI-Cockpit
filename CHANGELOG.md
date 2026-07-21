@@ -119,6 +119,21 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   session closes would remove it — merged, session-gone trees just piled up. A worktree is now measured
   against its base branch's current tip, so a merged one reads as clean and is swept away, while one that
   still holds unmerged commits is kept for review as before.
+- fixed: a delegated task now starts with only the MCP servers its profile has selected, instead of every
+  enabled server. A profile's per-server pre-selection was honoured when you opened a session from the dialog
+  but ignored when the same profile ran a delegated task, so a sub-agent could reach servers you had unticked
+  for it; the delegation path now applies the profile's selection too (an unset selection still means all
+  enabled, and a sub-agent still never gets the orchestrator unless its profile may delegate further).
+- fixed: a local model (Ollama / LM Studio) that rejects a request no longer drops the turn silently. A failed
+  request — an exceeded context window, a template the server can't parse — used to make the "thinking"
+  indicator simply vanish with nothing shown; the session now surfaces a red error row with the server's actual
+  reason (read from the response body), a genuine interrupt still ends cleanly with no error, and a turn that
+  comes back with nothing at all leaves a visible notice instead of quietly nothing.
+- fixed: the terminal no longer garbles lines that mix em-dashes, arrows or emoji. Characters like `—`, `→`
+  and `✅` advance wider than a monospace cell, and they used to push the rest of the line off its columns —
+  so `store` could read `stuore`, a version like `0.22.0→0.22.1` collapse into `0.22.0.0.22.1`, and checks
+  run together — most visibly while scrolling a unicode-heavy transcript or diff. Each cell is now painted on
+  its own column, so such output stays aligned.
 - fixed: a Claude SDK session started after (or alongside) a terminal (TTY) session came up with none of
   its MCP servers — cockpit-hosted and your own alike — and with no error to show for it. Two Claude
   processes share one `~/.claude.json`, and the cockpit rewrote that file non-atomically before each launch;
@@ -126,6 +141,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   defaults, and lost the session's workspace trust — which silently disables every injected MCP server. The
   cockpit now updates that file atomically, skips the write entirely when nothing needs changing, and never
   replaces an unreadable file with an empty one, so interleaving TTY and SDK sessions keep their MCP servers.
+- fixed: reordering sessions by dragging them in the left sidebar no longer rearranges the panes in the
+  Sessions workspace. The sidebar strip and the workspace grid now keep their own order — drag the strip to
+  sort your list, drag a pane's grip to arrange the grid — so tidying one never disturbs the other.
+- fixed: closing a session no longer leaves a gap in the workspace grid. When you close one of three or four
+  tiled sessions, the panes that remain re-flow to the tightest layout — two left fall back to a side-by-side
+  (or stacked) pair instead of sitting in a 2×2 with an empty cell.
 - fixed: the per-session MCP-server checklist is now honoured by both session kinds. A terminal (TTY)
   session ignored it and loaded every configured server regardless of what you ticked, while an SDK
   session got none of your cockpit-configured servers at all. Both now start with exactly the servers
