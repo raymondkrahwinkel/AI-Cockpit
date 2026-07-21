@@ -32,6 +32,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: the New-session dialog and the profile's MCP pre-selection now show a rough estimate of the prompt
+  tokens the ticked MCP servers' tools add — a per-server figure and a live running total — so you can see a
+  heavy selection heading toward a context limit before you start, instead of only hitting an error mid-turn.
+  It counts the tools portion only (labelled as an estimate), is cached so it does not re-count on every tick,
+  and a Refresh re-reads a server whose toolset changed. A server that can't be reached shows as unknown.
 - added: when an agent delegates a task, it can now restrict that one task to a subset of the target
   profile's MCP servers — so a sub-agent runs with just the tools its job needs. It can only narrow within
   what the profile already allows, never grant more: asking for a server the profile does not have refuses

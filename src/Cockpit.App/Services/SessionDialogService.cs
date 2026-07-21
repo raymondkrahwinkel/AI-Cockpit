@@ -33,6 +33,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IModelCatalog _modelCatalog;
     private readonly IMcpServerStore _mcpServerStore;
     private readonly IMcpServerCatalog _mcpServerCatalog;
+    private readonly IMcpToolTokenEstimator _tokenEstimator;
     private readonly IReadOnlyList<ICockpitInternalMcpProvider> _internalMcpProviders;
     private readonly IPluginProviderRegistry _pluginProviderRegistry;
     private readonly IWorkingPathHistoryStore _workingPathStore;
@@ -50,6 +51,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IModelCatalog modelCatalog,
         IMcpServerStore mcpServerStore,
         IMcpServerCatalog mcpServerCatalog,
+        IMcpToolTokenEstimator tokenEstimator,
         IEnumerable<ICockpitInternalMcpProvider> internalMcpProviders,
         IPluginProviderRegistry pluginProviderRegistry,
         IWorkingPathHistoryStore workingPathStore,
@@ -68,6 +70,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _modelCatalog = modelCatalog;
         _mcpServerStore = mcpServerStore;
         _mcpServerCatalog = mcpServerCatalog;
+        _tokenEstimator = tokenEstimator;
         _internalMcpProviders = [.. internalMcpProviders];
         _pluginProviderRegistry = pluginProviderRegistry;
         _workingPathStore = workingPathStore;
@@ -89,7 +92,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager);
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator);
         await viewModel.LoadAsync();
 
         // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,
@@ -196,7 +199,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
 
     private async Task ShowManageProfilesAsync(Window owner)
     {
-        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog);
+        var viewModel = new ManageProfilesDialogViewModel(_profileStore, _loginChecker, _modelCatalog, _pluginProviderRegistry, _mcpServerCatalog, _tokenEstimator);
         await viewModel.LoadAsync();
 
         var dialog = new ManageProfilesDialog { DataContext = viewModel };
