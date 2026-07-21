@@ -109,14 +109,19 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         _effort = _ResolveOption(options, EffortOptionKey, _effort) ?? _effort;
 
         var userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var resolvedWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
+        // Canonicalise once (Path.GetFullPath) and spawn with that exact string — the TTY route (TtyLauncher) already
+        // does, so without this the two routes handed claude the same folder spelled differently ("D:\Projects\…" vs
+        // "D:/Projects/…"). claude keys per-project state (trust, MCP approvals) on the literal cwd string, so a split
+        // spelling made a TTY and an SDK session land on two separate .claude.json project entries for one directory —
+        // trust marked on one did not cover the other, and it doubled the write-contention on the shared file.
+        var resolvedWorkingDirectory = Path.GetFullPath(string.IsNullOrWhiteSpace(workingDirectory)
             ? Environment.CurrentDirectory
-            : workingDirectory;
+            : workingDirectory);
         var configJsonDirectory = ClaudeConfigPaths.ResolveConfigJsonDirectory(_config.ConfigDir, userHome);
 
         // Trust must land before the process starts, or the headless CLI blocks on its interactive trust dialog with
         // nothing able to answer it — in the .claude.json the CLI reads for this spawn.
-        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, Path.GetFullPath(resolvedWorkingDirectory));
+        ClaudeWorkspaceTrust.MarkWorkingDirectoryTrusted(configJsonDirectory, resolvedWorkingDirectory);
 
         // Fan the shared MCP registry (already narrowed to this session's selection by the host adapter) into a
         // --mcp-config file, exactly as the TTY route does — without this the SDK session reaches none of the
