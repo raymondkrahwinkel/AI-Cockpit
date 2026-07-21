@@ -27,4 +27,19 @@ public sealed record EmbeddedSessionRequest
     /// shell, egress and other sensitive actions regardless of this, so a more autonomous mode is not an ungated one.
     /// </summary>
     public string? PermissionMode { get; init; }
+
+    /// <summary>
+    /// The model to run on, where the profile's provider offers a choice — Claude and Codex expose a model; a local
+    /// profile pins its own, so this is null there. Null uses the profile's own default model. AC-174: a CEO plan can
+    /// pick a model per step, so each step's embedded session starts on the model the operator approved for it.
+    /// </summary>
+    public string? Model { get; init; }
+
+    /// <summary>
+    /// The minimal set of MCP server ids to launch this session with — only what the step needs, not everything
+    /// (AC-174, Raymond 2026-07-21): a smaller MCP surface is fewer tool definitions in the agent's context (tokens)
+    /// and tighter least-privilege (AC-117). Empty keeps the host's usual selection for the profile; a non-empty list
+    /// restricts the session to exactly those servers. Ids as the host advertises them (e.g. <c>cockpit-verify</c>).
+    /// </summary>
+    public IReadOnlyList<string> McpServers { get; init; } = [];
 }

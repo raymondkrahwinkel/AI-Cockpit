@@ -4881,16 +4881,21 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
-            // An SDK session on the requested permission mode (default "ask") and app-default model/effort, with the
-            // profile's own start defaults in the generic OptionDefaults map — the same shape StartSessionForPluginAsync
-            // builds. A self-driving run (AC-152) asks for a more autonomous mode; the ConsentBroker still gates shell
-            // and egress regardless.
+            // An SDK session on the requested permission mode (default "ask"), the requested model where the profile
+            // offers a choice (AC-174 — a CEO plan picks one per step; null keeps the app default), and app-default
+            // effort, with the profile's own start defaults in the generic OptionDefaults map — the same shape
+            // StartSessionForPluginAsync builds. When the request names an MCP set, the session is restricted to exactly
+            // those servers (AC-174 minimal-MCP-per-step: fewer tokens, tighter least-privilege); an empty set keeps the
+            // host's usual selection. A self-driving run (AC-152) asks for a more autonomous mode; the ConsentBroker
+            // still gates shell and egress regardless.
             await session.StartConfiguredAsync(
                 profile,
                 _ResolveEmbeddedPermissionMode(request),
-                SessionOptionCatalog.DefaultModel,
+                SessionOptionCatalog.ModelForValue(request.Model),
                 SessionOptionCatalog.DefaultEffort,
-                enabledMcpServerNames: null,
+                enabledMcpServerNames: request.McpServers is { Count: > 0 } servers
+                    ? servers.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    : null,
                 workingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
                 resume: null,
                 launchOptions: profile.Defaults?.OptionDefaults);
