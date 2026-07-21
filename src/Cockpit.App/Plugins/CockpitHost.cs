@@ -141,7 +141,9 @@ internal sealed class CockpitHost(
     // thread; a design-time/headless host (no view model resolved) simply does nothing.
     public async Task OpenWorkspaceAsync(string workspaceTypeId)
     {
-        if (services.GetService<WorkspacesViewModel>() is not { } workspaces)
+        // The plugin's workspaces live on the on-screen view model — the same instance the UI binds to — not a
+        // separately DI-resolved WorkspacesViewModel, which would open the workspace on a surface no one is looking at.
+        if (services.GetService<CockpitViewModel>()?.Workspaces is not { } workspaces)
         {
             return;
         }
