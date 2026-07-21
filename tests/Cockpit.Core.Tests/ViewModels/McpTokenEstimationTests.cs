@@ -29,6 +29,27 @@ public class McpTokenEstimationTests
     }
 
     [Fact]
+    public void TokenTooltip_ExplainsTheFigure_EspeciallyTheUnknownCase()
+    {
+        var item = new McpServerSelectionItemViewModel("cockpit-workflows");
+        item.TokenTooltip.Should().BeNull("nothing to explain before an estimate exists");
+
+        item.IsEstimatingTokens = true;
+        item.TokenTooltip.Should().Be("Counting this server's tools…");
+        item.IsEstimatingTokens = false;
+
+        // The "?" is the case worth a hover — a server that could not be reached reads as unknown, not zero.
+        item.TokenEstimate = McpServerToolEstimate.Unavailable("cockpit-workflows");
+        item.TokenTooltip.Should().Contain("Couldn't reach this server");
+
+        item.TokenEstimate = new McpServerToolEstimate("cockpit-workflows", ToolCount: 1, EstimatedTokens: 300, Available: true);
+        item.TokenTooltip.Should().Be("1 tool, ~300 tokens (estimate)", "one tool is singular");
+
+        item.TokenEstimate = new McpServerToolEstimate("cockpit-workflows", ToolCount: 6, EstimatedTokens: 4200, Available: true);
+        item.TokenTooltip.Should().Be("6 tools, ~4.2k tokens (estimate)");
+    }
+
+    [Fact]
     public void Total_SumsTheTickedAvailableRows_AndFlagsUnknownAndEstimating()
     {
         var ticked = _Item("a", tokens: 1000);
