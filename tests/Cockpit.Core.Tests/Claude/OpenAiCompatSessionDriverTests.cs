@@ -182,6 +182,111 @@ public class OpenAiCompatSessionDriverTests
         described.Length.Should().BeLessThan(5_000);
     }
 
+    [Theory]
+    [InlineData("Unable to generate parser for this template. Automatic parser generation failed: Tool call IDs should be alphanumeric strings with length 9!", true)]
+    [InlineData("This model does not support tool calling in this runtime", true)]
+    [InlineData("tools are not supported by this model", true)]
+    [InlineData("tool calling is not supported for this template", true)]
+    [InlineData("exceed_context_size_error: request 29078 tokens exceeds 8192", false)]
+    [InlineData("HTTP 400 (Bad Request)", false)]
+    // A bare tool-call-id complaint from a server that DOES support tools must not be read as "can't do tools".
+    [InlineData("Invalid request: tool call id 'abc' must be 9 alphanumeric characters", false)]
+    public void IsToolTemplateError_DetectsAToolOrTemplateRejection_NotAnOrdinaryError(string message, bool expected)
+    {
+        OpenAiCompatSessionDriver._IsToolTemplateError(message).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheModelRejectsTools_RetriesWithoutToolsAndAnswers_WithAVisibleNote()
+    {
+        // AC-135: a local model whose template can't do tool-calling rejects the tools-carrying request; rather
+        // than fail, the driver notes it and retries once with no tools so a plain answer still comes back.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ThrowingClientError("""{"error":{"message":"Unable to generate parser for this template. Tool call IDs should be alphanumeric strings with length 9!"}}"""),
+                _Stream("Answer without tools."));
+        var echo = AIFunctionFactory.Create((string text) => text, "echo");
+        var driver = _CreateDriver(chatClient, echo);
+
+        await driver.StartAsync(LocalProfile);
+        driver.Capabilities.SupportsTools.Should().BeTrue();
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        // The note rides as assistant text (not a SessionError, which would end the turn mid-retry), so the bubble
+        // holds the note and then the tool-less answer; the retry must have carried no tools.
+        var text = string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text));
+        text.Should().Contain("does not support tool-calling");
+        text.Should().Contain("Answer without tools.");
+        events.OfType<SessionError>().Should().BeEmpty();
+        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeFalse();
+        chatClient.Received().GetStreamingResponseAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(), Arg.Is<ChatOptions>(options => options.Tools == null), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheModelRejectsTools_AndTheRetryAlsoFails_SurfacesTheError()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ThrowingClientError("""{"error":{"message":"Unable to generate parser for this template."}}"""),
+                _Throwing());
+        var echo = AIFunctionFactory.Create((string text) => text, "echo");
+        var driver = _CreateDriver(chatClient, echo);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        // The note (assistant text) plus the retry's own error — the turn still ends visibly, not silently.
+        string.Concat(events.OfType<AssistantTextDelta>().Select(delta => delta.Text)).Should().Contain("does not support tool-calling");
+        events.OfType<SessionError>().Should().ContainSingle();
+        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenToolsAreRejected_AndTheRetryReturnsNothing_SurfacesTheNoResponseNotice()
+    {
+        // The retry (no tools) coming back empty must still leave the no-response notice, not a silent success —
+        // the flag reset before the retry keeps that check honest.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ThrowingClientError("""{"error":{"message":"Unable to generate parser for this template."}}"""),
+                _Stream());
+        var echo = AIFunctionFactory.Create((string text) => text, "echo");
+        var driver = _CreateDriver(chatClient, echo);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        events.OfType<SessionError>().Should().ContainSingle().Which.Message.Should().Contain("no response");
+        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenAnErrorIsNotAToolTemplateFailure_SurfacesItWithoutRetrying()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ThrowingClientError("""{"error":{"code":"exceed_context_size_error","message":"request 29078 tokens exceeds 8192"}}"""));
+        var echo = AIFunctionFactory.Create((string text) => text, "echo");
+        var driver = _CreateDriver(chatClient, echo);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        var error = events.OfType<SessionError>().Should().ContainSingle().Subject;
+        error.Message.Should().Contain("exceed_context_size_error");
+        error.Message.Should().NotContain("does not support tool-calling");
+        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+        chatClient.Received(1).GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task SendUserMessage_WhenTheReplyIsWhitespaceOnly_EmitsTheNoResponseNotice()
     {
@@ -465,6 +570,19 @@ public class OpenAiCompatSessionDriverTests
     {
         await Task.CompletedTask;
         throw new HttpRequestException("server unreachable");
+#pragma warning disable CS0162 // Unreachable code — the yield makes this an iterator producing the throw.
+        yield break;
+#pragma warning restore CS0162
+    }
+
+    // A ClientResultException carrying a given response body — the shape the OpenAI SDK throws on a non-2xx, used
+    // to exercise the tool-template detection and body surfacing.
+    private static async IAsyncEnumerable<ChatResponseUpdate> _ThrowingClientError(string body)
+    {
+        await Task.CompletedTask;
+        var response = Substitute.For<PipelineResponse>();
+        response.Content.Returns(BinaryData.FromString(body));
+        throw new ClientResultException(response);
 #pragma warning disable CS0162 // Unreachable code — the yield makes this an iterator producing the throw.
         yield break;
 #pragma warning restore CS0162
