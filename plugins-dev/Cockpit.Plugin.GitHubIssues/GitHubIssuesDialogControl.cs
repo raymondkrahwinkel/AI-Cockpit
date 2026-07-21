@@ -380,6 +380,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             ["tracker"] = "github-issues",
             ["issue"] = $"{issue.Repository}#{issue.Number}",
             ["title"] = issue.Title,
+            ["description"] = issue.Body ?? string.Empty,
             ["repository"] = issue.Repository,
             ["url"] = issue.Url,
         };

@@ -4725,7 +4725,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the driver launches; a failed start leaves the session showing its own error rather than taking the app down.
         _ = _StartEmbeddedSessionAsync(session, request);
 
-        return new EmbeddedSession(view, session.PaneId);
+        return new EmbeddedSession(view, session.PaneId, () => _CloseEmbeddedSessionAsync(session));
     }
 
     public void CloseForWorkspace(string workspaceId)
@@ -4744,13 +4744,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     private void OnEmbeddedSessionCloseRequested(object? sender, EventArgs e)
     {
-        if (sender is not SessionPanelViewModel session)
+        // A self-closing embedded session (an "exit" turn with auto-close on) ends through the same path a body's
+        // explicit IEmbeddedSession.CloseAsync uses, so whichever fires first tears it down and the other is a no-op.
+        if (sender is SessionPanelViewModel session)
         {
-            return;
+            _ = _CloseEmbeddedSessionAsync(session);
         }
+    }
 
-        // A self-closing embedded session (an "exit" turn with auto-close on) drops out of its workspace's list here,
-        // so a later CloseForWorkspace does not try to tear down an already-disposed session.
+    // Ends one embedded session: drop it from its workspace's list and tear it down. Idempotent — a session that is
+    // no longer listed (already closed, whether by CloseForWorkspace, a self-close, or an earlier CloseAsync) is not
+    // torn down twice, which is what lets the body's CloseAsync and the session's own CloseRequested both fire safely.
+    private Task _CloseEmbeddedSessionAsync(SessionPanelViewModel session)
+    {
         foreach (var (workspaceId, owned) in _embeddedSessions)
         {
             if (owned.Remove(session))
@@ -4760,11 +4766,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     _embeddedSessions.Remove(workspaceId);
                 }
 
-                break;
+                return _TeardownEmbeddedSessionAsync(session);
             }
         }
 
-        _ = _TeardownEmbeddedSessionAsync(session);
+        return Task.CompletedTask;
     }
 
     private async Task _StartEmbeddedSessionAsync(SessionViewModel session, EmbeddedSessionRequest request)
@@ -4797,6 +4803,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return;
             }
 
+            // Isolate first when asked (AC-85): an embedded run that edits files — Autopilot — gets its own worktree
+            // and branch rather than the operator's real checkout, keyed on this session's pane like the dialog path.
+            string? workingDirectory;
+            try
+            {
+                workingDirectory = await _ResolveEmbeddedWorkingDirectoryAsync(session, request, profile);
+            }
+            catch (Exception isolationFailure)
+            {
+                // Isolation was asked for and could not be done. Never fall back to the operator's real checkout — that
+                // is the contamination isolation exists to prevent — and do not leave a silent blank pane: say why on
+                // the session and stand down rather than run unisolated.
+                session.Statusline = $"Could not isolate this run: {isolationFailure.Message}";
+                return;
+            }
+
             // An SDK session on app-default mode/model/effort, with the profile's own start defaults in the generic
             // OptionDefaults map — the same shape StartSessionForPluginAsync builds.
             await session.StartConfiguredAsync(
@@ -4805,7 +4827,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 SessionOptionCatalog.DefaultModel,
                 SessionOptionCatalog.DefaultEffort,
                 enabledMcpServerNames: null,
-                workingDirectory: string.IsNullOrWhiteSpace(request.WorkingDirectory) ? null : request.WorkingDirectory,
+                workingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
                 resume: null,
                 launchOptions: profile.Defaults?.OptionDefaults);
 
@@ -4820,6 +4842,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             // A failed embedded start must not take the app down; the session surfaces its own failed state.
         }
+    }
+
+    // Embedded isolation (AC-85), the automated counterpart of _ResolveIsolatedWorkingDirectoryAsync: no operator to
+    // confirm a fallback, so a non-repository folder (or no worktree manager) runs as given, and a worktree that
+    // cannot be created throws out to the start's own catch — the session surfaces its failed state rather than
+    // silently contaminating the real checkout.
+    private async Task<string?> _ResolveEmbeddedWorkingDirectoryAsync(SessionPanelViewModel session, EmbeddedSessionRequest request, SessionProfile profile)
+    {
+        if (!request.IsolateInWorktree || _worktreeManager is null || string.IsNullOrWhiteSpace(request.WorkingDirectory)
+            || await _worktreeManager.DetectRepositoryAsync(request.WorkingDirectory) is null)
+        {
+            return request.WorkingDirectory;
+        }
+
+        var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, profile.Label, request.WorkingDirectory);
+        session.WorktreeBranch = worktree.Branch;
+        return worktree.Path;
     }
 
     /// <summary>Whether <paramref name="session"/> is still an embedded session this host owns — false once its workspace closed and it was torn down, which is how a start racing that teardown knows to stand down.</summary>

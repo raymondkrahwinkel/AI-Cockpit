@@ -18,6 +18,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly NumericUpDown _grace;
     private readonly NumericUpDown _maxAttempts;
     private readonly TextBox _profile;
+    private readonly TextBox _scopingProfile;
     private readonly ComboBox _comments;
     private readonly Dictionary<GateKind, ComboBox> _gates = [];
 
@@ -33,6 +34,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             Text = settings.DefaultProfileLabel() ?? string.Empty,
             Width = 320,
         };
+        _scopingProfile = new TextBox
+        {
+            PlaceholderText = "Profile the pre-start scoping judgment runs on (blank = no scoping)",
+            Text = settings.ScopingProfileLabel() ?? string.Empty,
+            Width = 320,
+        };
         _comments = _Enum(new[] { CommentLevel.QuestionsAndMilestones, CommentLevel.Full }, settings.CommentMirroring());
 
         var panel = new StackPanel { Margin = new Thickness(4), Spacing = 10 };
@@ -40,6 +47,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         panel.Children.Add(_Row("Grace timer (minutes)", _grace));
         panel.Children.Add(_Row("Max self-fix attempts per gate", _maxAttempts));
         panel.Children.Add(_Row("Default session profile", _profile));
+        panel.Children.Add(_Row("Scoping profile", _scopingProfile));
         panel.Children.Add(_Row("Comment mirroring", _comments));
 
         panel.Children.Add(_Header("Done-gates"));
@@ -59,6 +67,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         _settings.SetGraceTimerMinutes((int)(_grace.Value ?? 5));
         _settings.SetMaxSelfFixAttempts((int)(_maxAttempts.Value ?? 2));
         _settings.SetDefaultProfileLabel(string.IsNullOrWhiteSpace(_profile.Text) ? null : _profile.Text.Trim());
+        _settings.SetScopingProfileLabel(string.IsNullOrWhiteSpace(_scopingProfile.Text) ? null : _scopingProfile.Text.Trim());
         _settings.SetCommentMirroring(_comments.SelectedItem is CommentLevel level ? level : CommentLevel.QuestionsAndMilestones);
         foreach (var (kind, box) in _gates)
         {

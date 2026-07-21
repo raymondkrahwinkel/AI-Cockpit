@@ -521,6 +521,7 @@ internal sealed class YouTrackDialogControl : UserControl
             ["tracker"] = "youtrack",
             ["issue"] = issue.IdReadable,
             ["title"] = issue.Summary,
+            ["description"] = issue.Description ?? string.Empty,
             ["project"] = issue.Project,
             ["url"] = _BuildIssueUrl(issue),
         };

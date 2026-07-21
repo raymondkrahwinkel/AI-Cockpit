@@ -12,4 +12,12 @@ public sealed record EmbeddedSessionRequest
 
     /// <summary>The directory the session starts in; null uses the app's own working directory.</summary>
     public string? WorkingDirectory { get; init; }
+
+    /// <summary>
+    /// When true and <see cref="WorkingDirectory"/> is a git repository, the host creates a fresh worktree on its own
+    /// branch for this session (AC-85) and runs it there instead of in the folder as given — the same isolation the
+    /// New-session dialog offers, so an embedded run (Autopilot) does not edit the operator's real checkout. A
+    /// non-repository directory, or a host without a worktree manager, runs in the folder as given.
+    /// </summary>
+    public bool IsolateInWorktree { get; init; }
 }

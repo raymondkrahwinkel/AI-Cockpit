@@ -17,6 +17,7 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string ProfileKey = "defaultProfileLabel";
     private const string WorkflowKey = "defaultWorkflow";
     private const string CommentKey = "commentLevel";
+    private const string ScopingProfileKey = "scopingProfileLabel";
 
     /// <summary>
     /// Raised when any setting changes, so a live surface (the workspace body, a running pipeline) picks it up
@@ -37,6 +38,9 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     /// <summary>The workflow a run drives its execution with, or null for none set.</summary>
     public string? DefaultWorkflow(string? projectId = null) => _ReadString(projectId, WorkflowKey);
 
+    /// <summary>The profile the pre-start scoping judgment is delegated to (AC-151); null skips scoping so a run starts unjudged.</summary>
+    public string? ScopingProfileLabel(string? projectId = null) => _ReadString(projectId, ScopingProfileKey);
+
     /// <summary>How much of a run is mirrored into tracker comments (default questions + milestones).</summary>
     public CommentLevel CommentMirroring(string? projectId = null) => _ReadValue(projectId, CommentKey, CommentLevel.QuestionsAndMilestones);
 
@@ -50,6 +54,8 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public void SetDefaultProfileLabel(string? label, string? projectId = null) => _Write(projectId, ProfileKey, label);
 
     public void SetDefaultWorkflow(string? workflow, string? projectId = null) => _Write(projectId, WorkflowKey, workflow);
+
+    public void SetScopingProfileLabel(string? label, string? projectId = null) => _Write(projectId, ScopingProfileKey, label);
 
     public void SetCommentMirroring(CommentLevel level, string? projectId = null) => _Write(projectId, CommentKey, level);
 

@@ -32,15 +32,31 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // The gear next to the plugin in the manager opens this — the global-level settings.
         host.AddSettings(() => new AutopilotSettingsControl(settings));
 
-        // The trigger's receiving half (AC-150): a tracker's "Start in Autopilot" sends this intent; Autopilot records
-        // the run and surfaces its workspace so the operator lands on it rather than having to open it by hand. The
-        // pipeline that then works the run to a merge-ready PR lands in later sub-tickets — for now the workspace shows
-        // the loaded point.
+        // The trigger's receiving half (AC-150) plus the opstart flow (AC-151): a tracker's "Start in Autopilot" sends
+        // this intent; Autopilot records the point, surfaces its workspace, runs a short scoping judgment, and either
+        // parks the point (refused) or advances it to running — the body then embeds the isolated session.
         host.RegisterIntentHandler("start", async intent =>
         {
             var run = AutopilotRun.FromIntent(intent);
-            runs.Start(run);
+            runs.BeginScoping(run);
             await host.OpenWorkspaceAsync("workspace.autopilot");
+
+            var verdict = await _ScopeAsync(host, settings, run);
+
+            // Scoping can take a while; if a newer point took over the surface meanwhile, its own start drives it —
+            // this late verdict must not flip that run.
+            if (!runs.IsCurrent(run))
+            {
+                return new Dictionary<string, string> { ["status"] = "superseded", ["issue"] = run.IssueId };
+            }
+
+            if (!verdict.IsWorkable)
+            {
+                runs.Refuse(verdict.Reason);
+                return new Dictionary<string, string> { ["status"] = "refused", ["issue"] = run.IssueId, ["reason"] = verdict.Reason };
+            }
+
+            runs.MarkRunning();
             return new Dictionary<string, string> { ["status"] = "started", ["issue"] = run.IssueId };
         });
 
@@ -56,5 +72,44 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
     public void Dispose()
     {
+    }
+
+    // Scoping (decision #3): delegate a short judgment to the configured profile and read its verdict. No profile set
+    // → the point starts unjudged; a delegation error → it starts anyway, since the operator asked for it explicitly
+    // and a broken gate must not swallow their intent.
+    private static async Task<ScopingVerdict> _ScopeAsync(ICockpitHost host, AutopilotSettings settings, AutopilotRun run)
+    {
+        var profile = settings.ScopingProfileLabel();
+        if (string.IsNullOrWhiteSpace(profile))
+        {
+            return ScopingVerdict.Workable;
+        }
+
+        try
+        {
+            var answer = await host.Actions.DelegateAsync(profile, _BuildScopingPrompt(run), timeout: TimeSpan.FromMinutes(2));
+            return ScopingVerdict.Parse(answer);
+        }
+        catch (Exception)
+        {
+            return ScopingVerdict.Workable;
+        }
+    }
+
+    private static string _BuildScopingPrompt(AutopilotRun run)
+    {
+        var description = run.Data.GetValueOrDefault("description", string.Empty);
+        return $"""
+            You are scoping a work item for an automated "issue to merge-ready PR" run. Decide whether it is workable
+            as-is: clear enough, small enough, and with a discernible acceptance. Refuse it only when it is too large,
+            too vague, or has no clear acceptance to work towards.
+
+            Answer on the FIRST line with exactly one of:
+            WORKABLE
+            REFUSE: <one short sentence naming what is missing>
+
+            Item ({run.Tracker} {run.IssueId}): {run.Title}
+            {description}
+            """;
     }
 }
