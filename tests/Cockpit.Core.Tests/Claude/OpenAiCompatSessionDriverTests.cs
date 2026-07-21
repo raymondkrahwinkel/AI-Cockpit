@@ -1,3 +1,6 @@
+using System.ClientModel;
+using System.ClientModel.Primitives;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Sessions;
@@ -66,6 +69,134 @@ public class OpenAiCompatSessionDriverTests
         var events = await _CollectUntilTurnCompletedAsync(driver);
 
         events.Should().ContainSingle(evt => evt is SessionError);
+        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheSdkThrowsCancelWithoutAUserInterrupt_EmitsSessionErrorNotInterrupted()
+    {
+        // AC-132: the OpenAI SDK aborts the stream as an OperationCanceledException on some non-2xx responses.
+        // With no user interrupt the turn's token is not cancelled, so this must surface as a real error, not a
+        // silent "interrupted" (the bug where a 400 made the beurt vanish).
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ThrowingCancel());
+        var driver = _CreateDriver(chatClient);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        events.Should().ContainSingle(evt => evt is SessionError);
+        var turn = events.OfType<TurnCompleted>().Should().ContainSingle().Subject;
+        turn.IsError.Should().BeTrue();
+        turn.Subtype.Should().NotBe("interrupted");
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheUserInterrupts_CompletesAsInterruptedWithoutAnError()
+    {
+        // The other side of the discrimination: a genuine interrupt (the turn's token cancelled) stays a clean
+        // "interrupted" turn with no error row.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(call => _BlockUntilCancelled(call.Arg<CancellationToken>()));
+        var driver = _CreateDriver(chatClient);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SendUserMessageAsync("hi");
+
+        var events = new List<SessionEvent>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await foreach (var evt in driver.Events.WithCancellation(cts.Token))
+        {
+            events.Add(evt);
+            if (evt is AssistantTextDelta)
+            {
+                await driver.InterruptAsync();
+            }
+
+            if (evt is TurnCompleted)
+            {
+                break;
+            }
+        }
+
+        events.Should().NotContain(evt => evt is SessionError);
+        events.OfType<TurnCompleted>().Should().ContainSingle().Which.Subtype.Should().Be("interrupted");
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheStreamIsEmptyWithNoToolCalls_EmitsAVisibleNoResponseError()
+    {
+        // AC-132 vangnet: a request that ends the stream empty without throwing (a 200 with an empty body, a
+        // swallowed error) used to emit a blank success — nothing shown. It must leave a visible notice.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_Stream());
+        var driver = _CreateDriver(chatClient);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        events.OfType<SessionError>().Should().ContainSingle().Which.Message.Should().Contain("no response");
+        events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
+    }
+
+    [Fact]
+    public void DescribeError_WithAPlainException_ReturnsItsMessage()
+    {
+        OpenAiCompatSessionDriver._DescribeError(new HttpRequestException("server unreachable"))
+            .Should().Be("server unreachable");
+    }
+
+    [Fact]
+    public void DescribeError_WithAClientResultException_AppendsTheResponseBody()
+    {
+        // The real reason (context exceeded, tool-template failure, …) is in the HTTP body, not the exception's
+        // own "HTTP 400" message — _DescribeError must surface it so the operator sees why (AC-132).
+        var response = Substitute.For<PipelineResponse>();
+        response.Content.Returns(BinaryData.FromString(
+            """{"error":{"code":"exceed_context_size_error","message":"request 29078 tokens exceeds 8192"}}"""));
+        var error = new ClientResultException(response);
+
+        var described = OpenAiCompatSessionDriver._DescribeError(error);
+
+        described.Should().Contain("exceed_context_size_error");
+        described.Should().Contain("29078 tokens exceeds 8192");
+    }
+
+    [Fact]
+    public void DescribeError_WithAHugeResponseBody_TruncatesIt()
+    {
+        // A misbehaving/hostile server could answer with a huge body; it must not be copied wholesale into the
+        // transcript, log and (for a delegated session) the audit log and orchestrator result.
+        var response = Substitute.For<PipelineResponse>();
+        response.Content.Returns(BinaryData.FromString(new string('x', 100_000)));
+        var error = new ClientResultException(response);
+
+        var described = OpenAiCompatSessionDriver._DescribeError(error);
+
+        described.Should().Contain("… (truncated)");
+        described.Length.Should().BeLessThan(5_000);
+    }
+
+    [Fact]
+    public async Task SendUserMessage_WhenTheReplyIsWhitespaceOnly_EmitsTheNoResponseNotice()
+    {
+        // A whitespace-only reply is as empty as no reply — it must hit the no-response net, not show a blank
+        // success bubble.
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_Stream("   ", "\n"));
+        var driver = _CreateDriver(chatClient);
+
+        await driver.StartAsync(LocalProfile);
+        await driver.SendUserMessageAsync("hi");
+        var events = await _CollectUntilTurnCompletedAsync(driver);
+
+        events.OfType<SessionError>().Should().ContainSingle().Which.Message.Should().Contain("no response");
         events.OfType<TurnCompleted>().Should().ContainSingle().Which.IsError.Should().BeTrue();
     }
 
@@ -337,6 +468,25 @@ public class OpenAiCompatSessionDriverTests
 #pragma warning disable CS0162 // Unreachable code — the yield makes this an iterator producing the throw.
         yield break;
 #pragma warning restore CS0162
+    }
+
+    // The OpenAI SDK's shape for a stream aborted on a non-2xx: an OperationCanceledException with no user
+    // cancellation behind it (the turn's token stays uncancelled).
+    private static async IAsyncEnumerable<ChatResponseUpdate> _ThrowingCancel()
+    {
+        await Task.CompletedTask;
+        throw new OperationCanceledException("stream aborted");
+#pragma warning disable CS0162 // Unreachable code — the yield makes this an iterator producing the throw.
+        yield break;
+#pragma warning restore CS0162
+    }
+
+    // Streams one delta, then blocks until the turn's token is cancelled and surfaces that as an
+    // OperationCanceledException carrying the cancelled token — a real user interrupt mid-stream.
+    private static async IAsyncEnumerable<ChatResponseUpdate> _BlockUntilCancelled([EnumeratorCancellation] CancellationToken ct)
+    {
+        yield return new ChatResponseUpdate(ChatRole.Assistant, "partial ");
+        await Task.Delay(Timeout.Infinite, ct);
     }
 
     private static Task<List<SessionEvent>> _CollectUntilTurnCompletedAsync(ISessionDriver driver) =>

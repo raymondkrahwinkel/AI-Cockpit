@@ -113,6 +113,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a local model (Ollama / LM Studio) that rejects a request no longer drops the turn silently. A failed
+  request — an exceeded context window, a template the server can't parse — used to make the "thinking"
+  indicator simply vanish with nothing shown; the session now surfaces a red error row with the server's actual
+  reason (read from the response body), a genuine interrupt still ends cleanly with no error, and a turn that
+  comes back with nothing at all leaves a visible notice instead of quietly nothing.
 - fixed: the terminal no longer garbles lines that mix em-dashes, arrows or emoji. Characters like `—`, `→`
   and `✅` advance wider than a monospace cell, and they used to push the rest of the line off its columns —
   so `store` could read `stuore`, a version like `0.22.0→0.22.1` collapse into `0.22.0.0.22.1`, and checks
