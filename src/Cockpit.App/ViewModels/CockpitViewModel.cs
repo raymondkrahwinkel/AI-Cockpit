@@ -3985,7 +3985,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return null;
             }
 
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions);
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions, result.ReadingLevel);
             paneId = session.PaneId;
         }
         else

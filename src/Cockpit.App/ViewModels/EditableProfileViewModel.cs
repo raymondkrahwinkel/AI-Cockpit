@@ -66,6 +66,13 @@ public partial class EditableProfileViewModel : ViewModelBase
     [ObservableProperty]
     private EffortOption _selectedEffort;
 
+    /// <summary>The three SDK reading levels (AC-138) offered by the "Default view" picker; provider-neutral, since any profile can launch an SDK session.</summary>
+    public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
+
+    /// <summary>The reading level a new SDK session under this profile opens with (AC-138) — the profile's "Default view".</summary>
+    [ObservableProperty]
+    private ReadingLevelOption _selectedReadingLevel = SessionOptionCatalog.DefaultReadingLevel;
+
     /// <summary>Whether a session under this profile starts with "allow all tools" already on (#26) — only meaningful for a local provider, which gates tool calls per-call rather than through Claude's permission modes.</summary>
     [ObservableProperty]
     private bool _autoApproveTools;
@@ -450,6 +457,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _claudeModel = SessionOptionCatalog.DefaultModel.Value;
         _selectedEffort = SessionOptionCatalog.DefaultEffort;
         _autoApproveTools = profile.Defaults?.AutoApproveTools ?? false;
+        _selectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(profile.Defaults?.DefaultReadingLevel);
 
         var delegation = profile.DelegationPolicy;
         _allowedAsTarget = delegation.AllowedAsTarget;
@@ -511,6 +519,9 @@ public partial class EditableProfileViewModel : ViewModelBase
         var defaults = IsPluginProvider
             ? new ProfileDefaults(string.Empty, string.Empty, string.Empty, AutoApproveTools) { OptionDefaults = _CollectPluginOptionDefaults() }
             : new ProfileDefaults(SelectedPermissionMode.Value, SessionOptionCatalog.ModelForValue(ClaudeModel).Value, SelectedEffort.Value, AutoApproveTools);
+        // The reading level is provider-neutral (AC-138) — any profile can launch an SDK session — so it rides on
+        // Defaults for both the plugin and the legacy-typed branch above rather than only one of them.
+        defaults = defaults with { DefaultReadingLevel = SelectedReadingLevel.Value };
 
         return new(
             Label.Trim(),

@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -210,6 +212,144 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // ContextUsedPercent, RateLimits and LimitsTooltip now live on the shared SessionPanelViewModel base (AC-37),
     // so the one SessionHeaderBar control reads the same usage data for every session kind.
 
+    // --- Reading level (AC-138) -------------------------------------------------------------------------------
+
+    /// <summary>The three reading levels offered by this SDK session's header "View" dropdown.</summary>
+    public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
+
+    /// <summary>
+    /// This SDK session's current reading level (AC-138) — Developer/Focus/Simple. Seeded at start from the
+    /// per-session override or the profile's default view, and switchable live from the header "View" dropdown.
+    /// Only the SDK session carries one; a TTY session is a raw terminal with no reading level.
+    /// </summary>
+    [ObservableProperty]
+    private ReadingLevel _readingLevel = ReadingLevel.Developer;
+
+    /// <summary>Focus and Simple hide the standalone "$" token/cost meter (AC-138), leaving usage on the subscription-friendly pill.</summary>
+    protected override bool SuppressCostMeter => ReadingLevel != ReadingLevel.Developer;
+
+    /// <summary>Simple drops the model/provider kind chip (AC-138) — a tag that is jargon the level exists to hide.</summary>
+    public override bool ShowKindChip => ReadingLevel != ReadingLevel.Simple && !string.IsNullOrEmpty(KindLabel);
+
+    partial void OnReadingLevelChanged(ReadingLevel value)
+    {
+        // The level lives on the session, but each transcript row renders itself from its own copy — push the new
+        // level down, re-fold the Focus groups for it, and re-announce the header figures the level shows or hides.
+        foreach (var entry in Transcript)
+        {
+            entry.ReadingLevel = value;
+        }
+
+        _RecomputeReadingGroups();
+        OnPropertyChanged(nameof(ShowTokenMeter));
+        OnPropertyChanged(nameof(ShowKindChip));
+    }
+
+    // Assigns the session's reading level to each row as it arrives, watches a tool row for a permission decision
+    // (which changes whether it folds), and re-forms the fold groups — the one place the transcript's structure is
+    // read to group rows, since a single row cannot see its neighbours.
+    private void _OnTranscriptChanged(NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+        {
+            foreach (TranscriptEntryViewModel entry in e.NewItems)
+            {
+                entry.ReadingLevel = ReadingLevel;
+                entry.PropertyChanged += _OnEntryPermissionChanged;
+            }
+        }
+
+        _RecomputeReadingGroups();
+    }
+
+    private void _OnEntryPermissionChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // A tool row is added as auto and can turn into a consent row a beat later (the permission request lands after
+        // the tool-use event), which pulls it out of any auto-fold run — so re-fold when either flag flips.
+        if (e.PropertyName is nameof(TranscriptEntryViewModel.IsPendingPermission) or nameof(TranscriptEntryViewModel.PermissionDecision))
+        {
+            _RecomputeReadingGroups();
+        }
+    }
+
+    // Re-forms the Focus "N steps run" fold groups (AC-138): a group is a maximal run of two or more consecutive
+    // auto tool calls, its first row the anchor that carries the expand toggle and the rest folding under it. Only
+    // Focus folds — Developer shows every row, Simple hides auto tools outright — so at the other levels every row is
+    // simply un-grouped. Walks the rows once and preserves an anchor's expanded state, so a run growing mid-turn does
+    // not snap shut under the operator.
+    private void _RecomputeReadingGroups()
+    {
+        if (ReadingLevel != ReadingLevel.Focus)
+        {
+            foreach (var entry in Transcript)
+            {
+                _ClearGroup(entry);
+            }
+
+            return;
+        }
+
+        var index = 0;
+        while (index < Transcript.Count)
+        {
+            if (!Transcript[index].IsAutoTool)
+            {
+                _ClearGroup(Transcript[index]);
+                index++;
+                continue;
+            }
+
+            var runStart = index;
+            while (index < Transcript.Count && Transcript[index].IsAutoTool)
+            {
+                index++;
+            }
+
+            var runLength = index - runStart;
+            if (runLength < 2)
+            {
+                // A lone auto tool call is not worth a fold line — it stays as its own compact chip.
+                _ClearGroup(Transcript[runStart]);
+                continue;
+            }
+
+            var members = new List<TranscriptEntryViewModel>(runLength);
+            for (var i = runStart; i < index; i++)
+            {
+                members.Add(Transcript[i]);
+            }
+
+            var expanded = members[0].IsGroupExpanded;
+            for (var i = 0; i < members.Count; i++)
+            {
+                var member = members[i];
+                member.IsGroupAnchor = i == 0;
+                member.GroupCount = runLength;
+                member.IsGroupExpanded = expanded;
+                member.GroupToggleRequested = i == 0 ? () => _ToggleGroup(members) : null;
+                member.IsInGroup = true;
+            }
+        }
+    }
+
+    private static void _ClearGroup(TranscriptEntryViewModel entry)
+    {
+        entry.IsInGroup = false;
+        entry.IsGroupAnchor = false;
+        entry.GroupCount = 0;
+        entry.GroupToggleRequested = null;
+        // IsGroupExpanded is left as-is: an un-grouped row never reads it, and keeping it makes a later re-fold stable.
+    }
+
+    private static void _ToggleGroup(IReadOnlyList<TranscriptEntryViewModel> members)
+    {
+        var expanded = members.Count > 0 && !members[0].IsGroupExpanded;
+        foreach (var member in members)
+        {
+            member.IsGroupExpanded = expanded;
+        }
+    }
+
     // Parameterless constructor kept for the Avalonia previewer design-time context. Seeds a
     // few sample transcript rows so the previewer/Screenshotter render the styled components
     // (thinking, tool-use, collapsed tool-result, pending permission) — does not touch the real
@@ -294,7 +434,11 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             OnPropertyChanged(nameof(HasPendingAttachments));
             OnPropertyChanged(nameof(CanSend));
         };
-        Transcript.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasTranscript));
+        Transcript.CollectionChanged += (_, e) =>
+        {
+            OnPropertyChanged(nameof(HasTranscript));
+            _OnTranscriptChanged(e);
+        };
         QueuedMessages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueuedMessages));
         LiveControls.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasLiveControls));
     }
@@ -308,12 +452,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null)
+    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, ReadingLevel? readingLevel = null)
     {
         if (_runtime is not null)
         {
             return;
         }
+
+        // The reading level (AC-138) opens on the per-session override chosen in the New-session dialog, else the
+        // profile's default view, else the app default (Developer). The header dropdown can still switch it live.
+        ReadingLevel = readingLevel ?? profile?.Defaults?.DefaultReadingLevel ?? ReadingLevel.Developer;
 
         // Set the live selectors before starting: the session has no event loop yet, so these do not
         // fire a live control request — they are the launch values StartWithProfileAsync reads. For

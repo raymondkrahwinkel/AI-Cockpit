@@ -177,6 +177,20 @@
                 </StackPanel>
             </Grid>
 
+            <!-- View (AC-138): the reading level this session opens with, inherited from the profile's default view and
+                 overridable here. SDK-only — a TTY session is a raw terminal with no reading level, so the row is hidden
+                 for it. The running session's header can still switch it live. -->
+            <Grid ColumnDefinitions="72,*" VerticalAlignment="Top" IsVisible="{Binding IsSdk}">
+                <TextBlock Grid.Column="0" Text="View" VerticalAlignment="Center" Margin="0,4,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Spacing="3">
+                    <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
+                              DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                    <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                </StackPanel>
+            </Grid>
+
             <!-- Resume (#: resume): pick up an earlier conversation instead of starting cold — what you want after a
                  crash, or when you closed a session you were not done with. Claude-only: the local providers keep no
                  conversation history to resume from, so the row is hidden rather than offered and ignored. -->

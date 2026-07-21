@@ -1,3 +1,5 @@
+using Cockpit.Core.Sessions;
+
 namespace Cockpit.App.ViewModels;
 
 /// <summary>
@@ -45,6 +47,23 @@ public static class SessionOptionCatalog
         new("Extra high", "xhigh", 48_000),
         new("Max", "max", 64_000),
     ];
+
+    // The three session reading levels (AC-138), offered wherever a reading level is chosen — the profile's
+    // "Default view", the New-session override and the running SDK session's header dropdown — so all three
+    // speak the same words. Only SDK/chat sessions carry a reading level; a TTY pane shows everything.
+    public static IReadOnlyList<ReadingLevelOption> ReadingLevels { get; } =
+    [
+        new(ReadingLevel.Developer, "Developer", "Everything: tool calls, thinking, costs and jargon."),
+        new(ReadingLevel.Focus, "Focus", "Calm but complete: tool runs fold up, cost moves to the usage pill."),
+        new(ReadingLevel.Simple, "Simple", "For anyone: no tool noise, no cost, jargon in plain words."),
+    ];
+
+    /// <summary>App-default reading level (Developer — the full surface) used when a profile carries no default.</summary>
+    public static ReadingLevelOption DefaultReadingLevel { get; } = ReadingLevels[0];
+
+    /// <summary>Resolves a reading level (e.g. from a profile default or a per-session override) to its option, or the app default.</summary>
+    public static ReadingLevelOption ResolveReadingLevel(ReadingLevel? value) =>
+        value is { } level ? ReadingLevels.FirstOrDefault(option => option.Value == level) ?? DefaultReadingLevel : DefaultReadingLevel;
 
     /// <summary>The <c>--permission-mode</c> value that is launch-only and locks the panel dropdown.</summary>
     public const string BypassPermissionModeValue = "bypassPermissions";

@@ -32,6 +32,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: SDK chat sessions now have a reading level — Developer, Focus or Simple — so one session can be read
+  by a developer or handed to a non-technical viewer without changing what the agent does. Developer shows
+  everything; Focus stays complete but calm (runs of auto-executed tool calls fold into one "N steps run" line
+  you can expand, and the running cost moves onto the usage pill instead of a "$" figure); Simple drops the tool
+  noise, the cost and the model chip and puts jargon in plain words. Tool calls that asked for your approval —
+  waiting, or already allowed or denied — stay visible at every level, in human language at Simple ("✓ Changed a
+  file — you approved this"). Pick the default per profile ("Default view"), override it when starting a session,
+  or switch it live from the session header. Terminal (TTY) sessions are a raw terminal and have no reading level.
 - added: Autopilot — start a tracker issue (YouTrack or GitHub Issues) straight toward a merge-ready
   pull request. From an issue you kick off a visible, self-driving agent session in its own isolated
   worktree; it works the item behind a quality gate — visual verify, code review, security review and a
