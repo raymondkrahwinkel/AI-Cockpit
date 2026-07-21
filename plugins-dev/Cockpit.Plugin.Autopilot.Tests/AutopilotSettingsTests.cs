@@ -86,6 +86,17 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
+    public void AutonomyMode_DefaultsToBypass_ThenRoundTrips()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        settings.AutonomyMode().Should().Be(AutopilotSettings.DefaultAutonomyMode);
+
+        settings.SetAutonomyMode("acceptEdits");
+        settings.AutonomyMode().Should().Be("acceptEdits");
+    }
+
+    [Fact]
     public void Changed_FiresOnEverySet()
     {
         var settings = new AutopilotSettings(new FakeStorage());

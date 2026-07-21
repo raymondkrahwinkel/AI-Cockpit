@@ -20,4 +20,11 @@ public sealed record EmbeddedSessionRequest
     /// non-repository directory, or a host without a worktree manager, runs in the folder as given.
     /// </summary>
     public bool IsolateInWorktree { get; init; }
+
+    /// <summary>
+    /// The permission mode the session starts in (e.g. <c>acceptEdits</c>, <c>bypassPermissions</c>) — how autonomous
+    /// it is on the CLI side (AC-152). Null starts on the app default ("ask"). The host's ConsentBroker still gates
+    /// shell, egress and other sensitive actions regardless of this, so a more autonomous mode is not an ungated one.
+    /// </summary>
+    public string? PermissionMode { get; init; }
 }

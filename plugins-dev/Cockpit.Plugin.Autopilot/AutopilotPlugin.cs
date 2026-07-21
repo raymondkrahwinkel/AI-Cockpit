@@ -56,6 +56,8 @@ public sealed class AutopilotPlugin : ICockpitPlugin
                 return new Dictionary<string, string> { ["status"] = "refused", ["issue"] = run.IssueId, ["reason"] = verdict.Reason };
             }
 
+            // Advance to running: the workspace body embeds the isolated session, confirms the autonomous run with the
+            // operator over it (AC-152), and briefs the agent only on approval.
             runs.MarkRunning();
             return new Dictionary<string, string> { ["status"] = "started", ["issue"] = run.IssueId };
         });
@@ -63,7 +65,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // The full-surface workspace. The type id is a frozen API surface — it is persisted on every Autopilot
         // workspace, so changing it would orphan saved ones. The body reads the started run from the shared controller;
         // the run pipeline and its embedded session land in later sub-tickets.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot", "Autopilot", context => new AutopilotWorkspaceBody(context, settings, runs))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot", "Autopilot", context => new AutopilotWorkspaceBody(host, context, settings, runs))
         {
             IconKind = MaterialIconKind.RobotOutline,
             Description = "Run an issue to a merge-ready PR — the pipeline, its live session and the done-gate on one surface.",

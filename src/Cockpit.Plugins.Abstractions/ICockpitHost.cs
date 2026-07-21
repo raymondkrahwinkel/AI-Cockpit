@@ -296,6 +296,15 @@ public interface ICockpitHost
     Task SetSessionName(string paneId, string name) => Task.CompletedTask;
 
     /// <summary>
+    /// Sends <paramref name="text"/> to the session named by <paramref name="paneId"/> as a submitted turn — the seam
+    /// a plugin uses to hand a started session (including one it embedded in its own workspace) a prompt without a
+    /// human turn, e.g. an Autopilot run's work brief once the operator has approved the run. A paneId that matches no
+    /// live session is a no-op, never an error. Marshals to the UI thread itself. Default no-op so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched.
+    /// </summary>
+    Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
+
+    /// <summary>
     /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>, and
     /// starts the session the operator confirms — the plugin equivalent of the operator pressing "New session", with
     /// the fields it knows already offered. The operator keeps full control: they see and can change every field

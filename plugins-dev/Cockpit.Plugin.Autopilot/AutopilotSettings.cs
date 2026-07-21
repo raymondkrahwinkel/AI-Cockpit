@@ -18,6 +18,10 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string WorkflowKey = "defaultWorkflow";
     private const string CommentKey = "commentLevel";
     private const string ScopingProfileKey = "scopingProfileLabel";
+    private const string AutonomyModeKey = "autonomyMode";
+
+    /// <summary>The CLI permission mode a self-driving run starts in (AC-152). Default: the agent works without asking before edits; the host still gates shell and egress.</summary>
+    public const string DefaultAutonomyMode = "bypassPermissions";
 
     /// <summary>
     /// Raised when any setting changes, so a live surface (the workspace body, a running pipeline) picks it up
@@ -41,6 +45,10 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     /// <summary>The profile the pre-start scoping judgment is delegated to (AC-151); null skips scoping so a run starts unjudged.</summary>
     public string? ScopingProfileLabel(string? projectId = null) => _ReadString(projectId, ScopingProfileKey);
 
+    /// <summary>The CLI permission mode a self-driving run starts in (AC-152), defaulting to <see cref="DefaultAutonomyMode"/> when unset or blank.</summary>
+    public string AutonomyMode(string? projectId = null) =>
+        _ReadString(projectId, AutonomyModeKey) is { Length: > 0 } mode ? mode : DefaultAutonomyMode;
+
     /// <summary>How much of a run is mirrored into tracker comments (default questions + milestones).</summary>
     public CommentLevel CommentMirroring(string? projectId = null) => _ReadValue(projectId, CommentKey, CommentLevel.QuestionsAndMilestones);
 
@@ -56,6 +64,8 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public void SetDefaultWorkflow(string? workflow, string? projectId = null) => _Write(projectId, WorkflowKey, workflow);
 
     public void SetScopingProfileLabel(string? label, string? projectId = null) => _Write(projectId, ScopingProfileKey, label);
+
+    public void SetAutonomyMode(string? mode, string? projectId = null) => _Write(projectId, AutonomyModeKey, mode);
 
     public void SetCommentMirroring(CommentLevel level, string? projectId = null) => _Write(projectId, CommentKey, level);
 

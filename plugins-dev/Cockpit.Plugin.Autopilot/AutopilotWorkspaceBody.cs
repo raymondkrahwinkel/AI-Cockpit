@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -5,19 +7,23 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Material.Icons;
 using Material.Icons.Avalonia;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
 /// The Autopilot workspace body: the plugin draws the whole surface (the host draws only the tab and the frame). It
-/// tracks the run controller and re-renders on its change, showing the opstart flow (AC-151) — the empty state, the
-/// scoping judgment, a refused point with its reason, or the running point with its isolated session embedded through
-/// <see cref="IWorkspaceContext.EmbedSession"/> (AC-122/AC-85). The done-gate and the tracker channel land in later
-/// sub-tickets; <paramref name="settings"/> feeds the profile and, later, gate config.
+/// tracks the run controller and re-renders on its change, showing the opstart flow (AC-151/AC-152) — the empty state,
+/// the scoping judgment, a refused point with its reason, or the running point with its isolated session embedded
+/// through <see cref="IWorkspaceContext.EmbedSession"/> (AC-122/AC-85). The run is confirmed with the operator over
+/// that embedded session before it is briefed and self-drives; the done-gate and tracker channel land in later
+/// sub-tickets.
 /// </summary>
 internal sealed class AutopilotWorkspaceBody : UserControl
 {
+    private readonly ICockpitHost _host;
     private readonly IWorkspaceContext _context;
     private readonly AutopilotSettings _settings;
     private readonly AutopilotRunController _runs;
@@ -26,8 +32,9 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     private AutopilotRun? _embeddedRun;
     private Control? _runningView;
 
-    public AutopilotWorkspaceBody(IWorkspaceContext context, AutopilotSettings settings, AutopilotRunController runs)
+    public AutopilotWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotRunController runs)
     {
+        _host = host;
         _context = context;
         _settings = settings;
         _runs = runs;
@@ -119,9 +126,9 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     private Control _BuildRefusedView(AutopilotRun run, string? reason) =>
         _BuildCentredCard(run, MaterialIconKind.CancelOutline, "Parked — not started", string.IsNullOrWhiteSpace(reason) ? "Scoping refused this point." : reason, _Brush("CockpitTextSecondaryBrush"));
 
-    // The running point: a thin info strip naming it, then the embedded session filling the rest. Built once per run
-    // and cached — re-rendering (a tab revisit re-attaches this same body) must not reparent the embedded view, which
-    // Avalonia forbids. The session is embedded once (AC-122) on an isolated worktree (AC-85) from the active copy.
+    // The running point: embed the isolated session once (AC-122/AC-85), show it, and confirm + brief it out of band.
+    // Built once per run and cached — re-rendering (a tab revisit re-attaches this same body) must not reparent the
+    // embedded view, which Avalonia forbids.
     private Control _BuildRunningView(AutopilotRun run)
     {
         if (_runningView is not null)
@@ -129,14 +136,59 @@ internal sealed class AutopilotWorkspaceBody : UserControl
             return _runningView;
         }
 
-        _embedded = _context.EmbedSession(new EmbeddedSessionRequest
+        var embedded = _context.EmbedSession(new EmbeddedSessionRequest
         {
             ProfileId = _settings.DefaultProfileLabel(),
             WorkingDirectory = _context.Sessions.ActiveSessionWorkingDirectory,
             IsolateInWorktree = true,
+            PermissionMode = _settings.AutonomyMode(),
         });
+        _embedded = embedded;
         _embeddedRun = run;
+        _ = _host.SetSessionStatusline(embedded.PaneId, $"Autopilot · {run.IssueId} — awaiting approval");
+        _runningView = _ComposeRunningView(run, embedded);
 
+        // Confirm over the now-visible embedded session, then brief it — posted so it runs after this render returns
+        // rather than re-entering it (which a synchronous consent decision would otherwise do mid-render).
+        Dispatcher.UIThread.Post(() => _ = _ConfirmAndBriefAsync(run, embedded));
+        return _runningView;
+    }
+
+    private async Task _ConfirmAndBriefAsync(AutopilotRun run, IEmbeddedSession embedded)
+    {
+        try
+        {
+            var decision = await _host.RequestConsentAsync(_StartConsent(run, _settings.AutonomyMode(), embedded.PaneId));
+
+            // Superseded while the operator decided: a newer run owns the surface now and the old session is already
+            // being closed by the run-change reset.
+            if (!ReferenceEquals(_embeddedRun, run))
+            {
+                return;
+            }
+
+            if (!decision.IsApproved)
+            {
+                _embedded = null;
+                _embeddedRun = null;
+                _runningView = null;
+                await embedded.CloseAsync();
+                _runs.Refuse("Autonomous run declined by the operator.");
+                return;
+            }
+
+            // Approved: hand the agent its work brief and mark the session as running the point.
+            _ = _host.SendToSessionAsync(embedded.PaneId, _BuildWorkPrompt(run));
+            _ = _host.SetSessionStatusline(embedded.PaneId, $"Autopilot · {run.IssueId}");
+        }
+        catch (Exception)
+        {
+            // A failed confirmation must not crash the UI; the embedded session surfaces its own state.
+        }
+    }
+
+    private Control _ComposeRunningView(AutopilotRun run, IEmbeddedSession embedded)
+    {
         var strip = new Border
         {
             Padding = new Thickness(12, 8),
@@ -156,8 +208,52 @@ internal sealed class AutopilotWorkspaceBody : UserControl
             },
         };
 
-        _runningView = new DockPanel { LastChildFill = true, Children = { strip, _embedded.View } };
-        return _runningView;
+        return new DockPanel { LastChildFill = true, Children = { strip, embedded.View } };
+    }
+
+    // The point's work brief the agent is handed once the operator approves (AC-152): work it to a merge-ready PR, and
+    // stop there — the merge stays with the human (AC-94 principle #6).
+    private static string _BuildWorkPrompt(AutopilotRun run)
+    {
+        var description = run.Data.GetValueOrDefault("description", string.Empty);
+        return $"""
+            You are an Autopilot run. Work this issue to a merge-ready pull request, then stop — do NOT merge; a human
+            does the merge. Work in this worktree: make the change, commit and push your branch, and open the PR.
+
+            Issue ({run.Tracker} {run.IssueId}): {run.Title}
+            {description}
+            """;
+    }
+
+    // The start-consent surface (AC-152), shown over the embedded session: what the operator approves before the run
+    // self-drives. The Action is rendered verbatim, so it is flattened to one line with control and format characters
+    // (bidi overrides, zero-width) stripped — the tracker-supplied title must not reorder or hide what will run.
+    private static ConsentRequest _StartConsent(AutopilotRun run, string mode, string paneId) => new(
+        Title: "Autopilot wants to start an autonomous run",
+        Action: _SingleLine($"Run {run.Tracker} {run.IssueId} autonomously ({mode}) to a merge-ready PR — the agent works without asking before edits; shell and egress stay gated. Issue: {run.Title}"),
+        Source: new ConsentSource(paneId, "autopilot", "Autopilot"),
+        Scope: "autopilot.start",
+        Risk: ConsentRisk.Dangerous);
+
+    private static string _SingleLine(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            if (char.IsControl(ch) || char.GetUnicodeCategory(ch) == UnicodeCategory.Format)
+            {
+                if (builder.Length > 0 && builder[^1] != ' ')
+                {
+                    builder.Append(' ');
+                }
+
+                continue;
+            }
+
+            builder.Append(ch);
+        }
+
+        return builder.ToString().Trim();
     }
 
     private Control _BuildCentredCard(AutopilotRun run, MaterialIconKind icon, string title, string subtitle, IBrush? subtitleBrush) =>

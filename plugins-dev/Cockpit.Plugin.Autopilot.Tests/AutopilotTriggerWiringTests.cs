@@ -6,13 +6,13 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
 /// The AC-150/AC-151 start wiring: the plugin registers a "start" intent handler that records the point, surfaces the
-/// Autopilot workspace, runs the scoping judgment and either advances the run or parks it. Exercised through the same
-/// host contract a tracker's "Start in Autopilot" button uses.
+/// Autopilot workspace, runs the scoping judgment and either parks the point or advances it to running (the body then
+/// embeds, confirms and briefs it). Exercised through the same host contract a tracker's "Start in Autopilot" uses.
 /// </summary>
 public class AutopilotTriggerWiringTests
 {
     [Fact]
-    public async Task StartIntent_WithNoScopingProfile_OpensTheWorkspace_AndReportsStarted()
+    public async Task StartIntent_WithNoScopingProfile_OpensTheWorkspace_AndAdvancesToRunning()
     {
         var host = Substitute.For<ICockpitHost>();
         host.OpenWorkspaceAsync(Arg.Any<string>()).Returns(Task.CompletedTask);
@@ -20,13 +20,13 @@ public class AutopilotTriggerWiringTests
         var result = await _RunStartHandler(host, new Dictionary<string, string>
         {
             ["tracker"] = "youtrack",
-            ["issue"] = "AC-151",
+            ["issue"] = "AC-152",
             ["title"] = "trigger",
         });
 
         await host.Received(1).OpenWorkspaceAsync("workspace.autopilot");
         result.Should().Contain(new KeyValuePair<string, string>("status", "started"));
-        result.Should().Contain(new KeyValuePair<string, string>("issue", "AC-151"));
+        result.Should().Contain(new KeyValuePair<string, string>("issue", "AC-152"));
     }
 
     [Fact]
@@ -41,7 +41,7 @@ public class AutopilotTriggerWiringTests
         var result = await _RunStartHandler(host, new Dictionary<string, string>
         {
             ["tracker"] = "youtrack",
-            ["issue"] = "AC-151",
+            ["issue"] = "AC-152",
             ["title"] = "vague point",
         });
 
@@ -50,7 +50,7 @@ public class AutopilotTriggerWiringTests
     }
 
     [Fact]
-    public async Task StartIntent_WhenScopingErrors_FailsOpen_AndStarts()
+    public async Task StartIntent_WhenScopingErrors_FailsOpen_AndAdvancesToRunning()
     {
         var host = Substitute.For<ICockpitHost>();
         host.OpenWorkspaceAsync(Arg.Any<string>()).Returns(Task.CompletedTask);
@@ -61,7 +61,7 @@ public class AutopilotTriggerWiringTests
         var result = await _RunStartHandler(host, new Dictionary<string, string>
         {
             ["tracker"] = "youtrack",
-            ["issue"] = "AC-151",
+            ["issue"] = "AC-152",
             ["title"] = "point",
         });
 

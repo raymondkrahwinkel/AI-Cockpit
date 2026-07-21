@@ -342,6 +342,11 @@ internal sealed class CockpitHost(
             ? Task.CompletedTask
             : _MutateSessionAsync(paneId, session => session.Title = name.Trim());
 
+    public Task SendToSessionAsync(string paneId, string text) =>
+        string.IsNullOrEmpty(text)
+            ? Task.CompletedTask
+            : _MutateSessionAsync(paneId, session => session.InjectAndSubmit(text));
+
     // Find the session pane by its id and mutate it on the UI thread. A plugin or workflow may call from any
     // thread, and the target may already be gone (a closed session) — a no-op then, never an error.
     private Task _MutateSessionAsync(string paneId, Action<SessionPanelViewModel> mutate)
@@ -353,7 +358,7 @@ internal sealed class CockpitHost(
 
         void Apply()
         {
-            if (cockpit.Sessions.FirstOrDefault(session => session.PaneId == paneId) is { } target)
+            if (cockpit.FindSession(paneId) is { } target)
             {
                 mutate(target);
             }

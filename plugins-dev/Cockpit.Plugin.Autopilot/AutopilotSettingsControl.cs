@@ -19,6 +19,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly NumericUpDown _maxAttempts;
     private readonly TextBox _profile;
     private readonly TextBox _scopingProfile;
+    private readonly ComboBox _autonomy;
     private readonly ComboBox _comments;
     private readonly Dictionary<GateKind, ComboBox> _gates = [];
 
@@ -40,6 +41,12 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             Text = settings.ScopingProfileLabel() ?? string.Empty,
             Width = 320,
         };
+        _autonomy = new ComboBox
+        {
+            Width = 220,
+            ItemsSource = new[] { "bypassPermissions", "acceptEdits", "default" },
+            SelectedItem = settings.AutonomyMode(),
+        };
         _comments = _Enum(new[] { CommentLevel.QuestionsAndMilestones, CommentLevel.Full }, settings.CommentMirroring());
 
         var panel = new StackPanel { Margin = new Thickness(4), Spacing = 10 };
@@ -48,6 +55,8 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         panel.Children.Add(_Row("Max self-fix attempts per gate", _maxAttempts));
         panel.Children.Add(_Row("Default session profile", _profile));
         panel.Children.Add(_Row("Scoping profile", _scopingProfile));
+        panel.Children.Add(_Row("Autonomy (permission mode)", _autonomy));
+        panel.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
         panel.Children.Add(_Row("Comment mirroring", _comments));
 
         panel.Children.Add(_Header("Done-gates"));
@@ -68,6 +77,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         _settings.SetMaxSelfFixAttempts((int)(_maxAttempts.Value ?? 2));
         _settings.SetDefaultProfileLabel(string.IsNullOrWhiteSpace(_profile.Text) ? null : _profile.Text.Trim());
         _settings.SetScopingProfileLabel(string.IsNullOrWhiteSpace(_scopingProfile.Text) ? null : _scopingProfile.Text.Trim());
+        _settings.SetAutonomyMode(_autonomy.SelectedItem as string ?? AutopilotSettings.DefaultAutonomyMode);
         _settings.SetCommentMirroring(_comments.SelectedItem is CommentLevel level ? level : CommentLevel.QuestionsAndMilestones);
         foreach (var (kind, box) in _gates)
         {
