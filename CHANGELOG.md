@@ -113,6 +113,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a Claude SDK session started after (or alongside) a terminal (TTY) session came up with none of
+  its MCP servers — cockpit-hosted and your own alike — and with no error to show for it. Two Claude
+  processes share one `~/.claude.json`, and the cockpit rewrote that file non-atomically before each launch;
+  a launch that landed in the split-second the file was being truncated read it as corrupt, reset it to
+  defaults, and lost the session's workspace trust — which silently disables every injected MCP server. The
+  cockpit now updates that file atomically, skips the write entirely when nothing needs changing, and never
+  replaces an unreadable file with an empty one, so interleaving TTY and SDK sessions keep their MCP servers.
 - fixed: the per-session MCP-server checklist is now honoured by both session kinds. A terminal (TTY)
   session ignored it and loaded every configured server regardless of what you ticked, while an SDK
   session got none of your cockpit-configured servers at all. Both now start with exactly the servers
