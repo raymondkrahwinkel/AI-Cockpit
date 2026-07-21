@@ -30,6 +30,11 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
         var settings = new GitHubIssuesSettings(host.Storage);
 
         host.AddSettings(() => new GitHubIssuesSettingsControl(settings));
+
+        // The writing half (AC-154): a consumer (Autopilot) posts evidence and labels an issue back through this,
+        // tracker-neutrally. A GitHub issue has no status field, so its stage-equivalent is a label.
+        host.AddTrackerProvider(new GitHubTrackerProvider());
+
         host.AddSideMenuButton(
             "GitHub Issues",
             () => _ = host.ShowDialogAsync("GitHub Issues", () => new GitHubIssuesDialogControl(settings, host), 1040, 700));

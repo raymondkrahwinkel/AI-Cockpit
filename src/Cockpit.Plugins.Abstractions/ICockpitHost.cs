@@ -447,6 +447,20 @@ public interface ICockpitHost
     Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
 
     /// <summary>
+    /// Registers a tracker a plugin can post back to (AC-154) — the writing half of an issue tracker (YouTrack, GitHub
+    /// Issues), so a consumer (Autopilot) can leave evidence and move an issue's stage tracker-neutrally. First
+    /// registration for a <see cref="Tracking.ITrackerProvider.TrackerId"/> wins; a later one for the same id is
+    /// ignored. Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds)
+    /// keep compiling untouched — only the app's own host records it.
+    /// </summary>
+    void AddTrackerProvider(Tracking.ITrackerProvider provider)
+    {
+    }
+
+    /// <summary>The trackers every plugin has contributed — what a consumer reads to find the one for an issue's tracker id. Default empty.</summary>
+    IReadOnlyList<Tracking.ITrackerProvider> TrackerProviders => [];
+
+    /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds
     /// <see cref="PluginShortcut.DefaultGesture"/> and runs <see cref="PluginShortcut.OnInvoke"/> when it is
     /// pressed, shown alongside the built-in shortcuts in Options. Only fires when the operator is not typing

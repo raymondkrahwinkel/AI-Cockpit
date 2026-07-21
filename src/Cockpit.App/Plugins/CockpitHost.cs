@@ -23,6 +23,7 @@ using Cockpit.Plugins.Abstractions.Profiles;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.StatusBar;
 using Cockpit.Plugins.Abstractions.Widgets;
+using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.App.Plugins;
@@ -147,6 +148,20 @@ internal sealed class CockpitHost(
 
         await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenPluginWorkspaceAsync(workspaceTypeId));
     }
+
+    public void AddTrackerProvider(ITrackerProvider provider)
+    {
+        // First registration for a tracker id wins; a later one is logged and ignored rather than added beside it.
+        if (!services.GetRequiredService<ITrackerProviderRegistry>().Register(provider))
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger<CockpitHost>().LogWarning(
+                "Tracker '{TrackerId}' is already contributed by another plugin; this registration is ignored",
+                provider.TrackerId);
+        }
+    }
+
+    public IReadOnlyList<ITrackerProvider> TrackerProviders =>
+        services.GetRequiredService<ITrackerProviderRegistry>().Providers;
 
     public void AddWorkflowStep(IWorkflowStep step) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Register(step);

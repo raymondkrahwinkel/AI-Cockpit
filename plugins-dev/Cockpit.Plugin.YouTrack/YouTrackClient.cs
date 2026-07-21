@@ -274,6 +274,25 @@ internal sealed class YouTrackClient
         throw new InvalidOperationException($"YouTrack refused the update ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
     }
 
+    /// <summary>Posts a comment on an issue (<c>POST /issues/{id}/comments</c>). Surfaces YouTrack's own refusal text on failure.</summary>
+    public async Task AddCommentAsync(string instanceBaseUrl, string token, string idReadable, string text, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/issues/{Uri.EscapeDataString(idReadable)}/comments?fields=id");
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Content = new StringContent(JsonSerializer.Serialize(new { text }), Encoding.UTF8, "application/json");
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var failure = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new InvalidOperationException($"YouTrack refused the comment ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
+    }
+
     /// <summary>
     /// [project:{tag}] plus what to look for — <c>#Unresolved</c> unless the caller says otherwise, because showing
     /// issues that are done is offering work that is over — plus <c>for: me</c> when <paramref name="assignedToMe"/>

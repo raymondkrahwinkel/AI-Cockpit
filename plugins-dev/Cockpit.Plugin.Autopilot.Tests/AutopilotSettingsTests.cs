@@ -97,6 +97,17 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
+    public void StageMapping_DefaultsToUnset_ThenRoundTrips()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        settings.StageFor(AutopilotRunPhase.MergeReady).Should().BeNull();
+
+        settings.SetStageFor(AutopilotRunPhase.MergeReady, "In Review");
+        settings.StageFor(AutopilotRunPhase.MergeReady).Should().Be("In Review");
+    }
+
+    [Fact]
     public void Changed_FiresOnEverySet()
     {
         var settings = new AutopilotSettings(new FakeStorage());

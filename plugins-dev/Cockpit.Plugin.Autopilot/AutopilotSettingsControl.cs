@@ -21,6 +21,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly TextBox _scopingProfile;
     private readonly ComboBox _autonomy;
     private readonly ComboBox _comments;
+    private readonly TextBox _stageRunning;
+    private readonly TextBox _stageMergeReady;
+    private readonly TextBox _stageBlocked;
     private readonly Dictionary<GateKind, ComboBox> _gates = [];
 
     public AutopilotSettingsControl(AutopilotSettings settings)
@@ -48,6 +51,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             SelectedItem = settings.AutonomyMode(),
         };
         _comments = _Enum(new[] { CommentLevel.QuestionsAndMilestones, CommentLevel.Full }, settings.CommentMirroring());
+        _stageRunning = _StageBox(settings.StageFor(AutopilotRunPhase.Running));
+        _stageMergeReady = _StageBox(settings.StageFor(AutopilotRunPhase.MergeReady));
+        _stageBlocked = _StageBox(settings.StageFor(AutopilotRunPhase.Blocked));
 
         var panel = new StackPanel { Margin = new Thickness(4), Spacing = 10 };
         panel.Children.Add(_Header("Run behaviour"));
@@ -68,8 +74,18 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             panel.Children.Add(_Row(_GateLabel(kind), box));
         }
 
+        panel.Children.Add(_Header("Tracker stage mapping"));
+        panel.Children.Add(_Hint("The tracker stage each phase moves the issue to, in the tracker's own words (a YouTrack stage, a GitHub label). Blank leaves the stage where it is and moves only the session status."));
+        panel.Children.Add(_Row("Running", _stageRunning));
+        panel.Children.Add(_Row("Merge-ready", _stageMergeReady));
+        panel.Children.Add(_Row("Blocked", _stageBlocked));
+
         Content = panel;
     }
+
+    private static TextBox _StageBox(string? value) => new() { Text = value ?? string.Empty, Width = 220, PlaceholderText = "(unmapped)" };
+
+    private static string? _Trimmed(TextBox box) => string.IsNullOrWhiteSpace(box.Text) ? null : box.Text.Trim();
 
     public bool Save()
     {
@@ -78,6 +94,9 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         _settings.SetDefaultProfileLabel(string.IsNullOrWhiteSpace(_profile.Text) ? null : _profile.Text.Trim());
         _settings.SetScopingProfileLabel(string.IsNullOrWhiteSpace(_scopingProfile.Text) ? null : _scopingProfile.Text.Trim());
         _settings.SetAutonomyMode(_autonomy.SelectedItem as string ?? AutopilotSettings.DefaultAutonomyMode);
+        _settings.SetStageFor(AutopilotRunPhase.Running, _Trimmed(_stageRunning));
+        _settings.SetStageFor(AutopilotRunPhase.MergeReady, _Trimmed(_stageMergeReady));
+        _settings.SetStageFor(AutopilotRunPhase.Blocked, _Trimmed(_stageBlocked));
         _settings.SetCommentMirroring(_comments.SelectedItem is CommentLevel level ? level : CommentLevel.QuestionsAndMilestones);
         foreach (var (kind, box) in _gates)
         {

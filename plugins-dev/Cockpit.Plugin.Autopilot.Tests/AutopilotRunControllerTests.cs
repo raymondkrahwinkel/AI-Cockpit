@@ -86,6 +86,19 @@ public class AutopilotRunControllerTests
     }
 
     [Fact]
+    public void MarkReady_WithAPrUrl_KeepsItForEvidence()
+    {
+        var controller = _Controller();
+        controller.BeginScoping(Run("AC-154"));
+        controller.MarkRunning();
+        controller.ReportGate(GateKind.Security, AutopilotGateOutcome.Passed);
+
+        controller.MarkReady("https://example/pr/1");
+
+        controller.PrUrl.Should().Be("https://example/pr/1");
+    }
+
+    [Fact]
     public void MarkReady_WhenAHardGateFailed_IsBlocked_NamingIt()
     {
         var controller = _Controller();

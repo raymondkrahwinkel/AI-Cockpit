@@ -9,6 +9,7 @@ using Material.Icons;
 using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
@@ -32,6 +33,10 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     private AutopilotRun? _embeddedRun;
     private Control? _runningView;
     private Border? _statusStrip;
+    private AutopilotRun? _reactRun;
+    private AutopilotRunPhase? _stagedPhase;
+    private bool _postedEvidence;
+    private bool _approved;
 
     public AutopilotWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotRunController runs)
     {
@@ -97,8 +102,17 @@ internal sealed class AutopilotWorkspaceBody : UserControl
 
     private void _Render()
     {
-        // A different point (or none) took over this surface: end the previous run's embedded session and its worktree
-        // before anything new lands, so a replaced run is not left running orphaned.
+        // A different point (or none) took over: reset the tracker-reaction state for the new run.
+        if (!ReferenceEquals(_reactRun, _runs.Current))
+        {
+            _reactRun = _runs.Current;
+            _stagedPhase = null;
+            _postedEvidence = false;
+            _approved = false;
+        }
+
+        // End the previous run's embedded session and its worktree before anything new lands, so a replaced run is not
+        // left running orphaned.
         if (_embedded is { } previous && !ReferenceEquals(_embeddedRun, _runs.Current))
         {
             _embedded = null;
@@ -119,6 +133,8 @@ internal sealed class AutopilotWorkspaceBody : UserControl
             AutopilotRunPhase.Running or AutopilotRunPhase.Blocked or AutopilotRunPhase.MergeReady => _BuildRunningView(run),
             _ => _BuildScopingView(run),
         };
+
+        _ReactToTracker(run);
     }
 
     private Control _BuildScopingView(AutopilotRun run) =>
@@ -182,9 +198,12 @@ internal sealed class AutopilotWorkspaceBody : UserControl
                 return;
             }
 
-            // Approved: hand the agent its work brief and mark the session as running the point.
+            // Approved: hand the agent its work brief and mark the session as running the point. Only now may the run
+            // touch the tracker — before the operator approved, no stage move or comment goes out.
             _ = _host.SendToSessionAsync(embedded.PaneId, _BuildWorkPrompt(run));
             _ = _host.SetSessionStatusline(embedded.PaneId, $"Autopilot · {run.IssueId}");
+            _approved = true;
+            _ReactToTracker(run);
         }
         catch (Exception)
         {
@@ -278,6 +297,62 @@ internal sealed class AutopilotWorkspaceBody : UserControl
             Child = new TextBlock { Text = text, FontSize = 11, Foreground = _Brush(foregroundKey), TextTrimming = TextTrimming.CharacterEllipsis },
         };
 
+    // Post evidence and move the tracker stage as the run advances (AC-154), through whichever tracker provider matches
+    // the run — tracker-neutral. Fire-and-forget: a slow or failed tracker post must not stall the render, and each
+    // provider action returns whether it landed rather than throwing.
+    private void _ReactToTracker(AutopilotRun run)
+    {
+        // The run may only touch the tracker once the operator has approved it — never before or on a declined run.
+        if (!_approved || _host.TrackerProviders.FirstOrDefault(provider => provider.TrackerId == run.Tracker) is not { } tracker)
+        {
+            return;
+        }
+
+        // Move the mapped stage once per phase transition; an unmapped phase moves only the session status.
+        if (_stagedPhase != _runs.Phase)
+        {
+            _stagedPhase = _runs.Phase;
+            if (_settings.StageFor(_runs.Phase) is { Length: > 0 } stage)
+            {
+                _ = _TrackAsync(tracker.SetStageAsync(run.IssueId, stage), "stage update");
+            }
+        }
+
+        // Post the evidence comment once, when the run settles to merge-ready or blocked.
+        if (!_postedEvidence && _runs.Phase is AutopilotRunPhase.MergeReady or AutopilotRunPhase.Blocked)
+        {
+            _postedEvidence = true;
+            _ = _TrackAsync(tracker.PostCommentAsync(run.IssueId, _EvidenceComment()), "evidence comment");
+        }
+    }
+
+    // Await a fire-and-forget tracker action and surface it when it did not land — a silent evidence pipeline is
+    // worse than a noisy one for a feature whose point is an auditable trail.
+    private async Task _TrackAsync(Task<bool> action, string what)
+    {
+        try
+        {
+            if (!await action)
+            {
+                _host.ShowToast($"Autopilot: the tracker {what} did not land.", PluginToastSeverity.Warning);
+            }
+        }
+        catch (Exception)
+        {
+            _host.ShowToast($"Autopilot: the tracker {what} did not land.", PluginToastSeverity.Warning);
+        }
+    }
+
+    private string _EvidenceComment()
+    {
+        var gates = _runs.Gates.Count == 0
+            ? "none reported"
+            : string.Join(", ", _runs.Gates.Select(gate => $"{gate.Key} {gate.Value}"));
+        return _runs.Phase == AutopilotRunPhase.MergeReady
+            ? $"Autopilot: merge-ready.{(_runs.PrUrl is { Length: > 0 } url ? $" PR: {url}." : string.Empty)} Gates — {gates}. The merge stays with a human."
+            : $"Autopilot: blocked — {_runs.BlockReason}. Gates — {gates}.";
+    }
+
     // The point's work brief the agent is handed once the operator approves (AC-152/AC-153): work it to a merge-ready
     // PR, run the done-gates and report them, then stop — the merge stays with the human (AC-94 principle #6).
     private string _BuildWorkPrompt(AutopilotRun run)
@@ -310,7 +385,7 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     // (bidi overrides, zero-width) stripped — the tracker-supplied title must not reorder or hide what will run.
     private static ConsentRequest _StartConsent(AutopilotRun run, string mode, string paneId) => new(
         Title: "Autopilot wants to start an autonomous run",
-        Action: _SingleLine($"Run {run.Tracker} {run.IssueId} autonomously ({mode}) to a merge-ready PR — the agent works without asking before edits; shell and egress stay gated. Issue: {run.Title}"),
+        Action: _SingleLine($"Run {run.Tracker} {run.IssueId} autonomously ({mode}) to a merge-ready PR, posting progress and evidence back to {run.Tracker} and moving the issue's stage — the agent works without asking before edits; shell and egress stay gated. Issue: {run.Title}"),
         Source: new ConsentSource(paneId, "autopilot", "Autopilot"),
         Scope: "autopilot.start",
         Risk: ConsentRisk.Dangerous);

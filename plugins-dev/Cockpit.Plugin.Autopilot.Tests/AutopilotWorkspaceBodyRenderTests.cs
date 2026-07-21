@@ -3,6 +3,7 @@ using Avalonia.LogicalTree;
 using Avalonia.Threading;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
+using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
 using FluentAssertions;
 using NSubstitute;
@@ -176,6 +177,61 @@ public class AutopilotWorkspaceBodyRenderTests
         runs.ReportGate(GateKind.Security, AutopilotGateOutcome.Passed);
 
         _Texts(body).Should().Contain(text => text.Contains("security"));
+    }
+
+    [Fact]
+    public async Task Body_WhenMergeReady_PostsEvidenceWithThePrUrl_ToTheMatchingTracker()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        var host = _ApprovingHost();
+        host.TrackerProviders.Returns(new[] { tracker });
+        var context = _Context(_Embedded("EMBEDDED-SESSION"));
+        var runs = _Runs();
+        var body = _Body(host, context, runs);
+        _Show(body);
+
+        runs.BeginScoping(new AutopilotRun("youtrack", "AC-154", "evidence", new Dictionary<string, string>()));
+        runs.MarkRunning();
+        _Pump();
+
+        runs.ReportGate(GateKind.Security, AutopilotGateOutcome.Passed);
+        runs.MarkReady("https://example/pr/1");
+
+        await tracker.Received(1).PostCommentAsync("AC-154",
+            Arg.Is<string>(comment => comment.Contains("merge-ready") && comment.Contains("https://example/pr/1")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Body_MovesTheTrackerStage_OnlyAfterTheOperatorApproves()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        var host = Substitute.For<ICockpitHost>();
+        host.TrackerProviders.Returns(new[] { tracker });
+        var consent = new TaskCompletionSource<ConsentDecision>();
+        host.RequestConsentAsync(Arg.Any<ConsentRequest>()).Returns(consent.Task);
+
+        var storage = Substitute.For<IPluginStorage>();
+        storage.Get<string>("stage.Running").Returns("In Progress");
+        var settings = new AutopilotSettings(storage);
+        var runs = new AutopilotRunController(settings);
+        var body = new AutopilotWorkspaceBody(host, _Context(_Embedded("EMBEDDED-SESSION")), settings, runs);
+        _Show(body);
+
+        runs.BeginScoping(new AutopilotRun("youtrack", "AC-154", "evidence", new Dictionary<string, string>()));
+        runs.MarkRunning();
+        _Pump();
+
+        // Consent still pending: nothing has touched the operator's tracker yet.
+        await tracker.DidNotReceive().SetStageAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // The operator approves: only now does the stage move.
+        consent.SetResult(new ConsentDecision(ConsentOutcome.Approved));
+        _Pump();
+
+        await tracker.Received(1).SetStageAsync("AC-154", "In Progress", Arg.Any<CancellationToken>());
     }
 
     private static AutopilotRunController _Runs() =>

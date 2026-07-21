@@ -49,6 +49,11 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public string AutonomyMode(string? projectId = null) =>
         _ReadString(projectId, AutonomyModeKey) is { Length: > 0 } mode ? mode : DefaultAutonomyMode;
 
+    /// <summary>The tracker stage a run's phase maps to (AC-154, decision #7), or null when the phase has no mapping — then only the session status moves. The name is the tracker's own vocabulary, applied by whichever tracker the run is on.</summary>
+    public string? StageFor(AutopilotRunPhase phase, string? projectId = null) => _ReadString(projectId, $"stage.{phase}");
+
+    public void SetStageFor(AutopilotRunPhase phase, string? stage, string? projectId = null) => _Write(projectId, $"stage.{phase}", stage);
+
     /// <summary>How much of a run is mirrored into tracker comments (default questions + milestones).</summary>
     public CommentLevel CommentMirroring(string? projectId = null) => _ReadValue(projectId, CommentKey, CommentLevel.QuestionsAndMilestones);
 

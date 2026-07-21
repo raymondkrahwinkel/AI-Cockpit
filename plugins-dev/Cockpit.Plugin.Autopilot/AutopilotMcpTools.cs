@@ -43,15 +43,16 @@ internal sealed class AutopilotMcpTools(ICockpitHost host, AutopilotRunControlle
     }
 
     [McpServerTool(Name = "autopilot_ready")]
-    [Description("Signal that the work is done and the pull request is open. Autopilot settles the run to merge-ready when every hard gate passed, or blocked when one did not. Call this only after opening the PR and reporting every gate. Do NOT merge — a human does the merge.")]
-    public string MarkReady()
+    [Description("Signal that the work is done and the pull request is open. Pass the PR url so Autopilot can post it back to the tracker as evidence. Autopilot settles the run to merge-ready when every hard gate passed, or blocked when one did not. Call this only after opening the PR and reporting every gate. Do NOT merge — a human does the merge.")]
+    public string MarkReady(
+        [Description("The url of the pull request you opened, so it can be posted back to the tracker.")] string? prUrl = null)
     {
         if (!_IsThisRun())
         {
             return _Fail("This call is not from the active Autopilot run's session.");
         }
 
-        runs.MarkReady();
+        runs.MarkReady(prUrl);
         return JsonSerializer.Serialize(new { ok = true, phase = runs.Phase.ToString(), reason = runs.BlockReason }, Serializer);
     }
 

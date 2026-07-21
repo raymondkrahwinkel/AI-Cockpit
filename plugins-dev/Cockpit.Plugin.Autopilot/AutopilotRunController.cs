@@ -26,6 +26,9 @@ internal sealed class AutopilotRunController(AutopilotSettings settings)
     /// <summary>The pane id of the run's embedded session, once the body has embedded it — how a gate report is bound to this run.</summary>
     public string? SessionPaneId { get; private set; }
 
+    /// <summary>The merge-ready pull request the agent opened and reported, or null — posted back to the tracker as evidence.</summary>
+    public string? PrUrl { get; private set; }
+
     /// <summary>A snapshot of the gate outcomes the agent has reported for the current run so far.</summary>
     public IReadOnlyDictionary<GateKind, AutopilotGateOutcome> Gates
     {
@@ -59,6 +62,7 @@ internal sealed class AutopilotRunController(AutopilotSettings settings)
         Phase = AutopilotRunPhase.Scoping;
         BlockReason = null;
         SessionPaneId = null;
+        PrUrl = null;
         lock (_gateLock)
         {
             _gates.Clear();
@@ -105,8 +109,13 @@ internal sealed class AutopilotRunController(AutopilotSettings settings)
     /// gates that did not pass. When the operator has set every gate to Skip there are no hard gates to meet, so the
     /// run is merge-ready by their own explicit opt-out — the default keeps Security hard.
     /// </summary>
-    public void MarkReady()
+    public void MarkReady(string? prUrl = null)
     {
+        if (!string.IsNullOrWhiteSpace(prUrl))
+        {
+            PrUrl = prUrl.Trim();
+        }
+
         List<GateKind> unmet;
         lock (_gateLock)
         {
