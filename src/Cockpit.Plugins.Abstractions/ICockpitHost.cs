@@ -426,6 +426,18 @@ public interface ICockpitHost
     IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes => [];
 
     /// <summary>
+    /// Brings the workspace of type <paramref name="workspaceTypeId"/> — one the plugin registered with
+    /// <see cref="AddWorkspaceType"/> — to the front, opening one when none is present, and makes it the active
+    /// workspace. The programmatic half of the operator picking that type from the "+" menu: a plugin that has just
+    /// received an intent (say "Start in Autopilot", AC-150) uses it to surface its own workspace so the operator
+    /// lands on the run instead of having to open it by hand. An existing workspace of the type is activated in
+    /// place rather than duplicated. What the body then shows is the plugin's business; this only puts it on screen.
+    /// Default no-op so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep
+    /// compiling untouched — only the app's own host opens a workspace.
+    /// </summary>
+    Task OpenWorkspaceAsync(string workspaceTypeId) => Task.CompletedTask;
+
+    /// <summary>
     /// Registers a keyboard shortcut (e.g. YouTrack on <c>Shift+Y</c>): the host binds
     /// <see cref="PluginShortcut.DefaultGesture"/> and runs <see cref="PluginShortcut.OnInvoke"/> when it is
     /// pressed, shown alongside the built-in shortcuts in Options. Only fires when the operator is not typing

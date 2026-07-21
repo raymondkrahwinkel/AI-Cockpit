@@ -55,6 +55,7 @@ internal sealed class YouTrackDialogControl : UserControl
     private readonly TextBlock _detailMeta;
     private readonly Button _inject;
     private readonly Button _start;
+    private readonly Button _startInAutopilot;
     private readonly Button _setState;
     private readonly Button _link;
     private readonly SelectableTextBlock _detailBody;
@@ -198,8 +199,13 @@ internal sealed class YouTrackDialogControl : UserControl
         _link = new Button { Content = "Link to session", IsVisible = false };
         _link.Click += (_, _) => _LinkToActiveSession(_grid.SelectedItem as YouTrackIssue);
 
+        // Hands the issue to the Autopilot plugin (AC-150) — hidden unless Autopilot is installed and listening, the
+        // same way the workflow actions hide when the board cannot back them.
+        _startInAutopilot = new Button { Content = "Start in Autopilot", IsVisible = false };
+        _startInAutopilot.Click += async (_, _) => await _StartInAutopilotAsync(_grid.SelectedItem as YouTrackIssue);
+
         var detailButtons = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-        foreach (var button in new[] { _inject, _start, _setState, _link, openBrowser })
+        foreach (var button in new[] { _inject, _start, _startInAutopilot, _setState, _link, openBrowser })
         {
             button.Margin = new Thickness(0, 0, 6, 6);
             detailButtons.Children.Add(button);
@@ -498,7 +504,28 @@ internal sealed class YouTrackDialogControl : UserControl
         // "Add to prompt" only makes sense with a live session; otherwise the copy button is the way to grab it.
         _inject.IsVisible = _actions.HasActiveSession;
         _link.IsVisible = _host.Sessions.ActivePaneId is { Length: > 0 };
+        _startInAutopilot.IsVisible = _host.CanSendIntent("autopilot", "start");
         _ = _LoadFieldsAsync(issue);
+    }
+
+    // Hand the selected issue to Autopilot (AC-150): it records the run and brings its own workspace to the front.
+    private async Task _StartInAutopilotAsync(YouTrackIssue? issue)
+    {
+        if (issue is null)
+        {
+            return;
+        }
+
+        var data = new Dictionary<string, string>
+        {
+            ["tracker"] = "youtrack",
+            ["issue"] = issue.IdReadable,
+            ["title"] = issue.Summary,
+            ["project"] = issue.Project,
+            ["url"] = _BuildIssueUrl(issue),
+        };
+
+        await _host.SendIntent("autopilot", "start", data);
     }
 
     // What this issue's project allows, read per selection: until it is known, the status actions stay hidden

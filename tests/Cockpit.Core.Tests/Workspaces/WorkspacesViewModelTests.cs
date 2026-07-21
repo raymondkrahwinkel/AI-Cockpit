@@ -8,6 +8,7 @@ using Cockpit.Core.Workspaces;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Plugins.Abstractions.Widgets;
+using Cockpit.Plugins.Abstractions.Workspaces;
 using FluentAssertions;
 using NSubstitute;
 
@@ -85,6 +86,32 @@ public class WorkspacesViewModelTests
 
         viewModel.Settings.Workspaces.Single(workspace => workspace.Id == created).Type.Should().Be(WorkspaceType.Sessions);
         viewModel.Active!.Id.Should().Be(created);
+    }
+
+    [Fact]
+    public async Task OpenPluginWorkspace_CreatesOneNamedAfterItsType_AndActivatesIt()
+    {
+        // The programmatic entry a plugin's "Start in Autopilot" trigger uses (AC-150). The tab has to read
+        // "Autopilot", not "Sessions" — the WorkspaceType-based naming only knows the two host names.
+        var viewModel = _CreateWithPluginType(out _);
+
+        await viewModel.OpenPluginWorkspaceAsync("workspace.autopilot");
+
+        viewModel.Active!.Type.Id.Should().Be("workspace.autopilot");
+        viewModel.Active!.Name.Should().Be("Autopilot");
+    }
+
+    [Fact]
+    public async Task OpenPluginWorkspace_Twice_ActivatesTheExistingOne_RatherThanStackingASecond()
+    {
+        var viewModel = _CreateWithPluginType(out _);
+        await viewModel.OpenPluginWorkspaceAsync("workspace.autopilot");
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
+
+        await viewModel.OpenPluginWorkspaceAsync("workspace.autopilot");
+
+        viewModel.Settings.Workspaces.Count(workspace => workspace.Type.Id == "workspace.autopilot").Should().Be(1);
+        viewModel.Active!.Type.Id.Should().Be("workspace.autopilot");
     }
 
     [Fact]
@@ -444,5 +471,19 @@ public class WorkspacesViewModelTests
         store = Substitute.For<IWorkspaceSettingsStore>();
         store.LoadAsync(Arg.Any<CancellationToken>()).Returns(WorkspaceSettings.Default);
         return new WorkspacesViewModel(store);
+    }
+
+    private static WorkspacesViewModel _CreateWithPluginType(out IWorkspaceSettingsStore store)
+    {
+        store = Substitute.For<IWorkspaceSettingsStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(WorkspaceSettings.Default);
+
+        var registry = new WorkspaceTypeRegistry(Substitute.For<IServiceProvider>());
+        registry.Register(
+            new WorkspaceTypeRegistration("workspace.autopilot", "Autopilot", _ => new TextBlock()),
+            Substitute.For<IPluginStorage>(),
+            Substitute.For<ICockpitSessionObserver>());
+
+        return new WorkspacesViewModel(store, workspaceTypes: registry);
     }
 }

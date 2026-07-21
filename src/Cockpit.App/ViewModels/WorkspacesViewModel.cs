@@ -293,6 +293,32 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(type), type)));
 
     /// <summary>
+    /// Brings the workspace of plugin type <paramref name="workspaceTypeId"/> to the front, creating one when none
+    /// is open — the programmatic entry the host exposes for a plugin that surfaces its own workspace on an intent
+    /// ("Start in Autopilot", AC-150). Mirrors <see cref="EnsureSessionWorkspace"/>: an existing one is activated in
+    /// place rather than duplicated, so repeatedly starting runs lands them on the one Autopilot desk instead of
+    /// stacking empty copies. Built-in type ids resolve to their host type, so this is only meaningfully a plugin path.
+    /// </summary>
+    public Task OpenPluginWorkspaceAsync(string workspaceTypeId)
+    {
+        var type = WorkspaceType.FromId(workspaceTypeId);
+        if (Active is { } active && active.Type == type)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (Settings.Workspaces.FirstOrDefault(workspace => workspace.Type == type) is { } existing)
+        {
+            return _ApplyAsync(Settings.WithActive(existing.Id));
+        }
+
+        // Name the tab after the plugin type's registered title ("Autopilot"), the way the "+" menu does — the
+        // WorkspaceType-based _UniqueName only knows the two host names and would label a plugin desk "Sessions".
+        var title = _workspaceTypes?.WorkspaceTypes.FirstOrDefault(registration => registration.Id == type.Id)?.Title ?? type.Id;
+        return _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(title), type)));
+    }
+
+    /// <summary>
     /// Whether closing this workspace would do anything. False for the last one — the cockpit always needs a
     /// desk to render — and for an id nothing holds. The caller asks before it starts tearing down what is on
     /// the workspace, since stopping its sessions and then finding the workspace stays is the one outcome worse

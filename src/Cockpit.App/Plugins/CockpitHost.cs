@@ -135,6 +135,19 @@ internal sealed class CockpitHost(
     public IReadOnlyList<WorkspaceTypeRegistration> WorkspaceTypes =>
         services.GetRequiredService<IWorkspaceTypeRegistry>().WorkspaceTypes;
 
+    // The programmatic "+" for a plugin's own workspace type: a plugin that received an intent surfaces its
+    // workspace so the operator lands on it. Marshalled to the UI thread since a plugin may dispatch from any
+    // thread; a design-time/headless host (no view model resolved) simply does nothing.
+    public async Task OpenWorkspaceAsync(string workspaceTypeId)
+    {
+        if (services.GetService<WorkspacesViewModel>() is not { } workspaces)
+        {
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenPluginWorkspaceAsync(workspaceTypeId));
+    }
+
     public void AddWorkflowStep(IWorkflowStep step) =>
         services.GetRequiredService<IWorkflowStepRegistry>().Register(step);
 
