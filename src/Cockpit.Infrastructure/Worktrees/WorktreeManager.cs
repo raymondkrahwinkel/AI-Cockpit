@@ -116,7 +116,12 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             Path.GetFullPath(worktreePath),
             branch,
             repository.HeadCommit,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow)
+        {
+            // The branch we forked from — measured against its moving tip later so a merged worktree reads clean.
+            // Null when HEAD was detached at creation; the status check falls back to the repository's default branch.
+            BaseBranch = repository.CurrentBranch,
+        };
         await _registry.AddAsync(record, cancellationToken).ConfigureAwait(false);
 
         return record;
@@ -130,8 +135,9 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
 
     public async Task<IReadOnlyList<WorktreeStatus>> GetStatusesAsync(CancellationToken cancellationToken = default)
     {
-        // Each worktree's status is two independent git subprocesses; run them across worktrees at once so opening the
-        // panel costs the slowest tree rather than the sum of all of them. Order is preserved (Task.WhenAll keeps it).
+        // Each worktree's status is several independent git subprocesses (a porcelain status plus resolving its base
+        // ref and counting unmerged commits); run them across worktrees at once so opening the panel costs the slowest
+        // tree rather than the sum of all of them. Order is preserved (Task.WhenAll keeps it).
         var records = await _registry.ListAsync(cancellationToken).ConfigureAwait(false);
         return await Task.WhenAll(records.Select(record => _StatusOfAsync(record, cancellationToken))).ConfigureAwait(false);
     }
@@ -146,13 +152,13 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
         try
         {
             var status = await GitCli.RunCheckedAsync(record.Path, ["status", "--porcelain"], cancellationToken).ConfigureAwait(false);
-            var aheadRaw = await GitCli.RunCheckedAsync(record.Path, ["rev-list", "--count", $"{record.BaseCommit}..HEAD"], cancellationToken).ConfigureAwait(false);
+            var ahead = await _UnmergedCommitCountAsync(record, cancellationToken).ConfigureAwait(false);
 
             return new WorktreeStatus(
                 record,
                 Exists: true,
                 HasUncommittedChanges: status.Length > 0,
-                CommitsAhead: int.TryParse(aheadRaw, out var ahead) ? ahead : 0);
+                CommitsAhead: ahead);
         }
         catch (Exception)
         {
@@ -170,12 +176,88 @@ internal sealed class WorktreeManager : IWorktreeManager, ISingletonService
             return false;
         }
 
-        var aheadOfBase = await GitCli.RunCheckedAsync(
+        return await _UnmergedCommitCountAsync(record, cancellationToken).ConfigureAwait(false) == 0;
+    }
+
+    // Commits that live only on this worktree's branch and are not yet in the branch it was forked from — the work a
+    // removal would strand. Measured against the base branch's CURRENT tip (see _ResolveBaseRefAsync), not the frozen
+    // fork commit: once the branch is merged into its base, every one of its commits is reachable from that base and
+    // the count falls to zero, so a finished, merged worktree reads as clean and is cleaned up instead of lingering
+    // forever showing "N commits ahead" (AC-85). Both the panel status and the teardown clean-gate share this so the
+    // two never disagree on what "has work to keep" means.
+    // Note: a squash-merge leaves the branch's original commits absent from the base, so this still counts them as
+    // unmerged — the worktree stays retained for the operator's review, the safe direction.
+    private static async Task<int> _UnmergedCommitCountAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        var baseRef = await _ResolveBaseRefAsync(record, cancellationToken).ConfigureAwait(false);
+        var raw = await GitCli.RunCheckedAsync(
             record.Path,
-            ["rev-list", "--count", $"{record.BaseCommit}..HEAD"],
+            ["rev-list", "--count", $"{baseRef}..HEAD"],
             cancellationToken).ConfigureAwait(false);
 
-        return aheadOfBase == "0";
+        return int.TryParse(raw, out var count) ? count : 0;
+    }
+
+    // The ref to measure "unmerged" against: the base branch's current tip, so a merged worktree reads as clean. The
+    // first candidate git can resolve to a commit wins (a recorded base branch since deleted is skipped), and the
+    // frozen fork commit is the last resort so this never throws — it just falls back to the old ahead-of-fork count.
+    private static async Task<string> _ResolveBaseRefAsync(WorktreeRecord record, CancellationToken cancellationToken)
+    {
+        // The common, current-format case: the branch we forked from is recorded. Measuring against its local tip is
+        // both correct and one subprocess — resolve it and stop, so the panel's per-worktree fan-out never spends the
+        // default-branch discovery below on every tree it already knows the base of.
+        if (!string.IsNullOrWhiteSpace(record.BaseBranch)
+            && await _ResolvesToCommitAsync(record.Path, record.BaseBranch!, cancellationToken).ConfigureAwait(false))
+        {
+            return record.BaseBranch!;
+        }
+
+        // Legacy records (written before the base branch was tracked) and detached-HEAD creations have no recorded
+        // branch: fall back to the repository's default branch. Discover its name from origin/HEAD but prefer the
+        // LOCAL ref of that name, so a worktree merged into a local main that has not been pushed yet still reads as
+        // merged rather than being measured against a stale origin tip. Only if no local ref matches do we measure
+        // against the remote-tracking ref itself, and only then against the frozen fork commit.
+        var originHead = await GitCli.RunAsync(
+            record.Path,
+            ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+            cancellationToken).ConfigureAwait(false);
+        var remoteDefault = originHead.ExitCode == 0 ? originHead.StandardOutput.Trim() : string.Empty;
+
+        var candidates = new List<string>();
+        if (remoteDefault.StartsWith("origin/", StringComparison.Ordinal))
+        {
+            candidates.Add(remoteDefault["origin/".Length..]);
+        }
+
+        candidates.Add("main");
+        candidates.Add("master");
+
+        if (remoteDefault.Length > 0)
+        {
+            candidates.Add(remoteDefault);
+        }
+
+        foreach (var candidate in candidates.Distinct(StringComparer.Ordinal))
+        {
+            if (await _ResolvesToCommitAsync(record.Path, candidate, cancellationToken).ConfigureAwait(false))
+            {
+                return candidate;
+            }
+        }
+
+        return record.BaseCommit;
+    }
+
+    // Whether git can peel <paramref name="reference"/> to a commit from within the worktree — the gate that keeps a
+    // candidate that no longer exists (a deleted base branch) or is not a commit out of the count measurement.
+    private static async Task<bool> _ResolvesToCommitAsync(string path, string reference, CancellationToken cancellationToken)
+    {
+        var verify = await GitCli.RunAsync(
+            path,
+            ["rev-parse", "--verify", "--quiet", $"{reference}^{{commit}}"],
+            cancellationToken).ConfigureAwait(false);
+
+        return verify.ExitCode == 0;
     }
 
     public Task<bool> HasUncommittedChangesAsync(WorktreeRecord record, CancellationToken cancellationToken = default) =>

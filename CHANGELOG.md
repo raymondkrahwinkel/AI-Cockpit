@@ -113,6 +113,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a finished worktree whose work was already merged no longer lingers in the Managed worktrees
+  panel. Its commits were counted against the point it forked from, so once the branch was merged it still
+  read as "N commit(s) ahead" forever and neither "Clean up finished" nor the automatic cleanup when a
+  session closes would remove it — merged, session-gone trees just piled up. A worktree is now measured
+  against its base branch's current tip, so a merged one reads as clean and is swept away, while one that
+  still holds unmerged commits is kept for review as before.
 - fixed: a Claude SDK session started after (or alongside) a terminal (TTY) session came up with none of
   its MCP servers — cockpit-hosted and your own alike — and with no error to show for it. Two Claude
   processes share one `~/.claude.json`, and the cockpit rewrote that file non-atomically before each launch;
