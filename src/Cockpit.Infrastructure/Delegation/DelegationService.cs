@@ -673,17 +673,31 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
 
     /// <summary>
     /// The MCP servers a delegated session gets: everything the operator enabled — a sub-agent still needs its
-    /// files, its shell, its git — minus the orchestrator itself, unless the profile explicitly allows delegating
-    /// further. Withholding the tools is the second lock on the recursion guard: even if the depth check in
-    /// <see cref="_Guard"/> were wrong, a sub-agent with no delegate_task tool cannot start a chain.
+    /// files, its shell, its git — narrowed to the profile's own MCP pre-selection when it has one, and minus the
+    /// orchestrator itself unless the profile explicitly allows delegating further. Withholding the tools is the
+    /// second lock on the recursion guard: even if the depth check in <see cref="_Guard"/> were wrong, a sub-agent
+    /// with no delegate_task tool cannot start a chain.
     /// </summary>
-    private async Task<IReadOnlySet<string>> _ToolsForAsync(SessionProfile profile)
+    /// <remarks>
+    /// AC-133/AC-130: the profile's saved <see cref="SessionProfile.EnabledMcpServerNames"/> already narrows a
+    /// New-session launch, but a delegated session never sees that dialog, so without the intersection below it
+    /// would reach every enabled server rather than the set the operator saved on the profile — AC-130 half-done.
+    /// A null selection means "no restriction" (the prior behaviour). Intersecting against the live enabled set
+    /// keeps it a pure narrowing: a stale saved name the registry no longer enables cannot widen the result, and
+    /// the orchestrator-removal rule still applies on top.
+    /// </remarks>
+    internal async Task<IReadOnlySet<string>> _ToolsForAsync(SessionProfile profile)
     {
         var registry = await _mcpServerStore.LoadAsync();
         var names = registry
             .Where(server => server.Enabled)
             .Select(server => server.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (profile.EnabledMcpServerNames is { } selection)
+        {
+            names.IntersectWith(selection);
+        }
 
         if (!profile.DelegationPolicy.MayDelegateFurther)
         {

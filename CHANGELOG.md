@@ -113,6 +113,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a delegated task now starts with only the MCP servers its profile has selected, instead of every
+  enabled server. A profile's per-server pre-selection was honoured when you opened a session from the dialog
+  but ignored when the same profile ran a delegated task, so a sub-agent could reach servers you had unticked
+  for it; the delegation path now applies the profile's selection too (an unset selection still means all
+  enabled, and a sub-agent still never gets the orchestrator unless its profile may delegate further).
 - fixed: a local model (Ollama / LM Studio) that rejects a request no longer drops the turn silently. A failed
   request — an exceeded context window, a template the server can't parse — used to make the "thinking"
   indicator simply vanish with nothing shown; the session now surfaces a red error row with the server's actual
