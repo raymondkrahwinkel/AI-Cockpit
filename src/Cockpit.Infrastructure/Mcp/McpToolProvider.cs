@@ -76,6 +76,37 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         return new McpToolSession(clients, tools, connectedNames, toolClasses);
     }
 
+    public async Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, CancellationToken cancellationToken = default)
+    {
+        var registry = await catalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
+        var server = registry.FirstOrDefault(candidate =>
+            candidate.Enabled && string.Equals(candidate.Name, serverName, StringComparison.OrdinalIgnoreCase));
+
+        // Unknown/disabled server, or one whose only auth is an interactive OAuth sign-in: a pre-flight count
+        // (AC-134) must neither spawn the built-in defaults nor pop a browser, so those come back "unknown".
+        if (server is null || server.Auth == McpServerAuth.OAuth)
+        {
+            return null;
+        }
+
+        // Connect ONLY this one server — bypassing ConnectAsync/_EffectiveServers, which would overlay the built-in
+        // local-default servers (filesystem/fetch/git/…) and both spawn and count them (AC-134 security review).
+        var connection = await _ConnectServerAsync(server, sessionToken: null, cancellationToken).ConfigureAwait(false);
+        if (connection is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return connection.Tools;
+        }
+        finally
+        {
+            await connection.Client.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     private async Task<ServerConnection?> _ConnectServerAsync(McpServerConfig server, string? sessionToken, CancellationToken cancellationToken)
     {
         try

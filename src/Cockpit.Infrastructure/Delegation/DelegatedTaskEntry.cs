@@ -19,6 +19,7 @@ internal sealed class DelegatedTaskEntry
         Label = request.Label;
         WorkingDirectory = request.WorkingDirectory;
         RequestedPermission = request.RequestedPermission;
+        McpServers = request.McpServers;
     }
 
     public string TaskId { get; } = Guid.NewGuid().ToString("N");
@@ -35,6 +36,9 @@ internal sealed class DelegatedTaskEntry
 
     /// <summary>The caller's optional per-task least-privilege cap (AC-117), clamped to the profile ceiling when the session starts. Null runs at the profile's own ceiling.</summary>
     public string? RequestedPermission { get; }
+
+    /// <summary>The caller's optional per-task MCP-server narrowing (AC-136), validated to a subset of what the profile allows before the task is accepted. Null runs with the profile's full allowed set.</summary>
+    public IReadOnlyList<string>? McpServers { get; }
 
     /// <summary>The verified pane that created this task (AC-128), or null off the verified path. Scopes the task-addressed tools and list_tasks so an agent cannot reach another session's task by naming its id (confused deputy).</summary>
     public string? OwnerPaneId { get; init; }

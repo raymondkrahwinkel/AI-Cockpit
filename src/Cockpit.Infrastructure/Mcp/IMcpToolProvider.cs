@@ -1,3 +1,5 @@
+using Microsoft.Extensions.AI;
+
 namespace Cockpit.Infrastructure.Mcp;
 
 /// <summary>
@@ -14,4 +16,14 @@ internal interface IMcpToolProvider
     /// registry server.
     /// </summary>
     Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Connects a single named catalog server on its own, just to read its tool list for the pre-flight token
+    /// estimate (AC-134). Unlike <see cref="ConnectAsync"/> it does NOT merge the built-in local-default servers
+    /// (filesystem/fetch/git/…) — a count must estimate only the server the operator ticked, not spawn processes
+    /// they never chose — and it skips an OAuth server rather than driving its interactive browser sign-in. Returns
+    /// null when the server is unknown, disabled, OAuth-gated, or could not be enumerated, so the caller shows it as
+    /// "unknown" rather than a false zero.
+    /// </summary>
+    Task<IReadOnlyList<AIFunction>?> EnumerateServerToolsAsync(string serverName, CancellationToken cancellationToken = default);
 }

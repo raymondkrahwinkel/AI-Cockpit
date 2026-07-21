@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
@@ -199,6 +201,62 @@ public partial class EditableProfileViewModel : ViewModelBase
     /// <summary>Saved pre-selected servers the catalog did not offer at load (disabled/absent), so the checklist can't represent them; preserved verbatim by <see cref="ToProfile"/> so a save never silently drops them.</summary>
     private readonly IReadOnlyList<string> _carriedOverMcpServerNames;
 
+    private readonly IMcpToolTokenEstimator? _tokenEstimator;
+    private CancellationTokenSource? _tokenEstimateCts;
+
+    /// <summary>The AC-134 pre-flight summary line for the ticked MCP servers; shown only once the pre-selection is revealed and an estimator is available.</summary>
+    public bool HasMcpTokenSummary => _tokenEstimator is not null && RestrictMcpServers && McpServers.Count > 0;
+
+    /// <summary>The rolled-up tool-token estimate for the ticked MCP servers (AC-134), labelled as a tools-only estimate.</summary>
+    public string McpToolTokenSummary => McpTokenEstimation.SummaryLabel(McpServers);
+
+    /// <summary>Re-enumerates every offered MCP server's tools and refreshes the estimate (AC-134).</summary>
+    [RelayCommand]
+    private Task RefreshMcpTokens() => _EstimateMcpTokensAsync(refresh: true);
+
+    private async Task _EstimateMcpTokensAsync(bool refresh)
+    {
+        if (_tokenEstimator is null || McpServers.Count == 0)
+        {
+            return;
+        }
+
+        _tokenEstimateCts?.Cancel();
+        _tokenEstimateCts?.Dispose();
+        _tokenEstimateCts = new CancellationTokenSource();
+
+        try
+        {
+            await McpTokenEstimation.EstimateAllAsync([.. McpServers], _tokenEstimator, refresh, _tokenEstimateCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer run or the editor closing.
+        }
+    }
+
+    // Revealing the pre-selection (AC-130) is when the token estimate becomes worth computing (AC-134): count then,
+    // not while the section is hidden. The estimator caches per server, so re-revealing — or another profile using
+    // the same servers — does not re-spawn them.
+    partial void OnRestrictMcpServersChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HasMcpTokenSummary));
+        if (value)
+        {
+            _ = _EstimateMcpTokensAsync(refresh: false);
+        }
+    }
+
+    private void _OnMcpServerRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(McpServerSelectionItemViewModel.IsEnabledForSession)
+            or nameof(McpServerSelectionItemViewModel.TokenEstimate)
+            or nameof(McpServerSelectionItemViewModel.IsEstimatingTokens))
+        {
+            OnPropertyChanged(nameof(McpToolTokenSummary));
+        }
+    }
+
     /// <summary>
     /// Whether the selected provider's sessions honour a profile's environment variables at spawn (AC-22) — the
     /// plugin provider's declared capability, the single gate (Claude and Codex are plugins; the retired
@@ -351,8 +409,10 @@ public partial class EditableProfileViewModel : ViewModelBase
         bool canChooseProvider = false,
         IReadOnlyList<SessionProviderOption>? providers = null,
         IPluginProviderRegistry? pluginProviderRegistry = null,
-        IReadOnlyList<string>? availableMcpServerNames = null)
+        IReadOnlyList<string>? availableMcpServerNames = null,
+        IMcpToolTokenEstimator? tokenEstimator = null)
     {
+        _tokenEstimator = tokenEstimator;
         _label = profile.Label;
         _configDir = profile.Claude?.ConfigDir ?? string.Empty;
         _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;
@@ -367,7 +427,16 @@ public partial class EditableProfileViewModel : ViewModelBase
         var selected = profile.EnabledMcpServerNames is { } names ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase) : null;
         foreach (var name in availableMcpServerNames ?? [])
         {
-            McpServers.Add(new McpServerSelectionItemViewModel(name) { IsEnabledForSession = selected?.Contains(name) ?? true });
+            var item = new McpServerSelectionItemViewModel(name) { IsEnabledForSession = selected?.Contains(name) ?? true };
+            item.PropertyChanged += _OnMcpServerRowChanged;
+            McpServers.Add(item);
+        }
+
+        // If the profile already restricts its MCP servers, the pre-selection is shown from the start, so its
+        // token estimate (AC-134) is worth computing now; otherwise it waits until the operator reveals it.
+        if (_restrictMcpServers)
+        {
+            _ = _EstimateMcpTokensAsync(refresh: false);
         }
 
         // A saved server the catalog no longer offers (temporarily disabled, or a plugin not loaded right now) is not

@@ -40,6 +40,8 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IProfileLoginChecker? _loginChecker;
     private readonly ISessionProfileStore? _profileStore;
     private readonly IMcpServerCatalog? _mcpServerCatalog;
+    private readonly IMcpToolTokenEstimator? _tokenEstimator;
+    private CancellationTokenSource? _tokenEstimateCts;
     private readonly IWorkingPathHistoryStore? _workingPathStore;
     private readonly ConversationPickerRegistration? _conversationPicker;
     private readonly ITtySessionProviderResolver? _ttyProviderResolver;
@@ -429,12 +431,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         ITtySessionProviderResolver? ttyProviderResolver = null,
         IPluginTtyProviderRegistry? ttyProviderRegistry = null,
         IPluginProviderRegistry? sessionProviderRegistry = null,
-        IWorktreeManager? worktreeManager = null)
+        IWorktreeManager? worktreeManager = null,
+        IMcpToolTokenEstimator? tokenEstimator = null)
     {
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
         _mcpServerCatalog = mcpServerCatalog;
+        _tokenEstimator = tokenEstimator;
         _workingPathStore = workingPathStore;
         _ttyProviderResolver = ttyProviderResolver;
         _ttyProviderRegistry = ttyProviderRegistry;
@@ -475,6 +479,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             }
 
             OnPropertyChanged(nameof(HasMcpServers));
+            OnPropertyChanged(nameof(HasMcpTokenSummary));
+            OnPropertyChanged(nameof(McpToolTokenSummary));
+
+            // Pre-flight tool-token estimate (AC-134): enumerate each server's tools in the background and roll the
+            // ticked ones into a running total, so the operator sees roughly what the selection costs before starting.
+            _ = _EstimateMcpTokensAsync(refresh: false);
 
             // The selected profile was set above, before this list existed, so its pre-selection (AC-130) could not
             // apply yet — apply it now the checklist is populated, unless the operator has already edited it. On a
@@ -528,6 +538,46 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         if (!_applyingMcpSelection && e.PropertyName == nameof(McpServerSelectionItemViewModel.IsEnabledForSession))
         {
             _mcpSelectionTouched = true;
+        }
+
+        // The running total (AC-134) follows ticking a server as well as an estimate arriving for one.
+        if (e.PropertyName is nameof(McpServerSelectionItemViewModel.IsEnabledForSession)
+            or nameof(McpServerSelectionItemViewModel.TokenEstimate)
+            or nameof(McpServerSelectionItemViewModel.IsEstimatingTokens))
+        {
+            OnPropertyChanged(nameof(McpToolTokenSummary));
+        }
+    }
+
+    /// <summary>The AC-134 pre-flight summary line for the ticked MCP servers; shown only once there are servers and an estimator to compute it.</summary>
+    public bool HasMcpTokenSummary => _tokenEstimator is not null && McpServers.Count > 0;
+
+    /// <summary>The rolled-up tool-token estimate for the ticked MCP servers (AC-134), labelled as a tools-only estimate.</summary>
+    public string McpToolTokenSummary => McpTokenEstimation.SummaryLabel(McpServers);
+
+    /// <summary>Re-enumerates every MCP server's tools and refreshes the estimate (AC-134) — for when a server's toolset has changed since it was last counted.</summary>
+    [RelayCommand]
+    private Task RefreshMcpTokens() => _EstimateMcpTokensAsync(refresh: true);
+
+    private async Task _EstimateMcpTokensAsync(bool refresh)
+    {
+        if (_tokenEstimator is null || McpServers.Count == 0)
+        {
+            return;
+        }
+
+        _tokenEstimateCts?.Cancel();
+        _tokenEstimateCts?.Dispose();
+        _tokenEstimateCts = new CancellationTokenSource();
+        var token = _tokenEstimateCts.Token;
+
+        try
+        {
+            await McpTokenEstimation.EstimateAllAsync([.. McpServers], _tokenEstimator, refresh, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer estimate run (or the dialog closing) superseded this one — nothing to surface.
         }
     }
 

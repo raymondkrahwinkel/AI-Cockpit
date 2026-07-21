@@ -130,7 +130,11 @@ public sealed record AvailableProviderView(
     string Kind,
     bool AddableWithAddProfile);
 
-/// <summary>A profile a task may be handed to, as a calling agent sees it (#67).</summary>
+/// <summary>
+/// A profile a task may be handed to, as a calling agent sees it (#67). <paramref name="McpServers"/> is the set
+/// of MCP servers a task delegated to this profile would actually receive — the caller reads it to pass a valid
+/// narrowing subset on <c>delegate_task</c> (AC-136) rather than guessing at server names.
+/// </summary>
 public sealed record DelegationTargetView(
     string ProfileLabel,
     string Provider,
@@ -138,9 +142,15 @@ public sealed record DelegationTargetView(
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> AllowedTaskTypes,
     int MaxConcurrent,
-    int RunningTasks);
+    int RunningTasks,
+    IReadOnlyList<string> McpServers);
 
-/// <summary>What a caller asks for when delegating (#67). Everything else — driver, credentials, environment — comes from the profile, never from the call.</summary>
+/// <summary>
+/// What a caller asks for when delegating (#67). Everything else — driver, credentials, environment — comes from
+/// the profile, never from the call. <paramref name="McpServers"/> (AC-136) optionally narrows the task to a subset
+/// of the servers the profile allows; null leaves the profile's full set, and a name outside the allowed set is
+/// refused, never honoured — the per-task choice can only restrict, never grant.
+/// </summary>
 public sealed record DelegationRequest(
     string ProfileLabel,
     string Prompt,
@@ -148,4 +158,5 @@ public sealed record DelegationRequest(
     string? Label = null,
     string? WorkingDirectory = null,
     string? RequestedPermission = null,
-    int Depth = 0);
+    int Depth = 0,
+    IReadOnlyList<string>? McpServers = null);

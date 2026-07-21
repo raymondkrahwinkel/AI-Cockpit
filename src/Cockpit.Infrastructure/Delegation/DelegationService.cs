@@ -4,6 +4,7 @@ using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Delegation;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.Sessions.Permissions;
@@ -89,6 +90,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
     public async Task<IReadOnlyList<DelegationTargetView>> ListTargetsAsync(CancellationToken cancellationToken = default)
     {
         var profiles = await _profileStore.LoadAsync(cancellationToken);
+        var registry = await _mcpServerStore.LoadAsync(cancellationToken);
 
         return profiles
             .Where(profile => profile.DelegationPolicy.AllowedAsTarget)
@@ -99,9 +101,15 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 profile.DelegationPolicy.Tags ?? [],
                 profile.DelegationPolicy.AllowedTaskTypes ?? [],
                 profile.DelegationPolicy.MaxConcurrent,
-                _CountRunning(profile.Label)))
+                _CountRunning(profile.Label),
+                _AvailableServers(registry, profile)))
             .ToList();
     }
+
+    /// <summary>The MCP servers a task delegated to <paramref name="profile"/> would receive, sorted, as the
+    /// listing surfaces them so a caller can pass a valid <c>mcp_servers</c> narrowing on delegate_task (AC-136).</summary>
+    private static IReadOnlyList<string> _AvailableServers(IReadOnlyList<McpServerConfig> registry, SessionProfile profile) =>
+        [.. _NarrowServersFor(registry, profile, null).OrderBy(name => name, StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>
     /// Writes back what a profile turned out to be good for — and nothing else. Only the three descriptive fields are
@@ -140,9 +148,11 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         };
 
         var saved = profiles.ToList();
-        saved[index] = profile with { Delegation = updated };
+        var savedProfile = profile with { Delegation = updated };
+        saved[index] = savedProfile;
         await _profileStore.SaveAsync(saved, cancellationToken);
 
+        var registry = await _mcpServerStore.LoadAsync(cancellationToken);
         return new DelegationTargetView(
             profile.Label,
             profile.Provider.ToString(),
@@ -150,7 +160,8 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             updated.Tags ?? [],
             updated.AllowedTaskTypes ?? [],
             updated.MaxConcurrent,
-            _CountRunning(profile.Label));
+            _CountRunning(profile.Label),
+            _AvailableServers(registry, savedProfile));
     }
 
     /// <summary>The base URL a local provider defaults to when the caller does not give one.</summary>
@@ -277,6 +288,16 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
         var profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.Label, request.ProfileLabel, StringComparison.OrdinalIgnoreCase))
             ?? throw new DelegationRejectedException($"No profile named '{request.ProfileLabel}'.");
 
+        // Normalise the per-task MCP selection: trim names, drop blanks, and treat an all-blank or empty list as
+        // no narrowing (the profile's full set) rather than "no servers at all" — an agent passing [] almost never
+        // means to strip a sub-agent of its files, shell and git. Mirrors how the descriptive list fields collapse
+        // an empty list to null (AC-136).
+        if (request.McpServers is { } rawServers)
+        {
+            var cleaned = rawServers.Select(name => name.Trim()).Where(name => name.Length > 0).ToList();
+            request = request with { McpServers = cleaned.Count > 0 ? cleaned : null };
+        }
+
         var policy = profile.DelegationPolicy;
         try
         {
@@ -288,6 +309,24 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             // it, which a log of successes alone would never show.
             await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, ex.Message);
             throw;
+        }
+
+        // AC-136: a per-task MCP selection may only narrow within what the profile already gets. A name outside
+        // that allowed set is an escalation attempt — a server the operator disabled, or the orchestrator without
+        // MayDelegateFurther — and is refused, with the available set named, rather than silently honoured or
+        // dropped. The task then starts with exactly the requested (validated) subset, applied in _ToolsForAsync.
+        if (request.McpServers is { } requestedServers)
+        {
+            var allowed = await _ToolsForAsync(profile);
+            var disallowed = requestedServers.Where(name => !allowed.Contains(name)).ToList();
+            if (disallowed.Count > 0)
+            {
+                var reason =
+                    $"Task requested MCP server(s) that profile '{profile.Label}' cannot delegate: {string.Join(", ", disallowed)}. " +
+                    $"Available: {(allowed.Count == 0 ? "(none)" : string.Join(", ", allowed.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)))}.";
+                await _Audit(DelegationAuditAction.Refused, profile.Label, null, request, reason);
+                throw new DelegationRejectedException(reason);
+            }
         }
 
         var entry = new DelegatedTaskEntry(profile, request) { OwnerPaneId = callerPaneId };
@@ -527,7 +566,7 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
                 entry.Profile,
                 effectiveCeiling,
                 model: null,
-                enabledMcpServerNames: await _ToolsForAsync(entry.Profile),
+                enabledMcpServerNames: await _ToolsForAsync(entry.Profile, entry.McpServers),
                 workingDirectory: entry.WorkingDirectory,
                 // AC-128/AC-89: give the delegated session its own verified MCP identity, keyed on the task id, so the
                 // driver mints it a per-session SessionMcpKeyring token instead of the shared app key. Without this a
@@ -672,18 +711,43 @@ internal sealed class DelegationService : IDelegationService, ISingletonService
             reason));
 
     /// <summary>
-    /// The MCP servers a delegated session gets: everything the operator enabled — a sub-agent still needs its
-    /// files, its shell, its git — minus the orchestrator itself, unless the profile explicitly allows delegating
-    /// further. Withholding the tools is the second lock on the recursion guard: even if the depth check in
-    /// <see cref="_Guard"/> were wrong, a sub-agent with no delegate_task tool cannot start a chain.
+    /// The MCP servers a delegated session gets, loading the live registry and applying <see cref="_NarrowServersFor"/>.
+    /// A sub-agent still needs its files, its shell, its git, so the default is everything the operator enabled —
+    /// narrowed by the profile's own pre-selection and the caller's per-task selection, and minus the orchestrator
+    /// unless the profile may delegate further. Withholding the orchestrator is the second lock on the recursion
+    /// guard: even if the depth check in <see cref="_Guard"/> were wrong, a sub-agent with no delegate_task tool
+    /// cannot start a chain.
     /// </summary>
-    private async Task<IReadOnlySet<string>> _ToolsForAsync(SessionProfile profile)
+    internal async Task<IReadOnlySet<string>> _ToolsForAsync(SessionProfile profile, IReadOnlyList<string>? perTaskSelection = null)
     {
         var registry = await _mcpServerStore.LoadAsync();
+        return _NarrowServersFor(registry, profile, perTaskSelection);
+    }
+
+    /// <summary>
+    /// The pure narrowing behind <see cref="_ToolsForAsync"/>: the enabled registry servers, intersected with the
+    /// profile's saved pre-selection (AC-133/AC-130) and then the caller's per-task selection (AC-136) when each is
+    /// set, minus the orchestrator unless the profile may delegate further. Both intersections only ever remove — a
+    /// name in neither the selection nor the enabled registry cannot appear — so a delegated session can be narrowed
+    /// but never widened past what the operator enabled. A null selection means "no restriction at that layer".
+    /// </summary>
+    internal static IReadOnlySet<string> _NarrowServersFor(
+        IReadOnlyList<McpServerConfig> registry, SessionProfile profile, IReadOnlyList<string>? perTaskSelection)
+    {
         var names = registry
             .Where(server => server.Enabled)
             .Select(server => server.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (profile.EnabledMcpServerNames is { } profileSelection)
+        {
+            names.IntersectWith(profileSelection);
+        }
+
+        if (perTaskSelection is { } perTask)
+        {
+            names.IntersectWith(perTask);
+        }
 
         if (!profile.DelegationPolicy.MayDelegateFurther)
         {

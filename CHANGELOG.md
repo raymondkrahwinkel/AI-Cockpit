@@ -39,6 +39,17 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   questions back as issue comments and moves the issue's stage as it goes; when it hits a decision only
   you can make it asks and waits for your reply. You approve the run before it starts, and you always do
   the merge yourself — Autopilot stops at a merge-ready PR and never merges.
+- added: the New-session dialog and the profile's MCP pre-selection now show a rough estimate of the prompt
+  tokens the ticked MCP servers' tools add — a per-server figure and a live running total — so you can see a
+  heavy selection heading toward a context limit before you start, instead of only hitting an error mid-turn.
+  It counts the tools portion only (labelled as an estimate), is cached so it does not re-count on every tick,
+  and a Refresh re-reads a server whose toolset changed. A server that can't be reached shows as unknown, with a
+  hover that explains why (offline, needs a sign-in, or its plugin isn't loaded) rather than reading as a zero.
+- added: when an agent delegates a task, it can now restrict that one task to a subset of the target
+  profile's MCP servers — so a sub-agent runs with just the tools its job needs. It can only narrow within
+  what the profile already allows, never grant more: asking for a server the profile does not have refuses
+  the delegation outright. The available servers per profile are listed alongside the profiles, so the choice
+  is an informed one.
 - added: plugins can provide a whole workspace of their own — not just a widget in the dashboard grid,
   but the entire surface, drawn and driven by the plugin, picked from the workspace "+" menu beside
   Sessions and Dashboard. Such a workspace can embed a live session inside its own layout; and if the
@@ -87,6 +98,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: a local model whose runtime can't do tool-calling no longer just fails a tool-enabled turn. When
+  the model rejects the request because its chat template can't handle tools (seen with some LM Studio GGUFs),
+  the session says so plainly and retries that turn once without tools, so a plain question still gets an
+  answer — with a visible note that tools were off for that turn. Turn the profile's MCP servers off to stop
+  offering them at all.
 - changed: the plugins that ship with the cockpit (the Claude provider and the rest) are now ordinary,
   store-updatable plugins that simply come pre-installed. They are put in place once, the first time
   they appear, and after that a newer version arrives through the plugin store like any other plugin's —
@@ -120,6 +136,40 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a finished worktree whose work was already merged no longer lingers in the Managed worktrees
+  panel. Its commits were counted against the point it forked from, so once the branch was merged it still
+  read as "N commit(s) ahead" forever and neither "Clean up finished" nor the automatic cleanup when a
+  session closes would remove it — merged, session-gone trees just piled up. A worktree is now measured
+  against its base branch's current tip, so a merged one reads as clean and is swept away, while one that
+  still holds unmerged commits is kept for review as before.
+- fixed: a delegated task now starts with only the MCP servers its profile has selected, instead of every
+  enabled server. A profile's per-server pre-selection was honoured when you opened a session from the dialog
+  but ignored when the same profile ran a delegated task, so a sub-agent could reach servers you had unticked
+  for it; the delegation path now applies the profile's selection too (an unset selection still means all
+  enabled, and a sub-agent still never gets the orchestrator unless its profile may delegate further).
+- fixed: a local model (Ollama / LM Studio) that rejects a request no longer drops the turn silently. A failed
+  request — an exceeded context window, a template the server can't parse — used to make the "thinking"
+  indicator simply vanish with nothing shown; the session now surfaces a red error row with the server's actual
+  reason (read from the response body), a genuine interrupt still ends cleanly with no error, and a turn that
+  comes back with nothing at all leaves a visible notice instead of quietly nothing.
+- fixed: the terminal no longer garbles lines that mix em-dashes, arrows or emoji. Characters like `—`, `→`
+  and `✅` advance wider than a monospace cell, and they used to push the rest of the line off its columns —
+  so `store` could read `stuore`, a version like `0.22.0→0.22.1` collapse into `0.22.0.0.22.1`, and checks
+  run together — most visibly while scrolling a unicode-heavy transcript or diff. Each cell is now painted on
+  its own column, so such output stays aligned.
+- fixed: a Claude SDK session started after (or alongside) a terminal (TTY) session came up with none of
+  its MCP servers — cockpit-hosted and your own alike — and with no error to show for it. Two Claude
+  processes share one `~/.claude.json`, and the cockpit rewrote that file non-atomically before each launch;
+  a launch that landed in the split-second the file was being truncated read it as corrupt, reset it to
+  defaults, and lost the session's workspace trust — which silently disables every injected MCP server. The
+  cockpit now updates that file atomically, skips the write entirely when nothing needs changing, and never
+  replaces an unreadable file with an empty one, so interleaving TTY and SDK sessions keep their MCP servers.
+- fixed: reordering sessions by dragging them in the left sidebar no longer rearranges the panes in the
+  Sessions workspace. The sidebar strip and the workspace grid now keep their own order — drag the strip to
+  sort your list, drag a pane's grip to arrange the grid — so tidying one never disturbs the other.
+- fixed: closing a session no longer leaves a gap in the workspace grid. When you close one of three or four
+  tiled sessions, the panes that remain re-flow to the tightest layout — two left fall back to a side-by-side
+  (or stacked) pair instead of sitting in a 2×2 with an empty cell.
 - fixed: the per-session MCP-server checklist is now honoured by both session kinds. A terminal (TTY)
   session ignored it and loaded every configured server regardless of what you ticked, while an SDK
   session got none of your cockpit-configured servers at all. Both now start with exactly the servers

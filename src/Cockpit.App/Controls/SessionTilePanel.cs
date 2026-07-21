@@ -248,6 +248,29 @@ public sealed class SessionTilePanel : Panel
         }
     }
 
+    /// <summary>
+    /// Removes the cells of panes that have closed, compacting the ones that remain: a closed session's tile is
+    /// gone, not a hole, so the survivors re-flow to the minimal grid — two left of a 2×2 fall back to the
+    /// natural 1×2 / 2×1 rather than sitting in a 2×2 with a gap (Raymond, 2026-07-21). A deliberate
+    /// free-placement hole (a <c>null</c> tied to no pane, left by dragging a pane onto an empty cell) is not a
+    /// closed session and is kept. <paramref name="live"/> is the set of panes still present. Returns whether
+    /// any cell was removed.
+    /// </summary>
+    internal static bool DropClosedCells(List<object?> cells, IReadOnlySet<object> live)
+    {
+        var removed = false;
+        for (var i = cells.Count - 1; i >= 0; i--)
+        {
+            if (cells[i] is { } key && !live.Contains(key))
+            {
+                cells.RemoveAt(i);
+                removed = true;
+            }
+        }
+
+        return removed;
+    }
+
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
@@ -370,9 +393,10 @@ public sealed class SessionTilePanel : Panel
         stackVertically ? col * rows + row : row * columns + col;
 
     /// <summary>
-    /// Reconciles the cell list with the live panes: drops closed sessions (leaving holes), and gives each
-    /// new pane the first hole or a new trailing cell. Runs off <b>all</b> children (visible or collapsed by
-    /// zoom) so a placement isn't lost when the grid is temporarily single-pane.
+    /// Reconciles the cell list with the live panes: removes the cells of closed sessions (compacting the
+    /// rest — see <see cref="DropClosedCells"/>), and gives each new pane the first hole or a new trailing
+    /// cell. Runs off <b>all</b> children (visible or collapsed by zoom) so a placement isn't lost when the
+    /// grid is temporarily single-pane.
     /// </summary>
     private void ReconcileCells()
     {
@@ -385,13 +409,7 @@ public sealed class SessionTilePanel : Panel
             }
         }
 
-        for (var i = 0; i < _cells.Count; i++)
-        {
-            if (_cells[i] is { } key && !live.Contains(key))
-            {
-                _cells[i] = null;
-            }
-        }
+        DropClosedCells(_cells, live);
 
         var present = new HashSet<object>();
         foreach (var cell in _cells)

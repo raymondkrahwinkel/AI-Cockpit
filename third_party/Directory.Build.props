@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- Deliberately empty, and deliberately here: it stops MSBuild walking up to the repo-root
+       Directory.Build.props for anything vendored under third_party/. Third-party source is built on its
+       own csproj's terms — not the app's version stamp, EnforceCodeStyleInBuild, GenerateDocumentationFile
+       or IDE0005-as-error rules (.editorconfig), none of which a foreign codebase was written to satisfy.
+       The paired third_party/.editorconfig (root = true) stops the style cascade for the same reason. -->
+
+</Project>

@@ -89,6 +89,17 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_RecordsTheBaseBranchItForkedFrom()
+    {
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        // The branch it forked from is what the cleanup check later measures "unmerged" against, so it must survive a
+        // round-trip through the registry rather than only living on the in-memory record.
+        record.BaseBranch.Should().Be("main");
+        (await _manager.ListAsync()).Should().ContainSingle().Which.BaseBranch.Should().Be("main");
+    }
+
+    [Fact]
     public async Task CreateAsync_BranchThatAlreadyExists_FailsLoudly_WithoutResettingIt()
     {
         const string branch = "already-here";
@@ -254,6 +265,42 @@ public sealed class WorktreeManagerTests : IDisposable
         var ahead = (await _manager.GetStatusesAsync()).Single();
         ahead.CommitsAhead.Should().Be(1);
         ahead.IsClean.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetStatusesAsync_WorktreeWhoseCommitsAreMergedIntoBase_ReadsAsClean()
+    {
+        // A finished session's worktree: it made a commit that has since been merged into main. Its work is safe on
+        // main, so removing the worktree loses nothing — the panel and the clean-gate must read it as clean and let
+        // "clean up finished" sweep it, not show "commit ahead" forever because the fork point never moves (AC-85).
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
+        _Git(record.Path, "add", "-A");
+        _Git(record.Path, "commit", "-m", "work");
+
+        _Git(_repo, "merge", "--no-ff", "wt", "-m", "merge wt");
+
+        var status = (await _manager.GetStatusesAsync()).Single();
+        status.CommitsAhead.Should().Be(0);
+        status.IsClean.Should().BeTrue();
+        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_MergedWorktreeWithoutARecordedBaseBranch_IsClean_ViaDefaultBranchFallback()
+    {
+        // The crash net for worktrees registered before the base branch was tracked (BaseBranch is null): the check
+        // falls back to the repository's default branch, so an already-merged orphan still reads clean and cleans up
+        // rather than lingering forever — the state Raymond hit with three merged, session-gone trees.
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        File.WriteAllText(Path.Combine(record.Path, "change.txt"), "work\n");
+        _Git(record.Path, "add", "-A");
+        _Git(record.Path, "commit", "-m", "work");
+        _Git(_repo, "merge", "--no-ff", "wt", "-m", "merge wt");
+
+        var legacy = record with { BaseBranch = null };
+
+        (await _manager.IsCleanAsync(legacy)).Should().BeTrue();
     }
 
     [Fact]

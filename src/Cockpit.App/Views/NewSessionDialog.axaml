@@ -288,13 +288,30 @@
             <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasMcpServers}">
                 <TextBlock Grid.Column="0" Text="MCP" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding McpServers}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
-                            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <StackPanel Grid.Column="1" Spacing="4">
+                    <ItemsControl ItemsSource="{Binding McpServers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
+                                <!-- name checkbox on the left, its pre-flight tool-token figure (AC-134) on the right -->
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <CheckBox Grid.Column="0" Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding TokenLabel}" VerticalAlignment="Center"
+                                               Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                                               ToolTip.Tip="{Binding TokenTooltip}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <!-- Pre-flight token estimate for the ticked servers (AC-134): a running total, labelled as a
+                         tools-only estimate, plus a Refresh to re-enumerate if a server's toolset changed. -->
+                    <DockPanel IsVisible="{Binding HasMcpTokenSummary}" Margin="0,2,0,0">
+                        <Button DockPanel.Dock="Right" Content="Refresh" Classes="Subtle" Padding="6,2" FontSize="11"
+                                Command="{Binding RefreshMcpTokensCommand}"
+                                ToolTip.Tip="Re-enumerate the selected servers' tools and recount"/>
+                        <TextBlock Text="{Binding McpToolTokenSummary}" VerticalAlignment="Center" FontSize="11"
+                                   TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </DockPanel>
+                </StackPanel>
             </Grid>
 
             <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI
