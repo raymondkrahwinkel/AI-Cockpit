@@ -1,3 +1,4 @@
+using System.ClientModel;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Threading.Channels;
@@ -46,6 +47,12 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     private string? _model;
     private string? _sessionId;
     private CancellationTokenSource? _turnCancellation;
+
+    // Set once a turn makes at least one tool call (AC-132), so a turn that ends with no assistant text and no
+    // tool activity can be surfaced as "no response" rather than a silent success. Reset at each turn start;
+    // turns are serialised (one _RunTurnAsync in flight at a time), and the tool loop can run the call on a
+    // pool thread, so a volatile flag rather than a local.
+    private volatile bool _turnHadToolActivity;
 
     public OpenAiCompatSessionDriver(IChatClientFactory chatClientFactory, IMcpToolProvider mcpToolProvider, ILogger<OpenAiCompatSessionDriver> logger)
     {
@@ -154,6 +161,7 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         _history.Add(new ChatMessage(ChatRole.User, text));
         var options = new ChatOptions { ModelId = _model, Tools = _gatedTools.Count > 0 ? _gatedTools : null };
         var assistant = new StringBuilder();
+        _turnHadToolActivity = false;
 
         try
         {
@@ -167,23 +175,85 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
                 }
             }
 
-            _history.Add(new ChatMessage(ChatRole.Assistant, assistant.ToString()));
-            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "success", Result = assistant.ToString(), IsError = false });
+            var reply = assistant.ToString();
+            var hasText = !string.IsNullOrWhiteSpace(reply);
+
+            // A turn that streamed no visible text and made no tool call is not a success to show silently: a
+            // failed request can end the stream empty (or whitespace-only) without throwing — a server answering
+            // 200 with an empty body, or an error the SDK swallowed — and the old code emitted a blank success so
+            // the beurt just vanished. Surface a visible notice instead (AC-132).
+            if (!hasText && !_turnHadToolActivity)
+            {
+                _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = "The model returned no response — no text and no tool calls." });
+                _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+                return;
+            }
+
+            // Only a turn that produced text carries an assistant message into the history: appending an empty
+            // reply (a no-response, or an empty answer after a tool call) would seed a blank assistant turn that
+            // rides along in every later request — which some OpenAI-compatible servers reject outright (AC-132).
+            if (hasText)
+            {
+                _history.Add(new ChatMessage(ChatRole.Assistant, reply));
+            }
+
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "success", Result = reply, IsError = false });
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // A genuine user interrupt — the token this turn runs under was cancelled. Keep the clean
+            // "interrupted" turn with no error row. An OperationCanceledException the SDK throws while ABORTING
+            // the stream on a non-2xx response leaves the token uncancelled, so it fails this filter and falls
+            // through to the error branch below rather than masquerading as an interrupt (AC-132).
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "interrupted", Result = assistant.ToString(), IsError = false, StopReason = "interrupt" });
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "OpenAI-compatible chat request failed");
-            _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = ex.Message, Exception = ex });
+            // Read the response body so the operator sees the actual reason (e.g. exceed_context_size_error, or
+            // an unparseable tool template) rather than a bare "HTTP 400 (Bad Request)" (AC-132).
+            var message = _DescribeError(ex);
+            _logger.LogWarning(ex, "OpenAI-compatible chat request failed: {Message}", message);
+            _events.Writer.TryWrite(new SessionError { SessionId = _sessionId, Message = message, Exception = ex });
             _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
         }
     }
 
+    /// <summary>
+    /// The most useful message for a failed turn: the exception message, plus — for a
+    /// <see cref="ClientResultException"/> from the OpenAI SDK — the HTTP response body. A local server puts the
+    /// real reason there (an <c>exceed_context_size_error</c>, a tool-template parser failure, …), which the
+    /// exception's own "HTTP 400 (Bad Request)" message hides (AC-132).
+    /// </summary>
+    internal static string _DescribeError(Exception ex)
+    {
+        if (ex is ClientResultException clientError)
+        {
+            var body = clientError.GetRawResponse()?.Content?.ToString()?.Trim();
+            if (!string.IsNullOrEmpty(body))
+            {
+                // A misbehaving or hostile model server can answer an error with a huge body; cap it before it is
+                // copied into the transcript, the log, and — for a delegated session — the on-disk audit log and
+                // the orchestrator's task result. A couple of KB is plenty to show the real reason.
+                if (body.Length > MaxErrorBodyChars)
+                {
+                    body = string.Concat(body.AsSpan(0, MaxErrorBodyChars), "… (truncated)");
+                }
+
+                return $"{clientError.Message}\n{body}";
+            }
+        }
+
+        return ex.Message;
+    }
+
+    private const int MaxErrorBodyChars = 2000;
+
     async Task<ToolApprovalResult> IToolApprovalGate.RequestApprovalAsync(string toolUseId, string toolName, string inputJson, CancellationToken cancellationToken)
     {
+        // A tool call means this turn produced something visible even if it ends with no assistant text, so the
+        // no-response vangnet in _RunTurnAsync must not fire for it (AC-132).
+        _turnHadToolActivity = true;
+
         // Surface the call in the transcript, then either auto-allow (an always-allow rule this session), decide
         // it non-interactively (a delegated session), or prompt and await the operator's decision.
         _events.Writer.TryWrite(new ToolUseRequested { SessionId = _sessionId, ToolUseId = toolUseId, ToolName = toolName, InputJson = inputJson });
