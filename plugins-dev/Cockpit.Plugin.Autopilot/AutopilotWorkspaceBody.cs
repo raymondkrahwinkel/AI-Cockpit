@@ -10,6 +10,7 @@ using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
 using Cockpit.Plugins.Abstractions.Consent;
 using Cockpit.Plugins.Abstractions.Notifications;
+using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
@@ -37,6 +38,11 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     private AutopilotRunPhase? _stagedPhase;
     private bool _postedEvidence;
     private bool _approved;
+    private DispatcherTimer? _blockadeTimer;
+    private string? _blockadeQuestion;
+    private DateTimeOffset _blockadeSince;
+    private DateTimeOffset _blockadeDeadline;
+    private bool _blockadePolling;
 
     public AutopilotWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotRunController runs)
     {
@@ -83,6 +89,7 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _runs.Changed -= _OnChanged;
+        _StopBlockade();
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -109,6 +116,8 @@ internal sealed class AutopilotWorkspaceBody : UserControl
             _stagedPhase = null;
             _postedEvidence = false;
             _approved = false;
+            _blockadeQuestion = null;
+            _StopBlockade();
         }
 
         // End the previous run's embedded session and its worktree before anything new lands, so a replaced run is not
@@ -130,11 +139,12 @@ internal sealed class AutopilotWorkspaceBody : UserControl
         _bodyHost.Content = _runs.Phase switch
         {
             AutopilotRunPhase.Refused => _BuildRefusedView(run, _runs.BlockReason),
-            AutopilotRunPhase.Running or AutopilotRunPhase.Blocked or AutopilotRunPhase.MergeReady => _BuildRunningView(run),
+            AutopilotRunPhase.Running or AutopilotRunPhase.AwaitingOperator or AutopilotRunPhase.Blocked or AutopilotRunPhase.MergeReady => _BuildRunningView(run),
             _ => _BuildScopingView(run),
         };
 
         _ReactToTracker(run);
+        _ManageBlockade(run);
     }
 
     private Control _BuildScopingView(AutopilotRun run) =>
@@ -246,6 +256,9 @@ internal sealed class AutopilotWorkspaceBody : UserControl
             case AutopilotRunPhase.MergeReady:
                 row.Children.Add(_StateBadge("Merge-ready — review & merge the PR (the merge stays with you)", "CockpitAccentBrush"));
                 break;
+            case AutopilotRunPhase.AwaitingOperator:
+                row.Children.Add(_StateBadge($"Waiting for operator — {_runs.PendingQuestion ?? "needs your input"}", "CockpitTextSecondaryBrush"));
+                break;
             case AutopilotRunPhase.Blocked:
                 row.Children.Add(_StateBadge(_runs.BlockReason ?? "Blocked at a hard gate.", "CockpitTextSecondaryBrush"));
                 break;
@@ -353,6 +366,122 @@ internal sealed class AutopilotWorkspaceBody : UserControl
             : $"Autopilot: blocked — {_runs.BlockReason}. Gates — {gates}.";
     }
 
+    // The blockade channel (AC-155): when the agent asks the operator a question, post it to the tracker, set the
+    // session status to waiting, and poll the issue for a reply — relayed back to the agent, or the run parks on timeout.
+    private void _ManageBlockade(AutopilotRun run)
+    {
+        if (_approved && _runs.Phase == AutopilotRunPhase.AwaitingOperator && _blockadeTimer is null)
+        {
+            _ = _StartBlockadeAsync(run);
+        }
+        else if (_runs.Phase != AutopilotRunPhase.AwaitingOperator && _blockadeTimer is not null)
+        {
+            _StopBlockade();
+        }
+    }
+
+    private async Task _StartBlockadeAsync(AutopilotRun run)
+    {
+        // Mark "watching" before the first await so a re-render during the post/read does not start a second watcher.
+        _blockadeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
+
+        if (_runs.SessionPaneId is { Length: > 0 } pane)
+        {
+            _ = _host.SetSessionStatusline(pane, $"Autopilot · {run.IssueId} — waiting for operator");
+        }
+
+        if (_host.TrackerProviders.FirstOrDefault(provider => provider.TrackerId == run.Tracker) is not { } tracker)
+        {
+            // No tracker channel: the question shows on the surface and the operator can answer in the session directly.
+            _StopBlockade();
+            return;
+        }
+
+        var question = _runs.PendingQuestion ?? "Autopilot needs your input.";
+
+        // Post the question, baseline and set the deadline only when this is a new question — a tab revisit re-enters
+        // here with the timer stopped, and must not re-post the question or silently extend the timeout.
+        if (_blockadeQuestion != question)
+        {
+            _blockadeQuestion = question;
+            var minutes = _settings.GraceTimerMinutes();
+            try
+            {
+                // Await the post before baselining the comments, so the just-posted question is included and the poll's
+                // strictly-newer test never mistakes it for the operator's reply.
+                if (!await tracker.PostCommentAsync(run.IssueId,
+                        $"Autopilot is blocked and needs your input:\n\n{question}\n\nReply on this issue to continue; the run parks in {minutes} minutes without an answer."))
+                {
+                    _host.ShowToast("Autopilot: the blockade question could not be posted to the tracker.", PluginToastSeverity.Warning);
+                }
+
+                var existing = await tracker.ReadCommentsAsync(run.IssueId);
+                _blockadeSince = existing.Count == 0 ? DateTimeOffset.Now : existing.Max(comment => comment.Timestamp);
+            }
+            catch (Exception)
+            {
+                _blockadeSince = DateTimeOffset.Now;
+            }
+
+            _blockadeDeadline = DateTimeOffset.Now.AddMinutes(minutes);
+        }
+
+        _blockadeTimer.Tick += (_, _) => _ = _PollBlockadeAsync(run, tracker);
+        _blockadeTimer.Start();
+    }
+
+    private async Task _PollBlockadeAsync(AutopilotRun run, ITrackerProvider tracker)
+    {
+        if (_blockadePolling || _blockadeTimer is null)
+        {
+            return;
+        }
+
+        _blockadePolling = true;
+        try
+        {
+            if (DateTimeOffset.Now >= _blockadeDeadline)
+            {
+                _StopBlockade();
+                if (_runs.SessionPaneId is { Length: > 0 } pane)
+                {
+                    _ = _host.SendToSessionAsync(pane, "No operator answer within the grace time — the run is parked. Stop here and do not continue guessing; wait for the operator.");
+                }
+
+                _runs.Park($"No operator answer within {_settings.GraceTimerMinutes()} minutes — the run is parked.");
+                return;
+            }
+
+            var comments = await tracker.ReadCommentsAsync(run.IssueId);
+            if (comments.Where(comment => comment.Timestamp > _blockadeSince).OrderBy(comment => comment.Timestamp).FirstOrDefault() is { } answer)
+            {
+                _StopBlockade();
+                if (_runs.SessionPaneId is { Length: > 0 } pane)
+                {
+                    _ = _host.SendToSessionAsync(pane, $"The operator replied on the issue:\n\n{answer.Text}");
+                    _ = _host.SetSessionStatusline(pane, $"Autopilot · {run.IssueId}");
+                }
+
+                _runs.ResumeRunning();
+            }
+        }
+        catch (Exception)
+        {
+            // A failed poll retries on the next tick until the deadline.
+        }
+        finally
+        {
+            _blockadePolling = false;
+        }
+    }
+
+    private void _StopBlockade()
+    {
+        _blockadeTimer?.Stop();
+        _blockadeTimer = null;
+        _blockadePolling = false;
+    }
+
     // The point's work brief the agent is handed once the operator approves (AC-152/AC-153): work it to a merge-ready
     // PR, run the done-gates and report them, then stop — the merge stays with the human (AC-94 principle #6).
     private string _BuildWorkPrompt(AutopilotRun run)
@@ -374,6 +503,9 @@ internal sealed class AutopilotWorkspaceBody : UserControl
                before giving up.
             3. When the PR is open and every gate is reported, call mcp__cockpit-autopilot__autopilot_ready. Autopilot
                then settles the run to merge-ready or blocked.
+
+            If you hit a decision only the operator can make, call mcp__cockpit-autopilot__autopilot_blocked with your
+            question instead of guessing — their reply is relayed back to you.
 
             Issue ({run.Tracker} {run.IssueId}): {run.Title}
             {description}

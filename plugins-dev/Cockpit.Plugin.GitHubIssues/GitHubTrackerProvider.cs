@@ -54,6 +54,23 @@ internal sealed class GitHubTrackerProvider : ITrackerProvider
     public Task<bool> AttachAsync(string issueId, string fileName, byte[] content, string mediaType, CancellationToken cancellationToken = default) =>
         Task.FromResult(false);
 
+    public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default)
+    {
+        if (_Reference(issueId) is not { } issue)
+        {
+            return [];
+        }
+
+        try
+        {
+            return await _client.ReadCommentsAsync(issue, cancellationToken);
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
     private static GitHubIssueReference? _Reference(string issueId)
     {
         try

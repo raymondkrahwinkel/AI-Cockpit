@@ -73,6 +73,37 @@ public class AutopilotRunControllerTests
     }
 
     [Fact]
+    public void Block_ThenResume_MovesAwaitingOperator_AndBack()
+    {
+        var controller = _Controller();
+        controller.BeginScoping(Run("AC-155"));
+        controller.MarkRunning();
+
+        controller.Block("Which database should it use?");
+        controller.Phase.Should().Be(AutopilotRunPhase.AwaitingOperator);
+        controller.PendingQuestion.Should().Be("Which database should it use?");
+
+        controller.ResumeRunning();
+        controller.Phase.Should().Be(AutopilotRunPhase.Running);
+        controller.PendingQuestion.Should().BeNull();
+    }
+
+    [Fact]
+    public void Park_BlocksTheRun_WithItsReason_AndClearsTheQuestion()
+    {
+        var controller = _Controller();
+        controller.BeginScoping(Run("AC-155"));
+        controller.MarkRunning();
+        controller.Block("?");
+
+        controller.Park("No operator answer in time.");
+
+        controller.Phase.Should().Be(AutopilotRunPhase.Blocked);
+        controller.BlockReason.Should().Be("No operator answer in time.");
+        controller.PendingQuestion.Should().BeNull();
+    }
+
+    [Fact]
     public void MarkReady_WhenEveryHardGatePassed_IsMergeReady()
     {
         var controller = _Controller();

@@ -69,6 +69,45 @@ public class AutopilotMcpToolsTests
     }
 
     [Fact]
+    public void Blocked_FromTheRunsOwnPane_MovesTheRunToAwaitingOperator()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns("run-pane");
+        var runs = _RunningController("run-pane");
+        var tools = new AutopilotMcpTools(host, runs);
+
+        tools.Blocked("Which database?").Should().Contain("\"ok\":true");
+        runs.Phase.Should().Be(AutopilotRunPhase.AwaitingOperator);
+        runs.PendingQuestion.Should().Be("Which database?");
+    }
+
+    [Fact]
+    public void Blocked_FromAnotherPane_IsRefused_AndDoesNotBlock()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns("intruder-pane");
+        var runs = _RunningController("run-pane");
+        var tools = new AutopilotMcpTools(host, runs);
+
+        tools.Blocked("Which database?").Should().Contain("\"ok\":false");
+        runs.Phase.Should().Be(AutopilotRunPhase.Running);
+    }
+
+    [Fact]
+    public void Blocked_WhenTheRunIsNotRunning_IsRefused()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.CurrentMcpCallerPaneId.Returns("run-pane");
+        var runs = _RunningController("run-pane");
+        runs.MarkReady();
+
+        var tools = new AutopilotMcpTools(host, runs);
+
+        runs.Phase.Should().NotBe(AutopilotRunPhase.Running);
+        tools.Blocked("late question").Should().Contain("\"ok\":false");
+    }
+
+    [Fact]
     public void MarkReady_FromAnotherPane_IsRefused_AndDoesNotSettle()
     {
         var host = Substitute.For<ICockpitHost>();

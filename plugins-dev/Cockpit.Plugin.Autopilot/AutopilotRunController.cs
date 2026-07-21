@@ -29,6 +29,9 @@ internal sealed class AutopilotRunController(AutopilotSettings settings)
     /// <summary>The merge-ready pull request the agent opened and reported, or null — posted back to the tracker as evidence.</summary>
     public string? PrUrl { get; private set; }
 
+    /// <summary>The question the agent is blocked on and waiting for the operator to answer (AC-155), when <see cref="Phase"/> is AwaitingOperator; otherwise null.</summary>
+    public string? PendingQuestion { get; private set; }
+
     /// <summary>A snapshot of the gate outcomes the agent has reported for the current run so far.</summary>
     public IReadOnlyDictionary<GateKind, AutopilotGateOutcome> Gates
     {
@@ -63,6 +66,7 @@ internal sealed class AutopilotRunController(AutopilotSettings settings)
         BlockReason = null;
         SessionPaneId = null;
         PrUrl = null;
+        PendingQuestion = null;
         lock (_gateLock)
         {
             _gates.Clear();
@@ -85,6 +89,31 @@ internal sealed class AutopilotRunController(AutopilotSettings settings)
     {
         Phase = AutopilotRunPhase.Running;
         BlockReason = null;
+        _Raise();
+    }
+
+    /// <summary>The agent hit a blockade and needs the operator (AC-155): the run waits, showing <paramref name="question"/>, until the operator answers on the issue or the grace timer runs out.</summary>
+    public void Block(string question)
+    {
+        Phase = AutopilotRunPhase.AwaitingOperator;
+        PendingQuestion = question;
+        _Raise();
+    }
+
+    /// <summary>The blockade cleared (the operator answered): the run goes back to running.</summary>
+    public void ResumeRunning()
+    {
+        Phase = AutopilotRunPhase.Running;
+        PendingQuestion = null;
+        _Raise();
+    }
+
+    /// <summary>Parks the run as blocked with <paramref name="reason"/> — e.g. the operator did not answer a blockade in the grace time (AC-155).</summary>
+    public void Park(string reason)
+    {
+        Phase = AutopilotRunPhase.Blocked;
+        BlockReason = reason;
+        PendingQuestion = null;
         _Raise();
     }
 

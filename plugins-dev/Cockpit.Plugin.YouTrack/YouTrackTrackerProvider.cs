@@ -75,6 +75,23 @@ internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrac
         }
     }
 
+    public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default)
+    {
+        if (_Instance() is not { } instance)
+        {
+            return [];
+        }
+
+        try
+        {
+            return await _client.ReadCommentsAsync(instance.InstanceUrl, instance.Token, issueId, cancellationToken);
+        }
+        catch (Exception)
+        {
+            return [];
+        }
+    }
+
     // The sole configured instance (base URL + token both set), or null when none or more than one — Autopilot works
     // one instance in practice; a URL-matching resolver for multi-instance runs can layer on later.
     private YouTrackInstance? _Instance() =>

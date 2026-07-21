@@ -234,6 +234,58 @@ public class AutopilotWorkspaceBodyRenderTests
         await tracker.Received(1).SetStageAsync("AC-154", "In Progress", Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task Body_OnBlockade_PostsTheQuestionToTheTracker_AndShowsWaiting()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        tracker.ReadCommentsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<TrackerComment>>([]));
+        var host = _ApprovingHost();
+        host.TrackerProviders.Returns(new[] { tracker });
+        var runs = _Runs();
+        var body = _Body(host, _Context(_Embedded("EMBEDDED-SESSION")), runs);
+        _Show(body);
+
+        runs.BeginScoping(new AutopilotRun("youtrack", "AC-155", "blockade", new Dictionary<string, string>()));
+        runs.MarkRunning();
+        _Pump();
+
+        runs.Block("Which database should it use?");
+        _Pump();
+
+        await tracker.Received(1).PostCommentAsync("AC-155",
+            Arg.Is<string>(comment => comment.Contains("Which database")), Arg.Any<CancellationToken>());
+        _Texts(body).Should().Contain(text => text.Contains("Waiting for operator"));
+    }
+
+    [Fact]
+    public async Task Body_ReAttachedDuringABlockade_DoesNotRepostTheQuestion()
+    {
+        var tracker = Substitute.For<ITrackerProvider>();
+        tracker.TrackerId.Returns("youtrack");
+        tracker.ReadCommentsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<TrackerComment>>([]));
+        var host = _ApprovingHost();
+        host.TrackerProviders.Returns(new[] { tracker });
+        var runs = _Runs();
+        var body = _Body(host, _Context(_Embedded("EMBEDDED-SESSION")), runs);
+        var window = _Show(body);
+
+        runs.BeginScoping(new AutopilotRun("youtrack", "AC-155", "blockade", new Dictionary<string, string>()));
+        runs.MarkRunning();
+        _Pump();
+        runs.Block("Which database?");
+        _Pump();
+
+        // The operator switches tabs away and back while the run waits: the question must not be posted twice.
+        window.Content = null;
+        window.Content = body;
+        _Pump();
+
+        await tracker.Received(1).PostCommentAsync("AC-155", Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     private static AutopilotRunController _Runs() =>
         new(new AutopilotSettings(Substitute.For<IPluginStorage>()));
 

@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Cockpit.Plugins.Abstractions.Tracking;
 
 namespace Cockpit.Plugin.YouTrack;
 
@@ -291,6 +292,34 @@ internal sealed class YouTrackClient
 
         var failure = await response.Content.ReadAsStringAsync(cancellationToken);
         throw new InvalidOperationException($"YouTrack refused the comment ({(int)response.StatusCode}): {YouTrackErrorMessage.From(failure)}");
+    }
+
+    /// <summary>Reads an issue's comments (<c>GET /issues/{id}/comments</c>), normalized to <see cref="TrackerComment"/> (YouTrack's <c>created</c> is epoch-ms).</summary>
+    public async Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string instanceBaseUrl, string token, string idReadable, CancellationToken cancellationToken)
+    {
+        var baseUrl = instanceBaseUrl.TrimEnd('/');
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/issues/{Uri.EscapeDataString(idReadable)}/comments?fields=id,text,created,author(login)");
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await Http.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+        var comments = new List<TrackerComment>();
+        foreach (var element in document.RootElement.EnumerateArray())
+        {
+            var text = element.TryGetProperty("text", out var textValue) && textValue.ValueKind == JsonValueKind.String ? textValue.GetString() ?? string.Empty : string.Empty;
+            var created = element.TryGetProperty("created", out var createdValue) && createdValue.ValueKind == JsonValueKind.Number ? createdValue.GetInt64() : 0L;
+            var login = element.TryGetProperty("author", out var author) && author.ValueKind == JsonValueKind.Object && author.TryGetProperty("login", out var loginValue)
+                ? loginValue.GetString() ?? string.Empty
+                : string.Empty;
+            comments.Add(new TrackerComment(login, text, DateTimeOffset.FromUnixTimeMilliseconds(created)));
+        }
+
+        return comments;
     }
 
     /// <summary>

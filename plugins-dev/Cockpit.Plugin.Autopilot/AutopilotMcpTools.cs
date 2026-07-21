@@ -56,6 +56,30 @@ internal sealed class AutopilotMcpTools(ICockpitHost host, AutopilotRunControlle
         return JsonSerializer.Serialize(new { ok = true, phase = runs.Phase.ToString(), reason = runs.BlockReason }, Serializer);
     }
 
+    [McpServerTool(Name = "autopilot_blocked")]
+    [Description("Signal that you are blocked and need the operator to answer before you can continue. Autopilot posts the question to the tracker, sets the session status to waiting, and watches the issue for the operator's reply (up to the grace timer) — their reply is relayed back to you as a turn. If they do not answer in time, the run is parked. Use this instead of guessing.")]
+    public string Blocked(
+        [Description("The question or blocker the operator needs to resolve, in one message.")] string question)
+    {
+        if (!_IsThisRun())
+        {
+            return _Fail("This call is not from the active Autopilot run's session.");
+        }
+
+        if (runs.Phase != AutopilotRunPhase.Running)
+        {
+            return _Fail("Only a running run can block; this run is not currently running.");
+        }
+
+        if (string.IsNullOrWhiteSpace(question))
+        {
+            return _Fail("A blockade needs a question for the operator.");
+        }
+
+        runs.Block(question.Trim());
+        return JsonSerializer.Serialize(new { ok = true, status = "awaiting-operator" }, Serializer);
+    }
+
     // The transport-verified caller pane must be the run's own embedded session (AC-89/AC-128) — never a pane the agent
     // typed — so a different session cannot report for this run.
     private bool _IsThisRun() =>
