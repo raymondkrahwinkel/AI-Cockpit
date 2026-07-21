@@ -120,6 +120,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   defaults, and lost the session's workspace trust — which silently disables every injected MCP server. The
   cockpit now updates that file atomically, skips the write entirely when nothing needs changing, and never
   replaces an unreadable file with an empty one, so interleaving TTY and SDK sessions keep their MCP servers.
+- fixed: reordering sessions by dragging them in the left sidebar no longer rearranges the panes in the
+  Sessions workspace. The sidebar strip and the workspace grid now keep their own order — drag the strip to
+  sort your list, drag a pane's grip to arrange the grid — so tidying one never disturbs the other.
+- fixed: closing a session no longer leaves a gap in the workspace grid. When you close one of three or four
+  tiled sessions, the panes that remain re-flow to the tightest layout — two left fall back to a side-by-side
+  (or stacked) pair instead of sitting in a 2×2 with an empty cell.
 - fixed: the per-session MCP-server checklist is now honoured by both session kinds. A terminal (TTY)
   session ignored it and loaded every configured server regardless of what you ticked, while an SDK
   session got none of your cockpit-configured servers at all. Both now start with exactly the servers
