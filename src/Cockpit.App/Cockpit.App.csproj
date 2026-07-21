@@ -35,16 +35,15 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
-    <!-- TTY-mode experiment (#9): Exclr8.Terminal (MIT; NuGet), a pure Avalonia terminal-emulator
-         control with no PTY plumbing baked in — Write(bytes) feeds pty output in, the Input/Output
-         events carry bytes the terminal wants written back (user keystrokes and protocol replies
-         alike), Resized reports cell-grid changes. Verified pty-agnostic (no seam that wants to own
-         the process), so the cockpit still hosts the pty itself (ConPtyProcess on Windows,
-         PortaPtyProcess on Linux/macOS, both with our profile-aware env injection of
-         CLAUDE_CONFIG_DIR + TERM) and renders into this control. Replaced the earlier in-tree
-         Cockpit.Terminal fork of SvcSystems.UI.Terminal (whose renderer had a cell-width/glyph-advance
-         coupling bug); that fork has since been removed now the Exclr8 renderer is the settled path. -->
-    <PackageReference Include="Exclr8.Terminal" Version="1.0.7" />
+    <!-- TTY-mode experiment (#9): Exclr8.Terminal (MIT), a pure Avalonia terminal-emulator control with
+         no PTY plumbing baked in — Write(bytes) feeds pty output in, the Input/Output events carry bytes
+         the terminal wants written back (user keystrokes and protocol replies alike), Resized reports
+         cell-grid changes. Verified pty-agnostic (no seam that wants to own the process), so the cockpit
+         still hosts the pty itself (ConPtyProcess on Windows, PortaPtyProcess on Linux/macOS, both with
+         our profile-aware env injection of CLAUDE_CONFIG_DIR + TERM) and renders into this control.
+         Vendored from source under third_party/ (see that project) instead of the NuGet package: 1.0.7 is
+         the last published release, and the renderer's glyph-drift (AC-66) and reflow/cols (AC-129) bugs
+         are fixed in-tree there — a ProjectReference below. -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
   </ItemGroup>
@@ -53,6 +52,8 @@
     <ProjectReference Include="..\Cockpit.Core\Cockpit.Core.csproj" />
     <ProjectReference Include="..\Cockpit.Infrastructure\Cockpit.Infrastructure.csproj" />
     <ProjectReference Include="..\Cockpit.Plugins.Abstractions\Cockpit.Plugins.Abstractions.csproj" />
+    <!-- Vendored terminal renderer (MIT), patched in-tree — see third_party/Exclr8.Terminal. -->
+    <ProjectReference Include="..\..\third_party\Exclr8.Terminal\Exclr8.Terminal.csproj" />
   </ItemGroup>
 
   <ItemGroup>

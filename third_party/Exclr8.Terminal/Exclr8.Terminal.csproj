@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Vendored from https://github.com/alexmehlhorn/exclr8-terminal (MIT), tag v1.0.7, so the terminal
+       renderer can be patched in-tree. 1.0.7 is the last NuGet release, and the DrawGlyphs glyph-drift
+       (AC-66) and reflow/cols (AC-129) fixes have to live here until an upstream release carries them.
+       Trimmed to a plain library: the package metadata, Source Link and README/LICENSE pack items from
+       the upstream csproj are dropped (we ProjectReference this, never pack it). Avalonia pinned to the
+       app's 12.0.5. Isolated from the repo build conventions via third_party/Directory.Build.props. The
+       upstream LICENSE is kept beside this file. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- KQueueChildWatcher needs P/Invoke + unsafe pointer blocks for the kevent / proc_name interop. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 1591 ("missing XML doc") is silenced on the upstream internals we deliberately don't document. -->
+    <NoWarn>$(NoWarn);1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.5" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.5" />
+    <!-- WMI for the WmiChildWatcher on Windows; the Windows path is [SupportedOSPlatform]-guarded so
+         non-Windows builds link cleanly against the kqueue / no-op backend. -->
+    <PackageReference Include="System.Management" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>
