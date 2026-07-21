@@ -383,10 +383,24 @@
                             <ItemsControl ItemsSource="{Binding McpServers}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
-                                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
+                                        <!-- name checkbox, plus the server's pre-flight tool-token figure (AC-134) -->
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <CheckBox Grid.Column="0" Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding TokenLabel}" VerticalAlignment="Center"
+                                                       Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                            <!-- Pre-flight token estimate for the ticked servers (AC-134), so a profile's pre-selection
+                                 shows roughly what it adds; Refresh re-enumerates. -->
+                            <DockPanel IsVisible="{Binding HasMcpTokenSummary}" Margin="0,2,0,0">
+                                <Button DockPanel.Dock="Right" Content="Refresh" Classes="Subtle" Padding="6,2" FontSize="11"
+                                        Command="{Binding RefreshMcpTokensCommand}"
+                                        ToolTip.Tip="Re-enumerate the selected servers' tools and recount"/>
+                                <TextBlock Text="{Binding McpToolTokenSummary}" VerticalAlignment="Center" FontSize="11"
+                                           TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                            </DockPanel>
                         </StackPanel>
                     </StackPanel>
 
