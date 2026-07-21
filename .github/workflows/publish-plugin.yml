@@ -24,6 +24,7 @@ on:
         required: true
         type: choice
         options:
+          - autopilot
           - claude-provider
           - cli-agent-provider
           - clock
