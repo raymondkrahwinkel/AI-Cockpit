@@ -31,6 +31,10 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
+    <!-- The [McpServerTool] attributes for the in-process report endpoint; the host provides the runtime copy (AC-116). -->
+    <PackageReference Include="ModelContextProtocol" Version="1.4.1">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

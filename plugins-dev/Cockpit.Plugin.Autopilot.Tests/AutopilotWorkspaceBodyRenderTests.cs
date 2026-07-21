@@ -24,7 +24,7 @@ public class AutopilotWorkspaceBodyRenderTests
         var host = _ApprovingHost();
         var embedded = _Embedded("EMBEDDED-SESSION");
         var context = _Context(embedded);
-        var runs = new AutopilotRunController();
+        var runs = _Runs();
         var body = _Body(host, context, runs);
         _Show(body);
 
@@ -47,7 +47,7 @@ public class AutopilotWorkspaceBodyRenderTests
         host.RequestConsentAsync(Arg.Any<ConsentRequest>()).Returns(ConsentDecision.Denied);
         var embedded = _Embedded("EMBEDDED-SESSION");
         var context = _Context(embedded);
-        var runs = new AutopilotRunController();
+        var runs = _Runs();
         var body = _Body(host, context, runs);
         _Show(body);
 
@@ -65,7 +65,7 @@ public class AutopilotWorkspaceBodyRenderTests
     public void Body_ShowsTheRefusalReason_AndEmbedsNothing_WhenScopingRefuses()
     {
         var context = Substitute.For<IWorkspaceContext>();
-        var runs = new AutopilotRunController();
+        var runs = _Runs();
         var body = _Body(_ApprovingHost(), context, runs);
         _Show(body);
 
@@ -81,7 +81,7 @@ public class AutopilotWorkspaceBodyRenderTests
     {
         var embedded = _Embedded("EMBEDDED-SESSION");
         var context = _Context(embedded);
-        var runs = new AutopilotRunController();
+        var runs = _Runs();
         var body = _Body(_ApprovingHost(), context, runs);
         var window = _Show(body);
 
@@ -104,7 +104,7 @@ public class AutopilotWorkspaceBodyRenderTests
         var second = _Embedded("SESSION-TWO");
         var context = Substitute.For<IWorkspaceContext>();
         context.EmbedSession(Arg.Any<EmbeddedSessionRequest>()).Returns(first, second);
-        var runs = new AutopilotRunController();
+        var runs = _Runs();
         var body = _Body(_ApprovingHost(), context, runs);
         _Show(body);
 
@@ -120,6 +120,66 @@ public class AutopilotWorkspaceBodyRenderTests
         context.Received(2).EmbedSession(Arg.Any<EmbeddedSessionRequest>());
         _Texts(body).Should().Contain("SESSION-TWO").And.NotContain("SESSION-ONE");
     }
+
+    [Fact]
+    public void Body_WhenTheRunIsMergeReady_ShowsTheMergeReadyBanner()
+    {
+        var embedded = _Embedded("EMBEDDED-SESSION");
+        var context = _Context(embedded);
+        var runs = _Runs();
+        var body = _Body(_ApprovingHost(), context, runs);
+        _Show(body);
+
+        runs.BeginScoping(new AutopilotRun("youtrack", "AC-153", "done-gate", new Dictionary<string, string>()));
+        runs.MarkRunning();
+        _Pump();
+
+        runs.ReportGate(GateKind.Security, AutopilotGateOutcome.Passed);
+        runs.MarkReady();
+
+        runs.Phase.Should().Be(AutopilotRunPhase.MergeReady);
+        _Texts(body).Should().Contain(text => text.Contains("Merge-ready"));
+        _Texts(body).Should().Contain("EMBEDDED-SESSION");
+    }
+
+    [Fact]
+    public void Body_WhenTheRunIsBlocked_ShowsTheBlockReason()
+    {
+        var context = _Context(_Embedded("EMBEDDED-SESSION"));
+        var runs = _Runs();
+        var body = _Body(_ApprovingHost(), context, runs);
+        _Show(body);
+
+        runs.BeginScoping(new AutopilotRun("youtrack", "AC-153", "done-gate", new Dictionary<string, string>()));
+        runs.MarkRunning();
+        _Pump();
+
+        runs.ReportGate(GateKind.Security, AutopilotGateOutcome.Failed);
+        runs.MarkReady();
+
+        runs.Phase.Should().Be(AutopilotRunPhase.Blocked);
+        _Texts(body).Should().Contain(text => text.Contains("Security"));
+    }
+
+    [Fact]
+    public void Body_WhileRunning_ShowsGateChipsForReportedGates()
+    {
+        var context = _Context(_Embedded("EMBEDDED-SESSION"));
+        var runs = _Runs();
+        var body = _Body(_ApprovingHost(), context, runs);
+        _Show(body);
+
+        runs.BeginScoping(new AutopilotRun("youtrack", "AC-153", "done-gate", new Dictionary<string, string>()));
+        runs.MarkRunning();
+        _Pump();
+
+        runs.ReportGate(GateKind.Security, AutopilotGateOutcome.Passed);
+
+        _Texts(body).Should().Contain(text => text.Contains("security"));
+    }
+
+    private static AutopilotRunController _Runs() =>
+        new(new AutopilotSettings(Substitute.For<IPluginStorage>()));
 
     private static ICockpitHost _ApprovingHost()
     {

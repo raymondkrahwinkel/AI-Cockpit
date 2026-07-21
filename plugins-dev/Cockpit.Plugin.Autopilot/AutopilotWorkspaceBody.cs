@@ -31,6 +31,7 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     private IEmbeddedSession? _embedded;
     private AutopilotRun? _embeddedRun;
     private Control? _runningView;
+    private Border? _statusStrip;
 
     public AutopilotWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotRunController runs)
     {
@@ -114,8 +115,8 @@ internal sealed class AutopilotWorkspaceBody : UserControl
 
         _bodyHost.Content = _runs.Phase switch
         {
-            AutopilotRunPhase.Refused => _BuildRefusedView(run, _runs.RefusalReason),
-            AutopilotRunPhase.Running => _BuildRunningView(run),
+            AutopilotRunPhase.Refused => _BuildRefusedView(run, _runs.BlockReason),
+            AutopilotRunPhase.Running or AutopilotRunPhase.Blocked or AutopilotRunPhase.MergeReady => _BuildRunningView(run),
             _ => _BuildScopingView(run),
         };
     }
@@ -133,6 +134,9 @@ internal sealed class AutopilotWorkspaceBody : UserControl
     {
         if (_runningView is not null)
         {
+            // Re-render of the same run (a gate reported, a tab revisit): refresh the status strip in place — never
+            // rebuild the view, which would reparent the embedded session.
+            _UpdateStatusStrip(run);
             return _runningView;
         }
 
@@ -145,6 +149,7 @@ internal sealed class AutopilotWorkspaceBody : UserControl
         });
         _embedded = embedded;
         _embeddedRun = run;
+        _runs.BindSession(embedded.PaneId);
         _ = _host.SetSessionStatusline(embedded.PaneId, $"Autopilot · {run.IssueId} — awaiting approval");
         _runningView = _ComposeRunningView(run, embedded);
 
@@ -189,36 +194,111 @@ internal sealed class AutopilotWorkspaceBody : UserControl
 
     private Control _ComposeRunningView(AutopilotRun run, IEmbeddedSession embedded)
     {
-        var strip = new Border
+        _statusStrip = new Border
         {
             Padding = new Thickness(12, 8),
             BorderThickness = new Thickness(0, 0, 0, 1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             [DockPanel.DockProperty] = Dock.Top,
-            Child = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
-                Children =
-                {
-                    _TrackerChip(run.Tracker),
-                    new TextBlock { Text = string.IsNullOrWhiteSpace(run.IssueId) ? "(unnamed issue)" : run.IssueId, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center },
-                    new TextBlock { Text = run.Title, Opacity = 0.7, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = _Brush("CockpitTextSecondaryBrush") },
-                },
-            },
+            Child = _StatusStripContent(run),
         };
 
-        return new DockPanel { LastChildFill = true, Children = { strip, embedded.View } };
+        return new DockPanel { LastChildFill = true, Children = { _statusStrip, embedded.View } };
     }
 
-    // The point's work brief the agent is handed once the operator approves (AC-152): work it to a merge-ready PR, and
-    // stop there — the merge stays with the human (AC-94 principle #6).
-    private static string _BuildWorkPrompt(AutopilotRun run)
+    private void _UpdateStatusStrip(AutopilotRun run)
+    {
+        if (_statusStrip is not null)
+        {
+            _statusStrip.Child = _StatusStripContent(run);
+        }
+    }
+
+    // The strip above the embedded session: names the point and reflects the run's state — its done-gates while it
+    // runs (AC-153), merge-ready when they pass (the merge stays with you), or the block reason when a hard gate did not.
+    private Control _StatusStripContent(AutopilotRun run)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(_TrackerChip(run.Tracker));
+        row.Children.Add(new TextBlock { Text = string.IsNullOrWhiteSpace(run.IssueId) ? "(unnamed issue)" : run.IssueId, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+
+        switch (_runs.Phase)
+        {
+            case AutopilotRunPhase.MergeReady:
+                row.Children.Add(_StateBadge("Merge-ready — review & merge the PR (the merge stays with you)", "CockpitAccentBrush"));
+                break;
+            case AutopilotRunPhase.Blocked:
+                row.Children.Add(_StateBadge(_runs.BlockReason ?? "Blocked at a hard gate.", "CockpitTextSecondaryBrush"));
+                break;
+            default:
+                foreach (var chip in _GateChips())
+                {
+                    row.Children.Add(chip);
+                }
+
+                break;
+        }
+
+        return row;
+    }
+
+    // One chip per gate: its short name, whether it is hard or skip, the outcome the agent has reported so far, and its
+    // evidence (a review summary, a verify screenshot path) as the chip's tooltip.
+    private IEnumerable<Control> _GateChips()
+    {
+        var gates = _runs.Gates;
+        return new[] { (GateKind.Verify, "verify"), (GateKind.CodeReview, "code"), (GateKind.Security, "security"), (GateKind.Conventions, "conventions") }
+            .Select(pair =>
+            {
+                var reported = gates.TryGetValue(pair.Item1, out var outcome);
+                var hard = _settings.Gate(pair.Item1) == GateMode.Hard;
+                var mark = !reported ? "·" : outcome switch
+                {
+                    AutopilotGateOutcome.Passed => "✓",
+                    AutopilotGateOutcome.Failed => "✗",
+                    _ => "–",
+                };
+                var chip = _StateBadge($"{pair.Item2} {mark}{(hard ? " (hard)" : string.Empty)}", reported && outcome == AutopilotGateOutcome.Passed ? "CockpitAccentBrush" : "CockpitTextFaintBrush");
+                if (_runs.GateEvidence(pair.Item1) is { Length: > 0 } evidence)
+                {
+                    ToolTip.SetTip(chip, evidence);
+                }
+
+                return (Control)chip;
+            });
+    }
+
+    private Border _StateBadge(string text, string foregroundKey) =>
+        new()
+        {
+            Background = _Brush("CockpitSecondaryBgBrush"),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = text, FontSize = 11, Foreground = _Brush(foregroundKey), TextTrimming = TextTrimming.CharacterEllipsis },
+        };
+
+    // The point's work brief the agent is handed once the operator approves (AC-152/AC-153): work it to a merge-ready
+    // PR, run the done-gates and report them, then stop — the merge stays with the human (AC-94 principle #6).
+    private string _BuildWorkPrompt(AutopilotRun run)
     {
         var description = run.Data.GetValueOrDefault("description", string.Empty);
         return $"""
             You are an Autopilot run. Work this issue to a merge-ready pull request, then stop — do NOT merge; a human
-            does the merge. Work in this worktree: make the change, commit and push your branch, and open the PR.
+            does the merge.
+
+            Steps:
+            1. Work in this worktree: make the change, commit and push your branch, and open the PR.
+            2. Run the done-gates and report each with the mcp__cockpit-autopilot__autopilot_gate tool
+               (gate = verify | code | security | conventions; result = passed | failed | skipped):
+               - verify: run the visual check with mcp__cockpit-verify__verify and judge it against the intent;
+               - code: run /code-review over your diff;
+               - security: run /security-review;
+               - conventions: check the change follows the project's language and memory conventions.
+               If a hard gate fails, fix what is in scope and re-run it — up to {_settings.MaxSelfFixAttempts()} times —
+               before giving up.
+            3. When the PR is open and every gate is reported, call mcp__cockpit-autopilot__autopilot_ready. Autopilot
+               then settles the run to merge-ready or blocked.
 
             Issue ({run.Tracker} {run.IssueId}): {run.Title}
             {description}

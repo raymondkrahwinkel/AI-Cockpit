@@ -27,10 +27,14 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     public void Initialize(ICockpitHost host)
     {
         var settings = new AutopilotSettings(host.Storage);
-        var runs = new AutopilotRunController();
+        var runs = new AutopilotRunController(settings);
 
         // The gear next to the plugin in the manager opens this — the global-level settings.
         host.AddSettings(() => new AutopilotSettingsControl(settings));
+
+        // The run's own agent reports its done-gate outcomes back through this in-process endpoint (AC-153); it is dark
+        // when no run is active, and each tool binds to the run only when the verified caller pane is its session.
+        _ = host.AddMcpEndpoint("cockpit-autopilot", new AutopilotMcpTools(host, runs), isEnabled: () => runs.Current is not null);
 
         // The trigger's receiving half (AC-150) plus the opstart flow (AC-151): a tracker's "Start in Autopilot" sends
         // this intent; Autopilot records the point, surfaces its workspace, runs a short scoping judgment, and either
