@@ -113,6 +113,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the terminal no longer garbles lines that mix em-dashes, arrows or emoji. Characters like `—`, `→`
+  and `✅` advance wider than a monospace cell, and they used to push the rest of the line off its columns —
+  so `store` could read `stuore`, a version like `0.22.0→0.22.1` collapse into `0.22.0.0.22.1`, and checks
+  run together — most visibly while scrolling a unicode-heavy transcript or diff. Each cell is now painted on
+  its own column, so such output stays aligned.
 - fixed: a Claude SDK session started after (or alongside) a terminal (TTY) session came up with none of
   its MCP servers — cockpit-hosted and your own alike — and with no error to show for it. Two Claude
   processes share one `~/.claude.json`, and the cockpit rewrote that file non-atomically before each launch;
