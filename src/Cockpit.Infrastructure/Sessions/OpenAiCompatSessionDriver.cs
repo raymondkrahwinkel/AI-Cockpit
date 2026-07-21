@@ -128,9 +128,10 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
         Capabilities = Capabilities with { SupportsTools = _gatedTools.Count > 0 };
 
-        // Seed the conversation with the profile's base system prompt so every turn carries it (HTTP is
-        // stateless — the client owns the history, so a system message once at the front is enough).
-        var systemPrompt = _SystemPromptFrom(config);
+        // Seed the conversation with the profile's base system prompt plus any hidden per-session prompt the host
+        // folded into the options map (AC-180 — an embedded run's brief, e.g. Autopilot's CEO), so every turn carries
+        // them (HTTP is stateless — the client owns the history, so a system message once at the front is enough).
+        var systemPrompt = _CombineSystemPrompt(_SystemPromptFrom(config), launchOptions);
         if (!string.IsNullOrWhiteSpace(systemPrompt))
         {
             _history.Add(new ChatMessage(ChatRole.System, systemPrompt));
@@ -467,4 +468,23 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         LmStudioConfig lmStudio => lmStudio.SystemPrompt,
         _ => null,
     };
+
+    // The system prompt to seed: the profile's own base prompt with the host's hidden per-session prompt (AC-180)
+    // appended after it, so an embedded run's brief lands on top of the profile without replacing it. Either being
+    // absent falls back to the other; both absent seeds nothing.
+    private static string? _CombineSystemPrompt(string? profilePrompt, IReadOnlyDictionary<string, string>? launchOptions)
+    {
+        var appendPrompt = launchOptions is not null
+            && launchOptions.TryGetValue(WellKnownPluginSessionOptions.AppendSystemPrompt, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+                ? value.Trim()
+                : null;
+
+        if (appendPrompt is null)
+        {
+            return profilePrompt;
+        }
+
+        return string.IsNullOrWhiteSpace(profilePrompt) ? appendPrompt : $"{profilePrompt}\n\n{appendPrompt}";
+    }
 }

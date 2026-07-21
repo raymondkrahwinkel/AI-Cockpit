@@ -23,6 +23,8 @@ internal sealed class WorkspaceContext(
 
     public event EventHandler? RefreshRequested;
 
+    public event EventHandler? Closed;
+
     public IEmbeddedSession EmbedSession(EmbeddedSessionRequest request)
     {
         // Null only in the design-time/test graph, where there is no session machinery behind the shell. A real
@@ -41,4 +43,7 @@ internal sealed class WorkspaceContext(
     /// listens to <see cref="RefreshRequested"/>, it does not fire it.
     /// </summary>
     public void RequestRefresh() => RefreshRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Raised by the shell when this workspace is really closed (its tab dismissed), so a body can tear down a long-running job.</summary>
+    public void RaiseClosed() => Closed?.Invoke(this, EventArgs.Empty);
 }

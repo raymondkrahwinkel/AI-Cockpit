@@ -42,4 +42,34 @@ public sealed record EmbeddedSessionRequest
     /// restricts the session to exactly those servers. Ids as the host advertises them (e.g. <c>cockpit-verify</c>).
     /// </summary>
     public IReadOnlyList<string> McpServers { get; init; } = [];
+
+    /// <summary>
+    /// A hidden system prompt prepended for this one session (AC-180) — the role and working instructions an embedded
+    /// run hands its agent at start (Autopilot's "you are the CEO, this is how you plan, emit the plan through the
+    /// tool") that the operator never sees as a turn. Given at start, so it carries no risk of racing the session's
+    /// runtime the way a post-start message does. Provider-agnostic: the host passes it to whichever driver runs the
+    /// session and the driver applies it its own way (a CLI's <c>--append-system-prompt</c>, a leading system message
+    /// for a local model); a provider that cannot inject one ignores it. Null or blank adds nothing.
+    /// </summary>
+    public string? AppendSystemPrompt { get; init; }
+
+    /// <summary>
+    /// A first user turn to submit automatically once the session is up (AC-174) — how an autonomous embedded run (an
+    /// Autopilot step agent) is set going without a human typing: its task brief goes here as the opening message. The
+    /// host submits it <em>after</em> the runtime has started, so it cannot race the "session has not started yet" gate
+    /// a message sent right after <see cref="IWorkspaceContext.EmbedSession"/> would hit. Unlike
+    /// <see cref="AppendSystemPrompt"/> this is a visible turn — it is the agent's opening instruction, not a hidden
+    /// role. Null or blank starts the session idle, waiting for the operator (the CEO planning round works this way).
+    /// </summary>
+    public string? InitialUserMessage { get; init; }
+
+    /// <summary>
+    /// Starts the session with its composer disabled (AC-174) — an autonomous embedded run (an Autopilot step agent)
+    /// drives itself, so the operator should not think they can type into it; the input box is off until they
+    /// deliberately re-enable it through <see cref="IEmbeddedSession.SetInputEnabled"/> (the surface's "intervene"
+    /// affordance). Only the composer is disabled — the host still submits the run's own <see cref="InitialUserMessage"/>
+    /// and drives the session as usual. Defaults to <see langword="false"/>: an ordinary embedded session (the CEO
+    /// planning round) is a conversation and keeps its composer live.
+    /// </summary>
+    public bool StartWithInputDisabled { get; init; }
 }

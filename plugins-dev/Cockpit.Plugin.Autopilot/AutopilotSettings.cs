@@ -18,6 +18,8 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string WorkflowKey = "defaultWorkflow";
     private const string CommentKey = "commentLevel";
     private const string ScopingProfileKey = "scopingProfileLabel";
+    private const string CeoProfileKey = "ceoProfileLabel";
+    private const string CeoModelKey = "ceoModel";
     private const string AutonomyModeKey = "autonomyMode";
 
     /// <summary>The CLI permission mode a self-driving run starts in (AC-152). Default: the agent works without asking before edits; the host still gates shell and egress.</summary>
@@ -45,6 +47,14 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     /// <summary>The profile the pre-start scoping judgment is delegated to (AC-151); null skips scoping so a run starts unjudged.</summary>
     public string? ScopingProfileLabel(string? projectId = null) => _ReadString(projectId, ScopingProfileKey);
 
+    /// <summary>The profile the CEO planning session runs on (AC-174) — a strong reasoning profile (Opus) by default in
+    /// practice; null uses the app-default profile. Determines which agent/model the operator plans with.</summary>
+    public string? CeoProfileLabel(string? projectId = null) => _ReadString(projectId, CeoProfileKey);
+
+    /// <summary>The model the CEO planning session runs on where its profile offers a choice (AC-174, e.g. <c>opus</c>);
+    /// null uses the profile's own default model.</summary>
+    public string? CeoModel(string? projectId = null) => _ReadString(projectId, CeoModelKey);
+
     /// <summary>The CLI permission mode a self-driving run starts in (AC-152), defaulting to <see cref="DefaultAutonomyMode"/> when unset or blank.</summary>
     public string AutonomyMode(string? projectId = null) =>
         _ReadString(projectId, AutonomyModeKey) is { Length: > 0 } mode ? mode : DefaultAutonomyMode;
@@ -69,6 +79,10 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     public void SetDefaultWorkflow(string? workflow, string? projectId = null) => _Write(projectId, WorkflowKey, workflow);
 
     public void SetScopingProfileLabel(string? label, string? projectId = null) => _Write(projectId, ScopingProfileKey, label);
+
+    public void SetCeoProfileLabel(string? label, string? projectId = null) => _Write(projectId, CeoProfileKey, label);
+
+    public void SetCeoModel(string? model, string? projectId = null) => _Write(projectId, CeoModelKey, model);
 
     public void SetAutonomyMode(string? mode, string? projectId = null) => _Write(projectId, AutonomyModeKey, mode);
 

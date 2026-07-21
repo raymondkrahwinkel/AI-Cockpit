@@ -230,7 +230,13 @@ internal sealed class CockpitHost(
     {
         var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false);
         return profiles
-            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty))
+            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty)
+            {
+                // A Claude profile offers the model aliases; a local or plugin profile pins its own, so no suggestions.
+                ModelSuggestions = profile.Claude is not null ? SessionOptionCatalog.ClaudeModelSuggestions : [],
+                // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
+                RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
+            })
             .ToList();
     }
 

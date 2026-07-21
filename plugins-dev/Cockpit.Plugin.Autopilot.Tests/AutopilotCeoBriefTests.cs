@@ -1,0 +1,107 @@
+using Cockpit.Plugins.Abstractions.Profiles;
+using FluentAssertions;
+
+namespace Cockpit.Plugin.Autopilot.Tests;
+
+/// <summary>
+/// The CEO planning brief (AC-174): it states the goal, points the CEO at the plan-emit tool, and adapts to whether the
+/// run was triggered from a source item or started CEO-first. Kept a pure builder off the workspace body so its wording
+/// is tested without a live session.
+/// </summary>
+public class AutopilotCeoBriefTests
+{
+    [Fact]
+    public void For_ATriggeredRun_NamesTheSourceItemTheGoalAndThePlanTool()
+    {
+        var plan = new AutopilotPlan(
+            "Ship reading levels in the chat view",
+            new AutopilotPlanSource("youtrack", "AC-138", "Reading levels"),
+            []);
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        brief.Should().Contain("Ship reading levels in the chat view");
+        brief.Should().Contain("youtrack AC-138");
+        brief.Should().Contain("Reading levels");
+        brief.Should().Contain(AutopilotPlanTools.QualifiedToolName);
+    }
+
+    [Fact]
+    public void For_ATriggeredRun_SurfacesTheIssueDescription_SoTheCeoDraftsFromWhatItAsks()
+    {
+        var plan = new AutopilotPlan(
+            "Ship reading levels in the chat view",
+            new AutopilotPlanSource("youtrack", "AC-138", "Reading levels", "Add Developer/Focus/Simple reading levels to the SDK chat view."),
+            []);
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        brief.Should().Contain("What the issue asks for");
+        brief.Should().Contain("Add Developer/Focus/Simple reading levels to the SDK chat view.");
+    }
+
+    [Fact]
+    public void For_ACeoFirstRun_AsksForTheGoalAndCallsItCeoFirst()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: string.Empty);
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        brief.Should().Contain("CEO-first");
+        brief.Should().Contain("ask them what this run should achieve");
+        brief.Should().Contain(AutopilotPlanTools.QualifiedToolName);
+    }
+
+    [Fact]
+    public void QualifiedToolName_CombinesTheEndpointAndToolName()
+    {
+        AutopilotPlanTools.QualifiedToolName.Should().Be("mcp__cockpit-autopilot-plan__autopilot_plan");
+    }
+
+    [Fact]
+    public void For_WithProfiles_ListsEachWithItsCostNature_AndTellsTheCeoToChooseCostAware()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+        var profiles = new[]
+        {
+            new PluginProfileInfo("Claude", "Plugin", string.Empty) { ModelSuggestions = ["opus", "sonnet"] },
+            new PluginProfileInfo("Qwen (local)", "Ollama", string.Empty) { RunsLocally = true },
+        };
+
+        var brief = AutopilotCeoBrief.For(plan, profiles);
+
+        brief.Should().Contain("Qwen (local)");
+        brief.Should().Contain("runs locally, free");
+        brief.Should().Contain("Claude");
+        brief.Should().Contain("hosted API, paid");
+        // The suggestions ride along so the CEO knows a profile's model options.
+        brief.Should().Contain("opus, sonnet");
+        // The cost-aware selection instruction, framed fit-first (not a naive race to the cheapest).
+        brief.Should().Contain("cheapest");
+        brief.Should().Contain("fit-first");
+    }
+
+    [Fact]
+    public void For_WithACeoIdentity_TellsTheCeoWhoItIs_AndToKeepTheRunCoherent()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = AutopilotCeoBrief.For(plan, profiles: null, ceoIdentity: "Zyra (personal)");
+
+        brief.Should().Contain("Zyra (personal)");
+        brief.Should().Contain("your identity for this run");
+    }
+
+    [Fact]
+    public void For_WithNoProfilesOrIdentity_OmitsTheRosterAndIdentityLine()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        brief.Should().NotContain("Profiles you can assign steps to");
+        brief.Should().NotContain("your identity for this run");
+        // The cost guidance is unconditional — it stands even with no roster passed.
+        brief.Should().Contain("cheapest");
+    }
+}

@@ -11,13 +11,20 @@ namespace Cockpit.Plugin.Autopilot;
 /// steps; <see cref="Block"/>/<see cref="ResumeRunning"/>/<see cref="Park"/> handle the blockade; and <see cref="Settle"/>
 /// ends the run merge-ready or blocked by the per-step hard/skip policy.
 /// </para>
+/// <para>
+/// Every mutable field is read and written under <see cref="_lock"/>: the plan and the phase are touched from the CEO's
+/// report tools on background MCP-call threads, the driver loop, and the UI thread at once. <see cref="Changed"/> is
+/// always raised outside the lock so a re-entrant render cannot deadlock or run while the state is half-updated.
+/// </para>
 /// </summary>
 internal sealed class AutopilotPlanController
 {
-    // Plan edits can arrive from the CEO's report tool on a background MCP-call thread while the UI thread reads the plan
-    // for the surface, so guard it — the same reason AutopilotRunController guards its gate maps.
     private readonly Lock _lock = new();
     private AutopilotPlan? _plan;
+    private AutopilotPlanPhase _phase;
+    private string? _blockReason;
+    private string? _pendingQuestion;
+    private string? _sessionPaneId;
 
     /// <summary>The current plan, or null before a planning round has begun.</summary>
     public AutopilotPlan? Plan
@@ -31,16 +38,53 @@ internal sealed class AutopilotPlanController
         }
     }
 
-    public AutopilotPlanPhase Phase { get; private set; }
+    /// <summary>Where the run sits. Read under the lock, since it is written from MCP-call threads and the driver loop.</summary>
+    public AutopilotPlanPhase Phase
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _phase;
+            }
+        }
+    }
 
     /// <summary>Why the run parked, when <see cref="Phase"/> is <see cref="AutopilotPlanPhase.Blocked"/>; otherwise null.</summary>
-    public string? BlockReason { get; private set; }
+    public string? BlockReason
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _blockReason;
+            }
+        }
+    }
 
     /// <summary>The question a step is blocked on (AC-155), when <see cref="Phase"/> is AwaitingOperator; otherwise null.</summary>
-    public string? PendingQuestion { get; private set; }
+    public string? PendingQuestion
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pendingQuestion;
+            }
+        }
+    }
 
     /// <summary>The pane id of the step's embedded session, once the body has embedded it — how a report is bound to this run.</summary>
-    public string? SessionPaneId { get; private set; }
+    public string? SessionPaneId
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _sessionPaneId;
+            }
+        }
+    }
 
     public event EventHandler? Changed;
 
@@ -53,19 +97,30 @@ internal sealed class AutopilotPlanController
         plan.Steps.Count > 0 &&
         plan.Steps.All(step => step.Status is not (AutopilotStepStatus.Pending or AutopilotStepStatus.Running));
 
-    /// <summary>Opens the planning round on <paramref name="plan"/> (typically an empty or freshly drafted plan).</summary>
-    public void BeginPlanning(AutopilotPlan plan)
+    /// <summary>
+    /// Opens the planning round on <paramref name="plan"/> (typically an empty or freshly drafted plan). Refuses (returns
+    /// false, leaving the existing run untouched) while a run is live — <see cref="AutopilotPlanPhase.Running"/> or
+    /// <see cref="AutopilotPlanPhase.AwaitingOperator"/> — so a second trigger cannot overwrite a run in flight and strand
+    /// its agents. A settled run (merge-ready/blocked) or an idle controller starts fresh.
+    /// </summary>
+    public bool BeginPlanning(AutopilotPlan plan)
     {
         lock (_lock)
         {
+            if (_phase is AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator)
+            {
+                return false;
+            }
+
             _plan = plan;
+            _phase = AutopilotPlanPhase.Planning;
+            _blockReason = null;
+            _pendingQuestion = null;
+            _sessionPaneId = null;
         }
 
-        Phase = AutopilotPlanPhase.Planning;
-        BlockReason = null;
-        PendingQuestion = null;
-        SessionPaneId = null;
         _Raise();
+        return true;
     }
 
     /// <summary>Replaces the plan while it is still being shaped — the CEO re-emitting it, or an operator edit. Planning only.</summary>
@@ -79,6 +134,23 @@ internal sealed class AutopilotPlanController
         _Raise();
     }
 
+    /// <summary>The operator dismissed the planning round without approving — clears the draft so the surface returns to
+    /// its empty state and the pop-out does not reopen. Planning only; a live or settled run is left untouched.</summary>
+    public void CancelPlanning()
+    {
+        lock (_lock)
+        {
+            if (_phase != AutopilotPlanPhase.Planning)
+            {
+                return;
+            }
+
+            _plan = null;
+        }
+
+        _Raise();
+    }
+
     /// <summary>
     /// Freezes the plan and starts the autonomous run — the single approval gate. Refuses an empty plan (nothing to run)
     /// or an approval outside the planning round, returning false so the caller can keep shaping it.
@@ -87,14 +159,15 @@ internal sealed class AutopilotPlanController
     {
         lock (_lock)
         {
-            if (Phase != AutopilotPlanPhase.Planning || _plan is not { Steps.Count: > 0 })
+            if (_phase != AutopilotPlanPhase.Planning || _plan is not { Steps.Count: > 0 })
             {
                 return false;
             }
+
+            _phase = AutopilotPlanPhase.Running;
+            _blockReason = null;
         }
 
-        Phase = AutopilotPlanPhase.Running;
-        BlockReason = null;
         _Raise();
         return true;
     }
@@ -158,26 +231,25 @@ internal sealed class AutopilotPlanController
     /// </summary>
     public void Settle()
     {
-        List<string> unmet;
         lock (_lock)
         {
-            unmet = _plan is { } plan
+            var unmet = _plan is { } plan
                 ? plan.Steps
                     .Where(step => step.Mode == GateMode.Hard && step.Status != AutopilotStepStatus.Passed)
                     .Select(step => step.Title)
                     .ToList()
                 : [];
-        }
 
-        if (unmet.Count > 0)
-        {
-            Phase = AutopilotPlanPhase.Blocked;
-            BlockReason = $"Required step(s) did not pass: {string.Join(", ", unmet)}.";
-        }
-        else
-        {
-            Phase = AutopilotPlanPhase.MergeReady;
-            BlockReason = null;
+            if (unmet.Count > 0)
+            {
+                _phase = AutopilotPlanPhase.Blocked;
+                _blockReason = $"Required step(s) did not pass: {string.Join(", ", unmet)}.";
+            }
+            else
+            {
+                _phase = AutopilotPlanPhase.MergeReady;
+                _blockReason = null;
+            }
         }
 
         _Raise();
@@ -186,31 +258,49 @@ internal sealed class AutopilotPlanController
     /// <summary>A step hit a blockade and needs the operator (AC-155): the run waits, showing <paramref name="question"/>.</summary>
     public void Block(string question)
     {
-        Phase = AutopilotPlanPhase.AwaitingOperator;
-        PendingQuestion = question;
+        lock (_lock)
+        {
+            _phase = AutopilotPlanPhase.AwaitingOperator;
+            _pendingQuestion = question;
+        }
+
         _Raise();
     }
 
     /// <summary>The blockade cleared (the operator answered): the run goes back to running.</summary>
     public void ResumeRunning()
     {
-        Phase = AutopilotPlanPhase.Running;
-        PendingQuestion = null;
+        lock (_lock)
+        {
+            _phase = AutopilotPlanPhase.Running;
+            _pendingQuestion = null;
+        }
+
         _Raise();
     }
 
     /// <summary>Parks the run with <paramref name="reason"/> — e.g. a blockade unanswered within the grace time.</summary>
     public void Park(string reason)
     {
-        Phase = AutopilotPlanPhase.Blocked;
-        BlockReason = reason;
-        PendingQuestion = null;
+        lock (_lock)
+        {
+            _phase = AutopilotPlanPhase.Blocked;
+            _blockReason = reason;
+            _pendingQuestion = null;
+        }
+
         _Raise();
     }
 
     /// <summary>Binds a step's embedded session pane so a report from that pane is trusted as this run's. Does not raise
     /// <see cref="Changed"/> — it changes no visible state, and firing mid-embed would re-enter the body's render.</summary>
-    public void BindSession(string paneId) => SessionPaneId = paneId;
+    public void BindSession(string paneId)
+    {
+        lock (_lock)
+        {
+            _sessionPaneId = paneId;
+        }
+    }
 
     private void _SetStepStatus(string stepId, AutopilotStepStatus status) =>
         _MutateStep(stepId, step => step.WithStatus(status));

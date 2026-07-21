@@ -28,4 +28,15 @@ public static class WellKnownPluginSessionOptions
     /// to spawn simply ignores it. The TTY route sets the variable host-side and does not use this key.
     /// </summary>
     public const string PaneId = "cockpit.pane-id";
+
+    /// <summary>
+    /// The option key by which the host hands a plugin driver a hidden system prompt to prepend for this one session
+    /// (AC-180) — the "you are the CEO, this is how you plan" briefing an embedded Autopilot run gives its agent
+    /// without the operator seeing it as a turn (<see cref="Workspaces.EmbeddedSessionRequest.AppendSystemPrompt"/>).
+    /// It rides the options map like <see cref="PaneId"/>, so it reaches every provider without a signature change;
+    /// each driver applies it its own way (Claude/Codex CLI's <c>--append-system-prompt</c>, a leading system message
+    /// for an OpenAI-compatible model). A provider that cannot inject a system prompt ignores it — the key is safe to
+    /// carry unread, the same as any other option a driver does not declare.
+    /// </summary>
+    public const string AppendSystemPrompt = "cockpit.append-system-prompt";
 }

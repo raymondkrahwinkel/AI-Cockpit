@@ -47,4 +47,16 @@ public interface IWorkspaceContext
     /// snapshot should re-read and update.
     /// </summary>
     event EventHandler RefreshRequested;
+
+    /// <summary>
+    /// Raised once when this workspace is really closed — its tab dismissed — not when the operator merely switches away
+    /// from it (AC-174). A body that drives a long-running job (Autopilot's autonomous run) subscribes to cancel it and
+    /// tear down, rather than leave it running headless with no surface to stop it. A default no-op add/remove keeps
+    /// existing hosts and test fakes compiling; only the app's own host raises it.
+    /// </summary>
+    event EventHandler Closed
+    {
+        add { }
+        remove { }
+    }
 }

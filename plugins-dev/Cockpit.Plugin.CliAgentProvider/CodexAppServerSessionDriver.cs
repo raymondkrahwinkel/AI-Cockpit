@@ -103,6 +103,9 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
     public PluginSessionCapabilities Capabilities { get; } = new(SupportsTools: true, SupportsPermissions: true)
     {
         SupportsEnvVars = true,
+        // Codex spawns its app-server in the session's working directory and edits within that cwd, so an isolated
+        // embedded run (Autopilot worktree) stays inside its worktree (AC-174).
+        ConfinesFileAccessToWorkingDirectory = true,
     };
 
     public string? SessionId => _threadId;
@@ -190,7 +193,12 @@ internal sealed class CodexAppServerSessionDriver : IPluginSessionDriver
         }
         else
         {
-            var started = await _connection.SendRequestAsync("thread/start", new { cwd, sandbox = _NullIfBlank(sandbox), model = _NullIfBlank(effectiveModel) }, cancellationToken).ConfigureAwait(false);
+            // A hidden per-session system prompt the host folded into the options map (AC-180 — an embedded run's
+            // brief, e.g. Autopilot's CEO) rides thread/start as developerInstructions: a developer-role instruction
+            // laid on top of the base prompt, never a visible turn. Sent only when set; null leaves the thread's own
+            // instructions untouched, like sandbox/model above.
+            var developerInstructions = _NullIfBlank(CliAgentConfig.ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, null));
+            var started = await _connection.SendRequestAsync("thread/start", new { cwd, sandbox = _NullIfBlank(sandbox), model = _NullIfBlank(effectiveModel), developerInstructions }, cancellationToken).ConfigureAwait(false);
 
             // The thread id may ride the reply or only the thread/started notification — take whichever arrives,
             // so the driver does not depend on which of the two carries it in a given Codex version.

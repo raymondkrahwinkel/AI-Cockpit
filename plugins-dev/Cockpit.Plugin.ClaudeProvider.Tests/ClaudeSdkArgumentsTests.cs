@@ -98,4 +98,23 @@ public class ClaudeSdkArgumentsTests
 
         arguments.Should().ContainInOrder("--permission-mode", "default");
     }
+
+    [Fact]
+    public void BuildArguments_AppendsSystemPrompt_WhenGiven()
+    {
+        // The host folds an embedded run's hidden brief (Autopilot's CEO, AC-180) into the options map; the driver
+        // resolves it and hands it here, so it must reach the CLI as --append-system-prompt without a visible turn.
+        var arguments = ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: "You are the CEO.");
+
+        arguments.Should().ContainInOrder("--append-system-prompt", "You are the CEO.");
+    }
+
+    [Fact]
+    public void BuildArguments_OmitsAppendSystemPrompt_WhenNullOrBlank()
+    {
+        ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: null)
+            .Should().NotContain("--append-system-prompt");
+        ClaudeSdkArguments.BuildArguments("default", "opus", null, false, appendSystemPrompt: "   ")
+            .Should().NotContain("--append-system-prompt");
+    }
 }

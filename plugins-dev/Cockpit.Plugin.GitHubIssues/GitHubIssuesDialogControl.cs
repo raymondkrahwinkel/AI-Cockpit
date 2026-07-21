@@ -44,7 +44,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
     private readonly TextBlock _detailTitle;
     private readonly TextBlock _detailMeta;
     private readonly Button _inject;
-    private readonly Button _startInAutopilot;
+    private readonly Button _planInAutopilot;
     private readonly SelectableTextBlock _detailBody;
     private readonly SelectableTextBlock _promptPreview;
     private readonly TextBlock _detailStatus;
@@ -128,13 +128,14 @@ internal sealed class GitHubIssuesDialogControl : UserControl
         var openBrowser = new Button { Content = "Open in browser" };
         openBrowser.Click += (_, _) => _OpenInBrowser(_grid.SelectedItem as GitHubIssue);
 
-        // Hands the issue to the Autopilot plugin (AC-150) — hidden unless Autopilot is installed and listening.
-        _startInAutopilot = new Button { Content = "Start in Autopilot", IsVisible = false };
-        _startInAutopilot.Click += async (_, _) => await _StartInAutopilotAsync(_grid.SelectedItem as GitHubIssue);
+        // Hands the issue to the Autopilot CEO planning round (AC-174) — hidden unless Autopilot is installed and
+        // listening for the "plan" intent.
+        _planInAutopilot = new Button { Content = "Plan in Autopilot", IsVisible = false };
+        _planInAutopilot.Click += async (_, _) => await _PlanInAutopilotAsync(_grid.SelectedItem as GitHubIssue);
 
         var detailButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 8, 0, 0) };
         detailButtons.Children.Add(_inject);
-        detailButtons.Children.Add(_startInAutopilot);
+        detailButtons.Children.Add(_planInAutopilot);
         detailButtons.Children.Add(openBrowser);
 
         _detailBody = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
@@ -364,11 +365,12 @@ internal sealed class GitHubIssuesDialogControl : UserControl
 
         // "Add to prompt" only makes sense with a live session; otherwise the copy button is the way to grab it.
         _inject.IsVisible = _actions.HasActiveSession;
-        _startInAutopilot.IsVisible = _host.CanSendIntent("autopilot", "start");
+        _planInAutopilot.IsVisible = _host.CanSendIntent("autopilot", "plan");
     }
 
-    // Hand the selected issue to Autopilot (AC-150): it records the run and brings its own workspace to the front.
-    private async Task _StartInAutopilotAsync(GitHubIssue? issue)
+    // Hand the selected issue to Autopilot's CEO planning round (AC-174): the CEO drafts a plan from the issue (its
+    // title and description as the source), the operator approves it once, then it runs autonomously.
+    private async Task _PlanInAutopilotAsync(GitHubIssue? issue)
     {
         if (issue is null)
         {
@@ -385,7 +387,7 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             ["url"] = issue.Url,
         };
 
-        await _host.SendIntent("autopilot", "start", data);
+        await _host.SendIntent("autopilot", "plan", data);
     }
 
     private string _RenderPrompt(GitHubIssue issue)

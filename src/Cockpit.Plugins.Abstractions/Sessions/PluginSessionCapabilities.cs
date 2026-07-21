@@ -47,4 +47,17 @@ public sealed record PluginSessionCapabilities(
     /// <see langword="false"/>.
     /// </summary>
     public bool SupportsEnvVars { get; init; }
+
+    /// <summary>
+    /// Whether this provider's own file-affecting tools stay within the session's working directory (AC-174) — the
+    /// guarantee an isolated embedded run (Autopilot's worktree isolation) rests on. A driver that spawns a process
+    /// in the working directory and edits with cwd-bound native tools (Claude, Codex) confines them; an HTTP-backed
+    /// provider (a local model) has no process cwd and reaches files only through out-of-process MCP servers rooted
+    /// at a fixed folder, so it does not. The host's driver adapter maps this onto its core mirror, which the host
+    /// reads after start to refuse an isolate-in-worktree run on a non-confining provider rather than let it write
+    /// the operator's real checkout. Init-only for the same back-compat reason as
+    /// <see cref="SupportsLiveModelSwitch"/>; defaults to <see langword="false"/>, so a provider that has not
+    /// vouched for confinement fails closed, not open.
+    /// </summary>
+    public bool ConfinesFileAccessToWorkingDirectory { get; init; }
 }

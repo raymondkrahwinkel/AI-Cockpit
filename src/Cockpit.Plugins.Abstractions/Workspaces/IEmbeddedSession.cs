@@ -26,4 +26,23 @@ public interface IEmbeddedSession
     /// any session left embedded; this is the finer-grained handle.
     /// </summary>
     Task CloseAsync();
+
+    /// <summary>
+    /// Enables or disables this session's composer (AC-174). A session started with its input disabled
+    /// (<see cref="EmbeddedSessionRequest.StartWithInputDisabled"/>) runs autonomously; the surface's "intervene"
+    /// affordance calls this with <see langword="true"/> to hand the operator the keyboard, and could disable it
+    /// again. Affects only whether the operator can type — the host still drives the session (its opening brief, its
+    /// turns) regardless. Marshalled to the UI thread by the host, so it is safe to call from anywhere.
+    /// </summary>
+    void SetInputEnabled(bool enabled);
+
+    /// <summary>
+    /// Completes when this embedded session ends — its runtime torn down and worktree released — whatever the cause:
+    /// the workspace closing, an explicit <see cref="CloseAsync"/>, the session self-closing, or the host refusing to
+    /// run it at all (an isolate-in-worktree run on a provider that cannot confine file access to the worktree,
+    /// AC-174). An embedder that waits on the session doing something — Autopilot awaiting a step agent's done-report
+    /// — awaits this alongside it, so a session that dies before it ever reports is a finished wait it can act on,
+    /// not a hang. Never faults; it simply completes.
+    /// </summary>
+    Task Completion { get; }
 }

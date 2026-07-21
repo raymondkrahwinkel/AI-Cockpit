@@ -60,6 +60,31 @@ public class AutopilotPlanControllerTests
     }
 
     [Fact]
+    public void BeginPlanning_WhileARunIsLive_IsRefused_LeavingTheRunUntouched()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1"))).Should().BeTrue();
+        controller.Approve();
+
+        controller.BeginPlanning(PlanWith(Step("other"))).Should().BeFalse();
+        controller.Phase.Should().Be(AutopilotPlanPhase.Running);
+        controller.Plan!.Steps.Should().ContainSingle().Which.Id.Should().Be("1");
+    }
+
+    [Fact]
+    public void BeginPlanning_AfterASettledRun_StartsFresh()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+        controller.SettleStep("1", AutopilotStepStatus.Passed);
+        controller.Settle();
+
+        controller.BeginPlanning(PlanWith(Step("2"))).Should().BeTrue();
+        controller.Phase.Should().Be(AutopilotPlanPhase.Planning);
+    }
+
+    [Fact]
     public void StartStep_MarksItRunning_AndExposesItAsActive()
     {
         var controller = new AutopilotPlanController();

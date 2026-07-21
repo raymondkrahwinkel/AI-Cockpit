@@ -6,17 +6,26 @@ using Cockpit.Plugins.Abstractions;
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// The in-process MCP tool (<c>mcp__cockpit-autopilot__autopilot_plan</c>) the CEO uses during the planning round
+/// The in-process MCP tool (<c>mcp__cockpit-autopilot-plan__autopilot_plan</c>) the CEO uses during the planning round
 /// (AC-174) to emit and revise the plan. Pane-scoped like the run's report tools (<see cref="AutopilotMcpTools"/>): only
 /// the planning session bound to this controller (<see cref="AutopilotPlanController.SessionPaneId"/>) may set the plan,
 /// so another session cannot rewrite it. The operator approves the plan through the host UI to freeze it and start the run.
 /// </summary>
 internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanController plan)
 {
+    /// <summary>The in-process MCP server name the plugin mounts this tool under — the plan-flow's own, dark outside planning.</summary>
+    internal const string EndpointName = "cockpit-autopilot-plan";
+
+    /// <summary>The tool's own name; combined with <see cref="EndpointName"/> into the qualified name the CEO calls.</summary>
+    internal const string ToolName = "autopilot_plan";
+
+    /// <summary>The fully-qualified tool name the CEO is briefed to call — one source of truth for the endpoint and the brief.</summary>
+    internal static string QualifiedToolName => $"mcp__{EndpointName}__{ToolName}";
+
     private static readonly JsonSerializerOptions Serializer = new() { WriteIndented = false };
     private static readonly JsonSerializerOptions Parser = new() { PropertyNameCaseInsensitive = true };
 
-    [McpServerTool(Name = "autopilot_plan")]
+    [McpServerTool(Name = ToolName)]
     [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard}. 'hard' true marks a required gate, false or omitted a skippable step. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
     public string SetPlan(
         [Description("What the run is to achieve — one sentence.")] string goal,

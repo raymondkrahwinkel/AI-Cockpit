@@ -103,6 +103,17 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     public bool CanSend => !string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0;
 
     /// <summary>
+    /// Whether the operator can type into this session's composer (AC-174). An autonomous embedded run (an Autopilot
+    /// step agent) starts with this false so the input box reads as off — the run drives itself — and the surface's
+    /// "intervene" affordance flips it true to hand the keyboard back. It gates only the <em>view</em> (the input box
+    /// is disabled), deliberately not <see cref="CanSend"/>: the host still submits the run's opening brief through the
+    /// send path programmatically, which must work even while the composer is off. Defaults to true for every ordinary
+    /// session.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isInputEnabled = true;
+
+    /// <summary>
     /// Permission modes offered in the running panel: the three live-switchable modes
     /// (<see cref="SessionOptionCatalog.LivePermissionModes"/>), or — once a session was launched in
     /// bypass — a single locked "Bypass permissions" entry, since the CLI cannot switch a running
