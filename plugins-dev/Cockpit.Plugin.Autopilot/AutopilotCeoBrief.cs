@@ -89,6 +89,13 @@ internal static class AutopilotCeoBrief
 
             {{costGuidance}}
 
+            Standard gates for a run that changes code: end the plan with two required (hard) gates, kept as distinct
+            steps so a security miss is never lost inside a general pass — a code review (correctness, the actual diff,
+            project conventions, tests green) and a separate security review (input handling, secrets, injection, unsafe
+            or unsandboxed calls, and the new surface the change exposes), each on a capable model. Include both by
+            default; only drop one when the operator says this run does not need it (a docs-only or plainly trivial
+            change).
+
             Preflight — resolve every open question now, with the operator, before they approve. Once approved the run is
             autonomous: no human is at the keyboard, and a step's agent that hits an unanswered decision mid-build has to
             stop and ask, which strands the run. So this planning round is your one chance to ask. Surface every ambiguity
