@@ -26,10 +26,11 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
     private static readonly JsonSerializerOptions Parser = new() { PropertyNameCaseInsensitive = true };
 
     [McpServerTool(Name = ToolName)]
-    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard}. 'hard' true marks a required gate, false or omitted a skippable step. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
+    [Description("Emit or revise the plan for this Autopilot run during planning. Pass the goal, a short run name, and the ordered steps as a JSON array; each step: {id, title, description, profile, model, brief, acceptance, hard}. 'hard' true marks a required gate, false or omitted a skippable step. 'model' may be omitted when the profile pins its own model (a local profile). Call this whenever you (re)draft the plan so the operator sees the current plan; they approve it to start the autonomous run.")]
     public string SetPlan(
         [Description("What the run is to achieve — one sentence.")] string goal,
-        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, mcp, agents}. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files.")] string stepsJson)
+        [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, mcp, agents}. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files.")] string stepsJson,
+        [Description("A short run name (2-5 words) the operator recognises this run by in the queue and history — you propose it; the operator can override it before approving. Optional; when omitted the current name is kept.")] string? name = null)
     {
         if (!_IsThisPlanningSession())
         {
@@ -47,7 +48,10 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         }
 
         var effectiveGoal = string.IsNullOrWhiteSpace(goal) ? plan.Plan?.Goal ?? string.Empty : goal.Trim();
-        plan.UpdatePlan(new AutopilotPlan(effectiveGoal, plan.Plan?.Source, steps));
+        // The CEO's proposed name is a suggestion the operator can override at approval; keep the current one when this
+        // emission omits it, so a re-emit that only revises steps does not wipe a name the operator already set.
+        var effectiveName = string.IsNullOrWhiteSpace(name) ? plan.Plan?.Name ?? string.Empty : name.Trim();
+        plan.UpdatePlan(new AutopilotPlan(effectiveGoal, plan.Plan?.Source, steps) { Name = effectiveName });
         return JsonSerializer.Serialize(new { ok = true, steps = steps.Count }, Serializer);
     }
 

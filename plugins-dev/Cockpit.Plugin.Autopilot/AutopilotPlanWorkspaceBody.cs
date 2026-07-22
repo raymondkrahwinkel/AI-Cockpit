@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using Material.Icons;
 using Material.Icons.Avalonia;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
@@ -25,12 +26,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly AutopilotPlanController _plan;
     private readonly AutopilotRunManager _manager;
     private readonly AutopilotRunQueue _queue;
+    private readonly AutopilotRunHistory _history;
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
     private bool _popoutOpen;
+    private int _completedRuns;
     private IEmbeddedSession? _ceo;
 
-    public AutopilotPlanWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue)
+    public AutopilotPlanWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue, AutopilotRunHistory history)
     {
         _host = host;
         _context = context;
@@ -38,13 +41,15 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _plan = plan;
         _manager = manager;
         _queue = queue;
+        _history = history;
 
         // While this workspace is open it is the manager's runner — a run embeds its sessions in this context — so setting
         // it starts any runs already queued, and clearing it on close stops runs from starting with no surface. The
-        // manager and queue raise Changed as runs start/end/queue, which re-renders the surface.
+        // manager, queue and history raise Changed as runs start/end/queue/settle, which re-renders the surface.
         _manager.Runner = _StartRun;
         _manager.Changed += _OnStateChanged;
         _queue.Changed += _OnStateChanged;
+        _history.Changed += _OnStateChanged;
 
         // Stop every running run when this workspace is really closed (its tab dismissed, not a mere tab-switch) so none
         // keeps going headless with no surface to stop it (AC-174).
@@ -99,6 +104,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _manager.Runner = null;
         _manager.Changed -= _OnStateChanged;
         _queue.Changed -= _OnStateChanged;
+        _history.Changed -= _OnStateChanged;
         foreach (var context in _activeContexts.ToList())
         {
             context.Cancel();
@@ -134,8 +140,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _bodyHost.Content = _BuildSurface();
     }
 
-    // The run surface (AC-174): a bar with New run and the queued runs on top, then the running run's pipeline below.
-    // The first running run is shown in full; any others (with a concurrency cap above one) are listed on the bar.
+    // The run surface (AC-174): a bar with New run and the queued runs on top, the settled-run history at the bottom, and
+    // the running run's pipeline filling between them. The first running run is shown in full; any others (with a
+    // concurrency cap above one) are listed on the bar.
     private Control _BuildSurface()
     {
         var surface = new DockPanel { LastChildFill = true };
@@ -143,12 +150,175 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         DockPanel.SetDock(bar, Dock.Top);
         surface.Children.Add(bar);
 
+        // History docks at the bottom (Raymond 2026-07-22), under the running run, so a settled run that left the live
+        // surface is still visible — what it was and how it ended — rather than vanishing. Only shown once there is any.
+        if (_history.Count > 0)
+        {
+            var historyPanel = _BuildHistorySection();
+            DockPanel.SetDock(historyPanel, Dock.Bottom);
+            surface.Children.Add(historyPanel);
+        }
+
         surface.Children.Add(_activeContexts.Count > 0
             ? _BuildPipeline(_activeContexts[0])
             : _CentredHint(MaterialIconKind.RobotOutline, "No run is executing", "Start one with New run, or queue several — they run one after another, up to the concurrency you set."));
 
         return surface;
     }
+
+    // The history section (Raymond 2026-07-22): a header with a Clear, then the settled runs newest-first in a bounded
+    // scroll — each row its name, outcome and step summary — so the operator sees what has run without it cluttering the
+    // live pipeline. Capped in height so a long history does not push the running run off-screen.
+    private Control _BuildHistorySection()
+    {
+        var clear = new Button
+        {
+            Content = "Clear",
+            Padding = new Thickness(9, 3),
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            [DockPanel.DockProperty] = Dock.Right,
+        };
+        clear.Click += (_, _) => _history.Clear();
+
+        var header = new DockPanel
+        {
+            LastChildFill = false,
+            Children =
+            {
+                clear,
+                new TextBlock
+                {
+                    Text = $"History · {_history.Count}",
+                    FontWeight = FontWeight.SemiBold,
+                    FontSize = 11.5,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                    [DockPanel.DockProperty] = Dock.Left,
+                },
+            },
+        };
+
+        var list = new StackPanel { Spacing = 0 };
+        foreach (var record in _history.Items)
+        {
+            list.Children.Add(_BuildHistoryRow(record));
+        }
+
+        return new Border
+        {
+            MaxHeight = 240,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Background = _Brush("CockpitSecondaryBgBrush"),
+            Child = new DockPanel
+            {
+                LastChildFill = true,
+                Children =
+                {
+                    new Border { Padding = new Thickness(12, 7), [DockPanel.DockProperty] = Dock.Top, Child = header },
+                    new ScrollViewer { Content = list },
+                },
+            },
+        };
+    }
+
+    // One settled run in history: an outcome dot, its name and when it finished, and a one-line step summary (each step's
+    // title with a ✓/✗ so it reads at a glance what was done). A blocked run also shows why, so history explains a stop.
+    private Control _BuildHistoryRow(AutopilotRunRecord record)
+    {
+        var mergeReady = record.Outcome == AutopilotPlanPhase.MergeReady;
+        var dot = new Border
+        {
+            Width = 10,
+            Height = 10,
+            CornerRadius = new CornerRadius(5),
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 4, 10, 0),
+            [DockPanel.DockProperty] = Dock.Left,
+            Background = mergeReady ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+        };
+
+        var title = new DockPanel
+        {
+            LastChildFill = true,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = _FormatFinishedAt(record.FinishedAt),
+                    FontSize = 10.5,
+                    Margin = new Thickness(8, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = _Brush("CockpitTextFaintBrush"),
+                    [DockPanel.DockProperty] = Dock.Right,
+                },
+                new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(record.Label) ? "(untitled run)" : record.Label,
+                    FontWeight = FontWeight.SemiBold,
+                    FontSize = 12,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = _Brush("CockpitTextPrimaryBrush"),
+                },
+            },
+        };
+
+        var meta = new StackPanel { Spacing = 2, Children = { title } };
+        meta.Children.Add(new TextBlock
+        {
+            Text = mergeReady ? "Merge-ready" : $"Blocked — {record.BlockReason}",
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = mergeReady ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+        });
+
+        if (_HistoryStepsSummary(record.Steps) is { Length: > 0 } steps)
+        {
+            meta.Children.Add(new TextBlock
+            {
+                Text = steps,
+                FontSize = 10.5,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = _Brush("CockpitTextSecondaryBrush"),
+            });
+        }
+
+        return new Border
+        {
+            Padding = new Thickness(12, 8),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Child = new DockPanel { LastChildFill = true, Children = { dot, meta } },
+        };
+    }
+
+    // A compact one-line "what was done" for a settled run: each step's title prefixed with a mark for how it ended.
+    private static string _HistoryStepsSummary(IReadOnlyList<AutopilotRunStepRecord> steps)
+    {
+        if (steps.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        return string.Join("   ", steps.Select(step =>
+        {
+            var mark = step.Status switch
+            {
+                AutopilotStepStatus.Passed => "✓",
+                AutopilotStepStatus.Failed => "✗",
+                AutopilotStepStatus.Skipped => "–",
+                AutopilotStepStatus.Blocked => "⏸",
+                _ => "·",
+            };
+            return $"{mark} {step.Title}";
+        }));
+    }
+
+    // The finish time as a short, local, human string — parsed from the stored ISO stamp; the raw stamp is the fallback
+    // if it somehow does not parse, so a row never shows blank.
+    private static string _FormatFinishedAt(string iso) =>
+        DateTimeOffset.TryParse(iso, out var when) ? when.LocalDateTime.ToString("d MMM HH:mm") : iso;
 
     // The bar above the run: a New-run button, and the queued runs (with the running count) that the operator can
     // reorder or drop before they run.
@@ -208,7 +378,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         var goal = new TextBlock
         {
-            Text = string.IsNullOrWhiteSpace(plan.Goal) ? "(untitled run)" : plan.Goal,
+            Text = string.IsNullOrWhiteSpace(plan.Label) ? "(untitled run)" : plan.Label,
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
@@ -278,12 +448,61 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             // The run settled or died; either way drop it from the surface.
         }
 
+        // Snapshot the settled run off the controller before dropping it, so history and the toast read a coherent state.
+        var controller = context.Controller;
+        var settledPlan = controller.Plan;
+        var outcome = controller.Phase;
+        var blockReason = controller.BlockReason;
+
         _OnUi(() =>
         {
             _activeContexts.Remove(context);
             context.Changed -= _OnStateChanged;
+            _RecordAndNotify(settledPlan, outcome, blockReason);
             _Render();
         });
+    }
+
+    // A run finished: record it in history (unless it was cancelled — a closed workspace, still Running — where there is
+    // nothing to record) and raise a toast (Raymond 2026-07-22). Every settled run gets its own done/blocked toast; when
+    // that empties both the running set and the queue after more than one run, an extra "whole queue finished" summary
+    // follows, so a single run is one toast and a staged queue ends with a clear all-done.
+    private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason)
+    {
+        var settled = outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked;
+        if (settled && plan is not null)
+        {
+            _completedRuns++;
+            _history.Add(new AutopilotRunRecord(
+                plan.Name,
+                plan.Goal,
+                outcome,
+                blockReason,
+                DateTimeOffset.Now.ToString("o"),
+                [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note))]));
+
+            var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
+            if (outcome == AutopilotPlanPhase.MergeReady)
+            {
+                _host.ShowToast($"Run “{label}” is merge-ready.", PluginToastSeverity.Success);
+            }
+            else
+            {
+                _host.ShowToast($"Run “{label}” is blocked — {blockReason}", PluginToastSeverity.Warning);
+            }
+        }
+
+        // The whole queue drained: after a staged batch (more than one run), a single summary that it is all done. A lone
+        // run needs no summary — its own toast above already said it finished.
+        if (_activeContexts.Count == 0 && _queue.Count == 0)
+        {
+            if (_completedRuns >= 2)
+            {
+                _host.ShowToast($"All queued Autopilot runs finished ({_completedRuns}).", PluginToastSeverity.Information);
+            }
+
+            _completedRuns = 0;
+        }
     }
 
     // The planning pop-out (AC-174/AC-175): the draft plan on the left updating live as the CEO revises it, the CEO's
@@ -366,15 +585,54 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private Control _BuildPlanningContent(IEmbeddedSession ceo)
     {
         var planHost = new ContentControl { Content = _BuildBlocks(_plan.Plan) };
-        var approve = _ApproveButton();
 
-        // Approve can start the run only once the CEO has actually planned steps — an empty plan has nothing to run, so
-        // it stays disabled until there is at least one step, and re-checks as the CEO emits or revises the plan.
-        approve.IsEnabled = _HasApprovableSteps();
+        // The run name field (Raymond 2026-07-22): the CEO proposes a name and it pre-fills here, but the operator can
+        // override it, and the field must be non-empty before Approve — so a run always carries a recognisable name into
+        // the queue and history. A "mirroring" guard tells the CEO's proposal apart from the operator's own typing, so
+        // once they edit the name a later CEO re-emit does not overwrite it.
+        var nameBox = new TextBox
+        {
+            FontSize = 12,
+            PlaceholderText = "Name this run — or edit the CEO's suggestion",
+            [DockPanel.DockProperty] = Dock.Top,
+        };
+        var nameEdited = false;
+        var mirroring = false;
+        string Proposed() => _plan.Plan is { } p ? (string.IsNullOrWhiteSpace(p.Name) ? p.Goal : p.Name) : string.Empty;
+        void SetName(string text)
+        {
+            mirroring = true;
+            nameBox.Text = text;
+            mirroring = false;
+        }
+
+        var approve = _ApproveButton(() => nameBox.Text ?? string.Empty);
+
+        // Approve can start the run only once the CEO has planned at least one step and the run has a name — an empty
+        // plan has nothing to run, and a nameless run cannot be told apart in the queue. Re-checked as the CEO emits or
+        // revises the plan and as the operator types the name.
+        void Recheck() => approve.IsEnabled = _HasApprovableSteps() && !string.IsNullOrWhiteSpace(nameBox.Text);
+        nameBox.TextChanged += (_, _) =>
+        {
+            if (!mirroring)
+            {
+                nameEdited = true;
+            }
+
+            Recheck();
+        };
+
+        SetName(Proposed());
+        Recheck();
         void OnPlanChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
         {
             planHost.Content = _BuildBlocks(_plan.Plan);
-            approve.IsEnabled = _HasApprovableSteps();
+            if (!nameEdited)
+            {
+                SetName(Proposed());
+            }
+
+            Recheck();
         });
         _plan.Changed += OnPlanChanged;
         planHost.DetachedFromVisualTree += (_, _) => _plan.Changed -= OnPlanChanged;
@@ -412,21 +670,44 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             BorderThickness = new Thickness(0, 1, 0, 0),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             [DockPanel.DockProperty] = Dock.Bottom,
-            Child = new DockPanel
+            Child = new StackPanel
             {
-                LastChildFill = false,
+                Spacing = 9,
                 Children =
                 {
-                    new TextBlock
+                    new StackPanel
                     {
-                        Text = "Iterate with the CEO — approval is the single gate, then it runs autonomously.",
-                        FontSize = 11,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Foreground = _Brush("CockpitTextFaintBrush"),
-                        [DockPanel.DockProperty] = Dock.Left,
+                        Spacing = 4,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = "Run name",
+                                FontSize = 10.5,
+                                FontWeight = FontWeight.SemiBold,
+                                Foreground = _Brush("CockpitTextSecondaryBrush"),
+                            },
+                            nameBox,
+                        },
                     },
-                    approve,
-                    _CancelButton(),
+                    new DockPanel
+                    {
+                        LastChildFill = false,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = "Iterate with the CEO — approval is the single gate, then it runs autonomously.",
+                                FontSize = 11,
+                                TextWrapping = TextWrapping.Wrap,
+                                VerticalAlignment = VerticalAlignment.Center,
+                                Foreground = _Brush("CockpitTextFaintBrush"),
+                                [DockPanel.DockProperty] = Dock.Left,
+                            },
+                            approve,
+                            _CancelButton(),
+                        },
+                    },
                 },
             },
         };
@@ -439,7 +720,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // nothing to do.
     private bool _HasApprovableSteps() => _plan.Plan is { Steps.Count: > 0 };
 
-    private Button _ApproveButton()
+    private Button _ApproveButton(Func<string> nameProvider)
     {
         var button = new Button
         {
@@ -454,11 +735,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         button.Click += (sender, _) =>
         {
-            // Approve submits the planned draft to the run manager, which runs it now if there is a free slot or queues
-            // it behind the others — it does not run on the planning controller. Then close the dialog.
+            // Approve submits the planned draft — carrying the operator's (or the CEO's) run name — to the run manager,
+            // which runs it now if there is a free slot or queues it behind the others. It does not run on the planning
+            // controller. The button is only enabled once the plan has steps and a name, so both hold here.
             if (_plan.Plan is { Steps.Count: > 0 } plan)
             {
-                _manager.Submit(plan);
+                var name = nameProvider().Trim();
+                _manager.Submit(string.IsNullOrEmpty(name) ? plan : plan.WithName(name));
             }
 
             (sender as Control)?.FindAncestorOfType<Window>()?.Close();
@@ -581,7 +864,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
         var goal = new TextBlock
         {
-            Text = plan?.Goal is { Length: > 0 } text ? text : "Autopilot run",
+            Text = plan?.Label is { Length: > 0 } text ? text : "Autopilot run",
             FontWeight = FontWeight.SemiBold,
             FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
@@ -804,7 +1087,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // A status line so the operator sees where the step is without decoding the dot colour (Raymond) — and, when the
         // run has something to say (why a step failed, or that it was refused), the note under it, so a failed step is
         // never a silent red dot.
-        if (_StepStatusText(step.Status) is { Length: > 0 } statusText)
+        if (_StepStatusText(step) is { Length: > 0 } statusText)
         {
             meta.Children.Add(new TextBlock
             {
@@ -836,11 +1119,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    // A short status word for a step, so the operator reads its state as words rather than a dot colour. Empty for a
-    // pending step — a queued step needs no label.
-    private static string _StepStatusText(AutopilotStepStatus status) => status switch
+    // A short status word for a step, so the operator reads its state as words rather than a dot colour. A running step
+    // on its second-or-later attempt reads as a rework with the attempt number (Raymond 2026-07-22), so a step that is
+    // re-run after the CEO turned it down does not look like it simply never finished. Empty for a pending step.
+    private static string _StepStatusText(AutopilotStep step) => step.Status switch
     {
-        AutopilotStepStatus.Running => "Running…",
+        AutopilotStepStatus.Running => step.Attempts > 1 ? $"Reworking — attempt {step.Attempts}…" : "Running…",
         AutopilotStepStatus.Passed => "Passed",
         AutopilotStepStatus.Failed => "Failed",
         AutopilotStepStatus.Blocked => "Waiting for you",

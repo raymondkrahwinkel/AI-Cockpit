@@ -13,6 +13,19 @@ internal sealed record AutopilotPlan(
     AutopilotPlanSource? Source,
     IReadOnlyList<AutopilotStep> Steps)
 {
+    /// <summary>
+    /// A short operator-facing label for the run (Raymond 2026-07-22): the CEO proposes it while planning and the
+    /// operator can override it, but it must be non-empty before the run is approved — so a queue of several runs is
+    /// recognisable, and history reads by name rather than by goal sentence. Falls back to <see cref="Goal"/> when unset.
+    /// </summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>The run's display label — its <see cref="Name"/>, or the <see cref="Goal"/> when no name was set yet.</summary>
+    public string Label => string.IsNullOrWhiteSpace(Name) ? Goal : Name;
+
+    /// <summary>This plan with a run name — the CEO's proposal, or the operator's override at approval.</summary>
+    public AutopilotPlan WithName(string name) => this with { Name = name };
+
     /// <summary>An empty plan to open the planning round on — the CEO fills the steps from there.</summary>
     public static AutopilotPlan Empty(AutopilotPlanSource? source, string goal) => new(goal, source, []);
 

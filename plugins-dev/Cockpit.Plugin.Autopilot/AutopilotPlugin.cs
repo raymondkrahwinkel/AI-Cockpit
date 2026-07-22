@@ -39,6 +39,10 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         var queue = new AutopilotRunQueue(host.Storage);
         var manager = new AutopilotRunManager(queue, settings);
 
+        // The history of settled runs (persistent, Raymond 2026-07-22): a run that finishes leaves the live surface, so
+        // it is recorded here to be shown in the history section rather than vanishing.
+        var history = new AutopilotRunHistory(host.Storage);
+
         // The gear next to the plugin in the manager opens this — the global-level settings. Handed the host so the
         // CEO-profile picker can list the cockpit's profiles and offer each one's models.
         host.AddSettings(() => new AutopilotSettingsControl(settings, host));
@@ -76,7 +80,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         });
 
         // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot (CEO)", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot (CEO)", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue, history))
         {
             IconKind = MaterialIconKind.RobotHappyOutline,
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",

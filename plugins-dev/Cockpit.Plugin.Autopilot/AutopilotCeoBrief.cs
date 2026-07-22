@@ -60,8 +60,9 @@ internal static class AutopilotCeoBrief
             Goal: {{goal}}
             {{origin}}
             {{roster}}
-            Emit the plan by calling {{AutopilotPlanTools.QualifiedToolName}} with a one-sentence goal and the ordered
-            steps as a JSON array. Each step: {id, title, description, profile, model, brief, acceptance, hard, mcp, agents}.
+            Emit the plan by calling {{AutopilotPlanTools.QualifiedToolName}} with a one-sentence goal, a short run name
+            (2-5 words) the operator will recognise this run by in the queue and history, and the ordered steps as a JSON
+            array. Each step: {id, title, description, profile, model, brief, acceptance, hard, mcp, agents}.
             - profile: the session profile the step runs on (e.g. "Claude", "Qwen (local)"). model: only where the profile
               offers a choice (e.g. "Opus"); omit it for a local profile that pins its own model.
             - brief: the context that step's agent is handed. acceptance: what "done" means for the step — you validate
@@ -73,6 +74,16 @@ internal static class AutopilotCeoBrief
               the parts touching the same files.
 
             {{costGuidance}}
+
+            Preflight — resolve every open question now, with the operator, before they approve. Once approved the run is
+            autonomous: no human is at the keyboard, and a step's agent that hits an unanswered decision mid-build has to
+            stop and ask, which strands the run. So this planning round is your one chance to ask. Surface every ambiguity
+            up front — unclear scope or acceptance, a design choice with real trade-offs, a missing name/path/value, which
+            of two approaches, anything a worker would otherwise have to interrupt the operator for — and get it decided
+            here. Then bake each decision into the relevant step's brief and acceptance so its agent already has the
+            answer and never needs to ask. If a genuine unknown cannot be settled in planning, make it its own early step
+            that gathers the answer rather than a mid-run question. Aim for a plan a worker can run start to finish without
+            once turning back to the operator.
 
             Two more token savers, whatever the model: give each step only the MCP servers it actually needs (fewer tool
             definitions in its context), and keep each step's brief tight — enough context to do the work, no more.

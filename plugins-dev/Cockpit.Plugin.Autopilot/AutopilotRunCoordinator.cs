@@ -256,6 +256,11 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
 
             var summaries = await Task.WhenAll(reports);
 
+            // The agent(s) reported done, but the step is not settled until the CEO validates it — that window used to
+            // read as a plain "Running…" with no sign the work was already done (Raymond: "haiku zegt klaar, maar de
+            // status is nog running"). Say so on the block, so the operator sees the run has moved on to validation.
+            plan.NoteStep(step.Id, "Work reported — the CEO is validating it against the acceptance…");
+
             var validation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (_lock)
             {
