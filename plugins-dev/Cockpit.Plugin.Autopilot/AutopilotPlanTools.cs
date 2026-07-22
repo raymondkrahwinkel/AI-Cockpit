@@ -7,7 +7,7 @@ namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
 /// The in-process MCP tool (<c>mcp__cockpit-autopilot-plan__autopilot_plan</c>) the CEO uses during the planning round
-/// (AC-174) to emit and revise the plan. Pane-scoped like the run's report tools (<see cref="AutopilotMcpTools"/>): only
+/// (AC-174) to emit and revise the plan. Pane-scoped like the run's report tools (<see cref="AutopilotRunTools"/>): only
 /// the planning session bound to this controller (<see cref="AutopilotPlanController.SessionPaneId"/>) may set the plan,
 /// so another session cannot rewrite it. The operator approves the plan through the host UI to freeze it and start the run.
 /// </summary>

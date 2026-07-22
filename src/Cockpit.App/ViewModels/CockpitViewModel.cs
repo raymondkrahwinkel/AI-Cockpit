@@ -4961,7 +4961,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
         catch (Exception)
         {
-            // A failed embedded start must not take the app down; the session surfaces its own failed state.
+            // A failed embedded start must not take the app down — and it must not leave the session's Completion
+            // unresolved either, or an embedder awaiting it (an Autopilot step) hangs forever. If this session is still
+            // one we own, close it with a reason so its Completion resolves and the awaiting run records a failed step
+            // instead of hanging until the workspace is closed. Best-effort: the start's own failure handler never
+            // rethrows, even if the teardown itself faults.
+            try
+            {
+                if (_IsEmbeddedSessionLive(session))
+                {
+                    await _CloseEmbeddedSessionAsync(session, "The embedded session failed to start.");
+                }
+            }
+            catch (Exception)
+            {
+                // Nothing more to do; the session surfaces its own failed state.
+            }
         }
     }
 
@@ -4985,9 +5000,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var options = defaults is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase);
-        if (addPrompt)
+        if (request.AppendSystemPrompt is { } prompt && !string.IsNullOrWhiteSpace(prompt))
         {
-            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.AppendSystemPrompt] = request.AppendSystemPrompt!.Trim();
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.AppendSystemPrompt] = prompt.Trim();
         }
 
         if (addConfine)

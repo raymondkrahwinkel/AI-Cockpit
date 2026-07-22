@@ -69,6 +69,10 @@ internal sealed class WhisperWorkerSpeechToTextService(
                 }
                 catch (OperationCanceledException)
                 {
+                    // The clip was cancelled mid-inference, but the warm worker is still processing it and will emit its
+                    // result against the next request — returning the previous clip's text. Kill it so that in-flight
+                    // clip is discarded; the next dictation respawns a clean worker.
+                    _KillWorker();
                     throw;
                 }
                 catch (Exception exception) when (attempt == 0 && !_forceCpu)

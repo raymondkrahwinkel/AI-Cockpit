@@ -59,8 +59,19 @@ internal sealed class AutopilotRunContext
     /// <summary>Raised on this run's pipeline change or step-view change, so the surface re-renders it.</summary>
     public event Action? Changed;
 
-    /// <summary>Stops the run — its workspace closed, or the operator dropped it.</summary>
-    public void Cancel() => _cts.Cancel();
+    /// <summary>Stops the run — its workspace closed, or the operator dropped it. Guards against a run that already
+    /// settled and disposed its token source in the window before the surface dropped it from its active list.</summary>
+    public void Cancel()
+    {
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The run already settled and disposed its CTS; there is nothing left to cancel.
+        }
+    }
 
     private async Task _RunAsync(AutopilotPlan plan)
     {

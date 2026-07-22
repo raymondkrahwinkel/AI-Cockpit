@@ -1,12 +1,6 @@
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// A running run and the task that completes when it settles — what <see cref="AutopilotRunManager"/> tracks so it can
-/// route a tool call to the right run and free the slot when it ends.
-/// </summary>
-internal sealed record AutopilotRunHandle(AutopilotRunCoordinator Coordinator, Task Completed);
-
-/// <summary>
 /// Runs approved plans from the queue, up to <see cref="AutopilotSettings.MaxConcurrentRuns"/> at once (AC-174, Raymond):
 /// an approved plan is submitted here, executes now if there is a free slot, else waits in the <see cref="AutopilotRunQueue"/>
 /// until one frees. Each running run gets its own coordinator; a tool call (a step reporting done, the CEO validating)

@@ -1,13 +1,6 @@
 namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
-/// A finished step in a run's history (Raymond 2026-07-22): its title and how it ended, plus the run's last note on it
-/// (why it failed, or a closing line). Kept small and value-only so the record persists cleanly and reads back after a
-/// restart — it is a snapshot of the outcome, not a live step.
-/// </summary>
-internal sealed record AutopilotRunStepRecord(string Title, AutopilotStepStatus Status, string Note);
-
-/// <summary>
 /// One settled run in the history (Raymond 2026-07-22): what it was called, its goal, how it ended (merge-ready or
 /// blocked) and why, when it finished, and each step's outcome — so a run that settled and left the surface is not lost
 /// but shown in the history section with what it did. Persisted through the plugin's storage, so history survives a

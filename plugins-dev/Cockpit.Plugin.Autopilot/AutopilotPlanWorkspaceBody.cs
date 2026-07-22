@@ -558,7 +558,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             // resolves to the first configured profile — resolve the same one here so the CEO still knows who it is.
             var ceoIdentity = string.IsNullOrWhiteSpace(ceoLabel) ? profiles.FirstOrDefault()?.Label : ceoLabel;
 
-            _ceo = _context.EmbedSession(new EmbeddedSessionRequest
+            var ceo = _context.EmbedSession(new EmbeddedSessionRequest
             {
                 ProfileId = ceoLabel,
                 Model = _settings.CeoModel(),
@@ -571,8 +571,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 // after the runtime is up, so it does not race the session coming online.
                 InitialUserMessage = _plan.Plan?.Source is { } source ? AutopilotCeoBrief.SourceKickoff(source) : null,
             });
-            _plan.BindSession(_ceo.PaneId);
-            await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(_ceo!), 980, 660);
+            _ceo = ceo;
+            _plan.BindSession(ceo.PaneId);
+            await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(ceo), 980, 660);
         }
         catch (Exception)
         {
@@ -934,8 +935,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Padding = controller.Phase == AutopilotPlanPhase.AwaitingOperator || (!validating && context.StepView is null) ? new Thickness(16) : new Thickness(0),
             Child = controller.Phase == AutopilotPlanPhase.AwaitingOperator
                 ? _BuildBlockadePanel(context)
-                : validating
-                    ? _BuildValidatingSurface(context.CeoView!)
+                : context.IsValidating && context.CeoView is { } ceoView
+                    ? _BuildValidatingSurface(ceoView)
                     : context.StepView is { } stepView
                         ? _BuildStepSurface(context, stepView)
                         : controller.ActiveStep is { } active
