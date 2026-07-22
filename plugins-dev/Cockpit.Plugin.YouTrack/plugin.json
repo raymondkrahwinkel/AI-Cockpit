@@ -1,7 +1,7 @@
 {
   "id": "youtrack",
   "name": "YouTrack",
-  "version": "1.16.0",
+  "version": "1.16.1",
   "entryAssembly": "Cockpit.Plugin.YouTrack.dll",
   "entryType": "Cockpit.Plugin.YouTrack.YouTrackPlugin",
   "abstractionsVersion": 1,
