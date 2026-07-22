@@ -205,6 +205,26 @@ sealed class Program
         // entries — a clone folder that still exists is never deleted, because it may hold uncommitted work.
         _ = Services.GetRequiredService<IRepositoryCloneManager>().ReconcileAsync();
 
+        // Global UI-thread safety net: a plugin body — or any dispatcher work — that throws while rendering must never
+        // take the whole cockpit down with it (a render exception in one workspace was tearing the process down). Log it
+        // and mark it handled so the app keeps running: the surface that threw fails on its own, every other session,
+        // terminal and workspace survives. A genuinely fatal condition still ends the process through other paths; this
+        // only stops a recoverable UI exception from being terminal.
+        Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, exceptionEvent) =>
+        {
+            var logger = Services.GetService<ILoggerFactory>()?.CreateLogger("Cockpit.App.UIThread");
+            if (logger is not null)
+            {
+                logger.LogError(exceptionEvent.Exception, "Unhandled UI-thread exception caught by the global net; the cockpit stays up.");
+            }
+            else
+            {
+                Console.Error.WriteLine($"Unhandled UI-thread exception caught by the global net; the cockpit stays up.\n{exceptionEvent.Exception}");
+            }
+
+            exceptionEvent.Handled = true;
+        };
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

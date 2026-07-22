@@ -17,7 +17,7 @@ internal static class AutopilotCeoBrief
     /// <paramref name="ceoIdentity"/> is the CEO's own profile label so it plans in one consistent identity. Both are
     /// optional: with none, the brief simply omits the roster and the identity line.
     /// </summary>
-    public static string For(AutopilotPlan plan, IReadOnlyList<PluginProfileInfo>? profiles = null, string? ceoIdentity = null)
+    public static string For(AutopilotPlan plan, IReadOnlyList<PluginProfileInfo>? profiles = null, string? ceoIdentity = null, AutopilotCostStrategy costStrategy = AutopilotCostStrategy.Balanced)
     {
         var goal = string.IsNullOrWhiteSpace(plan.Goal)
             ? "The operator has not stated the goal yet — ask them what this run should achieve."
@@ -35,6 +35,7 @@ internal static class AutopilotCeoBrief
               + "have each step's agent carry it too rather than switching persona mid-run.\n";
 
         var roster = _Roster(profiles);
+        var costGuidance = _CostGuidance(costStrategy);
 
         // Only a source-triggered run has an issue to keep in sync; a CEO-first run has none, so this stays out.
         var tracker = plan.Source is { } tracked
@@ -71,17 +72,40 @@ internal static class AutopilotCeoBrief
             - agents: how many agents work the step at once (default 1); more only where the work splits cleanly without
               the parts touching the same files.
 
-            Choose each step's model deliberately: fit the model to the difficulty of the step, and among the models that
-            can do it well, prefer the cheapest — a local, free profile for the routine work (scaffolding, mechanical
-            edits, straightforward changes), a stronger paid model only where the step genuinely needs it (subtle design,
-            tricky debugging, security-sensitive work). This is a fit-first, cost-aware choice, not a race to the
-            cheapest. Pair it with a minimal MCP set per step, for the same reason: fewer tokens, tighter privilege.
+            {{costGuidance}}
+
+            Two more token savers, whatever the model: give each step only the MCP servers it actually needs (fewer tool
+            definitions in its context), and keep each step's brief tight — enough context to do the work, no more.
             {{tracker}}
             Re-emit the whole plan every time you draft or revise it, so the operator always sees the current plan. You do
             not merge or approve anything: the operator approves the plan in the cockpit to start the autonomous run, and
             the final merge stays with them.
             """;
     }
+
+    // The model-choice instruction, tuned to the operator's cost/quality steer (AC-174). All three still fit the model to
+    // the work — the strategy only moves where the line between local-free and paid sits.
+    private static string _CostGuidance(AutopilotCostStrategy strategy) => strategy switch
+    {
+        AutopilotCostStrategy.CostFirst =>
+            "Cost comes first. Put every step on a local, free model — including work a hosted model would do a little "
+            + "better — and escalate a step to a paid model only once a local model has actually failed its acceptance, "
+            + "and then to the cheapest paid model that can pass it. Never pick a paid model pre-emptively.",
+
+        AutopilotCostStrategy.QualityFirst =>
+            "Quality comes first. Choose the most capable model each step warrants and do not hold a strong model back "
+            + "where it improves the result — but this is still not \"everything on the biggest model\": spare an expensive "
+            + "model on the plainly trivial work (a mechanical edit, a rename) where a local, free model is obviously "
+            + "sufficient.",
+
+        _ =>
+            "Model choice is a cost decision — make it deliberately and lean cheap. Default each step to a local, free "
+            + "model: a capable local coder handles most coding work (scaffolding, a well-scoped change, mechanical edits, "
+            + "refactors, writing tests). Reserve a paid, hosted model for the steps that genuinely need frontier "
+            + "reasoning — subtle design or architecture trade-offs, tricky debugging, security-sensitive work, or a step "
+            + "a local model keeps failing the acceptance on — and when you pick one, say in the brief why the step needs "
+            + "it. Do not put the whole plan on an expensive model \"to be safe\"; that is the waste this avoids.",
+    };
 
     // The profiles the CEO can route steps to, each tagged local-free or hosted-paid, so its model choice is cost-aware.
     // Empty (or none supplied) yields nothing — the brief then leaves the roster out rather than showing an empty header.

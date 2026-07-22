@@ -25,6 +25,7 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
     private readonly Dictionary<string, TaskCompletionSource<string>> _stepAgents = new(StringComparer.Ordinal);
     private readonly List<IEmbeddedSession> _liveStepSessions = [];
     private TaskCompletionSource<bool>? _validation;
+    private string? _validationReason;
     private string? _blockedPane;
 
     /// <summary>
@@ -64,10 +65,16 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
     {
         lock (_lock)
         {
-            return _validation is { } validation
-                && plan.Phase == AutopilotPlanPhase.Running
-                && plan.SessionPaneId == paneId
-                && validation.TrySetResult(passed);
+            if (_validation is not { } validation
+                || plan.Phase != AutopilotPlanPhase.Running
+                || plan.SessionPaneId != paneId)
+            {
+                return false;
+            }
+
+            // Keep the CEO's reason so a failed step can show why it was not accepted, not just that it was not.
+            _validationReason = reason;
+            return validation.TrySetResult(passed);
         }
     }
 
@@ -198,6 +205,9 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         var sessions = new List<IEmbeddedSession>(agentCount);
         var reports = new List<Task<string>>(agentCount);
 
+        // A fresh attempt clears any note the previous one left, so a rework does not show a stale reason.
+        plan.NoteStep(step.Id, string.Empty);
+
         try
         {
             for (var index = 0; index < agentCount; index++)
@@ -210,7 +220,7 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
                     McpServers = _StepMcpServers(step),
                     IsolateInWorktree = true,
                     PermissionMode = settings.AutonomyMode(),
-                    WorkingDirectory = context.Sessions.ActiveSessionWorkingDirectory,
+                    WorkingDirectory = AutopilotWorkingDirectory.Resolve(context),
                     InitialUserMessage = AutopilotStepBrief.For(step, agentCount, index + 1),
                     // The step agent drives itself; start its composer off so the operator does not type into it, until
                     // they deliberately intervene (EnableCurrentStepInput). The brief still submits — it is host-driven.
@@ -253,10 +263,33 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
             }
 
             await host.SendToSessionAsync(ceo.PaneId, AutopilotStepBrief.ValidationTurn(step, summaries));
-            return await validation.Task.WaitAsync(cancellationToken);
+            var passed = await validation.Task.WaitAsync(cancellationToken);
+            if (!passed)
+            {
+                // The CEO turned the step down; show its reason on the block so a failed step explains itself.
+                string? reason;
+                lock (_lock)
+                {
+                    reason = _validationReason;
+                }
+
+                plan.NoteStep(step.Id, string.IsNullOrWhiteSpace(reason)
+                    ? "The CEO did not accept this step against its acceptance."
+                    : $"CEO: {reason.Trim()}");
+            }
+
+            return passed;
         }
-        catch (Exception)
+        catch (OperationCanceledException)
         {
+            // The run was cancelled (the surface closed) — nothing to explain on a step that is going away.
+            return false;
+        }
+        catch (Exception failure)
+        {
+            // A step whose execution threw is a failed attempt (the driver reworks or gives up). Record why — a session
+            // the host refused to isolate carries its reason here — so the block shows it instead of a silent red dot.
+            plan.NoteStep(step.Id, failure.Message);
             return false;
         }
         finally
@@ -296,13 +329,18 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
     // through WaitAsync; the losing task is left to complete on its own and neither faults, so nothing is unobserved.
     private static async Task<string> _AwaitStepReportOrEndAsync(Task<string> report, IEmbeddedSession agent, CancellationToken cancellationToken)
     {
-        var winner = await Task.WhenAny(report, agent.Completion).WaitAsync(cancellationToken);
+        var winner = await Task.WhenAny(report, (Task)agent.Completion).WaitAsync(cancellationToken);
         if (winner == report)
         {
             return await report;
         }
 
-        throw new InvalidOperationException("the step agent's session ended before it reported its work done.");
+        // The session ended before the agent reported done. Its Completion carries the reason when the host ended it
+        // itself (refused to isolate, failed to start); surface that so the failed step explains itself.
+        var reason = await agent.Completion;
+        throw new InvalidOperationException(string.IsNullOrWhiteSpace(reason)
+            ? "The step agent's session ended before it reported its work done."
+            : reason);
     }
 
     // The step agent must be able to report done, so its endpoint stays in reach even when the CEO scoped the step to a

@@ -302,6 +302,10 @@ internal sealed class AutopilotPlanController
         }
     }
 
+    /// <summary>Records a note on a step's latest outcome (AC-174) — why it failed, or a progress line — so the pipeline block can show it. A blank note just clears it.</summary>
+    public void NoteStep(string stepId, string note) =>
+        _MutateStep(stepId, step => step.WithNote(note));
+
     private void _SetStepStatus(string stepId, AutopilotStepStatus status) =>
         _MutateStep(stepId, step => step.WithStatus(status));
 

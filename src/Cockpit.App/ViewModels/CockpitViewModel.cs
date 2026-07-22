@@ -4751,7 +4751,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Completed by _TeardownEmbeddedSessionAsync whatever ends the session — a workspace close, an explicit close, a
     // self-close, or the isolation refusal below — so an embedder (Autopilot) awaiting the session can tell it died
     // rather than hang. Same UI-thread affinity as _embeddedSessions.
-    private readonly Dictionary<SessionPanelViewModel, TaskCompletionSource> _embeddedSessionEnded = [];
+    private readonly Dictionary<SessionPanelViewModel, TaskCompletionSource<string?>> _embeddedSessionEnded = [];
 
     public IEmbeddedSession Embed(string workspaceId, EmbeddedSessionRequest request)
     {
@@ -4785,9 +4785,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         owned.Add(session);
 
-        // The end-signal for this session's Completion; completed on teardown whatever ends it (including the
-        // isolation refusal in the start below), so an embedder awaiting the session is never left hanging.
-        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The end-signal for this session's Completion; completed on teardown whatever ends it (carrying the reason when
+        // the host ended it itself — the isolation refusal in the start below), so an embedder awaiting the session is
+        // never left hanging and can show why it ended.
+        var ended = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _embeddedSessionEnded[session] = ended;
 
         // An autonomous run asks for its composer off from the first render (AC-174) so the operator does not type into
@@ -4835,7 +4836,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Ends one embedded session: drop it from its workspace's list and tear it down. Idempotent — a session that is
     // no longer listed (already closed, whether by CloseForWorkspace, a self-close, or an earlier CloseAsync) is not
     // torn down twice, which is what lets the body's CloseAsync and the session's own CloseRequested both fire safely.
-    private Task _CloseEmbeddedSessionAsync(SessionPanelViewModel session)
+    private Task _CloseEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
         foreach (var (workspaceId, owned) in _embeddedSessions)
         {
@@ -4846,7 +4847,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     _embeddedSessions.Remove(workspaceId);
                 }
 
-                return _TeardownEmbeddedSessionAsync(session);
+                return _TeardownEmbeddedSessionAsync(session, endReason);
             }
         }
 
@@ -4894,11 +4895,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             {
                 // Isolation was asked for and could not be done. Never fall back to the operator's real checkout — that
                 // is the contamination isolation exists to prevent. Say why, then stand the session down through the
-                // same close path the refusal below uses: that releases any worktree and completes its Completion, so an
-                // awaiting run (Autopilot's step wait) treats it as a failed step rather than hanging on a session that
-                // never reports.
-                session.Statusline = $"Could not isolate this run: {isolationFailure.Message}";
-                await _CloseEmbeddedSessionAsync(session);
+                // same close path the refusal below uses: that releases any worktree and completes its Completion with
+                // the reason, so an awaiting run (Autopilot's step wait) treats it as a failed step it can explain rather
+                // than hanging on a session that never reports.
+                var reason = $"Could not isolate this run: {isolationFailure.Message}";
+                session.Statusline = reason;
+                await _CloseEmbeddedSessionAsync(session, reason);
                 return;
             }
 
@@ -4940,10 +4942,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // the agent never runs.
             if (request.IsolateInWorktree && (!session.IsSessionReady || !session.Capabilities.ConfinesFileAccessToWorkingDirectory))
             {
-                session.Statusline = session.IsSessionReady
+                var reason = session.IsSessionReady
                     ? $"Could not isolate this run: the {profile.Label} profile's provider does not confine its file tools to the worktree, so it was refused rather than allowed to edit your real checkout."
                     : "Could not isolate this run: its session did not start, so it was refused rather than run unisolated.";
-                await _CloseEmbeddedSessionAsync(session);
+                session.Statusline = reason;
+                await _CloseEmbeddedSessionAsync(session, reason);
                 return;
             }
 
@@ -5035,18 +5038,18 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
-    private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session)
+    private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnEmbeddedSessionCloseRequested;
         _lastStatus.Remove(session);
 
         // Signal the session's end to anyone awaiting its Completion (Autopilot's step wait) before disposing it, so a
-        // waiter unblocks whether the session finished its work or is being torn down for any other reason. Idempotent:
-        // a second teardown finds no entry.
+        // waiter unblocks whether the session finished its work or is being torn down for any other reason — carrying the
+        // reason when the host ended it itself (isolation refused), else null. Idempotent: a second teardown finds none.
         if (_embeddedSessionEnded.Remove(session, out var ended))
         {
-            ended.TrySetResult();
+            ended.TrySetResult(endReason);
         }
 
         await session.DisposeAsync();

@@ -76,9 +76,23 @@ public class AutopilotCeoBriefTests
         brief.Should().Contain("hosted API, paid");
         // The suggestions ride along so the CEO knows a profile's model options.
         brief.Should().Contain("opus, sonnet");
-        // The cost-aware selection instruction, framed fit-first (not a naive race to the cheapest).
-        brief.Should().Contain("cheapest");
-        brief.Should().Contain("fit-first");
+        // The cost-aware selection instruction: default cheap/local, reserve a paid model for steps that need it.
+        brief.Should().Contain("lean cheap");
+        brief.Should().Contain("local, free");
+        brief.Should().Contain("paid, hosted model");
+        brief.Should().Contain("say in the brief why");
+    }
+
+    [Fact]
+    public void For_CostStrategy_TunesTheModelChoiceInstruction()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.CostFirst).Should().Contain("Cost comes first");
+        AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.QualityFirst).Should().Contain("Quality comes first");
+        AutopilotCeoBrief.For(plan, costStrategy: AutopilotCostStrategy.Balanced).Should().Contain("lean cheap");
+        // The default is Balanced when no strategy is passed.
+        AutopilotCeoBrief.For(plan).Should().Contain("lean cheap");
     }
 
     [Fact]
@@ -102,6 +116,6 @@ public class AutopilotCeoBriefTests
         brief.Should().NotContain("Profiles you can assign steps to");
         brief.Should().NotContain("your identity for this run");
         // The cost guidance is unconditional — it stands even with no roster passed.
-        brief.Should().Contain("cheapest");
+        brief.Should().Contain("lean cheap");
     }
 }

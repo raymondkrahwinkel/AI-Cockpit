@@ -22,6 +22,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly ICockpitHost _host;
     private readonly ComboBox _ceoProfile;
     private readonly AutoCompleteBox _ceoModel;
+    private readonly ComboBox _costStrategy;
     private readonly NumericUpDown _maxAttempts;
     private readonly NumericUpDown _grace;
     private readonly ComboBox _autonomy;
@@ -54,6 +55,20 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
             IsEnabled = false,
         };
 
+        // Items are in AutopilotCostStrategy declaration order (CostFirst, Balanced, QualityFirst), so SelectedIndex maps
+        // straight to the enum value.
+        _costStrategy = new ComboBox
+        {
+            Width = 340,
+            ItemsSource = new[]
+            {
+                "Cost first — cheapest, local wherever it can work",
+                "Balanced — default local/free, paid only when needed",
+                "Quality first — the most capable model each step warrants",
+            },
+            SelectedIndex = (int)settings.CostStrategy(),
+        };
+
         _maxAttempts = _Number(settings.MaxSelfFixAttempts(), min: 0, max: 10);
         _grace = _Number(settings.GraceTimerMinutes(), min: 1, max: 120);
         _autonomy = new ComboBox
@@ -69,6 +84,10 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         panel.Children.Add(_Hint("The profile and model the CEO plans the work with. A strong reasoning model (Opus) is recommended. Blank model uses the profile's own default."));
         panel.Children.Add(_Row("CEO profile", _ceoProfile));
         panel.Children.Add(_Row("CEO model", _ceoModel));
+
+        panel.Children.Add(_Header("Cost & tokens"));
+        panel.Children.Add(_Hint("How hard the CEO leans on cost when it picks a model per step. Balanced is the recommended default; the CEO always fits the model to the work, this only moves where the line between a local free model and a paid one sits."));
+        panel.Children.Add(_Row("Cost strategy", _costStrategy));
 
         panel.Children.Add(_Header("Run safety"));
         panel.Children.Add(_Hint("Caps the operator keeps regardless of what the CEO plans."));
@@ -133,6 +152,7 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     {
         _settings.SetCeoProfileLabel(_ceoProfile.SelectedItem as string);
         _settings.SetCeoModel(_ceoModel.IsEnabled ? _Trimmed(_ceoModel.Text) : null);
+        _settings.SetCostStrategy(_costStrategy.SelectedIndex >= 0 ? (AutopilotCostStrategy)_costStrategy.SelectedIndex : AutopilotCostStrategy.Balanced);
         _settings.SetMaxSelfFixAttempts((int)(_maxAttempts.Value ?? 2));
         _settings.SetGraceTimerMinutes((int)(_grace.Value ?? 5));
         _settings.SetAutonomyMode(_autonomy.SelectedItem as string ?? AutopilotSettings.DefaultAutonomyMode);

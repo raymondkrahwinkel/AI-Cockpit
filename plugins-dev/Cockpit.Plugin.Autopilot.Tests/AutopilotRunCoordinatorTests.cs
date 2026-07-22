@@ -95,6 +95,8 @@ public class AutopilotRunCoordinatorTests
 
         await run.WaitAsync(Timeout);
         plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
+        // The CEO's reason is surfaced on the step, so a failed step says why it was not accepted.
+        plan.Plan!.Steps[0].Note.Should().Contain("does not meet acceptance");
     }
 
     [Fact]
@@ -157,7 +159,7 @@ public class AutopilotRunCoordinatorTests
         // the run settles Blocked — rather than wait forever on a done-report that never comes.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
-        var ended = new TaskCompletionSource();
+        var ended = new TaskCompletionSource<string?>();
         var context = _Context(_Session("step-pane", ended.Task));
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
@@ -165,13 +167,15 @@ public class AutopilotRunCoordinatorTests
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
-        // The step session ends without ever reporting done — the fail-closed refusal in the host.
-        ended.TrySetResult();
+        // The step session ends with a reason (the fail-closed refusal in the host) before it ever reports done.
+        ended.TrySetResult("Could not isolate this run: the Qwen (local) profile's provider does not confine its file tools to the worktree.");
 
         await run.WaitAsync(Timeout);
         plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
         // The step never reported done, so the CEO is never asked to validate it.
         await host.DidNotReceive().SendToSessionAsync("ceo-pane", Arg.Any<string>());
+        // The failure reason is surfaced on the step so it is not a silent red dot.
+        plan.Plan!.Steps[0].Note.Should().Contain("does not confine its file tools to the worktree");
     }
 
     [Fact]
@@ -329,7 +333,7 @@ public class AutopilotRunCoordinatorTests
         return context;
     }
 
-    private static IEmbeddedSession _Session(string paneId, Task? completion = null)
+    private static IEmbeddedSession _Session(string paneId, Task<string?>? completion = null)
     {
         var session = Substitute.For<IEmbeddedSession>();
         session.View.Returns(new TextBlock());
@@ -337,7 +341,7 @@ public class AutopilotRunCoordinatorTests
         session.CloseAsync().Returns(Task.CompletedTask);
         // A live session's Completion has not fired; a never-completing task models that, so the coordinator waits on
         // the step's done-report as usual. A test that wants to model a session ending early passes its own task.
-        session.Completion.Returns(completion ?? new TaskCompletionSource().Task);
+        session.Completion.Returns(completion ?? new TaskCompletionSource<string?>().Task);
         return session;
     }
 

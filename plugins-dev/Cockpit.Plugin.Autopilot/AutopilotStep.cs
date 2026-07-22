@@ -48,8 +48,19 @@ internal sealed record AutopilotStep(
     /// </summary>
     public int AgentCount { get; init; } = 1;
 
+    /// <summary>
+    /// A short human-readable note on the step's latest outcome (AC-174) — why it failed (the CEO's validation reason, or
+    /// that the run refused to isolate its session), or a status line while it runs. Surfaced on the pipeline block so a
+    /// failed step is not a silent red dot: the operator sees what happened without opening the session. Empty until the
+    /// run has something to say.
+    /// </summary>
+    public string Note { get; init; } = string.Empty;
+
     /// <summary>This step with a new status — the run advances a step without rebuilding the rest of the plan.</summary>
     public AutopilotStep WithStatus(AutopilotStepStatus status) => this with { Status = status };
+
+    /// <summary>This step with a note on its latest outcome — the run explains a failure or shows progress on the block.</summary>
+    public AutopilotStep WithNote(string note) => this with { Note = note };
 
     /// <summary>This step with its attempt count incremented — the driver records a (re-)run before it starts.</summary>
     public AutopilotStep WithAttempt() => this with { Attempts = Attempts + 1 };

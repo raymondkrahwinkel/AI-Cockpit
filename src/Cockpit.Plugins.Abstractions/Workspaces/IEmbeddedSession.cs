@@ -40,9 +40,11 @@ public interface IEmbeddedSession
     /// Completes when this embedded session ends — its runtime torn down and worktree released — whatever the cause:
     /// the workspace closing, an explicit <see cref="CloseAsync"/>, the session self-closing, or the host refusing to
     /// run it at all (an isolate-in-worktree run on a provider that cannot confine file access to the worktree,
-    /// AC-174). An embedder that waits on the session doing something — Autopilot awaiting a step agent's done-report
-    /// — awaits this alongside it, so a session that dies before it ever reports is a finished wait it can act on,
-    /// not a hang. Never faults; it simply completes.
+    /// AC-174). The result is a short reason when the host ended the session <em>itself</em> (why it refused to
+    /// isolate, or that it failed to start), so an embedder can show it; null for an ordinary end (torn down after its
+    /// work, or the workspace closed). An embedder that waits on the session doing something — Autopilot awaiting a
+    /// step agent's done-report — awaits this alongside it, so a session that dies before it ever reports is a finished
+    /// wait it can act on (and explain), not a hang. Never faults; it simply completes.
     /// </summary>
-    Task Completion { get; }
+    Task<string?> Completion { get; }
 }

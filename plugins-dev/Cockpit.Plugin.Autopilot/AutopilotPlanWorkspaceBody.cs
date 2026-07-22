@@ -143,8 +143,8 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             {
                 ProfileId = ceoLabel,
                 Model = _settings.CeoModel(),
-                WorkingDirectory = _context.Sessions.ActiveSessionWorkingDirectory,
-                AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity) : null,
+                WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context),
+                AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
             });
             _plan.BindSession(_ceo.PaneId);
             await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(_ceo!), 980, 660);
@@ -262,7 +262,16 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private Control _BuildPlanningContent(IEmbeddedSession ceo)
     {
         var planHost = new ContentControl { Content = _BuildBlocks(_plan.Plan) };
-        void OnPlanChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => planHost.Content = _BuildBlocks(_plan.Plan));
+        var approve = _ApproveButton();
+
+        // Approve can start the run only once the CEO has actually planned steps — an empty plan has nothing to run, so
+        // it stays disabled until there is at least one step, and re-checks as the CEO emits or revises the plan.
+        approve.IsEnabled = _HasApprovableSteps();
+        void OnPlanChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+        {
+            planHost.Content = _BuildBlocks(_plan.Plan);
+            approve.IsEnabled = _HasApprovableSteps();
+        });
         _plan.Changed += OnPlanChanged;
         planHost.DetachedFromVisualTree += (_, _) => _plan.Changed -= OnPlanChanged;
 
@@ -312,7 +321,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                         Foreground = _Brush("CockpitTextFaintBrush"),
                         [DockPanel.DockProperty] = Dock.Left,
                     },
-                    _ApproveButton(),
+                    approve,
                     _CancelButton(),
                 },
             },
@@ -321,6 +330,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var right = new Border { Child = ceo.View };
         return new DockPanel { LastChildFill = true, Children = { footer, left, right } };
     }
+
+    // The plan is approvable only when the CEO has planned at least one step — an empty plan would start a run with
+    // nothing to do.
+    private bool _HasApprovableSteps() => _plan.Plan is { Steps.Count: > 0 };
 
     private Button _ApproveButton()
     {
@@ -485,6 +498,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // thin affordance — the operator stays out of the loop unless they choose to step in.
     private Control _BuildStepSurface(Control stepView)
     {
+        // The step view is a persistent control (the live embedded session), reused across renders. _Render rebuilds
+        // this whole pipeline while the previous one is still on the host, so the view still sits in the previous
+        // render's container — and Avalonia throws when a control that still has a parent is placed into a new one.
+        // Detach it from that container first.
+        _DetachFromParent(stepView);
+
         var intervene = new Button
         {
             Content = "Enable input to intervene",
@@ -521,7 +540,34 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        return new DockPanel { LastChildFill = true, Children = { bar, stepView } };
+        // Host the reused step view in a fresh single-child Border rather than adding it straight to the DockPanel's
+        // Children: a Panel's Children collection rejects a control that still has a parent from the previous render (the
+        // step view is persistent and reparented each render), and throws mid-render — a Border's single-child slot
+        // reparents it cleanly, the way the right pane held it before this bar was added.
+        return new DockPanel
+        {
+            LastChildFill = true,
+            Children = { bar, new Border { Child = stepView } },
+        };
+    }
+
+    // Removes a control from whatever container currently parents it, so a persistent control (the live step view) can be
+    // re-placed into a freshly built tree without Avalonia rejecting it for still having a parent. A no-op the first time,
+    // when it has none.
+    private static void _DetachFromParent(Control control)
+    {
+        switch (control.Parent)
+        {
+            case Decorator decorator when ReferenceEquals(decorator.Child, control):
+                decorator.Child = null;
+                break;
+            case Panel panel:
+                panel.Children.Remove(control);
+                break;
+            case ContentControl content when ReferenceEquals(content.Content, control):
+                content.Content = null;
+                break;
+        }
     }
 
     // The blockade panel (AC-155): the step's question to the operator, an answer box, and a Send that relays the reply
@@ -632,6 +678,32 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
+        // A status line so the operator sees where the step is without decoding the dot colour (Raymond) — and, when the
+        // run has something to say (why a step failed, or that it was refused), the note under it, so a failed step is
+        // never a silent red dot.
+        if (_StepStatusText(step.Status) is { Length: > 0 } statusText)
+        {
+            meta.Children.Add(new TextBlock
+            {
+                Text = statusText,
+                FontSize = 11,
+                FontWeight = FontWeight.SemiBold,
+                Margin = new Thickness(0, 2, 0, 0),
+                Foreground = _StepStatusBrush(step.Status),
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(step.Note))
+        {
+            meta.Children.Add(new TextBlock
+            {
+                Text = step.Note,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = step.Status == AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
+            });
+        }
+
         return new Border
         {
             Padding = new Thickness(14, 12),
@@ -640,6 +712,27 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Child = new DockPanel { LastChildFill = true, Children = { dot, meta } },
         };
     }
+
+    // A short status word for a step, so the operator reads its state as words rather than a dot colour. Empty for a
+    // pending step — a queued step needs no label.
+    private static string _StepStatusText(AutopilotStepStatus status) => status switch
+    {
+        AutopilotStepStatus.Running => "Running…",
+        AutopilotStepStatus.Passed => "Passed",
+        AutopilotStepStatus.Failed => "Failed",
+        AutopilotStepStatus.Blocked => "Waiting for you",
+        AutopilotStepStatus.Skipped => "Skipped",
+        _ => string.Empty,
+    };
+
+    private IBrush? _StepStatusBrush(AutopilotStepStatus status) => status switch
+    {
+        AutopilotStepStatus.Passed => _Brush("CockpitStatusDoneBrush"),
+        AutopilotStepStatus.Running => _Brush("CockpitStatusBusyBrush"),
+        AutopilotStepStatus.Failed => _Brush("CockpitStatusErrorBrush"),
+        AutopilotStepStatus.Blocked => _Brush("CockpitStatusWaitingBrush"),
+        _ => _Brush("CockpitTextSecondaryBrush"),
+    };
 
     private Border _ModelChip(AutopilotStep step)
     {
