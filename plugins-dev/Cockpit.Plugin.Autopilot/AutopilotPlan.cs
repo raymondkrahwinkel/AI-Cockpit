@@ -23,6 +23,17 @@ internal sealed record AutopilotPlan(
     /// <summary>The run's display label — its <see cref="Name"/>, or the <see cref="Goal"/> when no name was set yet.</summary>
     public string Label => string.IsNullOrWhiteSpace(Name) ? Goal : Name;
 
+    /// <summary>
+    /// The best available name to pre-fill the approval field with (Raymond 2026-07-22): the CEO's proposed
+    /// <see cref="Name"/> when it gave one, else the <see cref="Goal"/>, else the first step's title. The CEO does not
+    /// always pass a name (or even a goal) through the plan tool, so this always yields something concrete for the
+    /// operator to accept or edit rather than leaving the field — and the approval gate — empty on a planned run.
+    /// </summary>
+    public string SuggestedName =>
+        !string.IsNullOrWhiteSpace(Name) ? Name
+        : !string.IsNullOrWhiteSpace(Goal) ? Goal
+        : Steps.FirstOrDefault()?.Title ?? string.Empty;
+
     /// <summary>This plan with a run name — the CEO's proposal, or the operator's override at approval.</summary>
     public AutopilotPlan WithName(string name) => this with { Name = name };
 

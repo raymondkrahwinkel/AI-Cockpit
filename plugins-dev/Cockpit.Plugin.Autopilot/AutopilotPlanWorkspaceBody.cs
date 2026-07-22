@@ -598,7 +598,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         var nameEdited = false;
         var mirroring = false;
-        string Proposed() => _plan.Plan is { } p ? (string.IsNullOrWhiteSpace(p.Name) ? p.Goal : p.Name) : string.Empty;
+        string Proposed() => _plan.Plan?.SuggestedName ?? string.Empty;
         void SetName(string text)
         {
             mirroring = true;

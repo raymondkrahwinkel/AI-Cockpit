@@ -25,6 +25,22 @@ public class AutopilotPlanTests
     }
 
     [Fact]
+    public void SuggestedName_FallsThroughNameThenGoalThenFirstStepTitle()
+    {
+        // Name wins when set.
+        new AutopilotPlan("the goal", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)]) { Name = "Chosen" }
+            .SuggestedName.Should().Be("Chosen");
+
+        // No name → the goal.
+        new AutopilotPlan("the goal", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)])
+            .SuggestedName.Should().Be("the goal");
+
+        // No name and no goal (the CEO passed neither) → the first step's title, so the field is never left empty.
+        new AutopilotPlan("", null, [new AutopilotStep("1", "First step", "d", "work", null, "b", null)])
+            .SuggestedName.Should().Be("First step");
+    }
+
+    [Fact]
     public void WithName_ReturnsANamedCopy_LeavingTheOriginalUnchanged()
     {
         var plan = _Plan("Add a helper class");
