@@ -1,0 +1,145 @@
+namespace Cockpit.Plugin.Autopilot;
+
+/// <summary>
+/// A running run and the task that completes when it settles — what <see cref="AutopilotRunManager"/> tracks so it can
+/// route a tool call to the right run and free the slot when it ends.
+/// </summary>
+internal sealed record AutopilotRunHandle(AutopilotRunCoordinator Coordinator, Task Completed);
+
+/// <summary>
+/// Runs approved plans from the queue, up to <see cref="AutopilotSettings.MaxConcurrentRuns"/> at once (AC-174, Raymond):
+/// an approved plan is submitted here, executes now if there is a free slot, else waits in the <see cref="AutopilotRunQueue"/>
+/// until one frees. Each running run gets its own coordinator; a tool call (a step reporting done, the CEO validating)
+/// is routed to whichever running run owns the caller's pane — every coordinator self-gates on its own panes, so trying
+/// each is safe. Starting a run is injected (<c>start</c>) so the concurrency logic is testable without live sessions.
+/// </summary>
+internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSettings settings, Func<AutopilotPlan, AutopilotRunHandle> start)
+{
+    private readonly Lock _lock = new();
+    private readonly List<AutopilotRunCoordinator> _active = [];
+
+    /// <summary>Raised when a run starts or ends, or the queue changes — the surface re-renders and the pump re-checks capacity.</summary>
+    public event Action? Changed;
+
+    /// <summary>The coordinators of the runs executing now — how the surface finds each running run to render it.</summary>
+    public IReadOnlyList<AutopilotRunCoordinator> Active
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _active];
+            }
+        }
+    }
+
+    /// <summary>Adds an approved plan and starts it if there is a free slot, else it waits in the queue in order.</summary>
+    public void Submit(AutopilotPlan plan)
+    {
+        queue.Enqueue(plan);
+        Changed?.Invoke();
+        _Pump();
+    }
+
+    /// <summary>A step agent reported done — hand it to the run that owns its pane. False when no running run does.</summary>
+    public bool ReportStepDone(string paneId, string summary) => _Route(coordinator => coordinator.ReportStepDone(paneId, summary));
+
+    /// <summary>A CEO reported its validation verdict — hand it to the run whose CEO pane it is.</summary>
+    public bool ReportValidation(string paneId, bool passed, string? reason) => _Route(coordinator => coordinator.ReportValidation(paneId, passed, reason));
+
+    /// <summary>A step agent or CEO raised a blockade — hand it to the run that owns the pane.</summary>
+    public bool ReportBlocked(string paneId, string question) => _Route(coordinator => coordinator.ReportBlocked(paneId, question));
+
+    /// <summary>The CEO moves its source issue's tracker stage — routed to the run whose CEO pane it is.</summary>
+    public async Task<bool> ReportTrackerStageAsync(string paneId, string stage)
+    {
+        foreach (var coordinator in Active)
+        {
+            if (await coordinator.ReportTrackerStageAsync(paneId, stage))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The CEO posts evidence on its source issue — routed to the run whose CEO pane it is.</summary>
+    public async Task<bool> ReportTrackerNoteAsync(string paneId, string note)
+    {
+        foreach (var coordinator in Active)
+        {
+            if (await coordinator.ReportTrackerNoteAsync(paneId, note))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Starts as many queued runs as there is capacity for, then returns. Called on submit and whenever a run frees a
+    // slot. A reservation counter keeps the capacity check honest while a start runs outside the lock (starting a run
+    // embeds a session, which must not happen while the lock is held).
+    private void _Pump()
+    {
+        while (true)
+        {
+            AutopilotPlan? next;
+            lock (_lock)
+            {
+                if (_active.Count + _starting >= settings.MaxConcurrentRuns() || !queue.TryDequeue(out next))
+                {
+                    return;
+                }
+
+                _starting++;
+            }
+
+            var handle = start(next!);
+            lock (_lock)
+            {
+                _starting--;
+                _active.Add(handle.Coordinator);
+            }
+
+            Changed?.Invoke();
+            _ = _ReleaseWhenDoneAsync(handle);
+        }
+    }
+
+    private int _starting;
+
+    private async Task _ReleaseWhenDoneAsync(AutopilotRunHandle handle)
+    {
+        try
+        {
+            await handle.Completed;
+        }
+        catch (Exception)
+        {
+            // A run's own failure must not stall the queue — it settled or died; either way the slot is now free.
+        }
+
+        lock (_lock)
+        {
+            _active.Remove(handle.Coordinator);
+        }
+
+        Changed?.Invoke();
+        _Pump();
+    }
+
+    private bool _Route(Func<AutopilotRunCoordinator, bool> call)
+    {
+        foreach (var coordinator in Active)
+        {
+            if (call(coordinator))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
