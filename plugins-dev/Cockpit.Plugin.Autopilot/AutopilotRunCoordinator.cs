@@ -41,12 +41,13 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         AutopilotSettings settings,
         Action<Control> showStepSession,
         Action<bool> setValidating,
+        string? runWorktreePath,
         Func<Action, Task> runOnUi,
         CancellationToken cancellationToken)
     {
         var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
         await driver.RunAsync(
-            step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, runOnUi, step, cancellationToken),
+            step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, runWorktreePath, runOnUi, step, cancellationToken),
             cancellationToken);
     }
 
@@ -199,6 +200,7 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         AutopilotSettings settings,
         Action<Control> showStepSession,
         Action<bool> setValidating,
+        string? runWorktreePath,
         Func<Action, Task> runOnUi,
         AutopilotStep step,
         CancellationToken cancellationToken)
@@ -221,6 +223,10 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
                     Model = step.Model,
                     McpServers = _StepMcpServers(step),
                     IsolateInWorktree = true,
+                    // The run's shared worktree (Raymond 2026-07-22): every step runs in it so their work accumulates on
+                    // one branch. Null falls back to a fresh per-step worktree. IsolateInWorktree stays true either way,
+                    // so the fail-closed gate still refuses a non-confining provider.
+                    WorktreePath = runWorktreePath,
                     PermissionMode = settings.AutonomyMode(),
                     WorkingDirectory = AutopilotWorkingDirectory.Resolve(context),
                     InitialUserMessage = AutopilotStepBrief.For(step, agentCount, index + 1),

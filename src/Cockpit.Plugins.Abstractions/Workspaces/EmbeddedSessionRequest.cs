@@ -22,6 +22,16 @@ public sealed record EmbeddedSessionRequest
     public bool IsolateInWorktree { get; init; }
 
     /// <summary>
+    /// An existing worktree directory to run this session in (AC-174, Raymond 2026-07-22) — used with
+    /// <see cref="IsolateInWorktree"/> to run several sessions in <em>one</em> shared worktree rather than each creating
+    /// its own. When set, the host runs the session in this directory and does <em>not</em> create a new worktree, but
+    /// the isolation gate still applies (a non-confining provider is still refused). This is how an Autopilot run gives
+    /// every step the same worktree so their work accumulates on one branch, instead of a fresh throwaway worktree per
+    /// step. Null (the default) keeps the create-a-fresh-worktree behaviour of <see cref="IsolateInWorktree"/>.
+    /// </summary>
+    public string? WorktreePath { get; init; }
+
+    /// <summary>
     /// The permission mode the session starts in (e.g. <c>acceptEdits</c>, <c>bypassPermissions</c>) — how autonomous
     /// it is on the CLI side (AC-152). Null starts on the app default ("ask"). The host's ConsentBroker still gates
     /// shell, egress and other sensitive actions regardless of this, so a more autonomous mode is not an ungated one.

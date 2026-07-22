@@ -62,7 +62,9 @@ internal static class AutopilotStepBrief
             What the agent(s) reported:
             {{reported}}
 
-            Decide whether the output meets the acceptance, then call
+            The step's work is in your working directory (the run's worktree, where every step works). Inspect the actual
+            files there to check the result against the acceptance — do not rely on the summary alone. Decide whether the
+            output meets the acceptance, then call
             mcp__{{AutopilotRunTools.EndpointName}}__autopilot_validate with passed=true (it meets the acceptance) or
             passed=false (it does not — it will be reworked), and a one-line reason.
             """;

@@ -71,8 +71,24 @@ internal sealed class AutopilotRunContext
 
         try
         {
+            // One worktree for the whole run (AC-174, Raymond 2026-07-22): every step runs in it so their work
+            // accumulates on one branch — the merge-ready deliverable — instead of a throwaway worktree per step. Created
+            // once here off the run's repo. Null when the repo is not a git repository (or no worktree manager): the
+            // steps then fall back to per-step isolation, which the fail-closed gate refuses on a non-confining provider.
+            var repositoryDirectory = AutopilotWorkingDirectory.Resolve(_context);
+            PluginWorktreeInfo? runWorktree = null;
+            try
+            {
+                runWorktree = await _host.CreateRunWorktreeAsync(repositoryDirectory, "autopilot", _cts.Token);
+            }
+            catch (Exception)
+            {
+                // A worktree that could not be created leaves the run to fall back to per-step isolation, not crash.
+            }
+
             // A fresh CEO validator for this run (the planning round is closed): embedded on the CEO profile and briefed
-            // to validate. It only validates — the step agents do the work in their own isolated worktrees.
+            // to validate. Pointed at the run's worktree so it can actually inspect the accumulated work — not only the
+            // step's summary — when validating; the main checkout when there is no run worktree.
             IEmbeddedSession? ceo = null;
             await _runOnUi(() =>
             {
@@ -80,7 +96,7 @@ internal sealed class AutopilotRunContext
                 {
                     ProfileId = _settings.CeoProfileLabel(),
                     Model = _settings.CeoModel(),
-                    WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context),
+                    WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
                     AppendSystemPrompt = AutopilotValidatorBrief.For(plan),
                 });
             });
@@ -94,7 +110,7 @@ internal sealed class AutopilotRunContext
             Controller.BindSession(ceo.PaneId);
             Controller.Approve();
 
-            await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _SetValidating, _runOnUi, _cts.Token);
+            await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _SetValidating, runWorktree?.Path, _runOnUi, _cts.Token);
         }
         catch (Exception)
         {

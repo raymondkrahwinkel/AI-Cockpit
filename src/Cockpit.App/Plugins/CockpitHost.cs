@@ -370,6 +370,11 @@ internal sealed class CockpitHost(
             ? Task.CompletedTask
             : _MutateSessionAsync(paneId, session => session.InjectAndSubmit(text));
 
+    public Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, System.Threading.CancellationToken cancellationToken) =>
+        services.GetService<CockpitViewModel>() is { } cockpit
+            ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken)
+            : Task.FromResult<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?>(null);
+
     // Find the session pane by its id and mutate it on the UI thread. A plugin or workflow may call from any
     // thread, and the target may already be gone (a closed session) — a no-op then, never an error.
     private Task _MutateSessionAsync(string paneId, Action<SessionPanelViewModel> mutate)

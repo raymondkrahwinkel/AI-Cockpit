@@ -4996,6 +4996,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return request.WorkingDirectory;
         }
 
+        // A run's shared worktree (AC-174, Raymond 2026-07-22): the run already created one worktree and every step runs
+        // in it so their work accumulates on one branch. Run there as-is — do not create a per-step worktree, and do not
+        // set WorktreeBranch (this session does not own the worktree; the run does, and the run's lifetime keeps it), so
+        // closing the step does not tear the shared worktree down. The isolation gate still runs (the caller kept
+        // IsolateInWorktree true), so a non-confining provider is still refused here.
+        if (!string.IsNullOrWhiteSpace(request.WorktreePath))
+        {
+            return request.WorktreePath;
+        }
+
         if (_worktreeManager is null)
         {
             throw new InvalidOperationException("worktree isolation is not available here (no worktree manager).");
@@ -5010,6 +5020,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, profile.Label, request.WorkingDirectory);
         session.WorktreeBranch = worktree.Branch;
         return worktree.Path;
+    }
+
+    /// <summary>
+    /// Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) — backs
+    /// <see cref="Cockpit.Plugins.Abstractions.ICockpitHost.CreateRunWorktreeAsync"/>. Returns its path and branch, or
+    /// null when there is no worktree manager or <paramref name="repositoryDirectory"/> is not a git repository. Keyed to
+    /// a fresh id (not a session pane), so it is the run's to reuse across every step and persists as the merge-ready
+    /// deliverable after the run.
+    /// </summary>
+    public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, CancellationToken cancellationToken)
+    {
+        if (_worktreeManager is null
+            || string.IsNullOrWhiteSpace(repositoryDirectory)
+            || await _worktreeManager.DetectRepositoryAsync(repositoryDirectory, cancellationToken) is null)
+        {
+            return null;
+        }
+
+        var worktree = await _worktreeManager.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, cancellationToken);
+        return new Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo(worktree.Path, worktree.Branch);
     }
 
     // The permission mode an embedded run starts in: the request's named mode (matched case-insensitively), else the
