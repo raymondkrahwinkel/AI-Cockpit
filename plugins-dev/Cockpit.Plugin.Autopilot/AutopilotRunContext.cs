@@ -97,6 +97,12 @@ internal sealed class AutopilotRunContext
                     ProfileId = _settings.CeoProfileLabel(),
                     Model = _settings.CeoModel(),
                     WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
+                    // Confine the validator's file tools to the run worktree when there is one (Raymond 2026-07-22): a
+                    // Claude/Codex CEO confines natively and ignores this, but a local-model CEO would otherwise reach
+                    // the operator's home — so a local CEO is held to the worktree it validates, like the steps. Only
+                    // when the worktree exists: with none, WorkingDirectory is the real checkout and must not be confined
+                    // to (the run's steps fail to isolate anyway).
+                    ConfineFileToolsToWorkingDirectory = runWorktree is not null,
                     AppendSystemPrompt = AutopilotValidatorBrief.For(plan),
                 });
             });

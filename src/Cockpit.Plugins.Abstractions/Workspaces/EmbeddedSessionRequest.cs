@@ -32,6 +32,17 @@ public sealed record EmbeddedSessionRequest
     public string? WorktreePath { get; init; }
 
     /// <summary>
+    /// Ask the driver to confine this session's file tools to its <see cref="WorkingDirectory"/> (AC-174, Raymond
+    /// 2026-07-22) even when the session is not itself creating a worktree. <see cref="IsolateInWorktree"/> already
+    /// implies this; set it explicitly for a session that runs <em>in</em> a run's worktree without isolating (the
+    /// Autopilot CEO validator, which reads the accumulated work there) so that — if it runs on a local model — its file
+    /// servers are re-rooted at the worktree and every escape channel is dropped, rather than reaching the operator's
+    /// home. A provider that confines natively ignores it. Only set this when <see cref="WorkingDirectory"/> is a
+    /// worktree, never the real checkout.
+    /// </summary>
+    public bool ConfineFileToolsToWorkingDirectory { get; init; }
+
+    /// <summary>
     /// The permission mode the session starts in (e.g. <c>acceptEdits</c>, <c>bypassPermissions</c>) — how autonomous
     /// it is on the CLI side (AC-152). Null starts on the app default ("ask"). The host's ConsentBroker still gates
     /// shell, egress and other sensitive actions regardless of this, so a more autonomous mode is not an ungated one.

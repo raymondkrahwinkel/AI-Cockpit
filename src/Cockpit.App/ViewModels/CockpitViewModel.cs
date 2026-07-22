@@ -4976,7 +4976,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // already confines ignores it; a local model honours it by re-rooting its file servers there and refusing every
         // escape channel, then vouches confinement so the fail-closed gate lets it run. The flag rides the options map so
         // it reaches every provider without a signature change.
-        var addConfine = request.IsolateInWorktree;
+        var addConfine = request.IsolateInWorktree || request.ConfineFileToolsToWorkingDirectory;
         if (!addPrompt && !addConfine)
         {
             return defaults;
