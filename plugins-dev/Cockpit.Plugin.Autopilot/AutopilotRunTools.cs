@@ -35,7 +35,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunManager m
     }
 
     [McpServerTool(Name = "autopilot_blocked")]
-    [Description("Signal that you are blocked and need the operator to answer before you can continue. Autopilot shows your question on the run surface and waits; the operator's reply is relayed to you as a turn in this same session, and you carry on from there. Use this instead of guessing. Pass the question in one message.")]
+    [Description("Last resort: signal that you are blocked and need the operator to answer before you can continue. Autopilot shows your question on the run surface and waits; the operator's reply is relayed to you as a turn in this same session, and you carry on from there. Prefer to keep going: for an ordinary judgement call the brief did not spell out, make a documented, reasonable assumption in line with the goal and acceptance, follow the codebase's existing conventions, and note it in your autopilot_step_done summary — do not block on it. Reserve this for a genuine hard blocker only: a truly irreversible or destructive choice, a missing credential you cannot obtain, or progress being objectively impossible. Pass the question in one message.")]
     public string Blocked(
         [Description("The question or blocker the operator needs to resolve, in one message.")] string question)
     {

@@ -30,6 +30,18 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly AutopilotRunHistory _history;
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
+
+    // The MCP surface the planning CEO is scoped to (AC-197): the plan-emit endpoint it uses to draft the plan. Left on
+    // the request's default empty list it would inherit the host's entire selection (161 tools observed) — every tool
+    // definition in its context (tokens), none of it needed to plan. A source-triggered run also gets the CEO endpoint:
+    // its brief tells the CEO to move the source issue's stage and leave notes via autopilot_tracker_stage /
+    // autopilot_tracker_note (hosted on that endpoint), so without it the brief would name tools the session does not
+    // have. A CEO-first run has no issue to sync, so it stays scoped to the plan endpoint alone.
+    internal static IReadOnlyList<string> PlanningCeoMcpServers(bool hasSource) =>
+        hasSource
+            ? [AutopilotPlanTools.EndpointName, AutopilotCeoTools.EndpointName]
+            : [AutopilotPlanTools.EndpointName];
+
     private bool _popoutOpen;
     private int _completedRuns;
     private IEmbeddedSession? _ceo;
@@ -563,6 +575,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             {
                 ProfileId = ceoLabel,
                 Model = _settings.CeoModel(),
+                McpServers = PlanningCeoMcpServers(_plan.Plan?.Source is not null),
                 WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context, _plan.Plan?.WorkingDirectory),
                 AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
                 // A tracker-triggered run (the "Plan in Autopilot" button, Raymond 2026-07-22) has a real goal from the

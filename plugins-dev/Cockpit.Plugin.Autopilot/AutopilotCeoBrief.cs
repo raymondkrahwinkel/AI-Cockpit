@@ -111,6 +111,11 @@ internal static class AutopilotCeoBrief
 
             Two more token savers, whatever the model: give each step only the MCP servers it actually needs (fewer tool
             definitions in its context), and keep each step's brief tight — enough context to do the work, no more.
+
+            When you need to look at the codebase to plan, search deliberately — scope first. Identify the few directories
+            or files that are relevant, then read those with targeted tools (Grep, Glob, Read) and the project's
+            graph/index if one is available. Do not run repeated `bash grep -rn` sweeps over the whole repository — that
+            burns tokens and time for little signal; reach for a broad scan only after a scoped search has come up empty.
             {{tracker}}
             Re-emit the whole plan every time you draft or revise it, so the operator always sees the current plan. You do
             not merge or approve anything: the operator approves the plan in the cockpit to start the autonomous run, and
