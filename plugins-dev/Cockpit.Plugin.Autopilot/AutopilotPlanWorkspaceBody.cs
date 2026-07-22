@@ -906,18 +906,22 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Child = new DockPanel { LastChildFill = true, Children = { goal, new ScrollViewer { Content = _BuildBlocks(plan) } } },
         };
 
-        // Awaiting the operator (AC-155): the run parked on a blockade — show the question and an answer box instead of
-        // the running session. Otherwise the live step session (under an intervene bar), or a hint between steps.
+        // The right pane, in priority: a blockade the operator must answer (AC-155); the CEO's validation of a finished
+        // step, shown as the CEO session under a clear banner so it is obvious the CEO is reviewing (Raymond 2026-07-22);
+        // the live step session under an intervene bar; or a hint between steps.
+        var validating = context.IsValidating && context.CeoView is not null;
         var right = new Border
         {
-            Padding = controller.Phase == AutopilotPlanPhase.AwaitingOperator || context.StepView is null ? new Thickness(16) : new Thickness(0),
+            Padding = controller.Phase == AutopilotPlanPhase.AwaitingOperator || (!validating && context.StepView is null) ? new Thickness(16) : new Thickness(0),
             Child = controller.Phase == AutopilotPlanPhase.AwaitingOperator
                 ? _BuildBlockadePanel(context)
-                : context.StepView is { } stepView
-                    ? _BuildStepSurface(context, stepView)
-                    : controller.ActiveStep is { } active
-                        ? _CentredHint(MaterialIconKind.PlayCircleOutline, active.Title, active.Description)
-                        : _CentredHint(MaterialIconKind.RobotOutline, "Waiting for the next step", "The running step's live session shows here."),
+                : validating
+                    ? _BuildValidatingSurface(context.CeoView!)
+                    : context.StepView is { } stepView
+                        ? _BuildStepSurface(context, stepView)
+                        : controller.ActiveStep is { } active
+                            ? _CentredHint(MaterialIconKind.PlayCircleOutline, active.Title, active.Description)
+                            : _CentredHint(MaterialIconKind.RobotOutline, "Waiting for the next step", "The running step's live session shows here."),
         };
 
         return new DockPanel { LastChildFill = true, Children = { left, right } };
@@ -978,6 +982,54 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         {
             LastChildFill = true,
             Children = { bar, new Border { Child = stepView } },
+        };
+    }
+
+    // The CEO's validation of a finished step (Raymond 2026-07-22): the CEO session under a prominent accent banner, so it
+    // reads clearly that the CEO is now reviewing the work against its acceptance — not the finished worker still sitting
+    // in the pane. The CEO view is a persistent control, reparented each render, so it is detached from its old container
+    // first, the same way the step view is.
+    private Control _BuildValidatingSurface(Control ceoView)
+    {
+        _DetachFromParent(ceoView);
+
+        var bar = new Border
+        {
+            Padding = new Thickness(12, 8),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Background = _Brush("CockpitStatusBusyBrush"),
+            [DockPanel.DockProperty] = Dock.Top,
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 9,
+                Children =
+                {
+                    new MaterialIcon
+                    {
+                        Kind = MaterialIconKind.ClipboardCheckOutline,
+                        Width = 16,
+                        Height = 16,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                    },
+                    new TextBlock
+                    {
+                        Text = "The CEO is validating this step against its acceptance…",
+                        FontWeight = FontWeight.SemiBold,
+                        FontSize = 12,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
+                    },
+                },
+            },
+        };
+
+        return new DockPanel
+        {
+            LastChildFill = true,
+            Children = { bar, new Border { Child = ceoView } },
         };
     }
 

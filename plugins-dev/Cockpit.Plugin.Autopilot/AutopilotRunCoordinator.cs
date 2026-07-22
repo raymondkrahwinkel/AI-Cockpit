@@ -40,12 +40,13 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         IEmbeddedSession ceo,
         AutopilotSettings settings,
         Action<Control> showStepSession,
+        Action<bool> setValidating,
         Func<Action, Task> runOnUi,
         CancellationToken cancellationToken)
     {
         var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
         await driver.RunAsync(
-            step => _ExecuteStepAsync(context, ceo, settings, showStepSession, runOnUi, step, cancellationToken),
+            step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, runOnUi, step, cancellationToken),
             cancellationToken);
     }
 
@@ -197,6 +198,7 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         IEmbeddedSession ceo,
         AutopilotSettings settings,
         Action<Control> showStepSession,
+        Action<bool> setValidating,
         Func<Action, Task> runOnUi,
         AutopilotStep step,
         CancellationToken cancellationToken)
@@ -261,6 +263,11 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
             // status is nog running"). Say so on the block, so the operator sees the run has moved on to validation.
             plan.NoteStep(step.Id, "Work reported — the CEO is validating it against the acceptance…");
 
+            // Swap the surface to the CEO session for the validation window so it is clear the CEO is now reviewing the
+            // step, not the finished worker still sitting there (Raymond 2026-07-22). Cleared in the finally, whatever
+            // the outcome.
+            setValidating(true);
+
             var validation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             lock (_lock)
             {
@@ -299,6 +306,9 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         }
         finally
         {
+            // The validation window is over (passed, failed, threw or cancelled) — return the surface to the step view.
+            setValidating(false);
+
             lock (_lock)
             {
                 foreach (var session in sessions)

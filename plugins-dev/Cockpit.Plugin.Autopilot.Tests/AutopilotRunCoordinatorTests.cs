@@ -61,7 +61,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         coordinator.ReportStepDone("step-pane", "opened PR #1").Should().BeTrue();
@@ -86,7 +86,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         coordinator.ReportStepDone("step-pane", "tried but it does not compile").Should().BeTrue();
@@ -109,7 +109,7 @@ public class AutopilotRunCoordinatorTests
 
         var shown = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
         context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request => request.StartWithInputDisabled && request.IsolateInWorktree));
@@ -130,7 +130,7 @@ public class AutopilotRunCoordinatorTests
         var shown = new TaskCompletionSource();
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         coordinator.EnableCurrentStepInput();
@@ -164,7 +164,7 @@ public class AutopilotRunCoordinatorTests
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
         var shown = new TaskCompletionSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         // The step session ends with a reason (the fail-closed refusal in the host) before it ever reports done.
@@ -190,7 +190,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
 
         // The step agent raises a blockade — the run parks and the operator's answer is relayed to that same session.
@@ -223,7 +223,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
         coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
         await validationSent.Task.WaitAsync(Timeout);

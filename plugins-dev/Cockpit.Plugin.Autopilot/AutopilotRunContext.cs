@@ -49,6 +49,13 @@ internal sealed class AutopilotRunContext
     /// <summary>The running step's live view, or null between steps.</summary>
     public Control? StepView { get; private set; }
 
+    /// <summary>The CEO validator's live session view — shown in place of the step while the CEO validates a finished step.</summary>
+    public Control? CeoView => _ceo?.View;
+
+    /// <summary>Whether the CEO is validating a just-finished step right now (Raymond 2026-07-22): the surface swaps the
+    /// right pane to the CEO session and a clear banner while this is true, so the validation is not a small side note.</summary>
+    public bool IsValidating { get; private set; }
+
     /// <summary>Raised on this run's pipeline change or step-view change, so the surface re-renders it.</summary>
     public event Action? Changed;
 
@@ -87,7 +94,7 @@ internal sealed class AutopilotRunContext
             Controller.BindSession(ceo.PaneId);
             Controller.Approve();
 
-            await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _runOnUi, _cts.Token);
+            await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _SetValidating, _runOnUi, _cts.Token);
         }
         catch (Exception)
         {
@@ -114,6 +121,14 @@ internal sealed class AutopilotRunContext
     private void _ShowStepView(Control view)
     {
         StepView = view;
+        Changed?.Invoke();
+    }
+
+    // The coordinator flips this around the CEO's validation of a finished step, so the surface swaps to the CEO session
+    // for that window. Raises Changed so the pane re-renders; the body marshals the render onto the UI thread.
+    private void _SetValidating(bool validating)
+    {
+        IsValidating = validating;
         Changed?.Invoke();
     }
 }
