@@ -32,13 +32,15 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
-- added: Autopilot — start a tracker issue (YouTrack or GitHub Issues) straight toward a merge-ready
-  pull request. From an issue you kick off a visible, self-driving agent session in its own isolated
-  worktree; it works the item behind a quality gate — visual verify, code review, security review and a
-  conventions check — and only reports merge-ready once the hard gates pass. It posts progress and
-  questions back as issue comments and moves the issue's stage as it goes; when it hits a decision only
-  you can make it asks and waits for your reply. You approve the run before it starts, and you always do
-  the merge yourself — Autopilot stops at a merge-ready PR and never merges.
+- added: Autopilot — take a piece of work all the way to a merge-ready pull request. A CEO agent plans the
+  run with you (from a YouTrack or GitHub issue, or a goal you type), resolves the open questions up front,
+  and once you approve the plan it runs the steps autonomously — each in the run's own isolated git
+  worktree, on the model you or the CEO pick for it, including free local models kept confined to that
+  worktree. It reviews and security-reviews its own work behind hard gates before reporting merge-ready,
+  posts progress and questions back on the source issue and moves its stage, and asks you when it hits a
+  decision only you can make. You can queue several runs and see a history of what each did and why it
+  passed or failed. You approve once and always do the merge yourself — Autopilot stops at merge-ready and
+  never merges.
 - added: the New-session dialog and the profile's MCP pre-selection now show a rough estimate of the prompt
   tokens the ticked MCP servers' tools add — a per-server figure and a live running total — so you can see a
   heavy selection heading toward a context limit before you start, instead of only hitting an error mid-turn.
@@ -136,6 +138,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
+  runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
+  down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation
+  degrades instead of failing outright.
 - fixed: a finished worktree whose work was already merged no longer lingers in the Managed worktrees
   panel. Its commits were counted against the point it forked from, so once the branch was merged it still
   read as "N commit(s) ahead" forever and neither "Clean up finished" nor the automatic cleanup when a

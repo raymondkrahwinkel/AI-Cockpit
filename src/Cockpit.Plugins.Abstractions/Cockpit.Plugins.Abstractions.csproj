@@ -104,7 +104,29 @@
          register its own full-surface workspace type, owning the whole body and optionally embedding a live host
          session. Both host members are default-implemented (no-op / empty), so existing hosts and test fakes keep
          compiling. Additive API — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.20.0</Version>
+    <!-- 1.21.0 (#AC-180): added EmbeddedSessionRequest.AppendSystemPrompt and WellKnownPluginSessionOptions.AppendSystemPrompt
+         — the host folds a hidden per-session system prompt into the launch options map so an embedded run (Autopilot's
+         CEO) is briefed at start rather than through a visible turn, and each provider driver applies it its own way
+         (a CLI's append-system-prompt flag / Codex's developerInstructions / a leading system message for a local model).
+         Both are additions a driver reads only if it wants to; nothing breaks. Additive API — still a minor; the major
+         and abstractionsVersion stay 1. -->
+    <!-- 1.22.0 (#AC-174): added IWorkspaceContext.Closed (raised once when a workspace is really closed, not on a mere
+         tab-switch, so a body can cancel a long-running job like Autopilot's autonomous run) and
+         PluginProfileInfo.ModelSuggestions (host-supplied per-profile model list for a picker, since a plugin cannot
+         tell a Claude profile from a local one on the provider name alone). Both additive — a default no-op event and
+         an init-property with a default — so nothing breaks. Still a minor; the major and abstractionsVersion stay 1. -->
+    <!-- 1.23.0 (#AC-174): added IEmbeddedSession.Completion (a task that completes when an embedded session ends, so an
+         embedder awaiting the session — Autopilot's step wait — unblocks instead of hanging when the host ends it) and
+         PluginSessionCapabilities.ConfinesFileAccessToWorkingDirectory (whether a provider's file tools stay in the
+         session working directory, so the host can refuse an isolate-in-worktree run on a provider that cannot confine
+         them rather than let it edit the operator's real checkout) and PluginProfileInfo.RunsLocally (host-supplied
+         cost signal — a local free model vs a paid hosted API — so Autopilot's CEO can pick the cheapest-adequate model
+         per step), plus IEmbeddedSession.SetInputEnabled and EmbeddedSessionRequest.StartWithInputDisabled (an
+         autonomous embedded run starts with its composer off so the operator does not type into a self-driving session,
+         and re-enables it to intervene). Completion and SetInputEnabled are new interface members, but no plugin
+         implements IEmbeddedSession — the host hands it out — so nothing breaks; the info/request additions are
+         init-properties with defaults. Additive in practice — still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.23.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

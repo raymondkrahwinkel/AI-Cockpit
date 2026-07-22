@@ -211,7 +211,10 @@
                     ToolTip.Tip="Stop the current turn (interrupt)">
                 <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15"/>
             </Button>
-            <TextBox x:Name="InputBox" Text="{Binding InputText}"
+            <!-- IsEnabled binds IsInputEnabled (AC-174): an autonomous embedded run starts with its composer off so the
+                 operator does not think they can type, until the surface's Intervene affordance re-enables it. Gating the
+                 box only — not CanSend — so the host still submits the run's own opening brief through the send path. -->
+            <TextBox x:Name="InputBox" Text="{Binding InputText}" IsEnabled="{Binding IsInputEnabled}"
                      PlaceholderText="Send a message...  (Enter = send, Shift+Enter = new line, Ctrl+V = paste text or image)"
                      AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="120" VerticalContentAlignment="Top"/>
         </DockPanel>

@@ -18,7 +18,7 @@ namespace Cockpit.Infrastructure.Mcp;
 internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthorizer oauthAuthorizer, McpAuthKey authKey, SessionMcpKeyring keyring, ILogger<McpToolProvider> logger)
     : IMcpToolProvider, ISingletonService
 {
-    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, CancellationToken cancellationToken = default)
+    public async Task<IMcpToolSession> ConnectAsync(IReadOnlySet<string>? enabledServerNames = null, string? paneId = null, string? confineFileToolsToDirectory = null, CancellationToken cancellationToken = default)
     {
         // AC-89: when this in-process tool loop belongs to a session with a pane id (a local-model session), mint it
         // one per-session token — used for every cockpit-hosted endpoint it connects to — so those endpoints can
@@ -41,6 +41,17 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         // The per-session selection (#44) is applied to the registry above, before this merge, so a built-in
         // default is never excluded just because it is not part of the registry-derived checklist.
         var enabledServers = _EffectiveServers(sessionRegistry).Where(server => server.Enabled).ToList();
+
+        // Confinement (AC-174, Raymond 2026-07-22): when the session is confined to a directory, replace the whole
+        // effective set with a safe one so a local model cannot reach the operator's real checkout — the file-capable
+        // servers become the built-in filesystem preset re-rooted at that directory (never a custom same-named registry
+        // server, which is not trusted to sandbox), plus benign in-process servers, plus the pane-scoped Autopilot report
+        // endpoint the step needs. Every escape channel (a shell/terminal, an orchestrator that spawns unconfined
+        // sessions, worktree tools, any other filesystem) is dropped regardless of what the selection asked for.
+        if (!string.IsNullOrWhiteSpace(confineFileToolsToDirectory))
+        {
+            enabledServers = _ConfinedServers(enabledServers, confineFileToolsToDirectory);
+        }
 
         // Connect every enabled server concurrently rather than one-by-one — sequential connect + list-tools
         // round-trips added up badly once more than one server was configured. Each connect keeps its own
@@ -169,6 +180,55 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         }
 
         return [.. byName.Values];
+    }
+
+    // The pane-scoped Autopilot control endpoints a confined session still needs: a step agent calls autopilot_step_done
+    // on cockpit-autopilot-run, and the CEO validator calls autopilot_validate on cockpit-autopilot-ceo. Both are
+    // cockpit-hosted and control-only — they cannot write files or run commands — so they are safe inside a confined
+    // session. A session only ends up with the one it actually selected (a step selects the run endpoint, not the CEO's),
+    // so allowing both here does not hand a step the CEO's tools. Named as literals to keep Infrastructure independent of
+    // the Autopilot plugin; kept in sync with AutopilotRunTools.EndpointName / AutopilotCeoTools.EndpointName.
+    private static readonly HashSet<string> ConfinedControlEndpoints =
+        new(StringComparer.OrdinalIgnoreCase) { "cockpit-autopilot-run", "cockpit-autopilot-ceo" };
+
+    // The confined effective set for a session pinned to <paramref name="root"/> (AC-174): the built-in filesystem
+    // preset re-rooted at the worktree (the only file-write path a confined session gets), the built-in in-memory
+    // knowledge server (benign, no disk escape), and the Autopilot report endpoint if this session already had it. Built
+    // from the presets — not from the caller's own file servers — so a custom same-named "filesystem" cannot smuggle in a
+    // different, wider sandbox. Everything else (the home-rooted defaults, git, fetch, a shell/terminal, an orchestrator,
+    // worktree tools) is deliberately left out: none of it can reach the operator's real checkout from here.
+    internal static List<McpServerConfig> _ConfinedServers(IReadOnlyList<McpServerConfig> effective, string root)
+    {
+        var confined = new List<McpServerConfig>();
+        foreach (var preset in McpServerPresets.LocalDefaults)
+        {
+            if (string.Equals(preset.Name, "filesystem", StringComparison.OrdinalIgnoreCase))
+            {
+                confined.Add(_ReRootLastArg(preset, root));
+            }
+            else if (string.Equals(preset.Name, "memory", StringComparison.OrdinalIgnoreCase))
+            {
+                confined.Add(preset);
+            }
+        }
+
+        confined.AddRange(effective.Where(server => ConfinedControlEndpoints.Contains(server.Name)));
+        return confined;
+    }
+
+    // Re-roots a filesystem-style stdio preset by replacing its last CLI argument (the server's single allowed
+    // directory) with the worktree, so its sandbox is the worktree rather than the user's home folder. The filesystem
+    // server sandboxes on this argument, not on the process cwd, so rewriting the arg is what actually confines it.
+    private static McpServerConfig _ReRootLastArg(McpServerConfig server, string root)
+    {
+        if (server.Args is not { Count: > 0 })
+        {
+            return server;
+        }
+
+        var args = server.Args.ToArray();
+        args[^1] = root;
+        return server with { Args = args };
     }
 
     private IClientTransport _BuildTransport(McpServerConfig server, string? sessionToken) => server.Transport switch

@@ -2144,7 +2144,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSwitch? terminalAccessSwitch = null,
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
-        ISessionProfileStore? sessionProfileStore = null)
+        ISessionProfileStore? sessionProfileStore = null,
+        IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2152,7 +2153,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // The toast host goes in so a refused save is said rather than dropped: the strip's changes are all
         // fire-and-forget, so without somewhere to report to, a write the config gate turned down would be
         // silence and a lost arrangement.
-        Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost);
+        Workspaces = new WorkspacesViewModel(workspaceSettingsStore, widgetRegistry, ToastHost, workspaceTypeRegistry);
         _WireWorkspaceVisibility();
 
         // The Security tab (encrypting the credentials at rest). Absent in the design-time/unit-test graph, and
@@ -4746,6 +4747,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // by the plugin workspace that owns them, and tears them down when that workspace (or the app) closes.
     private readonly Dictionary<string, List<SessionPanelViewModel>> _embeddedSessions = new(StringComparer.Ordinal);
 
+    // The end-signal behind each embedded session's IEmbeddedSession.Completion, keyed by the session it belongs to.
+    // Completed by _TeardownEmbeddedSessionAsync whatever ends the session — a workspace close, an explicit close, a
+    // self-close, or the isolation refusal below — so an embedder (Autopilot) awaiting the session can tell it died
+    // rather than hang. Same UI-thread affinity as _embeddedSessions.
+    private readonly Dictionary<SessionPanelViewModel, TaskCompletionSource<string?>> _embeddedSessionEnded = [];
+
     public IEmbeddedSession Embed(string workspaceId, EmbeddedSessionRequest request)
     {
         // Null only in a graph with no session machinery (design-time/tests); a real host has both. The registry
@@ -4778,6 +4785,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         owned.Add(session);
 
+        // The end-signal for this session's Completion; completed on teardown whatever ends it (carrying the reason when
+        // the host ended it itself — the isolation refusal in the start below), so an embedder awaiting the session is
+        // never left hanging and can show why it ended.
+        var ended = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _embeddedSessionEnded[session] = ended;
+
+        // An autonomous run asks for its composer off from the first render (AC-174) so the operator does not type into
+        // a session that drives itself; the surface's Intervene affordance re-enables it. Set before the view is built.
+        if (request.StartWithInputDisabled)
+        {
+            session.IsInputEnabled = false;
+        }
+
         // ViewLocator resolves SessionViewModel -> SessionView; the plugin body places this one Control. Because the
         // VM is not in Sessions, no second grid container fights it for the same pty.
         var view = new ContentControl { Content = session };
@@ -4786,7 +4806,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the driver launches; a failed start leaves the session showing its own error rather than taking the app down.
         _ = _StartEmbeddedSessionAsync(session, request);
 
-        return new EmbeddedSession(view, session.PaneId, () => _CloseEmbeddedSessionAsync(session));
+        return new EmbeddedSession(view, session.PaneId, ended.Task, enabled => _SetEmbeddedInputEnabled(session, enabled), () => _CloseEmbeddedSessionAsync(session));
     }
 
     public void CloseForWorkspace(string workspaceId)
@@ -4816,7 +4836,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     // Ends one embedded session: drop it from its workspace's list and tear it down. Idempotent — a session that is
     // no longer listed (already closed, whether by CloseForWorkspace, a self-close, or an earlier CloseAsync) is not
     // torn down twice, which is what lets the body's CloseAsync and the session's own CloseRequested both fire safely.
-    private Task _CloseEmbeddedSessionAsync(SessionPanelViewModel session)
+    private Task _CloseEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
         foreach (var (workspaceId, owned) in _embeddedSessions)
         {
@@ -4827,7 +4847,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     _embeddedSessions.Remove(workspaceId);
                 }
 
-                return _TeardownEmbeddedSessionAsync(session);
+                return _TeardownEmbeddedSessionAsync(session, endReason);
             }
         }
 
@@ -4874,54 +4894,182 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             catch (Exception isolationFailure)
             {
                 // Isolation was asked for and could not be done. Never fall back to the operator's real checkout — that
-                // is the contamination isolation exists to prevent — and do not leave a silent blank pane: say why on
-                // the session and stand down rather than run unisolated.
-                session.Statusline = $"Could not isolate this run: {isolationFailure.Message}";
+                // is the contamination isolation exists to prevent. Say why, then stand the session down through the
+                // same close path the refusal below uses: that releases any worktree and completes its Completion with
+                // the reason, so an awaiting run (Autopilot's step wait) treats it as a failed step it can explain rather
+                // than hanging on a session that never reports.
+                var reason = $"Could not isolate this run: {isolationFailure.Message}";
+                session.Statusline = reason;
+                await _CloseEmbeddedSessionAsync(session, reason);
                 return;
             }
 
-            // An SDK session on the requested permission mode (default "ask") and app-default model/effort, with the
-            // profile's own start defaults in the generic OptionDefaults map — the same shape StartSessionForPluginAsync
-            // builds. A self-driving run (AC-152) asks for a more autonomous mode; the ConsentBroker still gates shell
-            // and egress regardless.
+            // An SDK session on the requested permission mode (default "ask"), the requested model where the profile
+            // offers a choice (AC-174 — a CEO plan picks one per step; null keeps the app default), and app-default
+            // effort, with the profile's own start defaults in the generic OptionDefaults map — the same shape
+            // StartSessionForPluginAsync builds. When the request names an MCP set, the session is restricted to exactly
+            // those servers (AC-174 minimal-MCP-per-step: fewer tokens, tighter least-privilege); an empty set keeps the
+            // host's usual selection. A self-driving run (AC-152) asks for a more autonomous mode; the ConsentBroker
+            // still gates shell and egress regardless.
             await session.StartConfiguredAsync(
                 profile,
                 _ResolveEmbeddedPermissionMode(request),
-                SessionOptionCatalog.DefaultModel,
+                SessionOptionCatalog.ModelForValue(request.Model),
                 SessionOptionCatalog.DefaultEffort,
-                enabledMcpServerNames: null,
+                enabledMcpServerNames: request.McpServers is { Count: > 0 } servers
+                    ? servers.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    : null,
                 workingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
                 resume: null,
-                launchOptions: profile.Defaults?.OptionDefaults);
+                launchOptions: _EmbeddedLaunchOptions(profile, request));
 
             // Closed while the driver was launching: the teardown that ran then disposed a session whose runtime did
             // not exist yet, so tear it down now that it does — or its pty and child process outlive the workspace.
             if (!_IsEmbeddedSessionLive(session))
             {
                 await _TeardownEmbeddedSessionAsync(session);
+                return;
+            }
+
+            // Isolation was asked for, so run the agent only when the session actually started AND its provider confines
+            // its file tools to the worktree. Two ways this fails, both refused: (1) the provider does not confine (a
+            // local model reaches files through MCP servers rooted outside the worktree, AC-174) — handing it the brief
+            // would edit the operator's real checkout; (2) the start failed, which leaves Capabilities at their pre-start
+            // default (SessionPanelViewModel seeds the fullest-featured set, whose confines flag is true), so a stale
+            // "confined" reading must never be taken as licence to run — check readiness first. Either way: refuse rather
+            // than risk contamination (Raymond: safety over function), close the session (releasing the worktree and
+            // completing its Completion so an awaiting embedder unblocks), and say why. The check precedes the brief, so
+            // the agent never runs.
+            if (request.IsolateInWorktree && (!session.IsSessionReady || !session.Capabilities.ConfinesFileAccessToWorkingDirectory))
+            {
+                var reason = session.IsSessionReady
+                    ? $"Could not isolate this run: the {profile.Label} profile's provider does not confine its file tools to the worktree, so it was refused rather than allowed to edit your real checkout."
+                    : "Could not isolate this run: its session did not start, so it was refused rather than run unisolated.";
+                session.Statusline = reason;
+                await _CloseEmbeddedSessionAsync(session, reason);
+                return;
+            }
+
+            // The runtime is up now (StartConfiguredAsync awaited it), so an opening turn submitted here cannot race the
+            // "session has not started yet" gate a message sent right after EmbedSession would hit (AC-174). This is how
+            // an autonomous embedded run — an Autopilot step agent — is set going without a human: its task brief is the
+            // first turn. The CEO planning round leaves this null and waits for the operator instead.
+            if (request.InitialUserMessage is { Length: > 0 } opening && session.IsSessionReady)
+            {
+                session.InjectAndSubmit(opening);
             }
         }
         catch (Exception)
         {
-            // A failed embedded start must not take the app down; the session surfaces its own failed state.
+            // A failed embedded start must not take the app down — and it must not leave the session's Completion
+            // unresolved either, or an embedder awaiting it (an Autopilot step) hangs forever. If this session is still
+            // one we own, close it with a reason so its Completion resolves and the awaiting run records a failed step
+            // instead of hanging until the workspace is closed. Best-effort: the start's own failure handler never
+            // rethrows, even if the teardown itself faults.
+            try
+            {
+                if (_IsEmbeddedSessionLive(session))
+                {
+                    await _CloseEmbeddedSessionAsync(session, "The embedded session failed to start.");
+                }
+            }
+            catch (Exception)
+            {
+                // Nothing more to do; the session surfaces its own failed state.
+            }
         }
     }
 
-    // Embedded isolation (AC-85), the automated counterpart of _ResolveIsolatedWorkingDirectoryAsync: no operator to
-    // confirm a fallback, so a non-repository folder (or no worktree manager) runs as given, and a worktree that
-    // cannot be created throws out to the start's own catch — the session surfaces its failed state rather than
-    // silently contaminating the real checkout.
+    // The launch options an embedded session starts with: the profile's own defaults, plus the request's hidden system
+    // prompt (AC-180) folded in under its well-known key so it rides the options map to whichever driver runs the
+    // session — each applies it its own way. A blank prompt leaves the profile defaults untouched.
+    private static IReadOnlyDictionary<string, string>? _EmbeddedLaunchOptions(SessionProfile profile, EmbeddedSessionRequest request)
+    {
+        var defaults = profile.Defaults?.OptionDefaults;
+        var addPrompt = !string.IsNullOrWhiteSpace(request.AppendSystemPrompt);
+        // An isolated embedded run asks its driver to confine file tools to the worktree (AC-174): a CLI provider that
+        // already confines ignores it; a local model honours it by re-rooting its file servers there and refusing every
+        // escape channel, then vouches confinement so the fail-closed gate lets it run. The flag rides the options map so
+        // it reaches every provider without a signature change.
+        var addConfine = request.IsolateInWorktree || request.ConfineFileToolsToWorkingDirectory;
+        if (!addPrompt && !addConfine)
+        {
+            return defaults;
+        }
+
+        var options = defaults is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase);
+        if (request.AppendSystemPrompt is { } prompt && !string.IsNullOrWhiteSpace(prompt))
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.AppendSystemPrompt] = prompt.Trim();
+        }
+
+        if (addConfine)
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory] = "true";
+        }
+
+        return options;
+    }
+
+    // Embedded isolation (AC-85/AC-174), the automated counterpart of _ResolveIsolatedWorkingDirectoryAsync. A run that
+    // does not ask to be isolated runs in the folder as given. A run that does asks for a promise it must not silently
+    // break: when no worktree can be made — no worktree manager, no directory, or a directory that is not a git
+    // repository — this throws to the start's own catch, which stands the run down with the reason rather than let it
+    // edit the operator's real checkout. A worktree that fails to create throws the same way (Raymond: safety over
+    // function — an isolated run that cannot be isolated must not run).
     private async Task<string?> _ResolveEmbeddedWorkingDirectoryAsync(SessionPanelViewModel session, EmbeddedSessionRequest request, SessionProfile profile)
     {
-        if (!request.IsolateInWorktree || _worktreeManager is null || string.IsNullOrWhiteSpace(request.WorkingDirectory)
-            || await _worktreeManager.DetectRepositoryAsync(request.WorkingDirectory) is null)
+        if (!request.IsolateInWorktree)
         {
             return request.WorkingDirectory;
+        }
+
+        // A run's shared worktree (AC-174, Raymond 2026-07-22): the run already created one worktree and every step runs
+        // in it so their work accumulates on one branch. Run there as-is — do not create a per-step worktree, and do not
+        // set WorktreeBranch (this session does not own the worktree; the run does, and the run's lifetime keeps it), so
+        // closing the step does not tear the shared worktree down. The isolation gate still runs (the caller kept
+        // IsolateInWorktree true), so a non-confining provider is still refused here.
+        if (!string.IsNullOrWhiteSpace(request.WorktreePath))
+        {
+            return request.WorktreePath;
+        }
+
+        if (_worktreeManager is null)
+        {
+            throw new InvalidOperationException("worktree isolation is not available here (no worktree manager).");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.WorkingDirectory)
+            || await _worktreeManager.DetectRepositoryAsync(request.WorkingDirectory) is null)
+        {
+            throw new InvalidOperationException("the working directory is not a git repository, so no isolated worktree can be created.");
         }
 
         var worktree = await _worktreeManager.CreateForSessionAsync(session.PaneId, profile.Label, request.WorkingDirectory);
         session.WorktreeBranch = worktree.Branch;
         return worktree.Path;
+    }
+
+    /// <summary>
+    /// Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) — backs
+    /// <see cref="Cockpit.Plugins.Abstractions.ICockpitHost.CreateRunWorktreeAsync"/>. Returns its path and branch, or
+    /// null when there is no worktree manager or <paramref name="repositoryDirectory"/> is not a git repository. Keyed to
+    /// a fresh id (not a session pane), so it is the run's to reuse across every step and persists as the merge-ready
+    /// deliverable after the run.
+    /// </summary>
+    public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, CancellationToken cancellationToken)
+    {
+        if (_worktreeManager is null
+            || string.IsNullOrWhiteSpace(repositoryDirectory)
+            || await _worktreeManager.DetectRepositoryAsync(repositoryDirectory, cancellationToken) is null)
+        {
+            return null;
+        }
+
+        var worktree = await _worktreeManager.CreateForSessionAsync(Guid.NewGuid().ToString("N"), label, repositoryDirectory, cancellationToken);
+        return new Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo(worktree.Path, worktree.Branch);
     }
 
     // The permission mode an embedded run starts in: the request's named mode (matched case-insensitively), else the
@@ -4936,11 +5084,34 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _IsEmbeddedSessionLive(SessionPanelViewModel session) =>
         _embeddedSessions.Values.Any(owned => owned.Contains(session));
 
-    private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session)
+    // Backs IEmbeddedSession.SetInputEnabled (AC-174): toggles the embedded session's composer, marshalled to the UI
+    // thread since a plugin (the Autopilot run's Intervene affordance) can call it from anywhere.
+    private static void _SetEmbeddedInputEnabled(SessionViewModel session, bool enabled)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            session.IsInputEnabled = enabled;
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => session.IsInputEnabled = enabled);
+        }
+    }
+
+    private async Task _TeardownEmbeddedSessionAsync(SessionPanelViewModel session, string? endReason = null)
     {
         session.PropertyChanged -= OnSessionPropertyChanged;
         session.CloseRequested -= OnEmbeddedSessionCloseRequested;
         _lastStatus.Remove(session);
+
+        // Signal the session's end to anyone awaiting its Completion (Autopilot's step wait) before disposing it, so a
+        // waiter unblocks whether the session finished its work or is being torn down for any other reason — carrying the
+        // reason when the host ended it itself (isolation refused), else null. Idempotent: a second teardown finds none.
+        if (_embeddedSessionEnded.Remove(session, out var ended))
+        {
+            ended.TrySetResult(endReason);
+        }
+
         await session.DisposeAsync();
 
         // Mirror CloseSessionAsync's driver-side teardown: release any terminal couplings and the session's worktree.

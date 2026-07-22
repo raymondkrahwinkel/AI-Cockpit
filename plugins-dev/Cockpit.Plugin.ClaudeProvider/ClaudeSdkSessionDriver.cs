@@ -78,6 +78,9 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         SupportsLiveModelSwitch = true,
         SupportsPermissionModeSwitch = true,
         SupportsEnvVars = true,
+        // Claude spawns in the session's working directory and edits with cwd-bound native tools, so an isolated
+        // embedded run (Autopilot worktree) stays inside its worktree (AC-174).
+        ConfinesFileAccessToWorkingDirectory = true,
     };
 
     public string? SessionId => _sessionId;
@@ -128,7 +131,10 @@ internal sealed class ClaudeSdkSessionDriver : IPluginSessionDriver
         // operator's cockpit-configured servers.
         _mcpConfigPath = mcpServers is { Count: > 0 } servers ? ClaudeMcpConfig.Write(servers) : null;
 
-        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, mcpConfigPath: _mcpConfigPath);
+        // A hidden per-session system prompt (AC-180) the host folded into the options map — an embedded run's brief
+        // (Autopilot's CEO). Applied at start through --append-system-prompt, so it needs no post-start turn.
+        var appendSystemPrompt = _ResolveOption(options, WellKnownPluginSessionOptions.AppendSystemPrompt, defaultValue: null);
+        var arguments = ClaudeSdkArguments.BuildArguments(permissionMode, effectiveModel, resumeSessionId, continueMostRecent: false, appendSystemPrompt: appendSystemPrompt, mcpConfigPath: _mcpConfigPath);
         var environment = _BuildEnvironment(userHome);
 
         // AC-13: hand the agent its own session id as COCKPIT_PANE_ID, so it can name its own session to the

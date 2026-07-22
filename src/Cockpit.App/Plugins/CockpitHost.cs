@@ -141,7 +141,9 @@ internal sealed class CockpitHost(
     // thread; a design-time/headless host (no view model resolved) simply does nothing.
     public async Task OpenWorkspaceAsync(string workspaceTypeId)
     {
-        if (services.GetService<WorkspacesViewModel>() is not { } workspaces)
+        // The plugin's workspaces live on the on-screen view model — the same instance the UI binds to — not a
+        // separately DI-resolved WorkspacesViewModel, which would open the workspace on a surface no one is looking at.
+        if (services.GetService<CockpitViewModel>()?.Workspaces is not { } workspaces)
         {
             return;
         }
@@ -228,7 +230,13 @@ internal sealed class CockpitHost(
     {
         var profiles = await services.GetRequiredService<ISessionProfileStore>().LoadAsync().ConfigureAwait(false);
         return profiles
-            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty))
+            .Select(profile => new PluginProfileInfo(profile.Label, profile.Provider.ToString(), profile.Claude?.ConfigDir ?? string.Empty)
+            {
+                // A Claude profile offers the model aliases; a local or plugin profile pins its own, so no suggestions.
+                ModelSuggestions = profile.Claude is not null ? SessionOptionCatalog.ClaudeModelSuggestions : [],
+                // The local, free-to-run providers; everything else (Claude, Codex, hosted plugin providers) is a paid API.
+                RunsLocally = profile.Provider is Core.Profiles.SessionProvider.Ollama or Core.Profiles.SessionProvider.LmStudio,
+            })
             .ToList();
     }
 
@@ -361,6 +369,11 @@ internal sealed class CockpitHost(
         string.IsNullOrEmpty(text)
             ? Task.CompletedTask
             : _MutateSessionAsync(paneId, session => session.InjectAndSubmit(text));
+
+    public Task<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label, System.Threading.CancellationToken cancellationToken) =>
+        services.GetService<CockpitViewModel>() is { } cockpit
+            ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken)
+            : Task.FromResult<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?>(null);
 
     // Find the session pane by its id and mutate it on the UI thread. A plugin or workflow may call from any
     // thread, and the target may already be gone (a closed session) — a no-op then, never an error.

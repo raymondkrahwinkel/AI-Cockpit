@@ -39,6 +39,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// it is gone from the settings (see <see cref="_RefreshPluginBody"/>).
     /// </summary>
     private readonly Dictionary<string, Control> _pluginBodies = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IWorkspaceContext> _pluginContexts = new(StringComparer.Ordinal);
 
     /// <summary>Set when the saved workspaces could not be read — see <see cref="InitializeAsync"/>. Persistence stays off for the rest of the run.</summary>
     private bool _loadFailed;
@@ -733,6 +734,14 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         // we release the cached control so a reused id cannot show a stale body.
         foreach (var staleId in _pluginBodies.Keys.Where(id => Settings.Workspaces.All(workspace => workspace.Id != id)).ToList())
         {
+            // The workspace is really gone (not just switched away from): tell its body so a long-running job (Autopilot's
+            // autonomous run) is cancelled and torn down, before the cached control is released.
+            if (_pluginContexts.TryGetValue(staleId, out var context) && context is WorkspaceContext concrete)
+            {
+                concrete.RaiseClosed();
+            }
+
+            _pluginContexts.Remove(staleId);
             _pluginBodies.Remove(staleId);
         }
 
@@ -741,6 +750,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             && !_pluginBodies.ContainsKey(active.Id)
             && _workspaceTypes?.CreateBody(active.Type.Id, active.Id) is { } built)
         {
+            _pluginContexts[active.Id] = built.Context;
             _pluginBodies[active.Id] = built.Registration.CreateBody(built.Context);
         }
     }

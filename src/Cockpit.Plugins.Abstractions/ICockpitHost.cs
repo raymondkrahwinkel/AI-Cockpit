@@ -305,6 +305,18 @@ public interface ICockpitHost
     Task SendToSessionAsync(string paneId, string text) => Task.CompletedTask;
 
     /// <summary>
+    /// Creates one git worktree for a multi-session run (AC-174, Raymond 2026-07-22) and returns its path and branch, or
+    /// null when <paramref name="repositoryDirectory"/> is not a git repository or the host has no worktree manager. An
+    /// Autopilot run creates one at its start and passes the returned <see cref="Workspaces.PluginWorktreeInfo.Path"/> to
+    /// every step's <see cref="Workspaces.EmbeddedSessionRequest.WorktreePath"/>, so the steps share it and their work
+    /// accumulates on the one branch instead of a throwaway worktree per step. The worktree persists after the run — it
+    /// is the merge-ready deliverable — and is managed from the Worktrees panel like any other. Default null so existing
+    /// <see cref="ICockpitHost"/> implementations (test fakes, older builds) keep compiling untouched.
+    /// </summary>
+    Task<Workspaces.PluginWorktreeInfo?> CreateRunWorktreeAsync(string repositoryDirectory, string? label = null, CancellationToken cancellationToken = default) =>
+        Task.FromResult<Workspaces.PluginWorktreeInfo?>(null);
+
+    /// <summary>
     /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>, and
     /// starts the session the operator confirms — the plugin equivalent of the operator pressing "New session", with
     /// the fields it knows already offered. The operator keeps full control: they see and can change every field

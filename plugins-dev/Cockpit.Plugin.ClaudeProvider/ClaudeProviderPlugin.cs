@@ -71,8 +71,11 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // These registration capabilities are the ones the host actually honours: SessionDriverFactory builds the
             // PluginSessionDriverAdapter from registration.Capabilities, not from the driver instance's own Capabilities.
             // So SupportsVision must be declared here — the SDK driver already builds base64 image content blocks, but
-            // without this the host gates a pasted image off ("provider does not support image input") anyway.
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true },
+            // without this the host gates a pasted image off ("provider does not support image input") anyway. Likewise
+            // ConfinesFileAccessToWorkingDirectory (AC-174): Claude spawns in the session's working directory and edits
+            // with cwd-bound tools, so an isolated Autopilot run stays in its worktree — without this on the registration
+            // the host refuses a Claude step for "does not confine its file tools to the worktree".
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =

@@ -5,8 +5,8 @@ using FluentAssertions;
 namespace Cockpit.Plugin.Autopilot.Tests;
 
 /// <summary>
-/// <see cref="AutopilotSettings"/> — the AC-149 settings foundation: every field resolves project override →
-/// global → default, and a change raises the signal a live surface listens to.
+/// <see cref="AutopilotSettings"/>: every field resolves project override → global → default, and a change raises the
+/// signal a live surface listens to.
 /// </summary>
 public class AutopilotSettingsTests
 {
@@ -29,39 +29,33 @@ public class AutopilotSettingsTests
     {
         var settings = new AutopilotSettings(new FakeStorage());
 
-        settings.GraceTimerMinutes().Should().Be(5);
         settings.MaxSelfFixAttempts().Should().Be(2);
-        settings.Gate(GateKind.Security).Should().Be(GateMode.Hard);
-        settings.Gate(GateKind.Verify).Should().Be(GateMode.Skip);
-        settings.CommentMirroring().Should().Be(CommentLevel.QuestionsAndMilestones);
-        settings.DefaultProfileLabel().Should().BeNull();
+        settings.CostStrategy().Should().Be(AutopilotCostStrategy.Balanced);
+        settings.CeoProfileLabel().Should().BeNull();
+        settings.CeoModel().Should().BeNull();
 
-        settings.SetGraceTimerMinutes(12);
-        settings.SetGate(GateKind.Verify, GateMode.Hard);
-        settings.SetDefaultProfileLabel("Work");
-        settings.SetCommentMirroring(CommentLevel.Full);
+        settings.SetMaxSelfFixAttempts(4);
+        settings.SetCostStrategy(AutopilotCostStrategy.CostFirst);
+        settings.SetCeoProfileLabel("work");
+        settings.SetCeoModel("opus");
 
-        settings.GraceTimerMinutes().Should().Be(12);
-        settings.Gate(GateKind.Verify).Should().Be(GateMode.Hard);
-        settings.DefaultProfileLabel().Should().Be("Work");
-        settings.CommentMirroring().Should().Be(CommentLevel.Full);
+        settings.MaxSelfFixAttempts().Should().Be(4);
+        settings.CostStrategy().Should().Be(AutopilotCostStrategy.CostFirst);
+        settings.CeoProfileLabel().Should().Be("work");
+        settings.CeoModel().Should().Be("opus");
     }
 
     [Fact]
-    public void ProjectOverride_WinsOverGlobal_AndClearingFallsBack()
+    public void ProjectOverride_WinsOverGlobal()
     {
         var settings = new AutopilotSettings(new FakeStorage());
         const string project = "/home/me/repo";
 
-        settings.SetGate(GateKind.Security, GateMode.Hard);
-        settings.SetGate(GateKind.Security, GateMode.Skip, project);
+        settings.SetCostStrategy(AutopilotCostStrategy.Balanced);
+        settings.SetCostStrategy(AutopilotCostStrategy.QualityFirst, project);
 
-        settings.Gate(GateKind.Security).Should().Be(GateMode.Hard);
-        settings.Gate(GateKind.Security, project).Should().Be(GateMode.Skip);
-
-        settings.ClearProjectGate(GateKind.Security, project);
-
-        settings.Gate(GateKind.Security, project).Should().Be(GateMode.Hard);
+        settings.CostStrategy().Should().Be(AutopilotCostStrategy.Balanced);
+        settings.CostStrategy(project).Should().Be(AutopilotCostStrategy.QualityFirst);
     }
 
     [Fact]
@@ -74,15 +68,15 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
-    public void ABlankProjectProfileOverride_DoesNotBlankTheGlobal()
+    public void ABlankProjectStringOverride_DoesNotBlankTheGlobal()
     {
         var settings = new AutopilotSettings(new FakeStorage());
         const string project = "/home/me/repo";
-        settings.SetDefaultProfileLabel("Work");
+        settings.SetCeoProfileLabel("work");
 
-        settings.SetDefaultProfileLabel(null, project);
+        settings.SetCeoProfileLabel(null, project);
 
-        settings.DefaultProfileLabel(project).Should().Be("Work");
+        settings.CeoProfileLabel(project).Should().Be("work");
     }
 
     [Fact]
@@ -97,26 +91,15 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
-    public void StageMapping_DefaultsToUnset_ThenRoundTrips()
-    {
-        var settings = new AutopilotSettings(new FakeStorage());
-
-        settings.StageFor(AutopilotRunPhase.MergeReady).Should().BeNull();
-
-        settings.SetStageFor(AutopilotRunPhase.MergeReady, "In Review");
-        settings.StageFor(AutopilotRunPhase.MergeReady).Should().Be("In Review");
-    }
-
-    [Fact]
     public void Changed_FiresOnEverySet()
     {
         var settings = new AutopilotSettings(new FakeStorage());
         var fired = 0;
         settings.Changed += () => fired++;
 
-        settings.SetGraceTimerMinutes(9);
-        settings.SetGate(GateKind.Conventions, GateMode.Hard, "/repo");
-        settings.ClearProjectGate(GateKind.Conventions, "/repo");
+        settings.SetMaxSelfFixAttempts(9);
+        settings.SetCostStrategy(AutopilotCostStrategy.QualityFirst, "/repo");
+        settings.SetCeoProfileLabel("work");
 
         fired.Should().Be(3);
     }

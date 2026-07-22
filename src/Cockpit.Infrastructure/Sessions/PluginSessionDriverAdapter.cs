@@ -41,6 +41,7 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         SupportsPermissionModeSwitch: pluginCapabilities.SupportsPermissionModeSwitch)
     {
         SupportsEnvVars = pluginCapabilities.SupportsEnvVars,
+        ConfinesFileAccessToWorkingDirectory = pluginCapabilities.ConfinesFileAccessToWorkingDirectory,
     };
 
     public string? SessionId => inner.SessionId;
