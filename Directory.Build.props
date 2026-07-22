@@ -8,11 +8,13 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.3.0: sessions in a grid, TTY and SDK, plugins with a store, workflows, delegation, voice, encrypted
+    <!-- 0.4.0: adds the host abstractions AC-174's Autopilot plan needs to name a working directory — the git-repository
+         probe (DetectGitDirectoryStatusAsync) and the shared working-path history (GetRememberedWorkingPathsAsync).
+         0.3.0 shipped sessions in a grid, TTY and SDK, plugins with a store, workflows, delegation, voice, encrypted
          credentials. Deliberately still 0.x — under 1.0.0 semver promises nothing, which is the honest state of a
          thing whose plugin contract is still moving. 1.0.0 is a promise to keep, not a compliment to pay yourself,
          and it is what switches on the minHostVersion gate (PluginLoadPolicy). -->
-    <VersionPrefix>0.3.0</VersionPrefix>
+    <VersionPrefix>0.4.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>

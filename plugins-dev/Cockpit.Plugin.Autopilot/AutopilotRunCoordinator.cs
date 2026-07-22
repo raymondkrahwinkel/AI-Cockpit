@@ -41,13 +41,13 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         AutopilotSettings settings,
         Action<Control> showStepSession,
         Action<bool> setValidating,
-        string? runWorktreePath,
+        AutopilotRunEnvironment environment,
         Func<Action, Task> runOnUi,
         CancellationToken cancellationToken)
     {
         var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
         await driver.RunAsync(
-            step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, runWorktreePath, runOnUi, step, cancellationToken),
+            step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
             cancellationToken);
     }
 
@@ -200,20 +200,24 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         AutopilotSettings settings,
         Action<Control> showStepSession,
         Action<bool> setValidating,
-        string? runWorktreePath,
+        AutopilotRunEnvironment environment,
         Func<Action, Task> runOnUi,
         AutopilotStep step,
         CancellationToken cancellationToken)
     {
-        var agentCount = Math.Max(1, step.AgentCount);
+        // Parallel agents are only safe when each gets its own worktree — a run that does not isolate (a non-git folder)
+        // has no per-agent isolation, so N agents would race on the same files in the one working directory. Force a
+        // single agent there; the split only makes sense with isolation.
+        var agentCount = environment.IsolateSteps ? Math.Max(1, step.AgentCount) : 1;
         var sessions = new List<IEmbeddedSession>(agentCount);
         var reports = new List<Task<string>>(agentCount);
 
         // The shared run worktree is used only for a single-agent step, so its work accumulates on the run's branch. A
         // parallel step (AgentCount > 1) keeps each agent in its own isolated worktree (WorktreePath left null → the host
         // creates one per agent), so they do not race on one directory's files and git index — the same isolation the
-        // parallel path had before the run-worktree change, and what this coordinator's contract promises.
-        var stepWorktreePath = agentCount == 1 ? runWorktreePath : null;
+        // parallel path had before the run-worktree change, and what this coordinator's contract promises. Null too when
+        // the run does not isolate (a non-git folder), where a step runs directly in the working directory.
+        var stepWorktreePath = agentCount == 1 ? environment.RunWorktreePath : null;
 
         // A fresh attempt clears any note the previous one left, so a rework does not show a stale reason.
         plan.NoteStep(step.Id, string.Empty);
@@ -228,14 +232,22 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
                     ProfileId = step.ProfileLabel,
                     Model = step.Model,
                     McpServers = _StepMcpServers(step),
-                    IsolateInWorktree = true,
-                    // The run's shared worktree for a single-agent step (Raymond 2026-07-22): steps run in it so their
-                    // work accumulates on one branch. A parallel step keeps each agent isolated (stepWorktreePath null →
-                    // a fresh worktree per agent). IsolateInWorktree stays true either way, so the fail-closed gate still
-                    // refuses a non-confining provider.
+                    // Isolate each step in a worktree for a git repository (the fail-closed default — the confinement
+                    // guarantee holds, and a non-confining provider is refused by the host gate). False only for a
+                    // folder the host reported is not a git repository (Raymond 2026-07-22): an admin task with no repo
+                    // runs directly in the working directory instead of being refused for "no git repository".
+                    IsolateInWorktree = environment.IsolateSteps,
+                    // The run's shared worktree for a single-agent isolated step (Raymond 2026-07-22): steps run in it so
+                    // their work accumulates on one branch. A parallel step keeps each agent isolated (stepWorktreePath
+                    // null → a fresh worktree per agent). Null when the run does not isolate.
                     WorktreePath = stepWorktreePath,
+                    // A non-isolated step (a non-git folder) has no worktree to hold it, so confine its file tools to the
+                    // working directory instead — least-privilege (security review): a local model without an OS sandbox
+                    // is held to the operator's chosen folder rather than reaching their home and up. An isolated step
+                    // does not set this — its worktree is the confinement, and this would point at the base repo, not it.
+                    ConfineFileToolsToWorkingDirectory = !environment.IsolateSteps,
                     PermissionMode = settings.AutonomyMode(),
-                    WorkingDirectory = AutopilotWorkingDirectory.Resolve(context),
+                    WorkingDirectory = environment.RepositoryDirectory,
                     InitialUserMessage = AutopilotStepBrief.For(step, agentCount, index + 1),
                     // The step agent drives itself; start its composer off so the operator does not type into it, until
                     // they deliberately intervene (EnableCurrentStepInput). The brief still submits — it is host-driven.

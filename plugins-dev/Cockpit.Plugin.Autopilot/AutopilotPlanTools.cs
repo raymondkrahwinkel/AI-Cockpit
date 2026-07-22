@@ -30,7 +30,8 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
     public string SetPlan(
         [Description("What the run is to achieve — one sentence.")] string goal,
         [Description("The ordered steps as a JSON array of {id, title, description, profile, model, brief, acceptance, hard, mcp, agents}. 'mcp' is the minimal list of MCP server ids the step needs (e.g. [\"cockpit-verify\"]) — keep it minimal, not everything, to save tokens and stay least-privilege. 'agents' is how many agents work the step at once (default 1) — use more only where the work splits cleanly without the parts touching the same files.")] string stepsJson,
-        [Description("A short run name (2-5 words) the operator recognises this run by in the queue and history — you propose it; the operator can override it before approving. Optional; when omitted the current name is kept.")] string? name = null)
+        [Description("A short run name (2-5 words) the operator recognises this run by in the queue and history — you propose it; the operator can override it before approving. Optional; when omitted the current name is kept.")] string? name = null,
+        [Description("The absolute path of the folder this run should work in, when you can resolve it from the item (e.g. the repository the issue is about) — you propose it and the operator can override it before approving. Optional; when omitted the current directory is kept. A folder that is a git repository has each step isolated in its own worktree; a plain folder (an admin task with no repo) runs without isolation.")] string? workingDirectory = null)
     {
         if (!_IsThisPlanningSession())
         {
@@ -51,7 +52,10 @@ internal sealed class AutopilotPlanTools(ICockpitHost host, AutopilotPlanControl
         // The CEO's proposed name is a suggestion the operator can override at approval; keep the current one when this
         // emission omits it, so a re-emit that only revises steps does not wipe a name the operator already set.
         var effectiveName = string.IsNullOrWhiteSpace(name) ? plan.Plan?.Name ?? string.Empty : name.Trim();
-        plan.UpdatePlan(new AutopilotPlan(effectiveGoal, plan.Plan?.Source, steps) { Name = effectiveName });
+        // Same as the name: the CEO's proposed directory pre-fills the operator's field but is theirs to override, so a
+        // re-emit that omits it keeps the current one rather than wiping a folder the operator already picked.
+        var effectiveWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? plan.Plan?.WorkingDirectory ?? string.Empty : workingDirectory.Trim();
+        plan.UpdatePlan(new AutopilotPlan(effectiveGoal, plan.Plan?.Source, steps) { Name = effectiveName, WorkingDirectory = effectiveWorkingDirectory });
         return JsonSerializer.Serialize(new { ok = true, steps = steps.Count }, Serializer);
     }
 

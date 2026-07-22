@@ -126,7 +126,15 @@
          and re-enables it to intervene). Completion and SetInputEnabled are new interface members, but no plugin
          implements IEmbeddedSession — the host hands it out — so nothing breaks; the info/request additions are
          init-properties with defaults. Additive in practice — still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.23.0</Version>
+    <!-- 1.24.0 (#AC-174): added ICockpitHost.DetectGitDirectoryStatusAsync (with the GitDirectoryStatus enum) so a
+         plugin can tell up front whether a working directory is a git repository — Autopilot isolates each step in a
+         repo but runs an admin task in a plain folder without isolation, rather than failing at the first step — and
+         GetRememberedWorkingPathsAsync/RememberWorkingPathAsync (with PluginRememberedWorkingPaths) so a plugin that
+         asks the operator to name a working directory offers the same pinned/recent folders as the New-session quick-pick.
+         The status enum defaults to Unknown (fail-closed: treat as needing isolation) and both host members are
+         default-implemented (Unknown / Empty / no-op), so existing hosts and test fakes keep compiling. Additive API —
+         still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.24.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

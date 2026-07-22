@@ -20,6 +20,14 @@ internal sealed record AutopilotPlan(
     /// </summary>
     public string Name { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The folder the run works in (AC-174), chosen by the operator at approval — the run resolves its repository from
+    /// here, so a run planned from a tracker issue (which has no session, hence no directory) still knows where to work.
+    /// Blank falls back to the active session's directory, then the cockpit's own. A folder that is a git repository is
+    /// isolated per step; a plain folder (an admin task) runs without isolation.
+    /// </summary>
+    public string WorkingDirectory { get; init; } = string.Empty;
+
     /// <summary>The run's display label — its <see cref="Name"/>, or the <see cref="Goal"/> when no name was set yet.</summary>
     public string Label => string.IsNullOrWhiteSpace(Name) ? Goal : Name;
 
@@ -36,6 +44,9 @@ internal sealed record AutopilotPlan(
 
     /// <summary>This plan with a run name — the CEO's proposal, or the operator's override at approval.</summary>
     public AutopilotPlan WithName(string name) => this with { Name = name };
+
+    /// <summary>This plan with the operator's chosen working directory, set at approval.</summary>
+    public AutopilotPlan WithWorkingDirectory(string workingDirectory) => this with { WorkingDirectory = workingDirectory };
 
     /// <summary>An empty plan to open the planning round on — the CEO fills the steps from there.</summary>
     public static AutopilotPlan Empty(AutopilotPlanSource? source, string goal) => new(goal, source, []);

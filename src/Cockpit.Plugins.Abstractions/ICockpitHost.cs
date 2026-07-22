@@ -317,6 +317,34 @@ public interface ICockpitHost
         Task.FromResult<Workspaces.PluginWorktreeInfo?>(null);
 
     /// <summary>
+    /// Reports whether <paramref name="directory"/> is a git repository (AC-174), so a plugin can decide up front whether
+    /// work there can be isolated in a worktree — a run in a real repo isolates each step, a run in a plain folder (an
+    /// admin task with no repo) cannot, and must be handled deliberately rather than failing at the first step. The
+    /// default is <see cref="Workspaces.GitDirectoryStatus.Unknown"/>, not a bool, so the decision stays fail-closed: an
+    /// older host (or a failed probe) returns Unknown, which a caller treats as "isolate / do not run free", and only a
+    /// host that positively answers <see cref="Workspaces.GitDirectoryStatus.NotARepository"/> licenses running without
+    /// isolation. Default Unknown so existing hosts (test fakes, older builds) keep compiling untouched.
+    /// </summary>
+    Task<Workspaces.GitDirectoryStatus> DetectGitDirectoryStatusAsync(string directory, CancellationToken cancellationToken = default) =>
+        Task.FromResult(Workspaces.GitDirectoryStatus.Unknown);
+
+    /// <summary>
+    /// The working directories the cockpit remembers for its New-session quick-pick (AC-174), so a plugin that asks the
+    /// operator to name a working directory can offer the same pinned favorites and recents instead of a blank field.
+    /// Default <see cref="Workspaces.PluginRememberedWorkingPaths.Empty"/> so existing hosts keep compiling untouched.
+    /// </summary>
+    Task<Workspaces.PluginRememberedWorkingPaths> GetRememberedWorkingPathsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(Workspaces.PluginRememberedWorkingPaths.Empty);
+
+    /// <summary>
+    /// Records <paramref name="directory"/> as most-recently-used in the shared working-directory history (AC-174), so a
+    /// folder the operator picked in a plugin (Autopilot's plan) shows up in the same quick-pick next time — here and in
+    /// the New-session dialog. A blank path is a no-op. Default no-op so existing hosts keep compiling untouched.
+    /// </summary>
+    Task RememberWorkingPathAsync(string directory, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    /// <summary>
     /// Opens the cockpit's own New-session dialog (#AC-96), optionally pre-filled from <paramref name="prefill"/>, and
     /// starts the session the operator confirms — the plugin equivalent of the operator pressing "New session", with
     /// the fields it knows already offered. The operator keeps full control: they see and can change every field

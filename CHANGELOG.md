@@ -100,6 +100,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: an Autopilot run now lets you name the folder it works in, right where you name the run — pick a
+  recent or pinned folder (the same ones the New-session dialog remembers) or browse to one. A run planned
+  from a YouTrack or GitHub issue no longer needs a session open on a repository to know where to work, and
+  the CEO can propose the folder for you to confirm. A folder that is a git repository still isolates each
+  step in its own worktree; a plain folder — an admin task with no repository — now runs in it directly
+  instead of failing at the first step.
 - changed: a local model whose runtime can't do tool-calling no longer just fails a tool-enabled turn. When
   the model rejects the request because its chat template can't handle tools (seen with some LM Studio GGUFs),
   the session says so plainly and retries that turn once without tools, so a plain question still gets an

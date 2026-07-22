@@ -6,6 +6,8 @@ using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Toasts;
+using Cockpit.Core.Abstractions.WorkingPaths;
+using Cockpit.Core.Abstractions.Worktrees;
 using Cockpit.Infrastructure.Consent;
 using Cockpit.Infrastructure.ManagedCli;
 using Cockpit.Infrastructure.Mcp;
@@ -374,6 +376,44 @@ internal sealed class CockpitHost(
         services.GetService<CockpitViewModel>() is { } cockpit
             ? cockpit.CreateRunWorktreeAsync(repositoryDirectory, label, cancellationToken)
             : Task.FromResult<Cockpit.Plugins.Abstractions.Workspaces.PluginWorktreeInfo?>(null);
+
+    public async Task<Cockpit.Plugins.Abstractions.Workspaces.GitDirectoryStatus> DetectGitDirectoryStatusAsync(string directory, System.Threading.CancellationToken cancellationToken)
+    {
+        // No worktree manager (or no path) means the host cannot tell — Unknown, which the caller treats as needing
+        // isolation, never as a licence to run free.
+        if (string.IsNullOrWhiteSpace(directory) || services.GetService<IWorktreeManager>() is not { } worktrees)
+        {
+            return Cockpit.Plugins.Abstractions.Workspaces.GitDirectoryStatus.Unknown;
+        }
+
+        // DetectRepositoryAsync returns null both for a real not-a-repository and for a probe that merely failed (git
+        // refusing a real repo it will not read — dubious ownership, a permission or lock error, no commit yet). Feeding
+        // that null straight to NotARepository would drop isolation for a real checkout, so the resolver decides
+        // "not a repository" from the filesystem (no .git in the tree), not from the probe failing — fail-closed.
+        var confirmedRepository = await worktrees.DetectRepositoryAsync(directory, cancellationToken).ConfigureAwait(false) is not null;
+        return GitDirectoryStatusResolver.Resolve(directory, confirmedRepository);
+    }
+
+    public async Task<Cockpit.Plugins.Abstractions.Workspaces.PluginRememberedWorkingPaths> GetRememberedWorkingPathsAsync(System.Threading.CancellationToken cancellationToken)
+    {
+        if (services.GetService<IWorkingPathHistoryStore>() is not { } store)
+        {
+            return Cockpit.Plugins.Abstractions.Workspaces.PluginRememberedWorkingPaths.Empty;
+        }
+
+        var history = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return new Cockpit.Plugins.Abstractions.Workspaces.PluginRememberedWorkingPaths(history.Favorites, history.Recent);
+    }
+
+    public async Task RememberWorkingPathAsync(string directory, System.Threading.CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || services.GetService<IWorkingPathHistoryStore>() is not { } store)
+        {
+            return;
+        }
+
+        await store.RecordRecentAsync(directory, cancellationToken).ConfigureAwait(false);
+    }
 
     // Find the session pane by its id and mutate it on the UI thread. A plugin or workflow may call from any
     // thread, and the target may already be gone (a closed session) — a no-op then, never an error.
