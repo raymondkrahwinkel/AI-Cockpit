@@ -223,11 +223,16 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    // One settled run in history: an outcome dot, its name and when it finished, and a one-line step summary (each step's
-    // title with a ✓/✗ so it reads at a glance what was done). A blocked run also shows why, so history explains a stop.
+    // One settled run in history: an outcome dot, its name and finish time, the outcome line (flagging any failed steps
+    // even on a merge-ready run so a green dot never hides them), and each step with its mark and — for a step that
+    // failed or was blocked — the reason it carried, so history explains why a step did not pass, not just that it did
+    // not (Raymond 2026-07-22).
     private Control _BuildHistoryRow(AutopilotRunRecord record)
     {
         var mergeReady = record.Outcome == AutopilotPlanPhase.MergeReady;
+        var failedCount = record.Steps.Count(step => step.Status is AutopilotStepStatus.Failed);
+        var clean = mergeReady && failedCount == 0;
+
         var dot = new Border
         {
             Width = 10,
@@ -236,7 +241,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 4, 10, 0),
             [DockPanel.DockProperty] = Dock.Left,
-            Background = mergeReady ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+            // A clean merge-ready is green; a merge-ready that still had failed (optional) steps, or a blocked run, is
+            // amber — so a run with failures never reads as an unqualified success.
+            Background = clean ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
         };
 
         var title = new DockPanel
@@ -264,24 +271,43 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
+        var outcomeText = mergeReady
+            ? failedCount > 0 ? $"Merge-ready · {failedCount} optional step(s) failed" : "Merge-ready"
+            : $"Blocked — {record.BlockReason}";
+
         var meta = new StackPanel { Spacing = 2, Children = { title } };
         meta.Children.Add(new TextBlock
         {
-            Text = mergeReady ? "Merge-ready" : $"Blocked — {record.BlockReason}",
+            Text = outcomeText,
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = mergeReady ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+            Foreground = clean ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
         });
 
-        if (_HistoryStepsSummary(record.Steps) is { Length: > 0 } steps)
+        // Each step on its own line with a mark, and — where it failed or was blocked — the reason it carried underneath,
+        // so the operator sees why without reopening the run.
+        foreach (var step in record.Steps)
         {
             meta.Children.Add(new TextBlock
             {
-                Text = steps,
+                Text = $"{_HistoryStepMark(step.Status)}  {step.Title}",
                 FontSize = 10.5,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = _Brush("CockpitTextSecondaryBrush"),
+                Margin = new Thickness(0, 2, 0, 0),
+                Foreground = step.Status is AutopilotStepStatus.Failed ? _Brush("CockpitStatusErrorBrush") : _Brush("CockpitTextSecondaryBrush"),
             });
+
+            if (step.Status is AutopilotStepStatus.Failed or AutopilotStepStatus.Blocked && !string.IsNullOrWhiteSpace(step.Note))
+            {
+                meta.Children.Add(new TextBlock
+                {
+                    Text = step.Note,
+                    FontSize = 10.5,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(16, 0, 0, 0),
+                    Foreground = _Brush("CockpitTextFaintBrush"),
+                });
+            }
         }
 
         return new Border
@@ -293,27 +319,14 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    // A compact one-line "what was done" for a settled run: each step's title prefixed with a mark for how it ended.
-    private static string _HistoryStepsSummary(IReadOnlyList<AutopilotRunStepRecord> steps)
+    private static string _HistoryStepMark(AutopilotStepStatus status) => status switch
     {
-        if (steps.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        return string.Join("   ", steps.Select(step =>
-        {
-            var mark = step.Status switch
-            {
-                AutopilotStepStatus.Passed => "✓",
-                AutopilotStepStatus.Failed => "✗",
-                AutopilotStepStatus.Skipped => "–",
-                AutopilotStepStatus.Blocked => "⏸",
-                _ => "·",
-            };
-            return $"{mark} {step.Title}";
-        }));
-    }
+        AutopilotStepStatus.Passed => "✓",
+        AutopilotStepStatus.Failed => "✗",
+        AutopilotStepStatus.Skipped => "–",
+        AutopilotStepStatus.Blocked => "⏸",
+        _ => "·",
+    };
 
     // The finish time as a short, local, human string — parsed from the stored ISO stamp; the raw stamp is the fallback
     // if it somehow does not parse, so a row never shows blank.
