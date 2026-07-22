@@ -43,7 +43,7 @@ public class AutopilotRunManagerTests
             return new AutopilotRunHandle(_Coordinator(), gate.Task);
         }
 
-        var manager = new AutopilotRunManager(queue, settings, Start);
+        var manager = new AutopilotRunManager(queue, settings) { Runner = Start };
         manager.Submit(_Plan("a"));
         manager.Submit(_Plan("b"));
         manager.Submit(_Plan("c"));
@@ -78,7 +78,7 @@ public class AutopilotRunManagerTests
             return new AutopilotRunHandle(_Coordinator(), gate.Task);
         }
 
-        var manager = new AutopilotRunManager(queue, settings, Start);
+        var manager = new AutopilotRunManager(queue, settings) { Runner = Start };
         manager.Submit(_Plan("a"));
         manager.Submit(_Plan("b"));
 

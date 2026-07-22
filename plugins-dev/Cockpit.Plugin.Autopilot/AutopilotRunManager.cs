@@ -11,15 +11,36 @@ internal sealed record AutopilotRunHandle(AutopilotRunCoordinator Coordinator, T
 /// an approved plan is submitted here, executes now if there is a free slot, else waits in the <see cref="AutopilotRunQueue"/>
 /// until one frees. Each running run gets its own coordinator; a tool call (a step reporting done, the CEO validating)
 /// is routed to whichever running run owns the caller's pane — every coordinator self-gates on its own panes, so trying
-/// each is safe. Starting a run is injected (<c>start</c>) so the concurrency logic is testable without live sessions.
+/// each is safe. Starting a run is the <see cref="Runner"/> the workspace body sets while it is open (a run needs the
+/// workspace's context to embed sessions), so the concurrency logic here is testable without live sessions by setting a
+/// fake runner. A run submitted with no runner set (the workspace closed) simply waits in the queue until one is.
 /// </summary>
-internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSettings settings, Func<AutopilotPlan, AutopilotRunHandle> start)
+internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSettings settings)
 {
     private readonly Lock _lock = new();
     private readonly List<AutopilotRunCoordinator> _active = [];
+    private Func<AutopilotPlan, AutopilotRunHandle>? _runner;
 
     /// <summary>Raised when a run starts or ends, or the queue changes — the surface re-renders and the pump re-checks capacity.</summary>
     public event Action? Changed;
+
+    /// <summary>
+    /// Starts a run for a dequeued plan and hands back its coordinator and completion task. Set by the workspace body
+    /// while it is open (a run embeds sessions in the workspace's context) and cleared when it closes; setting it starts
+    /// any runs that were waiting for a runner. Null means no run can start yet, so plans wait in the queue.
+    /// </summary>
+    public Func<AutopilotPlan, AutopilotRunHandle>? Runner
+    {
+        get => _runner;
+        set
+        {
+            _runner = value;
+            if (value is not null)
+            {
+                _Pump();
+            }
+        }
+    }
 
     /// <summary>The coordinators of the runs executing now — how the surface finds each running run to render it.</summary>
     public IReadOnlyList<AutopilotRunCoordinator> Active
@@ -85,6 +106,12 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
     {
         while (true)
         {
+            var runner = _runner;
+            if (runner is null)
+            {
+                return;
+            }
+
             AutopilotPlan? next;
             lock (_lock)
             {
@@ -96,7 +123,7 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
                 _starting++;
             }
 
-            var handle = start(next!);
+            var handle = runner(next!);
             lock (_lock)
             {
                 _starting--;

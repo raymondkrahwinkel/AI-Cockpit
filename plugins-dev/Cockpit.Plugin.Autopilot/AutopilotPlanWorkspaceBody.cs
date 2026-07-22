@@ -23,25 +23,31 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly IWorkspaceContext _context;
     private readonly AutopilotSettings _settings;
     private readonly AutopilotPlanController _plan;
-    private readonly AutopilotRunCoordinator _coordinator;
+    private readonly AutopilotRunManager _manager;
+    private readonly AutopilotRunQueue _queue;
+    private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
     private bool _popoutOpen;
     private IEmbeddedSession? _ceo;
-    private Control? _stepView;
-    private CancellationTokenSource? _runCts;
-    private bool _runStarted;
 
-    public AutopilotPlanWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunCoordinator coordinator)
+    public AutopilotPlanWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue)
     {
         _host = host;
         _context = context;
         _settings = settings;
         _plan = plan;
-        _coordinator = coordinator;
+        _manager = manager;
+        _queue = queue;
 
-        // Cancel a running autonomous run when this workspace is really closed (its tab dismissed, not a mere tab-switch)
-        // so it does not keep going headless with no surface to stop it (AC-174). Subscribed for the body's whole life —
-        // the context and the body are dropped together at close, so there is nothing to unsubscribe.
+        // While this workspace is open it is the manager's runner — a run embeds its sessions in this context — so setting
+        // it starts any runs already queued, and clearing it on close stops runs from starting with no surface. The
+        // manager and queue raise Changed as runs start/end/queue, which re-renders the surface.
+        _manager.Runner = _StartRun;
+        _manager.Changed += _OnStateChanged;
+        _queue.Changed += _OnStateChanged;
+
+        // Stop every running run when this workspace is really closed (its tab dismissed, not a mere tab-switch) so none
+        // keeps going headless with no surface to stop it (AC-174).
         _context.Closed += _OnWorkspaceClosed;
 
         var header = new Border
@@ -85,10 +91,22 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         base.OnDetachedFromVisualTree(e);
     }
 
-    // The workspace was really closed (WorkspacesViewModel raised it on tab-dismiss, on the UI thread): stop the run so it
-    // does not run on headless. Cancelling is enough — the driver loop and the coordinator's awaits unwind, closing the
-    // step sessions and the CEO in the run's finally.
-    private void _OnWorkspaceClosed(object? sender, EventArgs e) => _runCts?.Cancel();
+    // The workspace was really closed (WorkspacesViewModel raised it on tab-dismiss, on the UI thread): stop every
+    // running run so none runs on headless, and stop being the manager's runner so a queued run does not start with no
+    // surface. Cancelling a run unwinds its driver loop and coordinator awaits, closing its step sessions and CEO.
+    private void _OnWorkspaceClosed(object? sender, EventArgs e)
+    {
+        _manager.Runner = null;
+        _manager.Changed -= _OnStateChanged;
+        _queue.Changed -= _OnStateChanged;
+        foreach (var context in _activeContexts.ToList())
+        {
+            context.Cancel();
+        }
+    }
+
+    // The manager or queue changed (a run started/ended/queued) — re-render on the UI thread.
+    private void _OnStateChanged() => _OnUi(_Render);
 
     private void _OnChanged(object? sender, EventArgs e)
     {
@@ -113,11 +131,157 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Dispatcher.UIThread.Post(() => _ = _ShowPlanningPopoutAsync());
         }
 
-        _bodyHost.Content = _plan.Phase == AutopilotPlanPhase.Planning
-            ? _CentredHint(MaterialIconKind.RobotHappyOutline, "Planning with the CEO…", "Shape the plan in the pop-out, then approve it to start the run.")
-            : _plan.Plan is { Steps.Count: > 0 } plan
-                ? _BuildPipeline(plan)
-                : _BuildEmptyState();
+        _bodyHost.Content = _BuildSurface();
+    }
+
+    // The run surface (AC-174): a bar with New run and the queued runs on top, then the running run's pipeline below.
+    // The first running run is shown in full; any others (with a concurrency cap above one) are listed on the bar.
+    private Control _BuildSurface()
+    {
+        var surface = new DockPanel { LastChildFill = true };
+        var bar = _BuildQueueBar();
+        DockPanel.SetDock(bar, Dock.Top);
+        surface.Children.Add(bar);
+
+        surface.Children.Add(_activeContexts.Count > 0
+            ? _BuildPipeline(_activeContexts[0])
+            : _CentredHint(MaterialIconKind.RobotOutline, "No run is executing", "Start one with New run, or queue several — they run one after another, up to the concurrency you set."));
+
+        return surface;
+    }
+
+    // The bar above the run: a New-run button, and the queued runs (with the running count) that the operator can
+    // reorder or drop before they run.
+    private Control _BuildQueueBar()
+    {
+        var newRun = new Button
+        {
+            Content = "+ New run",
+            Padding = new Thickness(12, 6),
+            CornerRadius = new CornerRadius(6),
+            FontWeight = FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            [DockPanel.DockProperty] = Dock.Left,
+        };
+        newRun.Click += (_, _) => _StartPlanningRound();
+
+        var running = _activeContexts.Count;
+        var summary = new TextBlock
+        {
+            Text = running switch
+            {
+                0 when _queue.Count == 0 => "No runs queued.",
+                _ => $"{running} running · {_queue.Count} queued",
+            },
+            FontSize = 11,
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+            [DockPanel.DockProperty] = Dock.Left,
+        };
+
+        var head = new Border
+        {
+            Padding = new Thickness(12, 8),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            [DockPanel.DockProperty] = Dock.Top,
+            Child = new DockPanel { LastChildFill = false, Children = { newRun, summary } },
+        };
+
+        if (_queue.Count == 0)
+        {
+            return head;
+        }
+
+        var list = new StackPanel { Spacing = 0 };
+        for (var index = 0; index < _queue.Items.Count; index++)
+        {
+            list.Children.Add(_BuildQueueRow(index, _queue.Items[index]));
+        }
+
+        return new DockPanel { LastChildFill = false, Children = { head, new Border { [DockPanel.DockProperty] = Dock.Top, Child = list } } };
+    }
+
+    // One queued run: its goal, and controls to move it up/down or drop it before it runs.
+    private Control _BuildQueueRow(int index, AutopilotPlan plan)
+    {
+        var goal = new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(plan.Goal) ? "(untitled run)" : plan.Goal,
+            FontSize = 12,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = _Brush("CockpitTextPrimaryBrush"),
+        };
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, [DockPanel.DockProperty] = Dock.Right };
+        buttons.Children.Add(_QueueButton("↑", () => _queue.MoveUp(index)));
+        buttons.Children.Add(_QueueButton("↓", () => _queue.MoveDown(index)));
+        buttons.Children.Add(_QueueButton("✕", () => _queue.RemoveAt(index)));
+
+        return new Border
+        {
+            Padding = new Thickness(12, 6),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            BorderBrush = _Brush("CockpitHairlineBrush"),
+            Background = _Brush("CockpitSecondaryBgBrush"),
+            Child = new DockPanel { LastChildFill = true, Children = { buttons, goal } },
+        };
+    }
+
+    private Button _QueueButton(string glyph, Action onClick)
+    {
+        var button = new Button { Content = glyph, Padding = new Thickness(7, 2), FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+        button.Click += (_, _) => onClick();
+        return button;
+    }
+
+    // New run: open a fresh planning round on the (idle) planning controller. The render opens the pop-out when the phase
+    // turns Planning; a run already in flight is unaffected — planning is decoupled from executing.
+    private void _StartPlanningRound()
+    {
+        if (_plan.Phase == AutopilotPlanPhase.Planning)
+        {
+            return;
+        }
+
+        _plan.BeginPlanning(AutopilotPlan.Empty(source: null, goal: string.Empty));
+    }
+
+    // The manager's runner (AC-174): start a run for a dequeued plan in its own context, track it for the surface, and
+    // hand the manager the coordinator and completion task. Removing it from the surface when it settles is marshalled to
+    // the UI thread, since the run task can complete off it.
+    private AutopilotRunHandle _StartRun(AutopilotPlan plan)
+    {
+        var context = new AutopilotRunContext(_host, _context, _settings, plan, _RunOnUiAsync);
+        _ = _RunOnUiAsync(() =>
+        {
+            _activeContexts.Add(context);
+            context.Changed += _OnStateChanged;
+            _Render();
+        });
+        _ = _RemoveWhenDoneAsync(context);
+        return new AutopilotRunHandle(context.Coordinator, context.Completed);
+    }
+
+    private async Task _RemoveWhenDoneAsync(AutopilotRunContext context)
+    {
+        try
+        {
+            await context.Completed;
+        }
+        catch (Exception)
+        {
+            // The run settled or died; either way drop it from the surface.
+        }
+
+        _OnUi(() =>
+        {
+            _activeContexts.Remove(context);
+            context.Changed -= _OnStateChanged;
+            _Render();
+        });
     }
 
     // The planning pop-out (AC-174/AC-175): the draft plan on the left updating live as the CEO revises it, the CEO's
@@ -148,90 +312,28 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             });
             _plan.BindSession(_ceo.PaneId);
             await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(_ceo!), 980, 660);
-
-            // Approved (the plan froze to Running): the CEO stays alive as the run's validator and the autonomous run
-            // starts over this same surface. Anything else (cancelled, or an error above): close the CEO — nothing runs.
-            if (_plan.Phase == AutopilotPlanPhase.Running && _ceo is { } approved)
-            {
-                _StartRun(approved);
-                return;
-            }
         }
         catch (Exception)
         {
-            // A failed pop-out must not crash the surface; the operator can retry from the trigger.
+            // A failed pop-out must not crash the surface; the operator can retry from New run.
         }
 
-        // Dismissed or errored (not approved — the approved path returned above): let the pop-out reopen for a fresh
-        // round, tear the CEO down, and clear the draft so the surface returns to its empty state instead of this render
-        // immediately reopening the pop-out on the still-Planning phase.
+        // The dialog closed — approved (the Approve button already submitted the plan to the manager, which starts it or
+        // queues it) or cancelled. Either way the planning CEO's job is done, so close it and reset the planning
+        // controller so the next New run starts a fresh round. The run itself executes on its own context with its own
+        // CEO validator, not this planning session.
         _popoutOpen = false;
 
-        if (_ceo is { } cancelled)
+        if (_ceo is { } planningCeo)
         {
             _ceo = null;
-            _ = cancelled.CloseAsync();
+            _ = planningCeo.CloseAsync();
         }
 
         if (_plan.Phase == AutopilotPlanPhase.Planning)
         {
             _plan.CancelPlanning();
         }
-    }
-
-    // Start the autonomous run once, on approval: the driver runs each step's agent and the still-live CEO validates
-    // each against its acceptance. Fire-and-forget so the dialog-close returns; the surface follows through plan.Changed
-    // and the step-session callback. The CEO is torn down when the run settles.
-    private void _StartRun(IEmbeddedSession ceo)
-    {
-        if (_runStarted)
-        {
-            return;
-        }
-
-        _runStarted = true;
-        _runCts = new CancellationTokenSource();
-        _ = _RunAsync(ceo, _runCts.Token);
-    }
-
-    private async Task _RunAsync(IEmbeddedSession ceo, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await _coordinator.RunAsync(_context, ceo, _settings, _ShowStepSession, _RunOnUiAsync, cancellationToken);
-        }
-        catch (Exception)
-        {
-            // A failed or cancelled run must not crash the surface; the pipeline shows the settled or blocked phase.
-        }
-        finally
-        {
-            // All on the UI thread: clearing the step view and rendering touch Avalonia controls, and marshalling the CEO
-            // teardown + the cts dispose here too keeps them ordered against _OnWorkspaceClosed's cancel (also UI-thread),
-            // so a close racing a settle cannot dispose the cts out from under the cancel.
-            _OnUi(() =>
-            {
-                _stepView = null;
-
-                if (_ceo is { } settled)
-                {
-                    _ceo = null;
-                    _ = settled.CloseAsync();
-                }
-
-                _runCts?.Dispose();
-                _runCts = null;
-                _Render();
-            });
-        }
-    }
-
-    // The coordinator hands the running step's live view here — show it in the run pipeline's right pane. Called inside
-    // the coordinator's UI marshalling, so it is already on the UI thread.
-    private void _ShowStepSession(Control view)
-    {
-        _stepView = view;
-        _Render();
     }
 
     // Runs a UI action for the coordinator (session embedding and teardown touch Avalonia controls; the driver loop does
@@ -350,7 +452,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         button.Click += (sender, _) =>
         {
-            _plan.Approve();
+            // Approve submits the planned draft to the run manager, which runs it now if there is a free slot or queues
+            // it behind the others — it does not run on the planning controller. Then close the dialog.
+            if (_plan.Plan is { Steps.Count: > 0 } plan)
+            {
+                _manager.Submit(plan);
+            }
+
             (sender as Control)?.FindAncestorOfType<Window>()?.Close();
         };
         return button;
@@ -463,29 +571,42 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
     }
 
-    // The pipeline: a scrollable column of step blocks on the left, and the active step's session (or a hint) on the right.
-    private Control _BuildPipeline(AutopilotPlan plan)
+    // One running run's pipeline: its goal and step blocks on the left, its active step's session (or a hint) on the right.
+    private Control _BuildPipeline(AutopilotRunContext context)
     {
+        var controller = context.Controller;
+        var plan = controller.Plan;
+
+        var goal = new TextBlock
+        {
+            Text = plan?.Goal is { Length: > 0 } text ? text : "Autopilot run",
+            FontWeight = FontWeight.SemiBold,
+            FontSize = 12.5,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(14, 12, 14, 8),
+            [DockPanel.DockProperty] = Dock.Top,
+        };
+
         var left = new Border
         {
             Width = 300,
             BorderThickness = new Thickness(0, 0, 1, 0),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             Background = _Brush("CockpitSecondaryBgBrush"),
-            Child = new ScrollViewer { Content = _BuildBlocks(plan) },
+            [DockPanel.DockProperty] = Dock.Left,
+            Child = new DockPanel { LastChildFill = true, Children = { goal, new ScrollViewer { Content = _BuildBlocks(plan) } } },
         };
-        left[DockPanel.DockProperty] = Dock.Left;
 
         // Awaiting the operator (AC-155): the run parked on a blockade — show the question and an answer box instead of
         // the running session. Otherwise the live step session (under an intervene bar), or a hint between steps.
         var right = new Border
         {
-            Padding = _plan.Phase == AutopilotPlanPhase.AwaitingOperator || _stepView is null ? new Thickness(16) : new Thickness(0),
-            Child = _plan.Phase == AutopilotPlanPhase.AwaitingOperator
-                ? _BuildBlockadePanel()
-                : _stepView is { } stepView
-                    ? _BuildStepSurface(stepView)
-                    : _plan.ActiveStep is { } active
+            Padding = controller.Phase == AutopilotPlanPhase.AwaitingOperator || context.StepView is null ? new Thickness(16) : new Thickness(0),
+            Child = controller.Phase == AutopilotPlanPhase.AwaitingOperator
+                ? _BuildBlockadePanel(context)
+                : context.StepView is { } stepView
+                    ? _BuildStepSurface(context, stepView)
+                    : controller.ActiveStep is { } active
                         ? _CentredHint(MaterialIconKind.PlayCircleOutline, active.Title, active.Description)
                         : _CentredHint(MaterialIconKind.RobotOutline, "Waiting for the next step", "The running step's live session shows here."),
         };
@@ -496,7 +617,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // The running step's session under an intervene bar (AC-174): the step runs autonomously with its composer off, so a
     // bar over it says so and offers one button that hands the operator the keyboard (EnableCurrentStepInput). Kept a
     // thin affordance — the operator stays out of the loop unless they choose to step in.
-    private Control _BuildStepSurface(Control stepView)
+    private Control _BuildStepSurface(AutopilotRunContext context, Control stepView)
     {
         // The step view is a persistent control (the live embedded session), reused across renders. _Render rebuilds
         // this whole pipeline while the previous one is still on the host, so the view still sits in the previous
@@ -513,7 +634,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Center,
             [DockPanel.DockProperty] = Dock.Right,
         };
-        intervene.Click += (_, _) => _coordinator.EnableCurrentStepInput();
+        intervene.Click += (_, _) => context.Coordinator.EnableCurrentStepInput();
 
         var bar = new Border
         {
@@ -572,7 +693,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
     // The blockade panel (AC-155): the step's question to the operator, an answer box, and a Send that relays the reply
     // to the blocked session and resumes the run. The step blocks stay on the left; only the right pane changes.
-    private Control _BuildBlockadePanel()
+    private Control _BuildBlockadePanel(AutopilotRunContext context)
     {
         var answer = new TextBox
         {
@@ -597,7 +718,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             var text = answer.Text;
             if (!string.IsNullOrWhiteSpace(text))
             {
-                _ = _coordinator.AnswerBlockadeAsync(text);
+                _ = context.Coordinator.AnswerBlockadeAsync(text);
             }
         };
 
@@ -616,7 +737,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                         new TextBlock { Text = "Waiting for you", FontWeight = FontWeight.SemiBold, Foreground = _Brush("CockpitStatusWaitingBrush") },
                         new TextBlock
                         {
-                            Text = _plan.PendingQuestion ?? "The run is blocked and needs your answer.",
+                            Text = context.Controller.PendingQuestion ?? "The run is blocked and needs your answer.",
                             FontSize = 14,
                             TextWrapping = TextWrapping.Wrap,
                             Foreground = _Brush("CockpitTextPrimaryBrush"),
@@ -776,9 +897,6 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 },
             },
         };
-
-    private Control _BuildEmptyState() =>
-        _CentredHint(MaterialIconKind.RobotOutline, "No plan yet", "Start Autopilot on an issue, or plan from scratch with the CEO — the pipeline lands here.");
 
     private static IBrush? _Brush(string key) =>
         Application.Current?.TryFindResource(key, out var value) == true && value is IBrush brush ? brush : null;

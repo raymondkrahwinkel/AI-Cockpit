@@ -13,7 +13,7 @@ namespace Cockpit.Plugin.Autopilot;
 /// CEO session can validate, so an agent cannot report for work that is not its own or spoof a pane id it types. Each
 /// call hands the outcome to the <see cref="AutopilotRunCoordinator"/>, which is what the executeStep adapter awaits.
 /// </summary>
-internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunCoordinator coordinator)
+internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunManager manager)
 {
     /// <summary>The in-process MCP server name the plugin mounts these tools under — dark once a run has settled.</summary>
     internal const string EndpointName = "cockpit-autopilot-run";
@@ -26,7 +26,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunCoordinat
         [Description("A short summary of what you did and the result, for the CEO to validate against the step's acceptance.")] string summary)
     {
         var pane = host.CurrentMcpCallerPaneId;
-        if (string.IsNullOrEmpty(pane) || !coordinator.ReportStepDone(pane, summary ?? string.Empty))
+        if (string.IsNullOrEmpty(pane) || !manager.ReportStepDone(pane, summary ?? string.Empty))
         {
             return _Fail("This call is not from an active Autopilot step session.");
         }
@@ -41,7 +41,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunCoordinat
         [Description("A one-line reason for the verdict.")] string? reason = null)
     {
         var pane = host.CurrentMcpCallerPaneId;
-        if (string.IsNullOrEmpty(pane) || !coordinator.ReportValidation(pane, passed, string.IsNullOrWhiteSpace(reason) ? null : reason.Trim()))
+        if (string.IsNullOrEmpty(pane) || !manager.ReportValidation(pane, passed, string.IsNullOrWhiteSpace(reason) ? null : reason.Trim()))
         {
             return _Fail("This call is not from the run's CEO session, or no validation is pending.");
         }
@@ -55,7 +55,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunCoordinat
         [Description("The question or blocker the operator needs to resolve, in one message.")] string question)
     {
         var pane = host.CurrentMcpCallerPaneId;
-        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(question) || !coordinator.ReportBlocked(pane, question.Trim()))
+        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(question) || !manager.ReportBlocked(pane, question.Trim()))
         {
             return _Fail("A blockade needs a question, and only the run's live step or CEO session can raise one while it is running.");
         }
@@ -69,7 +69,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunCoordinat
         [Description("The stage to move the source issue to, in the tracker's own vocabulary.")] string stage)
     {
         var pane = host.CurrentMcpCallerPaneId;
-        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(stage) || !await coordinator.ReportTrackerStageAsync(pane, stage.Trim()))
+        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(stage) || !await manager.ReportTrackerStageAsync(pane, stage.Trim()))
         {
             return _Fail("Only the run's CEO session can move a source issue's stage, and only for a run triggered from a tracker issue whose tracker plugin is installed.");
         }
@@ -83,7 +83,7 @@ internal sealed class AutopilotRunTools(ICockpitHost host, AutopilotRunCoordinat
         [Description("The comment to post on the source issue.")] string note)
     {
         var pane = host.CurrentMcpCallerPaneId;
-        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(note) || !await coordinator.ReportTrackerNoteAsync(pane, note.Trim()))
+        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(note) || !await manager.ReportTrackerNoteAsync(pane, note.Trim()))
         {
             return _Fail("Only the run's CEO session can comment on a source issue, and only for a run triggered from a tracker issue whose tracker plugin is installed.");
         }

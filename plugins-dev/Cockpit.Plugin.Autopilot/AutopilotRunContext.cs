@@ -1,0 +1,119 @@
+using Avalonia.Controls;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Workspaces;
+
+namespace Cockpit.Plugin.Autopilot;
+
+/// <summary>
+/// One running Autopilot run and its surface state (AC-174): its own plan controller and coordinator, the CEO validator
+/// session it embeds, and the live step view to show. Created per dequeued plan by the workspace body; it runs the plan
+/// to a settled end — embedding a fresh CEO validator (the planning round is long closed) and, through the coordinator,
+/// each step's agent — and raises <see cref="Changed"/> as its pipeline or step view moves so the surface re-renders it.
+/// Several can run at once: each is independent, and its coordinator self-gates every tool call on its own panes.
+/// </summary>
+internal sealed class AutopilotRunContext
+{
+    private readonly ICockpitHost _host;
+    private readonly IWorkspaceContext _context;
+    private readonly AutopilotSettings _settings;
+    private readonly Func<Action, Task> _runOnUi;
+    private readonly CancellationTokenSource _cts = new();
+    private IEmbeddedSession? _ceo;
+
+    public AutopilotRunContext(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
+    {
+        _host = host;
+        _context = context;
+        _settings = settings;
+        _runOnUi = runOnUi;
+
+        Plan = plan;
+        Controller = new AutopilotPlanController();
+        Controller.BeginPlanning(plan);
+        Coordinator = new AutopilotRunCoordinator(host, Controller);
+        Completed = _RunAsync(plan);
+    }
+
+    /// <summary>The plan this run drives — its goal is the run's label on the surface.</summary>
+    public AutopilotPlan Plan { get; }
+
+    /// <summary>The run's plan controller and where each step sits — what the surface renders as this run's pipeline.</summary>
+    public AutopilotPlanController Controller { get; }
+
+    /// <summary>The run's coordinator — how a tool call routes to it, and how the operator answers its blockade or hands it the keyboard.</summary>
+    public AutopilotRunCoordinator Coordinator { get; }
+
+    /// <summary>Completes when the run settles or is cancelled — what the manager awaits to free the slot.</summary>
+    public Task Completed { get; }
+
+    /// <summary>The running step's live view, or null between steps.</summary>
+    public Control? StepView { get; private set; }
+
+    /// <summary>Raised on this run's pipeline change or step-view change, so the surface re-renders it.</summary>
+    public event Action? Changed;
+
+    /// <summary>Stops the run — its workspace closed, or the operator dropped it.</summary>
+    public void Cancel() => _cts.Cancel();
+
+    private async Task _RunAsync(AutopilotPlan plan)
+    {
+        // Re-raise the controller's own change (a step started/settled/noted) as this run's Changed so the surface
+        // re-renders this run's pipeline; dropped with the run since the controller is not shared.
+        void OnControllerChanged(object? sender, EventArgs e) => Changed?.Invoke();
+        Controller.Changed += OnControllerChanged;
+
+        try
+        {
+            // A fresh CEO validator for this run (the planning round is closed): embedded on the CEO profile and briefed
+            // to validate. It only validates — the step agents do the work in their own isolated worktrees.
+            IEmbeddedSession? ceo = null;
+            await _runOnUi(() =>
+            {
+                ceo = _context.EmbedSession(new EmbeddedSessionRequest
+                {
+                    ProfileId = _settings.CeoProfileLabel(),
+                    Model = _settings.CeoModel(),
+                    WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context),
+                    AppendSystemPrompt = AutopilotValidatorBrief.For(plan),
+                });
+            });
+
+            if (ceo is null)
+            {
+                return;
+            }
+
+            _ceo = ceo;
+            Controller.BindSession(ceo.PaneId);
+            Controller.Approve();
+
+            await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _runOnUi, _cts.Token);
+        }
+        catch (Exception)
+        {
+            // A failed or cancelled run must not crash the surface; the pipeline shows its settled or blocked state.
+        }
+        finally
+        {
+            Controller.Changed -= OnControllerChanged;
+            await _runOnUi(() =>
+            {
+                StepView = null;
+                if (_ceo is { } settled)
+                {
+                    _ceo = null;
+                    _ = settled.CloseAsync();
+                }
+
+                _cts.Dispose();
+                Changed?.Invoke();
+            });
+        }
+    }
+
+    private void _ShowStepView(Control view)
+    {
+        StepView = view;
+        Changed?.Invoke();
+    }
+}

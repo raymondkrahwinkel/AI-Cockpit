@@ -30,27 +30,27 @@ public sealed class AutopilotPlugin : ICockpitPlugin
     {
         var settings = new AutopilotSettings(host.Storage);
 
-        // The CEO plan-flow controller (AC-174): the single run's state, from the planning round through the autonomous run.
-        var planRuns = new AutopilotPlanController();
+        // The planning controller (AC-174): the CEO's live draft during one planning round. Planning is decoupled from
+        // executing — a frozen plan goes to the run queue, and runs execute on their own controllers — so the operator
+        // can plan a new run while others run.
+        var planController = new AutopilotPlanController();
 
-        // Drives an approved plan's autonomous run: embeds each step's agent, awaits its done-report, has the CEO
-        // validate it. Shared with the run's MCP tools (below) and the workspace body (which starts it on approval).
-        var coordinator = new AutopilotRunCoordinator(host, planRuns);
+        // The queue of approved runs (persistent) and the manager that runs them up to the concurrency cap.
+        var queue = new AutopilotRunQueue(host.Storage);
+        var manager = new AutopilotRunManager(queue, settings);
 
         // The gear next to the plugin in the manager opens this — the global-level settings. Handed the host so the
         // CEO-profile picker can list the cockpit's profiles and offer each one's models.
         host.AddSettings(() => new AutopilotSettingsControl(settings, host));
 
         // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, and pane-scoped so only
-        // the bound CEO session may set the plan. The workspace body briefs the CEO to call it; the operator approves the
-        // plan in the UI to freeze it and start the run.
-        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planRuns), isEnabled: () => planRuns.Phase == AutopilotPlanPhase.Planning);
+        // the bound CEO session may set the plan. The workspace body briefs the CEO to call it; approving submits the plan.
+        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning);
 
-        // The autonomous run's report channel (AC-174): a step agent signals done, the CEO reports its validation
-        // verdict — both pane-scoped. Enabled from planning through the run so the CEO session (started in the planning
-        // round) carries the validate tool, and step agents (started during the run) carry the done tool; dark once
-        // the run settles.
-        _ = host.AddMcpEndpoint(AutopilotRunTools.EndpointName, new AutopilotRunTools(host, coordinator), isEnabled: () => planRuns.Phase is AutopilotPlanPhase.Planning or AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator);
+        // The autonomous run's report channel (AC-174): a step agent signals done, a run's CEO validator reports its
+        // verdict — both pane-scoped, routed by the manager to whichever run owns the caller pane. Live while any run is
+        // executing; dark when none is.
+        _ = host.AddMcpEndpoint(AutopilotRunTools.EndpointName, new AutopilotRunTools(host, manager), isEnabled: () => manager.Active.Count > 0);
 
         // The CEO-flow trigger (AC-174): a tracker's "Plan in Autopilot" hands the item to the CEO planning round with
         // its source to draft from.
@@ -65,7 +65,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
             // Refused while a run is already live (BeginPlanning returns false) so a second trigger cannot overwrite it;
             // the caller is told it is busy rather than a new run silently replacing the running one.
-            if (!planRuns.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title)))
+            if (!planController.BeginPlanning(AutopilotPlan.Empty(AutopilotPlanSource.FromRun(run), run.Title)))
             {
                 await host.OpenWorkspaceAsync("workspace.autopilot.plan");
                 return new Dictionary<string, string> { ["status"] = "busy", ["issue"] = run.IssueId };
@@ -76,7 +76,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         });
 
         // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot (CEO)", context => new AutopilotPlanWorkspaceBody(host, context, settings, planRuns, coordinator))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot (CEO)", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue))
         {
             IconKind = MaterialIconKind.RobotHappyOutline,
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
@@ -94,7 +94,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
             // BeginPlanning refuses (returns false) while a run is live, so a second click cannot reset it; either way we
             // surface the workspace — freshly planning, or the run already in flight.
-            _ = planRuns.BeginPlanning(AutopilotPlan.Empty(source: null, goal: string.Empty));
+            _ = planController.BeginPlanning(AutopilotPlan.Empty(source: null, goal: string.Empty));
             _ = host.OpenWorkspaceAsync("workspace.autopilot.plan");
         });
     }
