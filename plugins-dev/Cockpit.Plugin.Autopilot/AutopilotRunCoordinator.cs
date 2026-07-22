@@ -209,6 +209,12 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         var sessions = new List<IEmbeddedSession>(agentCount);
         var reports = new List<Task<string>>(agentCount);
 
+        // The shared run worktree is used only for a single-agent step, so its work accumulates on the run's branch. A
+        // parallel step (AgentCount > 1) keeps each agent in its own isolated worktree (WorktreePath left null → the host
+        // creates one per agent), so they do not race on one directory's files and git index — the same isolation the
+        // parallel path had before the run-worktree change, and what this coordinator's contract promises.
+        var stepWorktreePath = agentCount == 1 ? runWorktreePath : null;
+
         // A fresh attempt clears any note the previous one left, so a rework does not show a stale reason.
         plan.NoteStep(step.Id, string.Empty);
 
@@ -223,10 +229,11 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
                     Model = step.Model,
                     McpServers = _StepMcpServers(step),
                     IsolateInWorktree = true,
-                    // The run's shared worktree (Raymond 2026-07-22): every step runs in it so their work accumulates on
-                    // one branch. Null falls back to a fresh per-step worktree. IsolateInWorktree stays true either way,
-                    // so the fail-closed gate still refuses a non-confining provider.
-                    WorktreePath = runWorktreePath,
+                    // The run's shared worktree for a single-agent step (Raymond 2026-07-22): steps run in it so their
+                    // work accumulates on one branch. A parallel step keeps each agent isolated (stepWorktreePath null →
+                    // a fresh worktree per agent). IsolateInWorktree stays true either way, so the fail-closed gate still
+                    // refuses a non-confining provider.
+                    WorktreePath = stepWorktreePath,
                     PermissionMode = settings.AutonomyMode(),
                     WorkingDirectory = AutopilotWorkingDirectory.Resolve(context),
                     InitialUserMessage = AutopilotStepBrief.For(step, agentCount, index + 1),
