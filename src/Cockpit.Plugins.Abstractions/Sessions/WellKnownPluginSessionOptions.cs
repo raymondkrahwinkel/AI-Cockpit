@@ -39,4 +39,16 @@ public static class WellKnownPluginSessionOptions
     /// carry unread, the same as any other option a driver does not declare.
     /// </summary>
     public const string AppendSystemPrompt = "cockpit.append-system-prompt";
+
+    /// <summary>
+    /// The option key by which the host asks a driver to confine this session's file tools to its working directory
+    /// (AC-174, Raymond 2026-07-22) — set to <c>"true"</c> when the host isolates an embedded session in a worktree
+    /// (<see cref="Workspaces.EmbeddedSessionRequest.IsolateInWorktree"/>). A provider that reaches files only through
+    /// out-of-process MCP servers (a local OpenAI-compatible model) honours it by re-rooting its file servers at the
+    /// working directory and dropping every server that could write or execute outside it, then reports
+    /// <c>ConfinesFileAccessToWorkingDirectory = true</c> so the host's fail-closed isolation gate lets the run proceed.
+    /// A provider that already confines natively (a CLI spawned cwd-bound) ignores it. The flag alone is never trusted —
+    /// only a driver that actually confined sets the capability.
+    /// </summary>
+    public const string ConfineFileToolsToWorkingDirectory = "cockpit.confine-file-tools";
 }

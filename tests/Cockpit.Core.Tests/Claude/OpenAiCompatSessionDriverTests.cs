@@ -508,7 +508,7 @@ public class OpenAiCompatSessionDriverTests
         toolSession.ToolClasses.Returns(new Dictionary<string, ToolPermissionClass>());
         var toolProvider = Substitute.For<IMcpToolProvider>();
         toolProvider
-            .ConnectAsync(Arg.Do<IReadOnlySet<string>?>(names => captured = names), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .ConnectAsync(Arg.Do<IReadOnlySet<string>?>(names => captured = names), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(toolSession);
         var factory = Substitute.For<IChatClientFactory>();
         factory.Create(Arg.Any<ProviderConfig>()).Returns(Substitute.For<IChatClient>());
@@ -539,7 +539,7 @@ public class OpenAiCompatSessionDriverTests
         toolSession.ConnectedServerNames.Returns(tools.Length == 0 ? Array.Empty<string>() : new[] { "test-server" });
         toolSession.ToolClasses.Returns(toolClasses);
         var toolProvider = Substitute.For<IMcpToolProvider>();
-        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(toolSession);
+        toolProvider.ConnectAsync(Arg.Any<IReadOnlySet<string>?>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(toolSession);
 
         return new OpenAiCompatSessionDriver(factory, toolProvider, NullLogger<OpenAiCompatSessionDriver>.Instance);
     }

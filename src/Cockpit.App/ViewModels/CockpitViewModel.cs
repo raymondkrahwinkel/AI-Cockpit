@@ -4971,7 +4971,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private static IReadOnlyDictionary<string, string>? _EmbeddedLaunchOptions(SessionProfile profile, EmbeddedSessionRequest request)
     {
         var defaults = profile.Defaults?.OptionDefaults;
-        if (string.IsNullOrWhiteSpace(request.AppendSystemPrompt))
+        var addPrompt = !string.IsNullOrWhiteSpace(request.AppendSystemPrompt);
+        // An isolated embedded run asks its driver to confine file tools to the worktree (AC-174): a CLI provider that
+        // already confines ignores it; a local model honours it by re-rooting its file servers there and refusing every
+        // escape channel, then vouches confinement so the fail-closed gate lets it run. The flag rides the options map so
+        // it reaches every provider without a signature change.
+        var addConfine = request.IsolateInWorktree;
+        if (!addPrompt && !addConfine)
         {
             return defaults;
         }
@@ -4979,7 +4985,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var options = defaults is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase);
-        options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.AppendSystemPrompt] = request.AppendSystemPrompt.Trim();
+        if (addPrompt)
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.AppendSystemPrompt] = request.AppendSystemPrompt!.Trim();
+        }
+
+        if (addConfine)
+        {
+            options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory] = "true";
+        }
+
         return options;
     }
 

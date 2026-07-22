@@ -83,8 +83,8 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
     // launchOptions is unused: a built-in HTTP chat provider declares no per-session launch options.
     public async Task StartAsync(SessionProfile? profile = null, string? permissionMode = null, string? model = null, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, CancellationToken cancellationToken = default)
     {
-        // workingDirectory is unused: a local OpenAI-compatible session talks HTTP to a model server; there is
-        // no spawned process with a cwd to point at a project folder.
+        // workingDirectory is used only to confine file tools (below): a local session talks HTTP to a model server with
+        // no cwd, but its file access rides MCP servers, so an isolated run confines those to this directory instead.
         var config = profile?.ProviderConfig
             ?? throw new InvalidOperationException($"{nameof(OpenAiCompatSessionDriver)} requires a profile with an OpenAI-compatible provider config.");
 
@@ -100,11 +100,23 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         // the id the local model declares.
         var paneId = launchOptions is not null && launchOptions.TryGetValue(WellKnownPluginSessionOptions.PaneId, out var value) ? value : null;
 
+        // Confinement (AC-174, Raymond 2026-07-22): the host sets this flag when it isolates the session in a worktree.
+        // A local model reaches files only through MCP servers, so honour it by asking the tool provider to confine file
+        // tools to the working directory — re-root the filesystem server there and drop every escape channel. Only a
+        // session that actually gets confined here may then vouch it (the capability below), so the flag alone is never
+        // enough — it needs a real working directory to confine to.
+        var confineRoot = launchOptions is not null
+            && launchOptions.TryGetValue(WellKnownPluginSessionOptions.ConfineFileToolsToWorkingDirectory, out var confineFlag)
+            && string.Equals(confineFlag, "true", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(workingDirectory)
+                ? workingDirectory
+                : null;
+
         // #44/AC-130: a programmatic launch (a plugin/workflow shortcut, a restored session) carries no dialog-built
         // selection, so fall back to the profile's saved one rather than reaching every enabled server — the same
         // fix the plugin-driver adapter applies, so the local-model tool loop honours the checklist too.
         var selection = McpServerRegistryFilter.EffectiveSessionSelection(enabledMcpServerNames, profile?.EnabledMcpServerNames);
-        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, cancellationToken).ConfigureAwait(false);
+        _toolSession = await _mcpToolProvider.ConnectAsync(selection, paneId, confineRoot, cancellationToken).ConfigureAwait(false);
 
         // Symmetric with the plugin-driver adapter (#44): say which servers the tool loop connected and against
         // which selection, so a local-model session missing its MCP servers is a log line rather than a silent
@@ -126,7 +138,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         }
 
         _gatedTools = _toolSession.Tools.Select(tool => (AITool)new GatedTool(tool, this)).ToList();
-        Capabilities = Capabilities with { SupportsTools = _gatedTools.Count > 0 };
+        // SupportsTools flips true once servers connected. ConfinesFileAccessToWorkingDirectory is vouched only when we
+        // actually confined this session (confineRoot set → the tool provider re-rooted file access to the worktree and
+        // dropped every escape channel); the host's fail-closed isolation gate reads it, so it must never read true on a
+        // session that was not confined.
+        Capabilities = Capabilities with
+        {
+            SupportsTools = _gatedTools.Count > 0,
+            ConfinesFileAccessToWorkingDirectory = confineRoot is not null,
+        };
 
         // Seed the conversation with the profile's base system prompt plus any hidden per-session prompt the host
         // folded into the options map (AC-180 — an embedded run's brief, e.g. Autopilot's CEO), so every turn carries
