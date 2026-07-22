@@ -1,11 +1,11 @@
 {
   "id": "autopilot",
   "name": "Autopilot",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "entryAssembly": "Cockpit.Plugin.Autopilot.dll",
   "entryType": "Cockpit.Plugin.Autopilot.AutopilotPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "0.3.0",
+  "minHostVersion": "0.4.0",
   "description": "Operator-triggered \"issue → merge-ready PR\" pipeline. Start a YouTrack or GitHub issue into a visible, self-driving agent session in its own isolated worktree; it works the item behind a quality gate (visual verify, code review, security review, conventions), posts progress and questions back to the issue and moves its stage as it goes, and stops at a merge-ready PR — you approve the run before it starts and always do the merge yourself.",
   "author": "Cockpit"
 }

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Material.Icons;
@@ -562,7 +563,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             {
                 ProfileId = ceoLabel,
                 Model = _settings.CeoModel(),
-                WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context),
+                WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context, _plan.Plan?.WorkingDirectory),
                 AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
                 // A tracker-triggered run (the "Plan in Autopilot" button, Raymond 2026-07-22) has a real goal from the
                 // issue already, so kick the CEO off to draft the plan immediately — a system prompt alone leaves the
@@ -646,12 +647,40 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             nameBox.Text = text;
         }
 
-        var approve = _ApproveButton(() => nameBox.Text ?? string.Empty);
+        var (workingDirectoryField, dirBox) = _BuildWorkingDirectoryField();
 
-        // Approve can start the run only once the CEO has planned at least one step and the run has a name — an empty
-        // plan has nothing to run, and a nameless run cannot be told apart in the queue. Re-checked as the CEO emits or
-        // revises the plan and as the operator types the name.
-        void Recheck() => approve.IsEnabled = _HasApprovableSteps() && !string.IsNullOrWhiteSpace(nameBox.Text);
+        // The working directory mirrors the CEO's proposal the same way the name does: the CEO may resolve and propose a
+        // folder through the plan tool, which pre-fills here until the operator picks their own — after which a later CEO
+        // re-emit does not overwrite it. Falls back to the active session's directory when the CEO proposed none.
+        var activeWorkingDirectory = _context.Sessions.ActiveSessionWorkingDirectory ?? string.Empty;
+        var dirEdited = false;
+        var lastMirroredDir = string.Empty;
+        string ProposedDir() => _plan.Plan?.WorkingDirectory is { Length: > 0 } proposed ? proposed : activeWorkingDirectory;
+        void SetDir(string text)
+        {
+            lastMirroredDir = text;
+            dirBox.Text = text;
+        }
+
+        var approve = _ApproveButton(() => nameBox.Text ?? string.Empty, () => dirBox.Text ?? string.Empty);
+
+        // Approve can start the run only once the CEO has planned at least one step and the run has a name and a working
+        // directory — an empty plan has nothing to run, a nameless run cannot be told apart in the queue, and a run
+        // needs a folder to work in. Re-checked as the CEO emits or revises the plan and as the operator edits either field.
+        void Recheck() => approve.IsEnabled = _HasApprovableSteps()
+            && !string.IsNullOrWhiteSpace(nameBox.Text)
+            && !string.IsNullOrWhiteSpace(dirBox.Text);
+        dirBox.TextChanged += (_, _) =>
+        {
+            // Same mirroring guard as the name: a value that is not what we last mirrored is the operator picking their
+            // own folder, from then on their choice stands and a later CEO re-emit does not overwrite it.
+            if ((dirBox.Text ?? string.Empty) != lastMirroredDir)
+            {
+                dirEdited = true;
+            }
+
+            Recheck();
+        };
         nameBox.TextChanged += (_, _) =>
         {
             // A change whose text is not the one we just mirrored in is the operator typing — from then on their name
@@ -667,6 +696,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
 
         SetName(Proposed());
+        SetDir(ProposedDir());
         Recheck();
         void OnPlanChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
         {
@@ -674,6 +704,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             if (!nameEdited)
             {
                 SetName(Proposed());
+            }
+
+            if (!dirEdited)
+            {
+                SetDir(ProposedDir());
             }
 
             Recheck();
@@ -719,6 +754,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 Spacing = 9,
                 Children =
                 {
+                    workingDirectoryField,
                     new StackPanel
                     {
                         Spacing = 4,
@@ -764,7 +800,137 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // nothing to do.
     private bool _HasApprovableSteps() => _plan.Plan is { Steps.Count: > 0 };
 
-    private Button _ApproveButton(Func<string> nameProvider)
+    // The working-directory field (AC-174): a run planned from a tracker issue has no session, so the operator names the
+    // folder it works in here — the same folders the New-session dialog offers (pinned favorites and recents, loaded on
+    // demand when the history button is clicked) plus a Browse. A non-git folder is allowed; the hint says the run then
+    // works in it without per-step isolation. Returns the field and its text box so the caller wires the mirroring and
+    // the approval gate; the box's value is set by the caller (the CEO's proposal or the active session's directory).
+    private (Control Field, TextBox Box) _BuildWorkingDirectoryField()
+    {
+        var box = new TextBox
+        {
+            FontSize = 12,
+            PlaceholderText = "Folder this run works in — pick a recent one or browse",
+        };
+
+        var pick = new Button
+        {
+            Content = new MaterialIcon { Kind = MaterialIconKind.History, Width = 16, Height = 16 },
+            Padding = new Thickness(7, 0),
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Stretch,
+            [ToolTip.TipProperty] = "Recent and pinned folders",
+            [DockPanel.DockProperty] = Dock.Right,
+        };
+        pick.Click += async (_, _) =>
+        {
+            try
+            {
+                // Loaded on click, not at build, so the flyout is always current and there is no async race at build time.
+                var remembered = await _host.GetRememberedWorkingPathsAsync();
+                var menu = new MenuFlyout();
+                foreach (var favorite in remembered.Favorites)
+                {
+                    menu.Items.Add(_RememberedPathItem($"★  {favorite}", favorite, box));
+                }
+
+                // Recents that are not already pinned above, so a folder that is both a favorite and recent shows once
+                // (the shared history keeps the two lists independent — the New-session quick-pick dedupes the same way).
+                foreach (var recent in remembered.Recents.Where(recent => !remembered.Favorites.Any(favorite => _SamePath(favorite, recent))))
+                {
+                    menu.Items.Add(_RememberedPathItem(recent, recent, box));
+                }
+
+                if (menu.Items.Count == 0)
+                {
+                    menu.Items.Add(new MenuItem { Header = "No remembered folders yet", IsEnabled = false });
+                }
+
+                menu.ShowAt(pick);
+            }
+            catch (Exception)
+            {
+                // Loading the remembered folders must not crash the dialog (an async-void handler's throw would reach
+                // the dispatcher) — the operator can still type or browse to a folder.
+            }
+        };
+
+        var browse = new Button
+        {
+            Content = "Browse…",
+            Padding = new Thickness(10, 0),
+            Margin = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Stretch,
+            [DockPanel.DockProperty] = Dock.Right,
+        };
+        browse.Click += async (_, _) =>
+        {
+            try
+            {
+                // The picker needs the dialog window's TopLevel — taken from the button, which is in that window's tree.
+                if (TopLevel.GetTopLevel(browse)?.StorageProvider is not { } storage)
+                {
+                    return;
+                }
+
+                var start = string.IsNullOrWhiteSpace(box.Text) ? null : await storage.TryGetFolderFromPathAsync(box.Text);
+                var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+                {
+                    Title = "Choose the folder this run works in",
+                    AllowMultiple = false,
+                    SuggestedStartLocation = start,
+                });
+
+                if (folders.Count > 0 && folders[0].TryGetLocalPath() is { } path)
+                {
+                    box.Text = path;
+                }
+            }
+            catch (Exception)
+            {
+                // A cancelled or failed folder pick must not crash the dialog; the field is left as it was.
+            }
+        };
+
+        var field = new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "Working directory",
+                    FontSize = 10.5,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                },
+                new DockPanel { LastChildFill = true, Children = { browse, pick, box } },
+                new TextBlock
+                {
+                    Text = "If this folder isn't a git repository, the run works in it directly — steps run without isolation.",
+                    FontSize = 10.5,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = _Brush("CockpitTextFaintBrush"),
+                },
+            },
+        };
+
+        return (field, box);
+    }
+
+    private static MenuItem _RememberedPathItem(string header, string path, TextBox box)
+    {
+        var item = new MenuItem { Header = header };
+        item.Click += (_, _) => box.Text = path;
+        return item;
+    }
+
+    // Two paths are the same folder when they match case-insensitively ignoring a trailing separator — mirrors the
+    // shared WorkingPathHistory comparison, so the favorite/recent dedupe here matches how the history itself dedupes.
+    private static bool _SamePath(string a, string b) =>
+        string.Equals(a.TrimEnd('/', '\\'), b.TrimEnd('/', '\\'), StringComparison.OrdinalIgnoreCase);
+
+    private Button _ApproveButton(Func<string> nameProvider, Func<string> workingDirectoryProvider)
     {
         var button = new Button
         {
@@ -779,13 +945,15 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         };
         button.Click += (sender, _) =>
         {
-            // Approve submits the planned draft — carrying the operator's (or the CEO's) run name — to the run manager,
-            // which runs it now if there is a free slot or queues it behind the others. It does not run on the planning
-            // controller. The button is only enabled once the plan has steps and a name, so both hold here.
+            // Approve submits the planned draft — carrying the operator's (or the CEO's) run name and their chosen
+            // working directory — to the run manager, which runs it now if there is a free slot or queues it behind the
+            // others. It does not run on the planning controller. The button is only enabled once the plan has steps, a
+            // name and a directory, so all three hold here.
             if (_plan.Plan is { Steps.Count: > 0 } plan)
             {
                 var name = nameProvider().Trim();
-                _manager.Submit(string.IsNullOrEmpty(name) ? plan : plan.WithName(name));
+                var approved = string.IsNullOrEmpty(name) ? plan : plan.WithName(name);
+                _manager.Submit(approved.WithWorkingDirectory(workingDirectoryProvider().Trim()));
             }
 
             (sender as Control)?.FindAncestorOfType<Window>()?.Close();

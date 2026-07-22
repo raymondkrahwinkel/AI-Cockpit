@@ -61,7 +61,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, null, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         coordinator.ReportStepDone("step-pane", "opened PR #1").Should().BeTrue();
@@ -86,7 +86,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, null, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         coordinator.ReportStepDone("step-pane", "tried but it does not compile").Should().BeTrue();
@@ -109,10 +109,56 @@ public class AutopilotRunCoordinatorTests
 
         var shown = new TaskCompletionSource();
         using var cts = new CancellationTokenSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, null, _DirectUi, cts.Token);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
 
         await shown.Task.WaitAsync(Timeout);
         context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request => request.StartWithInputDisabled && request.IsolateInWorktree));
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_ForANonGitFolder_EmbedsTheStepUnisolatedInTheWorkingDirectory()
+    {
+        // AC-174 (Raymond 2026-07-22): a run whose folder the host reported is not a git repository runs its steps
+        // without worktree isolation, directly in that folder — an admin task with no repo, not refused at the first step.
+        var plan = _RunningPlan(_HardStep("1"));
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(_Host(), plan);
+
+        var shown = new TaskCompletionSource();
+        using var cts = new CancellationTokenSource();
+        var environment = new AutopilotRunEnvironment("/plain/folder", null, IsolateSteps: false);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+
+        await shown.Task.WaitAsync(Timeout);
+        // Not isolated in a worktree, but its file tools are confined to the working folder (least-privilege: a local
+        // model without an OS sandbox is held to the operator's folder, not their home).
+        context.Received().EmbedSession(Arg.Is<EmbeddedSessionRequest>(request =>
+            !request.IsolateInWorktree && request.WorkingDirectory == "/plain/folder" && request.ConfineFileToolsToWorkingDirectory));
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task RunAsync_ForANonGitFolder_ForcesASingleAgent_EvenWhenTheStepAsksForMore()
+    {
+        // A non-git run has no per-agent worktree isolation, so a parallel step would race N agents on the same folder;
+        // it is clamped to one agent (an isolated run keeps the split — each agent gets its own worktree).
+        var plan = _RunningPlan(_ParallelStep("1", agents: 3));
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(_Host(), plan);
+
+        var shown = new TaskCompletionSource();
+        using var cts = new CancellationTokenSource();
+        var environment = new AutopilotRunEnvironment("/plain/folder", null, IsolateSteps: false);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, environment, _DirectUi, cts.Token);
+
+        await shown.Task.WaitAsync(Timeout);
+        // Only one agent session is embedded despite the step asking for three.
+        context.Received(1).EmbedSession(Arg.Any<EmbeddedSessionRequest>());
 
         cts.Cancel();
         await run.WaitAsync(Timeout);
@@ -130,7 +176,7 @@ public class AutopilotRunCoordinatorTests
         var shown = new TaskCompletionSource();
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, null, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         coordinator.EnableCurrentStepInput();
@@ -164,7 +210,7 @@ public class AutopilotRunCoordinatorTests
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
         var shown = new TaskCompletionSource();
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, null, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
 
         await shown.Task.WaitAsync(Timeout);
         // The step session ends with a reason (the fail-closed refusal in the host) before it ever reports done.
@@ -190,7 +236,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, null, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
 
         // The step agent raises a blockade — the run parks and the operator's answer is relayed to that same session.
@@ -223,7 +269,7 @@ public class AutopilotRunCoordinatorTests
         var validationSent = new TaskCompletionSource();
         host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
 
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, null, _DirectUi, CancellationToken.None);
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
         coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
         await validationSent.Task.WaitAsync(Timeout);
@@ -318,6 +364,9 @@ public class AutopilotRunCoordinatorTests
     private static AutopilotStep _HardStep(string id) =>
         new(id, "Code", "do the work", "Claude", "opus", "brief", "compiles", GateMode.Hard);
 
+    private static AutopilotStep _ParallelStep(string id, int agents) =>
+        new(id, "Code", "do the work", "Claude", "opus", "brief", "compiles", GateMode.Hard) { AgentCount = agents };
+
     private static ICockpitHost _Host()
     {
         var host = Substitute.For<ICockpitHost>();
@@ -355,6 +404,8 @@ public class AutopilotRunCoordinatorTests
 
         return new AutopilotSettings(storage);
     }
+
+    private static AutopilotRunEnvironment _Env(bool isolate = true) => new("/repo", null, isolate);
 
     private static Task _DirectUi(Action action)
     {

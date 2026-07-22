@@ -50,4 +50,15 @@ public class AutopilotPlanTests
         named.Steps.Should().BeEquivalentTo(plan.Steps);
         plan.Name.Should().BeEmpty();
     }
+
+    [Fact]
+    public void WithWorkingDirectory_ReturnsACopyWithTheFolder_LeavingTheOriginalUnchanged()
+    {
+        var plan = _Plan("Add a helper class");
+        var located = plan.WithWorkingDirectory("/home/ray/proj");
+
+        located.WorkingDirectory.Should().Be("/home/ray/proj");
+        located.Steps.Should().BeEquivalentTo(plan.Steps);
+        plan.WorkingDirectory.Should().BeEmpty();
+    }
 }

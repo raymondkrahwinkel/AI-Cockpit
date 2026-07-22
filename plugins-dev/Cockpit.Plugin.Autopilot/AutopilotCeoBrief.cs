@@ -76,7 +76,10 @@ internal static class AutopilotCeoBrief
             {{roster}}
             Emit the plan by calling {{AutopilotPlanTools.QualifiedToolName}} with a one-sentence goal, a short run name
             (2-5 words) the operator will recognise this run by in the queue and history, and the ordered steps as a JSON
-            array. Each step: {id, title, description, profile, model, brief, acceptance, hard, mcp, agents}.
+            array. When you can resolve the folder the run should work in from the item — the repository the issue is
+            about — pass it as workingDirectory too; it pre-fills the operator's field for them to confirm or override (a
+            git repository isolates each step in a worktree, a plain folder runs without isolation). Each step: {id,
+            title, description, profile, model, brief, acceptance, hard, mcp, agents}.
             - profile: the session profile the step runs on (e.g. "Claude", "Qwen (local)"). model: only where the profile
               offers a choice (e.g. "Opus"); omit it for a local profile that pins its own model.
             - brief: the context that step's agent is handed. acceptance: what "done" means for the step — you validate
