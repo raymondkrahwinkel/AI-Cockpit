@@ -237,11 +237,13 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return button;
     }
 
-    // New run: open a fresh planning round on the (idle) planning controller. The render opens the pop-out when the phase
-    // turns Planning; a run already in flight is unaffected — planning is decoupled from executing.
+    // New run: open a fresh planning round on the planning controller. Guarded on the pop-out already being open (not the
+    // phase — the planning controller idles in Planning, so a phase guard would block every New run); a run already in
+    // flight is unaffected, since planning is decoupled from executing. BeginPlanning turns the phase Planning and sets a
+    // fresh empty draft, which the render turns into an opened pop-out.
     private void _StartPlanningRound()
     {
-        if (_plan.Phase == AutopilotPlanPhase.Planning)
+        if (_popoutOpen)
         {
             return;
         }

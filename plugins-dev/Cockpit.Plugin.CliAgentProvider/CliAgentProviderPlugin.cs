@@ -46,7 +46,10 @@ public sealed class CliAgentProviderPlugin : ICockpitPlugin
             // fase 3): it speaks JSON-RPC to a persistent `codex app-server`, so it supports live approvals —
             // hence SupportsPermissions: true, where the exec route reported false.
             CreateDriverFactory: _ => new CodexAppServerPluginSessionDriverFactory(host.ResolveManagedCliPath),
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true },
+            // ConfinesFileAccessToWorkingDirectory (AC-174): Codex spawns its app-server in the session's working directory
+            // and edits within that cwd, so an isolated Autopilot run stays in its worktree. Declared on the registration
+            // because the host honours these, not the driver instance's own Capabilities.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true },
             CreateConfigView: existingConfigJson => new CliAgentProviderConfigView(existingConfigJson, host))
         {
             Options = [sdkSandbox, sdkModelFallback],
