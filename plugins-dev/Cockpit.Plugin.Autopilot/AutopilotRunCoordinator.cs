@@ -371,13 +371,16 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
             : reason);
     }
 
-    // The step agent must be able to report done, so its endpoint stays in reach even when the CEO scoped the step to a
-    // minimal MCP set (AC-117). An empty set keeps the host's usual selection, which already carries the endpoint.
+    // The MCP set a step agent is launched with (AC-117, Raymond 2026-07-22): the step's own report endpoint, plus
+    // whatever minimal set the CEO scoped it to. When the CEO scoped nothing, the step gets ONLY its report endpoint —
+    // not the host's whole selection, which would hand it the CEO's own endpoint (its validate/tracker tools) and every
+    // other server. Restricting to the report endpoint keeps the step least-privilege and, for a local model, keeps its
+    // confined set to the step endpoint alone (the CEO endpoint is never selected, so a step never gains the CEO tools).
     private static IReadOnlyList<string> _StepMcpServers(AutopilotStep step)
     {
         if (step.McpServers.Count == 0)
         {
-            return [];
+            return [AutopilotRunTools.EndpointName];
         }
 
         return step.McpServers.Contains(AutopilotRunTools.EndpointName)
