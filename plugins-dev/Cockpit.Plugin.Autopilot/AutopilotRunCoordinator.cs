@@ -19,9 +19,17 @@ namespace Cockpit.Plugin.Autopilot;
 /// delegate the caller supplies, since the driver loop does not run on the UI thread.
 /// </para>
 /// </summary>
-internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanController plan)
+internal sealed class AutopilotRunCoordinator(
+    ICockpitHost host,
+    AutopilotPlanController plan,
+    TimeSpan? stepDoneReminderDelay = null,
+    TimeSpan? stepStallTimeout = null)
 {
     private readonly Lock _lock = new();
+
+    // Injectable for tests (short values keep the stall test fast); production uses the defaults below.
+    private readonly TimeSpan _stepDoneReminderDelay = stepDoneReminderDelay ?? StepDoneReminderDelay;
+    private readonly TimeSpan _stepStallTimeout = stepStallTimeout ?? StepStallTimeout;
     private readonly Dictionary<string, TaskCompletionSource<string>> _stepAgents = new(StringComparer.Ordinal);
     private readonly List<IEmbeddedSession> _liveStepSessions = [];
     private TaskCompletionSource<bool>? _validation;
@@ -374,13 +382,22 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
     // call it forgot. Deliberately generous, so a legitimately long turn is not nagged early.
     private static readonly TimeSpan StepDoneReminderDelay = TimeSpan.FromSeconds(45);
 
+    // The hard stall deadline (AC-192): how long after the single nudge a step agent may still go quiet — no
+    // done-report, session still live — before the step is failed as stalled rather than waited on forever. Before
+    // this, one nudge was the only push and then the wait was unbounded, so a local model that keeps ending its turn
+    // with a text tool-call (never calling autopilot_step_done, and never actually running the tool) hung the whole
+    // run indefinitely. Five minutes is deliberately generous — a genuinely long turn (a big build, a slow tool) is
+    // not cut off early — while still guaranteeing the run eventually settles instead of hanging. The failed step is
+    // a normal failed attempt the driver reworks or gives up on.
+    private static readonly TimeSpan StepStallTimeout = TimeSpan.FromMinutes(5);
+
     private async Task<string> _AwaitStepReportOrEndAsync(Task<string> report, IEmbeddedSession agent, CancellationToken cancellationToken)
     {
         var ended = (Task)agent.Completion;
 
         // First wait: the report, the session ending, or the reminder window elapsing. The delay carries no token so it
         // cannot throw an unobserved cancellation once the other two have settled — cancellation rides WaitAsync instead.
-        var firstWinner = await Task.WhenAny(report, ended, Task.Delay(StepDoneReminderDelay)).WaitAsync(cancellationToken);
+        var firstWinner = await Task.WhenAny(report, ended, Task.Delay(_stepDoneReminderDelay)).WaitAsync(cancellationToken);
         if (firstWinner == report)
         {
             return await report;
@@ -389,12 +406,23 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
         if (firstWinner != ended)
         {
             // The window elapsed with no report and the session is still live: nudge the agent once to call the tool,
-            // then keep waiting (report or end) with no further reminders. A message sent mid-turn queues harmlessly and
-            // takes effect when the turn ends — which is exactly when a finished-but-silent agent needs it.
+            // then keep waiting — but no longer than the hard stall deadline. A message sent mid-turn queues harmlessly
+            // and takes effect when the turn ends — which is exactly when a finished-but-silent agent needs it.
             await host.SendToSessionAsync(agent.PaneId, AutopilotStepBrief.StepDoneReminder());
-            if (await Task.WhenAny(report, ended).WaitAsync(cancellationToken) == report)
+
+            var secondWinner = await Task.WhenAny(report, ended, Task.Delay(_stepStallTimeout)).WaitAsync(cancellationToken);
+            if (secondWinner == report)
             {
                 return await report;
+            }
+
+            if (secondWinner != ended)
+            {
+                // The stall deadline passed with no report and the session still live: the agent is stuck (AC-192 — a
+                // local model that keeps emitting a text tool-call it never runs, a turn that never ends). Fail the step
+                // so the driver reworks or gives up, instead of hanging the run forever.
+                throw new InvalidOperationException(
+                    $"The step agent did not report its work done within {_stepStallTimeout.TotalMinutes:0.#} minutes of the reminder — treating the step as stalled.");
             }
         }
 

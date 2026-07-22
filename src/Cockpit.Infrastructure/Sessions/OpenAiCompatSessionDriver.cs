@@ -93,8 +93,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         _sessionId = Guid.NewGuid().ToString();
 
         // Wrap the chat client in the agentic function-invocation loop; each MCP tool is gated so a tool
-        // call is executed only after the operator approves it (the gate is this driver).
-        _agent = new ChatClientBuilder(_chatClientFactory.Create(config)).UseFunctionInvocation().Build();
+        // call is executed only after the operator approves it (the gate is this driver). The first-registered
+        // .Use* is the outermost layer, so the order is: UseFunctionInvocation (outer) → HermesToolCallChatClient
+        // (middle) → model client (inner). The Hermes shim turns a local model's text tool-call (AC-192) into a
+        // structured FunctionCallContent before UseFunctionInvocation sees it, so it runs the tool exactly as it
+        // would a natively-structured call; a model that already emits structured calls flows through untouched.
+        _agent = new ChatClientBuilder(_chatClientFactory.Create(config))
+            .UseFunctionInvocation()
+            .Use(inner => new HermesToolCallChatClient(inner))
+            .Build();
         // AC-89: pass this session's pane id (the App sets it as the cockpit.pane-id launch option) so the tool loop
         // connects to the cockpit endpoints on a per-session token — the consent broker then scopes on this pane, not
         // the id the local model declares.
@@ -272,6 +279,22 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
             return;
         }
 
+        // AC-192 no-progress net: a turn that ends carrying an unprocessed Hermes tool-call marker with no tool ever
+        // run means the parser shim missed an edge — the model asked to call a tool as text and it was never executed.
+        // Surface that as a visible error rather than the silent "success" a pseudo-tool-call text used to end as (the
+        // hang the ticket exists to kill), mirroring the no-response vangnet above.
+        if (!_turnHadToolActivity && _ContainsUnprocessedToolCallMarker(reply))
+        {
+            _events.Writer.TryWrite(new SessionError
+            {
+                SessionId = _sessionId,
+                Message = "The model emitted a tool call as text that was not executed, so the run cannot proceed. "
+                    + "This local model does not produce tool calls this runtime can run.",
+            });
+            _events.Writer.TryWrite(new TurnCompleted { SessionId = _sessionId, Subtype = "error", Result = null, IsError = true });
+            return;
+        }
+
         if (hasText)
         {
             _history.Add(new ChatMessage(ChatRole.Assistant, reply));
@@ -310,6 +333,15 @@ internal sealed class OpenAiCompatSessionDriver : ISessionDriver, IToolApprovalG
         "tool calling is not supported",
         "tool_use is not supported",
     ];
+
+    /// <summary>
+    /// Whether a turn's text still carries a Hermes tool-call marker the parser shim did not convert — an opening
+    /// <c>&lt;function=</c> for a block that never completed, or a stray <c>&lt;/tool_call&gt;</c> wrapper. Weighed only
+    /// when no tool actually ran this turn, so a converted-and-executed call (which leaves no marker) never trips it.
+    /// </summary>
+    internal static bool _ContainsUnprocessedToolCallMarker(string text) =>
+        text.Contains("<function=", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("</tool_call>", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// The most useful message for a failed turn: the exception message, plus — for a

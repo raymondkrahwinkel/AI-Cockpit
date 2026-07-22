@@ -144,6 +144,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: an Autopilot step running on a free local model (qwen-coder via Ollama) no longer hangs the whole
+  run. Some local models write their tool calls as plain text instead of the structured form the runtime
+  can run, so the call was never executed and the step waited forever while appearing to "succeed". Those
+  text tool-calls are now recognised and run like any other; a step that still goes silent is failed after a
+  hard timeout instead of hanging indefinitely; and a tool-call that slips through as text surfaces as a
+  clear error rather than a stuck run.
 - fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
   runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
   down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation

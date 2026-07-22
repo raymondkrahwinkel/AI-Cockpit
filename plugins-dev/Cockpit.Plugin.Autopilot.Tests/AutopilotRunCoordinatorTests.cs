@@ -225,6 +225,37 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
+    public async Task RunAsync_StepNeverReportsDone_StallDeadlineElapses_FailsTheStep_SettlesBlocked()
+    {
+        // AC-192: a step agent that keeps its session live but never reports done (a local model stuck emitting a text
+        // tool-call it never runs) used to hang the whole run after its one nudge — the wait was unbounded. With a hard
+        // stall deadline the step fails, and with no attempts left the run settles Blocked instead of hanging forever.
+        // Short reminder/stall values are injected so the test does not actually wait minutes.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(
+            host,
+            plan,
+            stepDoneReminderDelay: TimeSpan.FromMilliseconds(20),
+            stepStallTimeout: TimeSpan.FromMilliseconds(80));
+
+        var shown = new TaskCompletionSource();
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        await run.WaitAsync(Timeout);
+
+        plan.Phase.Should().Be(AutopilotPlanPhase.Blocked);
+        // The agent got its single nudge before the stall deadline gave up on it.
+        await host.Received().SendToSessionAsync("step-pane", Arg.Any<string>());
+        // The failed step explains itself as stalled rather than a silent red dot.
+        plan.Plan!.Steps[0].Note.Should().Contain("stalled");
+        // A step that never reported is never handed to the CEO to validate.
+        await host.DidNotReceive().SendToSessionAsync("ceo-pane", Arg.Any<string>());
+    }
+
+    [Fact]
     public async Task ReportBlocked_DuringAStep_ParksTheRun_ThenAnswerResumesTheSameSession()
     {
         var plan = _RunningPlan(_HardStep("1"));
