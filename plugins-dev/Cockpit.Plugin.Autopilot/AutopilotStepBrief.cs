@@ -45,6 +45,16 @@ internal static class AutopilotStepBrief
             """;
     }
 
+    /// <summary>
+    /// The one reminder a step agent gets if it goes quiet without reporting done (Raymond 2026-07-22): weaker/local
+    /// models sometimes end their turn with a text summary instead of calling the tool, which strands the step. Nudges
+    /// the tool call without disrupting an agent that is genuinely still working.
+    /// </summary>
+    public static string StepDoneReminder() =>
+        $"If you have finished this step's work, call mcp__{AutopilotRunTools.EndpointName}__autopilot_step_done now with "
+        + "a short summary of what you did — that is how the run advances; a text reply on its own does not report the "
+        + "step done. If you are still working, ignore this and call it once you finish.";
+
     public static string ValidationTurn(AutopilotStep step, IReadOnlyList<string> summaries)
     {
         var reported = summaries.Count <= 1

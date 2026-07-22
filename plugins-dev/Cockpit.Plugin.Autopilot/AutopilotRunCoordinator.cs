@@ -355,12 +355,35 @@ internal sealed class AutopilotRunCoordinator(ICockpitHost host, AutopilotPlanCo
     // ending before it reports is a failed attempt: this throws, and _ExecuteStepAsync's catch turns it into the
     // rework-or-fail the driver already handles, never a hung run. Cancellation (the surface closed) is honoured
     // through WaitAsync; the losing task is left to complete on its own and neither faults, so nothing is unobserved.
-    private static async Task<string> _AwaitStepReportOrEndAsync(Task<string> report, IEmbeddedSession agent, CancellationToken cancellationToken)
+    // How long a step agent may go quiet — no done-report, session still live — before it gets one reminder to call the
+    // tool (Raymond 2026-07-22). A weaker/local model sometimes does the work but ends its turn with a text summary
+    // instead of calling autopilot_step_done, which would otherwise leave the step waiting forever. One nudge is enough:
+    // a model still working just gets a harmless "call it when you finish", a model that already finished gets the tool
+    // call it forgot. Deliberately generous, so a legitimately long turn is not nagged early.
+    private static readonly TimeSpan StepDoneReminderDelay = TimeSpan.FromSeconds(45);
+
+    private async Task<string> _AwaitStepReportOrEndAsync(Task<string> report, IEmbeddedSession agent, CancellationToken cancellationToken)
     {
-        var winner = await Task.WhenAny(report, (Task)agent.Completion).WaitAsync(cancellationToken);
-        if (winner == report)
+        var ended = (Task)agent.Completion;
+
+        // First wait: the report, the session ending, or the reminder window elapsing. The delay carries no token so it
+        // cannot throw an unobserved cancellation once the other two have settled — cancellation rides WaitAsync instead.
+        var firstWinner = await Task.WhenAny(report, ended, Task.Delay(StepDoneReminderDelay)).WaitAsync(cancellationToken);
+        if (firstWinner == report)
         {
             return await report;
+        }
+
+        if (firstWinner != ended)
+        {
+            // The window elapsed with no report and the session is still live: nudge the agent once to call the tool,
+            // then keep waiting (report or end) with no further reminders. A message sent mid-turn queues harmlessly and
+            // takes effect when the turn ends — which is exactly when a finished-but-silent agent needs it.
+            await host.SendToSessionAsync(agent.PaneId, AutopilotStepBrief.StepDoneReminder());
+            if (await Task.WhenAny(report, ended).WaitAsync(cancellationToken) == report)
+            {
+                return await report;
+            }
         }
 
         // The session ended before the agent reported done. Its Completion carries the reason when the host ended it
