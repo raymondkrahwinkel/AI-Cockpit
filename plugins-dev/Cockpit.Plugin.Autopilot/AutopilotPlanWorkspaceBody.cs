@@ -569,7 +569,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 // model idle waiting for a turn, which read as "the prompt stays empty". A CEO-first run has no goal yet,
                 // so it stays null and waits for the operator to say what the run should achieve. The host submits this
                 // after the runtime is up, so it does not race the session coming online.
-                InitialUserMessage = _plan.Plan?.Source is not null ? AutopilotCeoBrief.SourceKickoff() : null,
+                InitialUserMessage = _plan.Plan?.Source is { } source ? AutopilotCeoBrief.SourceKickoff(source) : null,
             });
             _plan.BindSession(_ceo.PaneId);
             await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(_ceo!), 980, 660);
