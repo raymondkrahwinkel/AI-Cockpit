@@ -18,8 +18,18 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string CostStrategyKey = "costStrategy";
     private const string MaxConcurrentRunsKey = "maxConcurrentRuns";
 
-    /// <summary>The CLI permission mode a self-driving run starts in (AC-152). Default: the agent works without asking before edits; the host still gates shell and egress.</summary>
-    public const string DefaultAutonomyMode = "bypassPermissions";
+    /// <summary>
+    /// The CLI permission mode a self-driving run starts in (AC-152). Default <c>acceptEdits</c>, not <c>bypassPermissions</c>
+    /// (security review, Raymond 2026-07-22): an isolated step's confinement to its worktree must hold. Codex is genuinely
+    /// OS-sandboxed and maps both modes to <c>workspace-write</c>, so it is unaffected. Claude, though, has no OS sandbox —
+    /// its confinement to cwd is enforced by the permission system, and <c>bypassPermissions</c> (<c>--dangerously-skip-permissions</c>)
+    /// disables exactly that guard, letting an isolated Claude step write to an absolute path outside its worktree (the
+    /// real checkout, a dotfile) — reachable via prompt-injection from an untrusted issue in the step brief. <c>acceptEdits</c>
+    /// keeps that guard: in-worktree edits auto-apply, an out-of-worktree write prompts and, with no human, is denied. A
+    /// step that genuinely needs autonomous shell (build/test) belongs on Codex, which bashes confined; Claude stays edit-only.
+    /// An operator may still pick <c>bypassPermissions</c> per profile — a deliberate choice, the way Codex's danger-full-access is.
+    /// </summary>
+    public const string DefaultAutonomyMode = "acceptEdits";
 
     /// <summary>
     /// Raised when any setting changes, so a live surface (the workspace body, a running pipeline) picks it up
