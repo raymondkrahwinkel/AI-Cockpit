@@ -182,11 +182,14 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
         return [.. byName.Values];
     }
 
-    // The pane-scoped Autopilot report endpoint a confined step still needs (to call autopilot_step_done). It is
-    // cockpit-hosted and control-only — it cannot write files or run commands — so it is safe inside a confined session.
-    // Named as a literal to keep Infrastructure independent of the Autopilot plugin; kept in sync with
-    // AutopilotRunTools.EndpointName.
-    private const string ConfinedReportEndpoint = "cockpit-autopilot-run";
+    // The pane-scoped Autopilot control endpoints a confined session still needs: a step agent calls autopilot_step_done
+    // on cockpit-autopilot-run, and the CEO validator calls autopilot_validate on cockpit-autopilot-ceo. Both are
+    // cockpit-hosted and control-only — they cannot write files or run commands — so they are safe inside a confined
+    // session. A session only ends up with the one it actually selected (a step selects the run endpoint, not the CEO's),
+    // so allowing both here does not hand a step the CEO's tools. Named as literals to keep Infrastructure independent of
+    // the Autopilot plugin; kept in sync with AutopilotRunTools.EndpointName / AutopilotCeoTools.EndpointName.
+    private static readonly HashSet<string> ConfinedControlEndpoints =
+        new(StringComparer.OrdinalIgnoreCase) { "cockpit-autopilot-run", "cockpit-autopilot-ceo" };
 
     // The confined effective set for a session pinned to <paramref name="root"/> (AC-174): the built-in filesystem
     // preset re-rooted at the worktree (the only file-write path a confined session gets), the built-in in-memory
@@ -209,7 +212,7 @@ internal sealed class McpToolProvider(IMcpServerCatalog catalog, IMcpOAuthAuthor
             }
         }
 
-        confined.AddRange(effective.Where(server => string.Equals(server.Name, ConfinedReportEndpoint, StringComparison.OrdinalIgnoreCase)));
+        confined.AddRange(effective.Where(server => ConfinedControlEndpoints.Contains(server.Name)));
         return confined;
     }
 

@@ -64,7 +64,7 @@ public class AutopilotStepBriefTests
 
         turn.Should().Contain("compiles");
         turn.Should().Contain("opened PR #1");
-        turn.Should().Contain("mcp__cockpit-autopilot-run__autopilot_validate");
+        turn.Should().Contain("mcp__cockpit-autopilot-ceo__autopilot_validate");
     }
 
     [Fact]

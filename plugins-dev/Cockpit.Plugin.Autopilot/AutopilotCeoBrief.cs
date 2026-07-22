@@ -43,8 +43,8 @@ internal static class AutopilotCeoBrief
 
                 This run came from {{tracked.Tracker}} {{tracked.IssueId}}, and you are the only one who can keep that
                 issue in sync — the step agents cannot touch the tracker. As the run reaches each stage, call
-                mcp__{{AutopilotRunTools.EndpointName}}__autopilot_tracker_stage to move the issue (use the tracker's own
-                stage names) and mcp__{{AutopilotRunTools.EndpointName}}__autopilot_tracker_note to leave evidence — what
+                mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_tracker_stage to move the issue (use the tracker's own
+                stage names) and mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_tracker_note to leave evidence — what
                 was done, the result — on it.
 
                 """

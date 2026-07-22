@@ -56,6 +56,12 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // executing; dark when none is.
         _ = host.AddMcpEndpoint(AutopilotRunTools.EndpointName, new AutopilotRunTools(host, manager), isEnabled: () => manager.Active.Count > 0);
 
+        // The CEO validator's own tools (AC-174, Raymond 2026-07-22): validate a step, keep the source issue in sync. A
+        // separate endpoint from the step agents' one above, so a step agent is never handed the CEO's tools — tighter
+        // least-privilege, and a weaker local model is not distracted into calling a validate/tracker tool. Same
+        // pane-scoping and live-only gating; the CEO validator session is given this endpoint, the step agents are not.
+        _ = host.AddMcpEndpoint(AutopilotCeoTools.EndpointName, new AutopilotCeoTools(host, manager), isEnabled: () => manager.Active.Count > 0);
+
         // The CEO-flow trigger (AC-174): a tracker's "Plan in Autopilot" hands the item to the CEO planning round with
         // its source to draft from.
         host.RegisterIntentHandler("plan", async intent =>
