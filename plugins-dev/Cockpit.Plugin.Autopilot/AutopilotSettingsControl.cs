@@ -24,7 +24,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
     private readonly AutoCompleteBox _ceoModel;
     private readonly ComboBox _costStrategy;
     private readonly NumericUpDown _maxAttempts;
-    private readonly NumericUpDown _grace;
     private readonly ComboBox _autonomy;
 
     // The loaded profiles, so selecting one can look up its provider to decide which model suggestions to offer.
@@ -70,7 +69,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         };
 
         _maxAttempts = _Number(settings.MaxSelfFixAttempts(), min: 0, max: 10);
-        _grace = _Number(settings.GraceTimerMinutes(), min: 1, max: 120);
         _autonomy = new ComboBox
         {
             Width = 220,
@@ -92,7 +90,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         panel.Children.Add(_Header("Run safety"));
         panel.Children.Add(_Hint("Caps the operator keeps regardless of what the CEO plans."));
         panel.Children.Add(_Row("Max rework attempts per step", _maxAttempts));
-        panel.Children.Add(_Row("Grace timer (minutes)", _grace));
         panel.Children.Add(_Row("Autonomy (permission mode)", _autonomy));
         panel.Children.Add(_Hint("How autonomous a run is on the CLI side; the host still gates shell and egress. bypassPermissions = works without asking before edits."));
 
@@ -154,7 +151,6 @@ internal sealed class AutopilotSettingsControl : UserControl, IPluginSettingsVie
         _settings.SetCeoModel(_ceoModel.IsEnabled ? _Trimmed(_ceoModel.Text) : null);
         _settings.SetCostStrategy(_costStrategy.SelectedIndex >= 0 ? (AutopilotCostStrategy)_costStrategy.SelectedIndex : AutopilotCostStrategy.Balanced);
         _settings.SetMaxSelfFixAttempts((int)(_maxAttempts.Value ?? 2));
-        _settings.SetGraceTimerMinutes((int)(_grace.Value ?? 5));
         _settings.SetAutonomyMode(_autonomy.SelectedItem as string ?? AutopilotSettings.DefaultAutonomyMode);
         return true;
     }
