@@ -413,12 +413,33 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // fresh empty draft, which the render turns into an opened pop-out.
     private void _StartPlanningRound()
     {
-        if (_popoutOpen)
+        // A planning round needs a CEO profile — the guard moved here from the side-menu button (Raymond 2026-07-22) so
+        // that button only opens the workspace, and the profile is required at the point a run is actually planned,
+        // whichever entry point starts it.
+        if (_popoutOpen || !_RequireCeoProfile())
         {
             return;
         }
 
         _plan.BeginPlanning(AutopilotPlan.Empty(source: null, goal: string.Empty));
+    }
+
+    // A planning round needs a CEO profile: without one the host falls back to whatever the first configured profile is,
+    // which may be a local model that cannot plan. Rather than plan a round that quietly misbehaves, tell the operator
+    // and offer the settings. Returns whether a profile is set.
+    private bool _RequireCeoProfile()
+    {
+        if (!string.IsNullOrWhiteSpace(_settings.CeoProfileLabel()))
+        {
+            return true;
+        }
+
+        _host.ShowToast(
+            "Set a CEO profile in the Autopilot settings before planning.",
+            PluginToastSeverity.Warning,
+            "Open settings",
+            () => _ = _host.ShowSettingsAsync());
+        return false;
     }
 
     // The manager's runner (AC-174): start a run for a dequeued plan in its own context, track it for the surface, and
@@ -597,13 +618,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             [DockPanel.DockProperty] = Dock.Top,
         };
         var nameEdited = false;
-        var mirroring = false;
+        var lastMirrored = string.Empty;
         string Proposed() => _plan.Plan?.SuggestedName ?? string.Empty;
         void SetName(string text)
         {
-            mirroring = true;
+            lastMirrored = text;
             nameBox.Text = text;
-            mirroring = false;
         }
 
         var approve = _ApproveButton(() => nameBox.Text ?? string.Empty);
@@ -614,7 +634,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         void Recheck() => approve.IsEnabled = _HasApprovableSteps() && !string.IsNullOrWhiteSpace(nameBox.Text);
         nameBox.TextChanged += (_, _) =>
         {
-            if (!mirroring)
+            // A change whose text is not the one we just mirrored in is the operator typing — from then on their name
+            // stands and a later CEO re-emit does not overwrite it. Comparing the value (not a timing flag) is robust
+            // whether Avalonia raises TextChanged synchronously or deferred: setting Text from null to "" at build used
+            // to trip a mirroring flag and wrongly mark the field edited, which then blocked every auto-fill.
+            if ((nameBox.Text ?? string.Empty) != lastMirrored)
             {
                 nameEdited = true;
             }

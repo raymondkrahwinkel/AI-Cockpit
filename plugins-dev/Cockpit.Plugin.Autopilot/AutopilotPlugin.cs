@@ -86,21 +86,11 @@ public sealed class AutopilotPlugin : ICockpitPlugin
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",
         });
 
-        // Start Autopilot with only the CEO (AC-174): an empty plan opens the planning round, the CEO builds the steps
-        // from the conversation, and one approval starts the autonomous run. A triggered run enters the same round with
-        // a source to draft from (the "plan" intent above).
-        host.AddSideMenuButton("Autopilot (CEO)", () =>
-        {
-            if (!_RequireCeoProfile(host, settings))
-            {
-                return;
-            }
-
-            // BeginPlanning refuses (returns false) while a run is live, so a second click cannot reset it; either way we
-            // surface the workspace — freshly planning, or the run already in flight.
-            _ = planController.BeginPlanning(AutopilotPlan.Empty(source: null, goal: string.Empty));
-            _ = host.OpenWorkspaceAsync("workspace.autopilot.plan");
-        });
+        // Open the Autopilot workspace from the side menu (Raymond 2026-07-22): just add it if it is not open yet and
+        // navigate to it — it does not force a planning round. From the surface the operator starts a run with New run
+        // (which is where the CEO-profile guard now lives), so the workspace and its history are reachable without a
+        // profile set. A triggered run still opens straight into a planning round through the "plan" intent above.
+        host.AddSideMenuButton("Autopilot (CEO)", () => _ = host.OpenWorkspaceAsync("workspace.autopilot.plan"));
     }
 
     public void Dispose()
