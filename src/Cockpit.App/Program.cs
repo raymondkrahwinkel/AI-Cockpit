@@ -43,6 +43,16 @@ sealed class Program
             return;
         }
 
+        // Headless dictation worker (AC-174): the transcription child the running cockpit spawns so Whisper's native
+        // runtime — which can abort() and take a process down — loads here, isolated, instead of in the desktop. Same
+        // reason and same placement as the calibration child above: before the single-instance guard, Avalonia and DI,
+        // none of which a transcription worker should pay for. A native crash in here kills only this child.
+        if (Cockpit.Infrastructure.Voice.HeadlessDictation.IsRequested(args))
+        {
+            Environment.Exit(Cockpit.Infrastructure.Voice.HeadlessDictation.RunAsync(args, CancellationToken.None).GetAwaiter().GetResult());
+            return;
+        }
+
         // Strip everything the host owns from this process's own environment before Avalonia starts or anything
         // spawns a child: the agent-session markers of a Claude Code session the cockpit may have been launched
         // from (else a spawned session adopts the parent's id — AC-42), the host terminal's self-identification
