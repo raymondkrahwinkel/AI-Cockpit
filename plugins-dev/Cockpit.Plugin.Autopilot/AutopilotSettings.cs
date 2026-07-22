@@ -16,6 +16,7 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     private const string CeoModelKey = "ceoModel";
     private const string AutonomyModeKey = "autonomyMode";
     private const string CostStrategyKey = "costStrategy";
+    private const string MaxConcurrentRunsKey = "maxConcurrentRuns";
 
     /// <summary>The CLI permission mode a self-driving run starts in (AC-152). Default: the agent works without asking before edits; the host still gates shell and egress.</summary>
     public const string DefaultAutonomyMode = "bypassPermissions";
@@ -44,6 +45,12 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
 
     /// <summary>How hard the CEO leans on cost when choosing a model per step (AC-174) — the operator's cost/quality steer, default <see cref="AutopilotCostStrategy.Balanced"/>.</summary>
     public AutopilotCostStrategy CostStrategy(string? projectId = null) => _ReadValue(projectId, CostStrategyKey, AutopilotCostStrategy.Balanced);
+
+    /// <summary>How many approved runs may execute at once (AC-174, Raymond) — the rest wait in the queue. Default 1 (one
+    /// at a time); clamped to at least 1 so a stored 0 never stalls the queue.</summary>
+    public int MaxConcurrentRuns(string? projectId = null) => Math.Max(1, _ReadValue(projectId, MaxConcurrentRunsKey, 1));
+
+    public void SetMaxConcurrentRuns(int max, string? projectId = null) => _Write(projectId, MaxConcurrentRunsKey, Math.Max(1, max));
 
     public void SetMaxSelfFixAttempts(int attempts, string? projectId = null) => _Write(projectId, MaxAttemptsKey, attempts);
 
