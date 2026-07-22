@@ -564,6 +564,12 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 Model = _settings.CeoModel(),
                 WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context),
                 AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
+                // A tracker-triggered run (the "Plan in Autopilot" button, Raymond 2026-07-22) has a real goal from the
+                // issue already, so kick the CEO off to draft the plan immediately — a system prompt alone leaves the
+                // model idle waiting for a turn, which read as "the prompt stays empty". A CEO-first run has no goal yet,
+                // so it stays null and waits for the operator to say what the run should achieve. The host submits this
+                // after the runtime is up, so it does not race the session coming online.
+                InitialUserMessage = _plan.Plan?.Source is not null ? AutopilotCeoBrief.SourceKickoff() : null,
             });
             _plan.BindSession(_ceo.PaneId);
             await _host.ShowDialogAsync("Plan with the CEO", () => _BuildPlanningContent(_ceo!), 980, 660);

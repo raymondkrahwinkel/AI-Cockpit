@@ -17,6 +17,16 @@ internal static class AutopilotCeoBrief
     /// <paramref name="ceoIdentity"/> is the CEO's own profile label so it plans in one consistent identity. Both are
     /// optional: with none, the brief simply omits the roster and the identity line.
     /// </summary>
+    /// <summary>
+    /// The opening turn a tracker-triggered planning round submits to the CEO (Raymond 2026-07-22): the issue is already
+    /// in the CEO's hidden brief, so this just tells it to draft and emit the plan now — without it a system prompt alone
+    /// leaves the model idle waiting for a turn ("the prompt stays empty"). A CEO-first run has no goal yet and sends no
+    /// kickoff, so the CEO asks the operator what the run should achieve instead.
+    /// </summary>
+    public static string SourceKickoff() =>
+        "Draft the plan for this run from the issue in your brief and emit it now with the plan tool, so I can review it. "
+        + "Ask me anything you need to resolve before I approve.";
+
     public static string For(AutopilotPlan plan, IReadOnlyList<PluginProfileInfo>? profiles = null, string? ceoIdentity = null, AutopilotCostStrategy costStrategy = AutopilotCostStrategy.Balanced)
     {
         var goal = string.IsNullOrWhiteSpace(plan.Goal)
