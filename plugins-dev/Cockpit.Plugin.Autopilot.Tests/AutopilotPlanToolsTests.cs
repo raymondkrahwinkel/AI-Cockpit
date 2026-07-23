@@ -1,4 +1,8 @@
+using System.Text.Json;
+using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Profiles;
 using FluentAssertions;
+using NSubstitute;
 
 namespace Cockpit.Plugin.Autopilot.Tests;
 
@@ -91,4 +95,106 @@ public class AutopilotPlanToolsTests
         AutopilotPlanTools.TryParseSteps("""[{"title":"no id","profile":"Claude"}]""", out _, out var error).Should().BeFalse();
         error.Should().Contain("id and a title");
     }
+
+    // AC-210: the (profile, model) validity check the CEO's plan is held to.
+    private static readonly IReadOnlyList<PluginProfileInfo> Roster =
+    [
+        new PluginProfileInfo("Claude", "Plugin", string.Empty) { ModelSuggestions = ["opus", "sonnet", "haiku"] },
+        new PluginProfileInfo("Qwen (local)", "Ollama", string.Empty) { RunsLocally = true },
+    ];
+
+    private static AutopilotStep _Step(string profile, string? model) =>
+        new("1", "Code", "do it", profile, model, "brief", "compiles", GateMode.Hard);
+
+    [Fact]
+    public void ValidateStepProfiles_AcceptsAModelOnTheProfilesList_AndAnEmptyModelForALocalProfile()
+    {
+        AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "opus")], Roster).Should().BeNull();
+        // Case-insensitive: the CEO may write "Opus" where the roster lists "opus".
+        AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "Sonnet")], Roster).Should().BeNull();
+        AutopilotPlanTools.ValidateStepProfiles([_Step("Qwen (local)", null)], Roster).Should().BeNull();
+    }
+
+    [Fact]
+    public void ValidateStepProfiles_RejectsAModelTheProfileDoesNotOffer()
+    {
+        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", "gpt-5")], Roster);
+        error.Should().Contain("Claude").And.Contain("gpt-5").And.Contain("opus, sonnet, haiku");
+    }
+
+    [Fact]
+    public void ValidateStepProfiles_RejectsAChoiceProfileWithNoModel()
+    {
+        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Claude", null)], Roster);
+        error.Should().Contain("Claude").And.Contain("no model");
+    }
+
+    [Fact]
+    public void ValidateStepProfiles_RejectsAModelOnALocalProfileThatPinsItsOwn()
+    {
+        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Qwen (local)", "qwen2.5-coder")], Roster);
+        error.Should().Contain("Qwen (local)").And.Contain("leave 'model' empty");
+    }
+
+    [Fact]
+    public void ValidateStepProfiles_RejectsAProfileThatIsNotConfigured()
+    {
+        var error = AutopilotPlanTools.ValidateStepProfiles([_Step("Codex", null)], Roster);
+        error.Should().Contain("Codex").And.Contain("not one of the configured profiles");
+    }
+
+    [Fact]
+    public void ValidateStepProfiles_WithNoRoster_ValidatesNothing()
+    {
+        // With no roster to check against (a host that supplies none) the plan-time gate is a no-op — the roster is the
+        // only source of truth it can check, and rejecting every plan would be worse than deferring to the embed-time net.
+        AutopilotPlanTools.ValidateStepProfiles([_Step("Anything", "whatever")], []).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task SetPlan_RejectsAPlanWhoseStepModelIsNotOnItsProfile()
+    {
+        var (tools, _) = _PlanningTools();
+
+        var result = await tools.SetPlan(
+            "Ship it",
+            """[{"id":"1","title":"Code","profile":"Claude","model":"gpt-5","brief":"b","hard":true}]""");
+
+        _Ok(result).Should().BeFalse();
+        result.Should().Contain("gpt-5");
+    }
+
+    [Fact]
+    public async Task SetPlan_AcceptsAValidPlan_AndUpdatesTheController()
+    {
+        var (tools, controller) = _PlanningTools();
+
+        var result = await tools.SetPlan(
+            "Ship it",
+            """
+            [
+              {"id":"1","title":"Code","profile":"Claude","model":"sonnet","brief":"b","hard":false},
+              {"id":"2","title":"Local pass","profile":"Qwen (local)","brief":"b","hard":false}
+            ]
+            """);
+
+        _Ok(result).Should().BeTrue();
+        controller.Plan!.Steps.Should().HaveCount(2);
+    }
+
+    private static (AutopilotPlanTools Tools, AutopilotPlanController Controller) _PlanningTools()
+    {
+        var host = Substitute.For<ICockpitHost>();
+        host.GetProfilesAsync().Returns(Task.FromResult(Roster));
+        host.CurrentMcpCallerPaneId.Returns("pane-1");
+
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(AutopilotPlan.Empty(source: null, goal: "Ship it"));
+        controller.BindSession("pane-1");
+
+        return (new AutopilotPlanTools(host, controller), controller);
+    }
+
+    private static bool _Ok(string result) =>
+        JsonDocument.Parse(result).RootElement.GetProperty("ok").GetBoolean();
 }

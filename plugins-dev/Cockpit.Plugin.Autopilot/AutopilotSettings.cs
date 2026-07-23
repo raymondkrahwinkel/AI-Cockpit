@@ -56,9 +56,25 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
     /// null uses the profile's own default model.</summary>
     public string? CeoModel(string? projectId = null) => _ReadString(projectId, CeoModelKey);
 
-    /// <summary>The CLI permission mode a self-driving run starts in (AC-152), defaulting to <see cref="DefaultAutonomyMode"/> when unset or blank.</summary>
+    /// <summary>The permission mode that turns off a permission-based (Claude) provider's worktree confinement (AC-209):
+    /// coerced out of an autonomous run's effective mode. Public callers read the coerced value through <see cref="AutonomyMode"/>.</summary>
+    private const string BypassAutonomyMode = "bypassPermissions";
+
+    /// <summary>
+    /// The CLI permission mode a self-driving run starts in (AC-152), defaulting to <see cref="DefaultAutonomyMode"/> when
+    /// unset or blank. A stored <c>bypassPermissions</c> is coerced back to <see cref="DefaultAutonomyMode"/> (AC-209): a
+    /// legacy value from the AC-152 era — when bypass was briefly the default — would otherwise stick and disable exactly
+    /// the permission guard an isolated Claude step relies on (see <see cref="DefaultAutonomyMode"/>), so the host's
+    /// fail-closed isolation gate refuses every Claude step of the run. Bypass is therefore not a valid effective mode for
+    /// an autonomous, isolated run; a step that genuinely needs autonomous shell belongs on Codex, which is OS-sandboxed
+    /// and confines in either mode. The coercion covers every step type — impl and the code-/security-review gates all read
+    /// this one value — and a per-project override alike, so no persisted bypass (global or scoped) can silently block a run.
+    /// An operator who deliberately wants bypass on a specific Codex profile picks it per session, not through this run-wide setting.
+    /// </summary>
     public string AutonomyMode(string? projectId = null) =>
-        _ReadString(projectId, AutonomyModeKey) is { Length: > 0 } mode ? mode : DefaultAutonomyMode;
+        _ReadString(projectId, AutonomyModeKey) is { Length: > 0 } mode && !_IsBypassMode(mode) ? mode : DefaultAutonomyMode;
+
+    private static bool _IsBypassMode(string mode) => string.Equals(mode, BypassAutonomyMode, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>How hard the CEO leans on cost when choosing a model per step (AC-174) — the operator's cost/quality steer, default <see cref="AutopilotCostStrategy.Balanced"/>.</summary>
     public AutopilotCostStrategy CostStrategy(string? projectId = null) => _ReadValue(projectId, CostStrategyKey, AutopilotCostStrategy.Balanced);
