@@ -81,6 +81,27 @@ public class CockpitViewModelPendingApprovalBannerTests
         vm.HasPendingApprovals.Should().BeFalse();
     }
 
+    /// <summary>
+    /// The bug this fixed: RefreshPluginFailures runs at startup, before the operator ever opens the Plugin
+    /// store — so Plugins.LoadAsync has not populated PluginManagerViewModel.Plugins yet. The sidebar badge has
+    /// to come from the same diagnostics the banner reads, seeded via SeedPendingApprovalCount, not from a
+    /// Plugins collection that is still empty.
+    /// </summary>
+    [Fact]
+    public void RefreshPluginFailures_AlsoSeedsTheSidebarPendingApprovalBadge()
+    {
+        var diagnostics = new PluginDiagnostics();
+        diagnostics.RecordPendingApproval("git-status", "Git Status");
+        diagnostics.RecordPendingApproval("clock", "Clock");
+        var vm = NewVm(diagnostics);
+
+        vm.RefreshPluginFailures();
+
+        vm.Plugins.Plugins.Should().BeEmpty("the manager's own LoadAsync has not run — this is the startup path");
+        vm.Plugins.PendingApprovalCount.Should().Be(2);
+        vm.Plugins.HasPendingApproval.Should().BeTrue();
+    }
+
     [Fact]
     public void PendingApproval_IsNotCountedAsAPluginFailure()
     {

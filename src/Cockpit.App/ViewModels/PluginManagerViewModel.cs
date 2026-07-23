@@ -186,6 +186,10 @@ public partial class PluginManagerViewModel : ViewModelBase
                 ? new Dictionary<string, PluginRegistration>()
                 : (await _registrationStore.LoadAllAsync()).ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
 
+            // AC-208: from here on PendingApprovalCount reads live off Plugins rather than the startup seed — a
+            // real discovery just ran, so it is the fresher, and only source that drops to 0 as the operator acts.
+            _hasDiscoveredPluginsOnce = true;
+
             Plugins.Clear();
             // The manager lists plugins in the order they appear in the left menu (#72), so moving one up here
             // moves it up there — a list ordered differently from the thing it reorders is a puzzle, not a tool.
@@ -199,6 +203,11 @@ public partial class PluginManagerViewModel : ViewModelBase
             }
 
             HasPlugins = Plugins.Count > 0;
+            // Belt-and-braces alongside the CollectionChanged watcher: an empty-to-empty discovery (no plugins at
+            // all, or none of them at NeedsConsent) never raises Add/Reset, which would otherwise leave a nonzero
+            // startup seed on screen after the switch to the live (zero) count above.
+            OnPropertyChanged(nameof(PendingApprovalCount));
+            OnPropertyChanged(nameof(HasPendingApproval));
         }
 
         await _LoadStoresAsync();
@@ -714,25 +723,60 @@ public partial class PluginManagerViewModel : ViewModelBase
 
     partial void OnUpdateBadgeCountChanged(int value) => OnPropertyChanged(nameof(HasUpdateBadge));
 
+    // AC-208: Plugins is only ever populated by LoadAsync, which runs when the operator opens the Options/store
+    // dialog — not at startup. Counting off Plugins alone left the sidebar badge invisible from launch until the
+    // operator happened to open the manager, the exact moment AC-208 needs to be visible from. So there are two
+    // sources, chosen the same way the view's two banners are: PluginDiagnostics.PendingApprovals is the true
+    // count the instant startup discovery ran (recorded by PluginManager, read once via SeedPendingApprovalCount —
+    // mirrors how SetUpdateBadgeCount seeds AvailableUpdateCount's sidebar sibling from outside this VM); once a
+    // real LoadAsync has run at least once, Plugins is live and has to win, since only it drops to 0 as the
+    // operator approves/disables each one — the seed is a snapshot from startup and never updates on its own.
+    private int _seededPendingApprovalCount;
+    private bool _hasDiscoveredPluginsOnce;
+
     /// <summary>
     /// How many installed plugins are sitting at awaiting-approval (AC-208) — new, or their bytes changed since
-    /// last approved. Unlike <see cref="AvailableUpdateCount"/> (fed from a background checker), this reads
-    /// straight off <see cref="Plugins"/>: the decision is already known the moment discovery runs, no separate
-    /// check needed. It clears itself once every such plugin has been approved or disabled, because the next
-    /// <see cref="LoadAsync"/> re-discovers with the fresh consent state and nothing is left at that decision.
+    /// last approved. Before the first <see cref="LoadAsync"/> this is the startup snapshot seeded via
+    /// <see cref="SeedPendingApprovalCount"/>; after, it reads straight off <see cref="Plugins"/>, live.
     /// </summary>
-    public int PendingApprovalCount => Plugins.Count(row => row.Discovered.Decision is PluginLoadDecision.NeedsConsent);
+    public int PendingApprovalCount => _hasDiscoveredPluginsOnce
+        ? Plugins.Count(row => row.Discovered.Decision is PluginLoadDecision.NeedsConsent)
+        : _seededPendingApprovalCount;
 
     /// <summary>Whether the sidebar "Plugin store" badge should show the pending-approval count (AC-208).</summary>
     public bool HasPendingApproval => PendingApprovalCount > 0;
 
+    /// <summary>
+    /// Seeds the sidebar pending-approval badge at app startup (AC-208), before <see cref="Plugins"/> is ever
+    /// populated — called from <see cref="Cockpit.App.ViewModels.CockpitViewModel.RefreshPluginFailures"/> with
+    /// <see cref="Cockpit.App.Plugins.PluginDiagnostics.PendingApprovals"/>'s count, the same place the startup
+    /// banner is raised — itself run synchronously from <c>App.axaml.cs</c>'s UI-thread startup sequence, so
+    /// unlike <see cref="SetUpdateBadgeCount"/> (fed from a background timer) this needs no dispatcher marshal.
+    /// A no-op once a real discovery (<see cref="LoadAsync"/>) has run — the live count owns the badge from
+    /// then on, so a stale seed can never keep it showing after the operator has dealt with everything.
+    /// </summary>
+    public void SeedPendingApprovalCount(int count)
+    {
+        _seededPendingApprovalCount = Math.Max(0, count);
+        if (_hasDiscoveredPluginsOnce)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(PendingApprovalCount));
+        OnPropertyChanged(nameof(HasPendingApproval));
+    }
+
     // Plugins is rebuilt wholesale (Clear + Add) on every LoadAsync, so PendingApprovalCount/HasPendingApproval —
     // both computed from it — need their own change raised the same way AvailableUpdateCount does for
     // AvailablePlugins (_WatchAvailablePluginsForUpdateGate): notifying only after specific commands would miss
-    // the moment a fresh discovery is what changed the count.
+    // the moment a fresh discovery is what changed the count. Any mutation here also means Plugins is now the
+    // live source (belt-and-braces alongside the explicit flip in LoadAsync): a plugin row only ever lands in this
+    // collection via a real discovery, so seeing one is itself proof the startup seed is stale.
     private void _WatchPluginsForPendingApprovalBadge() =>
         Plugins.CollectionChanged += (_, _) =>
         {
+            _hasDiscoveredPluginsOnce = true;
             OnPropertyChanged(nameof(PendingApprovalCount));
             OnPropertyChanged(nameof(HasPendingApproval));
         };

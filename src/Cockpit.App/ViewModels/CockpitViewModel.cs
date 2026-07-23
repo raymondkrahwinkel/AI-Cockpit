@@ -413,6 +413,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             1 => $"1 plugin is awaiting approval: {pending[0].DisplayName}. See Plugin store → Installed to review it.",
             _ => $"{pending.Count} plugins are awaiting approval. See Plugin store → Installed to review them.",
         };
+
+        // AC-208: seeds the sidebar "Plugin store" badge with the same count, so it is visible right from
+        // startup — Plugins.LoadAsync (the badge's live source once the operator opens the manager) has not run
+        // yet at this point, called as this is right after plugin phase-2 completes.
+        Plugins.SeedPendingApprovalCount(pending.Count);
     }
 
     [RelayCommand]

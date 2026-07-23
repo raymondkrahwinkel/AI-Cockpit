@@ -88,6 +88,52 @@ public class PluginManagerViewModelBadgeTests
         raised.Should().Contain(nameof(PluginManagerViewModel.HasPendingApproval));
     }
 
+    /// <summary>
+    /// The bug this was fixed for: at startup, Plugins is still empty — LoadAsync only runs once the operator
+    /// opens the store — so counting off Plugins alone left the sidebar badge invisible until then. Seeding from
+    /// PluginDiagnostics.PendingApprovals (via SeedPendingApprovalCount, called from CockpitViewModel's
+    /// RefreshPluginFailures at the same startup point as the banner) must show the badge immediately instead.
+    /// </summary>
+    [Fact]
+    public void SeedPendingApprovalCount_ShowsTheBadgeBeforePluginsIsEverPopulated()
+    {
+        var vm = new PluginManagerViewModel();
+
+        vm.SeedPendingApprovalCount(2);
+
+        vm.Plugins.Should().BeEmpty("LoadAsync has not run yet — this is the startup seed, not a real discovery");
+        vm.PendingApprovalCount.Should().Be(2);
+        vm.HasPendingApproval.Should().BeTrue();
+    }
+
+    /// <summary>The seed is only a snapshot from startup; once a real discovery finds nothing left at
+    /// NeedsConsent (everything got approved or disabled), the live Plugins count must win and drop the badge to
+    /// 0 — a stale seed must never be able to keep it showing forever.</summary>
+    [Fact]
+    public void AfterRediscoveryFindsNothingPending_TheSeededBadgeClearsToZero()
+    {
+        var vm = new PluginManagerViewModel();
+        vm.SeedPendingApprovalCount(2);
+
+        // Stands in for LoadAsync repopulating Plugins after the operator approved everything.
+        vm.Plugins.Add(_Row("now-approved", PluginLoadDecision.Load));
+
+        vm.PendingApprovalCount.Should().Be(0);
+        vm.HasPendingApproval.Should().BeFalse();
+    }
+
+    /// <summary>Once a real discovery has run, the seed can no longer move the badge — the live count owns it.</summary>
+    [Fact]
+    public void SeedPendingApprovalCount_IsANoOpOnceARealDiscoveryHasRun()
+    {
+        var vm = new PluginManagerViewModel();
+        vm.Plugins.Add(_Row("consent", PluginLoadDecision.NeedsConsent));
+
+        vm.SeedPendingApprovalCount(99);
+
+        vm.PendingApprovalCount.Should().Be(1, "the live Plugins count must win once a real discovery has happened");
+    }
+
     private static PluginRowViewModel _Row(string id, PluginLoadDecision decision) => new(new DiscoveredPlugin(
         $"/plugins/{id}", id,
         new PluginManifest(id, id, "1.0", $"{id}.dll", AbstractionsVersion: 1, EntryType: null, MinHostVersion: null, Description: null, Author: null),
