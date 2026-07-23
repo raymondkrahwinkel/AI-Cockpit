@@ -12,6 +12,7 @@ namespace Cockpit.Plugin.Autopilot;
 internal sealed class AutopilotSettings(IPluginStorage storage)
 {
     private const string MaxAttemptsKey = "maxSelfFixAttempts";
+    private const string MaxConsultsKey = "maxConsultsPerStep";
     private const string CeoProfileKey = "ceoProfileLabel";
     private const string CeoModelKey = "ceoModel";
     private const string AutonomyModeKey = "autonomyMode";
@@ -40,6 +41,12 @@ internal sealed class AutopilotSettings(IPluginStorage storage)
 
     /// <summary>How many times a step may self-fix and re-run before the run blocks (default 2).</summary>
     public int MaxSelfFixAttempts(string? projectId = null) => _ReadValue(projectId, MaxAttemptsKey, 2);
+
+    /// <summary>How many times a single step's worker may consult its manager (the CEO) before the run falls back to the
+    /// operator (AC-201, default 3) — a loop-cap so a worker stuck asking in circles cannot bounce off the CEO forever.</summary>
+    public int MaxConsultsPerStep(string? projectId = null) => _ReadValue(projectId, MaxConsultsKey, 3);
+
+    public void SetMaxConsultsPerStep(int max, string? projectId = null) => _Write(projectId, MaxConsultsKey, max);
 
     /// <summary>The profile the CEO planning session runs on (AC-174) — a strong reasoning profile (Opus) by default in
     /// practice; null uses the app-default profile. Determines which agent/model the operator plans with.</summary>

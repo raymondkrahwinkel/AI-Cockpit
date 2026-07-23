@@ -68,8 +68,21 @@ public class AutopilotStepBriefTests
         brief.Should().Contain("most reasonable assumption");
         brief.Should().Contain("FOLLOW THE EXISTING CONVENTIONS");
         brief.Should().Contain("note the assumption in your autopilot_step_done summary");
-        // autopilot_blocked is scoped to a genuine hard blocker only, not an ordinary judgement call.
-        brief.Should().Contain("Only use autopilot_blocked for a genuine hard blocker");
+    }
+
+    [Fact]
+    public void For_FramesAutopilotBlockedAsConsultingTheManager_NotReachingTheOperatorDirectly()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // AC-201: when a reasonable assumption is not enough, the agent consults its MANAGER (the CEO) via
+        // autopilot_blocked — which answers or escalates to the operator — rather than reaching the operator itself.
+        brief.Should().Contain("Your manager (the CEO) is reachable");
+        brief.Should().Contain("autopilot_blocked to consult your manager");
+        brief.Should().Contain("escalates to the operator");
+        brief.Should().Contain("Never stop for an ordinary judgement call");
     }
 
     [Fact]

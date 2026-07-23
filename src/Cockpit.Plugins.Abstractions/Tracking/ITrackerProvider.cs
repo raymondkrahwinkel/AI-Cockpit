@@ -19,6 +19,15 @@ public interface ITrackerProvider
     /// <summary>Moves the issue to <paramref name="stage"/> — a stage name in the tracker's own vocabulary. Returns whether it landed (false when the tracker has no such stage, or none at all).</summary>
     Task<bool> SetStageAsync(string issueId, string stage, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The tracker's own stage name for a tracker-neutral <see cref="TrackerWorkStage"/> in a consumer's work lifecycle
+    /// (AC-202), or null when this tracker has no stage to map it to — the consumer then leaves the issue where it is.
+    /// Lets Autopilot move a source issue automatically at run-start and merge-ready without knowing any tracker's
+    /// vocabulary. The default returns null (no auto-mapping), so a provider that does not opt in keeps compiling and is
+    /// simply never auto-moved; a provider maps only the stages it has a column for.
+    /// </summary>
+    string? SuggestStageName(TrackerWorkStage stage) => null;
+
     /// <summary>Attaches a file to the issue (a verify screenshot). Returns whether it landed — false when the tracker has no attachment channel (GitHub Issues), so a consumer can fall back to a comment.</summary>
     Task<bool> AttachAsync(string issueId, string fileName, byte[] content, string mediaType, CancellationToken cancellationToken = default);
 

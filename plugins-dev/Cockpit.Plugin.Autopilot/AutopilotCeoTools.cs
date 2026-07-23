@@ -7,8 +7,9 @@ namespace Cockpit.Plugin.Autopilot;
 
 /// <summary>
 /// The in-process MCP tools (<c>mcp__cockpit-autopilot-ceo__*</c>) only the run's CEO validator uses (AC-174, Raymond
-/// 2026-07-22): report a step's validation verdict (<c>autopilot_validate</c>) and keep the source issue in sync
-/// (<c>autopilot_tracker_stage</c>/<c>autopilot_tracker_note</c>). Split off the step agents' own endpoint
+/// 2026-07-22): report a step's validation verdict (<c>autopilot_validate</c>), answer or escalate a worker's mid-step
+/// consult (<c>autopilot_answer_worker</c>/<c>autopilot_escalate_to_operator</c>, AC-201), and keep the source issue in
+/// sync (<c>autopilot_tracker_stage</c>/<c>autopilot_tracker_note</c>). Split off the step agents' own endpoint
 /// (<see cref="AutopilotRunTools"/>) so a step agent never even sees the CEO's tools — tighter least-privilege, and a
 /// weaker (local) model is not distracted into calling a validate/tracker tool it has no business calling. Each is still
 /// pane-scoped through <see cref="ICockpitHost.CurrentMcpCallerPaneId"/>, so only the run's CEO session can call them.
@@ -33,6 +34,34 @@ internal sealed class AutopilotCeoTools(ICockpitHost host, AutopilotRunManager m
         }
 
         return JsonSerializer.Serialize(new { ok = true, passed }, Serializer);
+    }
+
+    [McpServerTool(Name = "autopilot_answer_worker")]
+    [Description("Answer a worker that consulted you mid-step (AC-201). Your answer is relayed into the worker's session as a turn — it reads it and carries on. Use this when you can settle the question yourself: a convention to follow, a reasonable default, a design call within the approved plan. You may inspect the working directory (Read/Grep) before you answer. Only the run's CEO session may, and only while a worker is actually waiting on your consult.")]
+    public async Task<string> AnswerWorker(
+        [Description("The answer relayed to the waiting worker as a turn in its session.")] string answer)
+    {
+        var pane = host.CurrentMcpCallerPaneId;
+        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(answer) || !await manager.AnswerWorkerAsync(pane, answer.Trim()))
+        {
+            return _Fail("Only the run's CEO session can answer a worker's consult, and only while one is pending.");
+        }
+
+        return JsonSerializer.Serialize(new { ok = true }, Serializer);
+    }
+
+    [McpServerTool(Name = "autopilot_escalate_to_operator")]
+    [Description("Escalate a worker's consult to the operator (AC-201) when it is genuinely their call — a truly irreversible or destructive choice, a missing credential, or a business preference you cannot make within the approved plan. The run pauses and the operator's answer is relayed back to the waiting worker (not to you), which then carries on. Prefer to answer the worker yourself with autopilot_answer_worker whenever you reasonably can; only escalate what really needs the operator. Only the run's CEO session may, and only while a worker is actually waiting on your consult.")]
+    public string EscalateToOperator(
+        [Description("The question to put to the operator, in one message.")] string question)
+    {
+        var pane = host.CurrentMcpCallerPaneId;
+        if (string.IsNullOrEmpty(pane) || string.IsNullOrWhiteSpace(question) || !manager.EscalateToOperator(pane, question.Trim()))
+        {
+            return _Fail("Only the run's CEO session can escalate a worker's consult, and only while one is pending.");
+        }
+
+        return JsonSerializer.Serialize(new { ok = true, status = "awaiting-operator" }, Serializer);
     }
 
     [McpServerTool(Name = "autopilot_tracker_stage")]

@@ -36,6 +36,23 @@ internal sealed class AutopilotRunCoordinator(
     private string? _validationReason;
     private string? _blockedPane;
 
+    // AC-201 tiered escalation state, all guarded by _lock. A worker's autopilot_blocked now consults the run's CEO
+    // first (spoor 2) instead of going straight to the operator: _consultPane is the worker awaiting the CEO's answer
+    // (at most one at a time), _ceoSession is the live CEO the consult is relayed to and the fail-closed check reads,
+    // _activeStepId names the running step whose consult budget _consultCounts tracks, and _maxConsultsPerStep caps how
+    // often one step may consult before the run falls back to the operator.
+    private string? _consultPane;
+    private IEmbeddedSession? _ceoSession;
+    private string? _activeStepId;
+    private readonly Dictionary<string, int> _consultCounts = new(StringComparer.Ordinal);
+    private int _maxConsultsPerStep;
+
+    // AC-202: the last stage this run's automatic phase→stage mapping set on the source issue, so a lifecycle edge does
+    // not set the same stage twice (idempotent). Guarded by _lock. The CEO's manual autopilot_tracker_stage does not
+    // touch this — the auto-mapping fires only on the two lifecycle edges (start, merge-ready), far from the CEO's own
+    // mid-run stage/notes, so it is a safety net that never immediately reverts a stage the CEO set by hand.
+    private TrackerWorkStage? _lastAutoStage;
+
     /// <summary>
     /// Runs the approved plan to a settled end. Builds the bounded run-driver on the run's rework cap and feeds it the
     /// executeStep adapter; returns when the run settles (merge-ready or blocked) or <paramref name="cancellationToken"/>
@@ -53,10 +70,31 @@ internal sealed class AutopilotRunCoordinator(
         Func<Action, Task> runOnUi,
         CancellationToken cancellationToken)
     {
+        // Remember the run's CEO session and its per-step consult budget so a worker's mid-step consult (AC-201) can be
+        // relayed to the CEO and the fail-closed check can see whether the CEO is still live.
+        lock (_lock)
+        {
+            _ceoSession = ceo;
+            _maxConsultsPerStep = settings.MaxConsultsPerStep();
+        }
+
+        // AC-202: the run has just started (the plan is Running after its single approval). Move the source issue to the
+        // in-progress stage automatically — a source-triggered run must not sit on Backlog waiting for the CEO to move it
+        // by hand (AC-195 did exactly that). A CEO-first run has no issue, so this is a no-op there.
+        await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InProgress, cancellationToken);
+
         var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
         await driver.RunAsync(
             step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
             cancellationToken);
+
+        // AC-202: the run settled. When it reached merge-ready (every hard step passed), move the source issue to the
+        // review stage — the work is done, the merge itself is left to the human. A blocked, stopped or cancelled run is
+        // left where it is (its stage stays in-progress, so the operator sees it still needs them).
+        if (!cancellationToken.IsCancellationRequested && plan.Phase == AutopilotPlanPhase.MergeReady)
+        {
+            await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InReview, cancellationToken);
+        }
     }
 
     /// <summary>Called on an MCP thread: a step agent's pane reports its work done. False when the pane is not a live step agent.</summary>
@@ -118,6 +156,127 @@ internal sealed class AutopilotRunCoordinator(
     }
 
     /// <summary>
+    /// Called on an MCP thread (AC-201, spoor 2): a live step worker consults the run's CEO before it continues instead
+    /// of going straight to the operator. The worker's question is relayed as a turn into the CEO's own session, which
+    /// answers it (<see cref="AnswerWorkerAsync"/>) or escalates it (<see cref="EscalateToOperator"/>). Two guarded
+    /// fallbacks send it straight to the operator instead: <em>fail-closed</em> when there is no live CEO to consult, and
+    /// the <em>loop-cap</em> when this step has already spent its consult budget (a worker stuck asking in circles).
+    /// Gated to a live step worker of a running run with no other consult or blockade already open. False when the gate
+    /// turns it down; true whether it went to the CEO or fell back to the operator.
+    /// </summary>
+    public async Task<bool> ReportConsultAsync(string workerPane, string question)
+    {
+        bool toCeo;
+        string? ceoPane = null;
+        AutopilotStep? step = null;
+        lock (_lock)
+        {
+            if (!_stepAgents.ContainsKey(workerPane)
+                || plan.Phase != AutopilotPlanPhase.Running
+                || _consultPane is not null
+                || _blockedPane is not null)
+            {
+                return false;
+            }
+
+            // Fail-closed: with no live CEO to consult (never embedded, or already ended) the consult cannot be answered,
+            // so it falls back to the operator rather than being silently dropped.
+            if (_ceoSession is not { } ceo || ceo.Completion.IsCompleted)
+            {
+                _blockedPane = workerPane;
+                toCeo = false;
+            }
+            // Loop-cap: count this consult against the running step's budget; once a step exceeds it, stop bouncing the
+            // worker off the CEO and put the question to the operator instead.
+            else if (_activeStepId is { } stepId && _BumpConsult(stepId) > _maxConsultsPerStep)
+            {
+                _blockedPane = workerPane;
+                toCeo = false;
+            }
+            else
+            {
+                _consultPane = workerPane;
+                ceoPane = plan.SessionPaneId;
+                step = plan.ActiveStep;
+                toCeo = true;
+            }
+        }
+
+        if (toCeo)
+        {
+            // Relay the question into the CEO's session as a turn — the phase stays Running (a consult is not a blockade).
+            await host.SendToSessionAsync(ceoPane!, AutopilotConsultBrief.ConsultTurn(step, question));
+            return true;
+        }
+
+        // Fail-closed or loop-cap fallback: this is a real operator blockade — raise it outside the lock like ReportBlocked.
+        plan.Block(question);
+        return true;
+    }
+
+    /// <summary>
+    /// Called on an MCP thread (AC-201): the CEO answers a worker's consult. Relays the answer as a turn into the
+    /// worker's session — it carries on there and eventually reports done as usual — and clears the pending consult. The
+    /// phase never changed (a consult keeps the run Running), so nothing here moves it. Gated to the run's CEO session
+    /// with a consult actually pending; false otherwise. A blank answer just clears the consult without relaying.
+    /// </summary>
+    public async Task<bool> AnswerWorkerAsync(string ceoPane, string answer)
+    {
+        string? workerPane;
+        lock (_lock)
+        {
+            if (plan.SessionPaneId != ceoPane || _consultPane is null)
+            {
+                return false;
+            }
+
+            workerPane = _consultPane;
+            _consultPane = null;
+        }
+
+        if (workerPane is { Length: > 0 } && !string.IsNullOrWhiteSpace(answer))
+        {
+            await host.SendToSessionAsync(workerPane, answer);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Called on an MCP thread (AC-201, spoor 3): the CEO decides a worker's consult is genuinely an operator call and
+    /// escalates it. The worker (not the CEO) becomes the blocked pane, so the operator's answer is later relayed to the
+    /// worker through the unchanged <see cref="AnswerBlockadeAsync"/>. Gated to the run's CEO session with a consult
+    /// pending; false otherwise.
+    /// </summary>
+    public bool EscalateToOperator(string ceoPane, string question)
+    {
+        lock (_lock)
+        {
+            if (plan.SessionPaneId != ceoPane || _consultPane is null)
+            {
+                return false;
+            }
+
+            // The worker awaiting the consult becomes the blocked pane so the operator's reply reaches the worker, not the CEO.
+            _blockedPane = _consultPane;
+            _consultPane = null;
+        }
+
+        plan.Block(question);
+        return true;
+    }
+
+    // Counts a consult against a step's budget under _lock and returns the running total, so ReportConsultAsync can cap
+    // how often one step may consult before the run falls back to the operator.
+    private int _BumpConsult(string stepId)
+    {
+        _consultCounts.TryGetValue(stepId, out var count);
+        count++;
+        _consultCounts[stepId] = count;
+        return count;
+    }
+
+    /// <summary>
     /// The operator answered the blockade (AC-155): relay their reply to the blocked session as a turn — it carries on
     /// in that same session and eventually reports done as usual — and resume the run. A blank answer just resumes.
     /// </summary>
@@ -166,19 +325,91 @@ internal sealed class AutopilotRunCoordinator(
     // session, a run with no source (CEO-first), or a tracker id no plugin backs, all yield false rather than an action.
     private async Task<bool> _WithSourceTrackerAsync(string paneId, Func<ITrackerProvider, AutopilotPlanSource, Task<bool>> action)
     {
-        AutopilotPlanSource? source;
+        bool isRunCeo;
         lock (_lock)
         {
-            source = plan.SessionPaneId == paneId ? plan.Plan?.Source : null;
+            isRunCeo = plan.SessionPaneId == paneId;
         }
 
-        if (source is null)
+        if (!isRunCeo || _ResolveSourceTracker() is not { } resolved)
         {
             return false;
         }
 
+        return await action(resolved.Provider, resolved.Source);
+    }
+
+    // The run's source and the tracker plugin backing its tracker id, or null when the run has no source (CEO-first) or
+    // no installed plugin backs it. The read of the plan's source is under _lock; the provider lookup is a pure host read.
+    private (ITrackerProvider Provider, AutopilotPlanSource Source)? _ResolveSourceTracker()
+    {
+        AutopilotPlanSource? source;
+        lock (_lock)
+        {
+            source = plan.Plan?.Source;
+        }
+
+        if (source is null)
+        {
+            return null;
+        }
+
         var provider = host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
-        return provider is not null && await action(provider, source);
+        return provider is null ? null : (provider, source);
+    }
+
+    /// <summary>
+    /// AC-202: automatically move the run's source issue to <paramref name="stage"/> as the run crosses a lifecycle edge
+    /// (started, merge-ready). Only for a source-triggered run — a CEO-first run has no issue; <em>idempotent</em> — it
+    /// never sets the same stage twice; and <em>fail-soft</em> — a tracker error (API down, no permission, cancellation)
+    /// never breaks the run. The neutral stage is mapped to the tracker's own vocabulary through
+    /// <see cref="ITrackerProvider.SuggestStageName"/>, so no tracker-specific stage name is hardcoded here; a tracker
+    /// that maps the stage to null is left untouched. Internal (not private) so a focused test can exercise the
+    /// idempotency guard directly. This is a safety net beside the CEO's manual autopilot_tracker_stage, not a
+    /// replacement — see <see cref="_lastAutoStage"/> on why it does not fight the CEO's own mid-run stage.
+    /// </summary>
+    internal async Task AutoAdvanceTrackerStageAsync(TrackerWorkStage stage, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            // Idempotent: this run's auto-mapping already moved the issue to this stage.
+            if (_lastAutoStage == stage)
+            {
+                return;
+            }
+        }
+
+        if (_ResolveSourceTracker() is not { } resolved)
+        {
+            // A CEO-first run (no source) or no installed plugin backs its tracker — nothing to move.
+            return;
+        }
+
+        try
+        {
+            var stageName = resolved.Provider.SuggestStageName(stage);
+            if (string.IsNullOrWhiteSpace(stageName))
+            {
+                // The tracker maps this neutral stage to no column of its own — leave the issue where it is.
+                return;
+            }
+
+            if (await resolved.Provider.SetStageAsync(resolved.Source.IssueId, stageName, cancellationToken))
+            {
+                // Remember the last stage that actually landed, so this edge is not retried and a later, different edge
+                // still proceeds. A set that did not land (API down) is not remembered, so a subsequent edge can try again.
+                lock (_lock)
+                {
+                    _lastAutoStage = stage;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Fail-soft (AC-202): a tracker fault must never take the run down. Providers already degrade a failure to a
+            // false return; this guards the run against anything they might still throw (a cancellation, an unexpected
+            // error). The CEO's manual tracker tools remain as the fallback.
+        }
     }
 
     /// <summary>
@@ -229,6 +460,13 @@ internal sealed class AutopilotRunCoordinator(
 
         // A fresh attempt clears any note the previous one left, so a rework does not show a stale reason.
         plan.NoteStep(step.Id, string.Empty);
+
+        // This is the running step a consult belongs to (AC-201), with a fresh consult budget for the attempt.
+        lock (_lock)
+        {
+            _activeStepId = step.Id;
+            _consultCounts.Remove(step.Id);
+        }
 
         try
         {
@@ -357,6 +595,20 @@ internal sealed class AutopilotRunCoordinator(
                 {
                     _blockedPane = null;
                 }
+
+                // Likewise a consult raised by this step's own worker (AC-201) cannot outlive the step. Clear the active
+                // step and its consult budget so the next step (or the next attempt) starts with a clean tier.
+                if (_consultPane is not null && sessions.Any(session => session.PaneId == _consultPane))
+                {
+                    _consultPane = null;
+                }
+
+                if (_activeStepId == step.Id)
+                {
+                    _activeStepId = null;
+                }
+
+                _consultCounts.Remove(step.Id);
             }
 
             await runOnUi(() =>

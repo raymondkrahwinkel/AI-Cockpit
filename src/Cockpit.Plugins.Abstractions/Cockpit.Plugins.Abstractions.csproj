@@ -134,7 +134,13 @@
          The status enum defaults to Unknown (fail-closed: treat as needing isolation) and both host members are
          default-implemented (Unknown / Empty / no-op), so existing hosts and test fakes keep compiling. Additive API —
          still a minor; the major and abstractionsVersion stay 1. -->
-    <Version>1.24.0</Version>
+    <!-- 1.25.0 (#AC-202): added the TrackerWorkStage enum (a tracker-neutral point in a consumer's work lifecycle) and
+         ITrackerProvider.SuggestStageName, which maps it to the tracker's own stage name so Autopilot can move a source
+         issue automatically at run-start and merge-ready without hardcoding any tracker's vocabulary. The interface
+         member is default-implemented (returns null → no auto-mapping), so an existing provider — in-repo or a
+         third-party one compiled against an older SDK — keeps compiling and loading; it simply is not auto-moved until
+         it opts in. Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <Version>1.25.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>
