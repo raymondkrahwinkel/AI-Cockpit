@@ -274,7 +274,8 @@ public partial class App : Application
             Program.Services.GetRequiredService<IWorkflowTemplateLibrary>(),
             Program.Services.GetRequiredService<IWorkflowTemplateRegistry>());
 
-        // Surface any load/init failures (phase 1 or 2) as a banner; the app kept running regardless.
+        // Surface any load/init failures (phase 1 or 2), and any plugins now awaiting approval (AC-208), as
+        // banners; the app kept running regardless.
         cockpit.RefreshPluginFailures();
     }
 

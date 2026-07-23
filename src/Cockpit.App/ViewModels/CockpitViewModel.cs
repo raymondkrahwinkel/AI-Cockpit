@@ -379,6 +379,14 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [ObservableProperty]
     private bool _hasPluginFailures;
 
+    /// <summary>A dismissible banner (AC-208) shown when one or more plugins are sitting at awaiting-approval — new, or their bytes changed since last approved — so that state is visible without opening Plugin store → Installed.</summary>
+    [ObservableProperty]
+    private string _pendingApprovalBanner = string.Empty;
+
+    /// <summary>True while the pending-approval banner should be shown.</summary>
+    [ObservableProperty]
+    private bool _hasPendingApprovals;
+
     /// <summary>Reads the recorded plugin issues and raises the startup banner; called after plugin phase-2 completes. Errors (a plugin that did not load) and warnings (one that loaded but is flagged, e.g. built against a newer SDK) read differently, since the operator can do different things about them.</summary>
     public void RefreshPluginFailures()
     {
@@ -396,10 +404,22 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             (0, _) => $"{warnings.Count} plugins may be incompatible with this app. See the Plugin store → Installed for details.",
             _ => $"{errors.Count} plugins failed to load and {warnings.Count} may be incompatible. See the Plugin store → Installed for details.",
         };
+
+        var pending = _pluginDiagnostics?.PendingApprovals ?? [];
+        HasPendingApprovals = pending.Count > 0;
+        PendingApprovalBanner = pending.Count switch
+        {
+            0 => string.Empty,
+            1 => $"1 plugin is awaiting approval: {pending[0].DisplayName}. See Plugin store → Installed to review it.",
+            _ => $"{pending.Count} plugins are awaiting approval. See Plugin store → Installed to review them.",
+        };
     }
 
     [RelayCommand]
     private void DismissPluginFailures() => HasPluginFailures = false;
+
+    [RelayCommand]
+    private void DismissPendingApprovals() => HasPendingApprovals = false;
 
     void IPluginContributionSink.AddPluginSideSection(string pluginId, string title, Func<Control> createView) =>
         _OnUiThread(() => PluginSideSections.Add(new PluginSideSection(pluginId, title, createView)));

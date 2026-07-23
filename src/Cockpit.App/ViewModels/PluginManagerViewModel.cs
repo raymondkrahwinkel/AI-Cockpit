@@ -112,6 +112,7 @@ public partial class PluginManagerViewModel : ViewModelBase
     public PluginManagerViewModel()
     {
         _WatchAvailablePluginsForUpdateGate();
+        _WatchPluginsForPendingApprovalBadge();
     }
 
     public PluginManagerViewModel(
@@ -139,6 +140,7 @@ public partial class PluginManagerViewModel : ViewModelBase
         _restartService = restartService;
         _templateLibrary = templateLibrary;
         _WatchAvailablePluginsForUpdateGate();
+        _WatchPluginsForPendingApprovalBadge();
     }
 
     // The "Update all" button binds to HasAvailableUpdates/AvailableUpdateCount, which are computed from
@@ -711,6 +713,29 @@ public partial class PluginManagerViewModel : ViewModelBase
     public bool HasUpdateBadge => UpdateBadgeCount > 0;
 
     partial void OnUpdateBadgeCountChanged(int value) => OnPropertyChanged(nameof(HasUpdateBadge));
+
+    /// <summary>
+    /// How many installed plugins are sitting at awaiting-approval (AC-208) — new, or their bytes changed since
+    /// last approved. Unlike <see cref="AvailableUpdateCount"/> (fed from a background checker), this reads
+    /// straight off <see cref="Plugins"/>: the decision is already known the moment discovery runs, no separate
+    /// check needed. It clears itself once every such plugin has been approved or disabled, because the next
+    /// <see cref="LoadAsync"/> re-discovers with the fresh consent state and nothing is left at that decision.
+    /// </summary>
+    public int PendingApprovalCount => Plugins.Count(row => row.Discovered.Decision is PluginLoadDecision.NeedsConsent);
+
+    /// <summary>Whether the sidebar "Plugin store" badge should show the pending-approval count (AC-208).</summary>
+    public bool HasPendingApproval => PendingApprovalCount > 0;
+
+    // Plugins is rebuilt wholesale (Clear + Add) on every LoadAsync, so PendingApprovalCount/HasPendingApproval —
+    // both computed from it — need their own change raised the same way AvailableUpdateCount does for
+    // AvailablePlugins (_WatchAvailablePluginsForUpdateGate): notifying only after specific commands would miss
+    // the moment a fresh discovery is what changed the count.
+    private void _WatchPluginsForPendingApprovalBadge() =>
+        Plugins.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(PendingApprovalCount));
+            OnPropertyChanged(nameof(HasPendingApproval));
+        };
 
     /// <summary>Sets the sidebar badge count from the background update checker (AC-76); marshaled to the UI thread since the checker runs off it, or set directly when already on it.</summary>
     public void SetUpdateBadgeCount(int count)
