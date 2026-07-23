@@ -243,8 +243,18 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private Control _BuildHistoryRow(AutopilotRunRecord record)
     {
         var mergeReady = record.Outcome == AutopilotPlanPhase.MergeReady;
+        var stopped = record.Outcome == AutopilotPlanPhase.Stopped;
         var failedCount = record.Steps.Count(step => step.Status is AutopilotStepStatus.Failed);
         var clean = mergeReady && failedCount == 0;
+
+        // A clean merge-ready is green; a run the operator stopped is neutral grey (not a failure, a deliberate stop,
+        // AC-196); a merge-ready that still had failed (optional) steps, or a blocked run, is amber — so a run with
+        // failures never reads as an unqualified success.
+        var outcomeBrush = clean
+            ? _Brush("CockpitStatusDoneBrush")
+            : stopped
+                ? _Brush("CockpitTextSecondaryBrush")
+                : _Brush("CockpitStatusWaitingBrush");
 
         var dot = new Border
         {
@@ -254,9 +264,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 4, 10, 0),
             [DockPanel.DockProperty] = Dock.Left,
-            // A clean merge-ready is green; a merge-ready that still had failed (optional) steps, or a blocked run, is
-            // amber — so a run with failures never reads as an unqualified success.
-            Background = clean ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+            Background = outcomeBrush,
         };
 
         var title = new DockPanel
@@ -284,9 +292,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        var outcomeText = mergeReady
-            ? failedCount > 0 ? $"Merge-ready · {failedCount} optional step(s) failed" : "Merge-ready"
-            : $"Blocked — {record.BlockReason}";
+        var outcomeText = stopped
+            ? "Stopped"
+            : mergeReady
+                ? failedCount > 0 ? $"Merge-ready · {failedCount} optional step(s) failed" : "Merge-ready"
+                : $"Blocked — {record.BlockReason}";
 
         var meta = new StackPanel { Spacing = 2, Children = { title } };
         meta.Children.Add(new TextBlock
@@ -294,7 +304,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Text = outcomeText,
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = clean ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+            Foreground = outcomeBrush,
         });
 
         // Each step on its own line with a mark, and — where it failed or was blocked — the reason it carried underneath,
@@ -514,10 +524,17 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // nothing to record) and raise a toast (Raymond 2026-07-22). Every settled run gets its own done/blocked toast; when
     // that empties both the running set and the queue after more than one run, an extra "whole queue finished" summary
     // follows, so a single run is one toast and a staged queue ends with a clear all-done.
+    // Whether a run's final phase is one that gets recorded in history and toasted (AC-196): merge-ready, blocked, or
+    // operator-stopped. A run that is still Running when its context is dropped was cancelled by a closed workspace and
+    // has nothing to record. Pure so the "a stopped run is recorded, not silently dropped" rule is unit-testable.
+    internal static bool IsSettledOutcome(AutopilotPlanPhase outcome) =>
+        outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked or AutopilotPlanPhase.Stopped;
+
     private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason)
     {
-        var settled = outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked;
-        if (settled && plan is not null)
+        // A run counts as settled — recorded and toasted — when it merged-ready, blocked, or the operator stopped it
+        // (AC-196). A run still Running is a cancelled/closed workspace with nothing to record.
+        if (IsSettledOutcome(outcome) && plan is not null)
         {
             _completedRuns++;
             _history.Add(new AutopilotRunRecord(
@@ -529,13 +546,17 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note))]));
 
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
-            if (outcome == AutopilotPlanPhase.MergeReady)
+            switch (outcome)
             {
-                _host.ShowToast($"Run “{label}” is merge-ready.", PluginToastSeverity.Success);
-            }
-            else
-            {
-                _host.ShowToast($"Run “{label}” is blocked — {blockReason}", PluginToastSeverity.Warning);
+                case AutopilotPlanPhase.MergeReady:
+                    _host.ShowToast($"Run “{label}” is merge-ready.", PluginToastSeverity.Success);
+                    break;
+                case AutopilotPlanPhase.Stopped:
+                    _host.ShowToast($"Run “{label}” stopped.", PluginToastSeverity.Information);
+                    break;
+                default:
+                    _host.ShowToast($"Run “{label}” is blocked — {blockReason}", PluginToastSeverity.Warning);
+                    break;
             }
         }
 
@@ -823,15 +844,20 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var box = new TextBox
         {
             FontSize = 12,
+            // Match the Compact buttons beside it so the three controls in the row are the same height (AC-200).
+            MinHeight = 28,
             PlaceholderText = "Folder this run works in — pick a recent one or browse",
         };
 
+        // The history and Browse buttons follow the app-wide Compact button pattern (Theme.axaml: Padding 10,0 +
+        // MinHeight 28 + centred content), the same as the New-session / profile dialogs — so they align with the text
+        // box in the row instead of stretching to their own height (AC-200).
         var pick = new Button
         {
             Content = new MaterialIcon { Kind = MaterialIconKind.History, Width = 16, Height = 16 },
-            Padding = new Thickness(7, 0),
+            Classes = { "Compact" },
+            VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Stretch,
             [ToolTip.TipProperty] = "Recent and pinned folders",
             [DockPanel.DockProperty] = Dock.Right,
         };
@@ -871,9 +897,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var browse = new Button
         {
             Content = "Browse…",
-            Padding = new Thickness(10, 0),
+            Classes = { "Compact" },
+            VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Stretch,
             [DockPanel.DockProperty] = Dock.Right,
         };
         browse.Click += async (_, _) =>
@@ -1087,14 +1113,44 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var controller = context.Controller;
         var plan = controller.Plan;
 
-        var goal = new TextBlock
+        var goalText = new TextBlock
         {
             Text = plan?.Label is { Length: > 0 } text ? text : "Autopilot run",
             FontWeight = FontWeight.SemiBold,
             FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // While the run is live the operator can stop it (AC-196): a mid-run stop settles it Stopped and records it in
+        // history, rather than the run vanishing silently while still Running. Only shown while the run is actually
+        // running or waiting — a settled run has nothing left to stop.
+        // TODO(AC-196): a confirmation ("Stop run? unmerged work is discarded") is UX-wanted but out of scope here.
+        var live = controller.Phase is AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator;
+        var stop = new Button
+        {
+            Content = "Stop run",
+            Classes = { "Compact" },
+            VerticalContentAlignment = VerticalAlignment.Center,
+            IsVisible = live,
+            Margin = new Thickness(8, 0, 0, 0),
+            [DockPanel.DockProperty] = Dock.Right,
+        };
+        stop.Click += (_, _) =>
+        {
+            // Set the Stopped phase first, then cancel (order matters — see AutopilotPlanController.Stop): the driver
+            // settles only when every step finished, never on a mid-run cancel, so the phase the surface snapshots after
+            // the run tears down stays Stopped rather than being overwritten.
+            context.Controller.Stop("Stopped by operator");
+            context.Cancel();
+        };
+
+        var goal = new DockPanel
+        {
+            LastChildFill = true,
             Margin = new Thickness(14, 12, 14, 8),
             [DockPanel.DockProperty] = Dock.Top,
+            Children = { stop, goalText },
         };
 
         var left = new Border

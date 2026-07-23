@@ -22,4 +22,10 @@ internal enum AutopilotPlanPhase
 
     /// <summary>Every hard step passed — the PR is merge-ready and the merge is left to the human.</summary>
     MergeReady,
+
+    /// <summary>The operator stopped the run mid-flight (AC-196) — it settled by their choice, not by the step policy;
+    /// any unmerged work is left as-is. Recorded in history with a neutral outcome, distinct from a blocked run. Kept
+    /// last so its underlying value is appended — existing persisted history (which stores the phase as its integer
+    /// value) keeps deserializing MergeReady/Blocked unchanged.</summary>
+    Stopped,
 }
