@@ -28,8 +28,10 @@ internal sealed record AutopilotPlan(
     /// </summary>
     public string WorkingDirectory { get; init; } = string.Empty;
 
-    /// <summary>The run's display label — its <see cref="Name"/>, or the <see cref="Goal"/> when no name was set yet.</summary>
-    public string Label => string.IsNullOrWhiteSpace(Name) ? Goal : Name;
+    /// <summary>The run's display label — its <see cref="Name"/>, or the <see cref="Goal"/> when no name was set yet,
+    /// prefixed with the source issue key (AC-199) so a tracker-triggered run reads as "AC-191 - …" in the queue and
+    /// history rather than by its bare summary.</summary>
+    public string Label => _WithSourcePrefix(string.IsNullOrWhiteSpace(Name) ? Goal : Name);
 
     /// <summary>
     /// The best available name to pre-fill the approval field with (Raymond 2026-07-22): the CEO's proposed
@@ -38,9 +40,23 @@ internal sealed record AutopilotPlan(
     /// operator to accept or edit rather than leaving the field — and the approval gate — empty on a planned run.
     /// </summary>
     public string SuggestedName =>
-        !string.IsNullOrWhiteSpace(Name) ? Name
-        : !string.IsNullOrWhiteSpace(Goal) ? Goal
-        : Steps.FirstOrDefault()?.Title ?? string.Empty;
+        _WithSourcePrefix(
+            !string.IsNullOrWhiteSpace(Name) ? Name
+            : !string.IsNullOrWhiteSpace(Goal) ? Goal
+            : Steps.FirstOrDefault()?.Title ?? string.Empty);
+
+    /// <summary>
+    /// Prefixes a run name with the source issue key (AC-199) — "AC-191 - {name}" — when this plan came from a tracker
+    /// item, so the operator-facing name carries the ticket it serves. A CEO-first plan (no <see cref="Source"/>) is
+    /// left untouched, and a name that already opens with the issue key (the CEO proposed one, or the prefix was applied
+    /// once already) is not prefixed twice.
+    /// </summary>
+    private string _WithSourcePrefix(string name) =>
+        Source is { IssueId: { Length: > 0 } issueId }
+        && !string.IsNullOrWhiteSpace(name)
+        && !name.StartsWith(issueId, StringComparison.OrdinalIgnoreCase)
+            ? $"{issueId} - {name}"
+            : name;
 
     /// <summary>This plan with a run name — the CEO's proposal, or the operator's override at approval.</summary>
     public AutopilotPlan WithName(string name) => this with { Name = name };

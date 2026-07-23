@@ -144,6 +144,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: an Autopilot run started from a YouTrack or GitHub issue moves that issue's stage as it progresses
+  again — the stage and note calls were addressed to the wrong tool endpoint and silently did nothing, so a
+  tracker-triggered run stopped keeping its issue in sync. The run name now also carries the ticket key
+  ("AC-191 - …") in the queue and history instead of only the bare summary, so a tracker-triggered run is
+  recognisable at a glance.
 - fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
   runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
   down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation
