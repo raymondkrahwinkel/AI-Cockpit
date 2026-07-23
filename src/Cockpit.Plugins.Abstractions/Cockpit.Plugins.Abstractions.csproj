@@ -134,12 +134,22 @@
          The status enum defaults to Unknown (fail-closed: treat as needing isolation) and both host members are
          default-implemented (Unknown / Empty / no-op), so existing hosts and test fakes keep compiling. Additive API —
          still a minor; the major and abstractionsVersion stay 1. -->
-    <!-- 1.25.0 (#AC-202): added the TrackerWorkStage enum (a tracker-neutral point in a consumer's work lifecycle) and
-         ITrackerProvider.SuggestStageName, which maps it to the tracker's own stage name so Autopilot can move a source
-         issue automatically at run-start and merge-ready without hardcoding any tracker's vocabulary. The interface
-         member is default-implemented (returns null → no auto-mapping), so an existing provider — in-repo or a
-         third-party one compiled against an older SDK — keeps compiling and loading; it simply is not auto-moved until
-         it opts in. Additive API — still a minor; the major and abstractionsVersion stay 1. -->
+    <!-- 1.25.0 is the single Autopilot-release minor that folds in four additive groups (AC-189, AC-190, AC-195 landed
+         on ICockpitHost.cs / PluginSessionCapabilities.cs / IEmbeddedSession.cs without touching this Version; AC-202
+         carried the one bump). Nothing was removed or changed, so the major and abstractionsVersion stay 1.
+         - AC-189: ICockpitHost.RegisterAutopilotTemplate (default no-op) plus the PluginAutopilotTemplate /
+           RegisteredAutopilotTemplate records — a plugin contributes a reusable Autopilot run template.
+         - AC-190: PluginSessionCapabilities.ConfinesViaPermissionsOnly (init, default false) — a provider marks that its
+           worktree confinement rests on its permission system (Claude) rather than an OS sandbox, so the isolation gate
+           can vouch a permission-engaged mode and refuse a bypass mode.
+         - AC-195: IEmbeddedSession.IsBusy (default false) and BusyChanged (default no-op event) — an embedder lights or
+           clears a "working" indicator; no plugin implements IEmbeddedSession (the host hands it out) so nothing breaks.
+         - AC-202: the TrackerWorkStage enum (a tracker-neutral point in a consumer's work lifecycle) and
+           ITrackerProvider.SuggestStageName (default null → no auto-mapping), which maps it to the tracker's own stage
+           name so Autopilot moves a source issue automatically at run-start and merge-ready without hardcoding any
+           tracker's vocabulary. An existing provider keeps compiling and loading; it simply is not auto-moved until it
+           opts in.
+         All four are additions (new types, init-properties with defaults, or default-implemented members) — a minor. -->
     <Version>1.25.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
