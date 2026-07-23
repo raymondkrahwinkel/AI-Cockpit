@@ -181,6 +181,16 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: an Autopilot run whose autonomy mode was left on a permission-bypassing setting no longer has its
+  Claude steps refused for "the profile does not confine to the worktree". The run now coerces that setting
+  back to the safe "acceptEdits" mode for every step — the implementation step and both review gates alike —
+  so a run started from an older saved setting proceeds instead of blocking on its first Claude step. The
+  refusal message, when it does appear, now names the fix: switch the autonomy mode to "acceptEdits", or route
+  steps that need autonomous shell to a Codex profile.
+- fixed: the CEO can no longer plan an Autopilot step on a model the chosen profile cannot run — a model that
+  is not one the profile offers, or any model on a local profile that pins its own. The plan is turned down at
+  emit with a clear message so the CEO corrects it before you approve, and a mismatched step is caught again
+  just before it runs instead of failing later with a misleading isolation error.
 - fixed: the Autopilot run queue no longer stops starting queued runs after one fails to start — a run that
   errored while starting used to permanently consume a concurrency slot.
 - fixed: answering an Autopilot run's blockade with an empty reply, or a step that reports an empty summary,

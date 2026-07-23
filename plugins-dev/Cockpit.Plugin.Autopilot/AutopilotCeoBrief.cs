@@ -80,8 +80,10 @@ internal static class AutopilotCeoBrief
             about — pass it as workingDirectory too; it pre-fills the operator's field for them to confirm or override (a
             git repository isolates each step in a worktree, a plain folder runs without isolation). Each step: {id,
             title, description, profile, model, brief, acceptance, hard, mcp, agents}.
-            - profile: the session profile the step runs on (e.g. "Claude", "Qwen (local)"). model: only where the profile
-              offers a choice (e.g. "Opus"); omit it for a local profile that pins its own model.
+            - profile: the session profile the step runs on — use one of the exact profile labels listed above. model:
+              MUST be exactly one of the models that profile lists above; omit it entirely for a local profile that lists
+              no models (it pins its own). A model that is not on the chosen profile's list — or any model on a local
+              profile — is rejected and you are asked to fix the plan before the operator can approve it.
             - brief: the context that step's agent is handed. acceptance: what "done" means for the step — you validate
               the step's output against it, and a step that fails goes back to rework within its attempt cap.
             - hard: true for a required gate that must pass (a security review); false or omitted for a skippable step.
@@ -160,11 +162,11 @@ internal static class AutopilotCeoBrief
         {
             var cost = profile.RunsLocally ? "runs locally, free" : "hosted API, paid";
             var models = profile.ModelSuggestions is { Count: > 0 } suggestions
-                ? $"; models: {string.Join(", ", suggestions)}"
-                : string.Empty;
+                ? $"; models: {string.Join(", ", suggestions)} — a step on this profile must use exactly one of these"
+                : "; pins its own model — leave a step's model empty on this profile";
             return $"- {profile.Label} ({cost}{models})";
         });
 
-        return $"\nProfiles you can assign steps to:\n{string.Join("\n", lines)}\n";
+        return $"\nProfiles you can assign steps to (a step's model must be one the profile lists here, or empty for a profile that pins its own):\n{string.Join("\n", lines)}\n";
     }
 }

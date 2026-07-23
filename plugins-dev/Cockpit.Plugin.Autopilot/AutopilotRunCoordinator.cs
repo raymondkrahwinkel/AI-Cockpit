@@ -445,6 +445,17 @@ internal sealed class AutopilotRunCoordinator(
 
         try
         {
+            // AC-210 embed-time safety net: the plan passed profile/model validation at emit, but an operator edit can
+            // re-target a step's profile/model afterwards, so re-check this step against the host's roster before embedding
+            // it. A mismatch throws a clear model↔profile message the catch below records on the step — instead of embedding
+            // a session that is refused downstream and failing the step with a misleading isolation error. With no roster
+            // to check against (a host that supplies none) this is a no-op; the plan-time gate stays the primary guard.
+            var profiles = await host.GetProfilesAsync().ConfigureAwait(false) ?? [];
+            if (profiles.Count > 0 && AutopilotPlanTools.ValidateStepProfile(step, profiles) is { } profileError)
+            {
+                throw new InvalidOperationException(profileError);
+            }
+
             for (var index = 0; index < agentCount; index++)
             {
                 var signal = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);

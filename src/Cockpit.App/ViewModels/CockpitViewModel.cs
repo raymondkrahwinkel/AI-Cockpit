@@ -4943,7 +4943,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             if (request.IsolateInWorktree && (!session.IsSessionReady || !session.Capabilities.ConfinesFileAccessToWorkingDirectory))
             {
                 var reason = session.IsSessionReady
-                    ? $"Could not isolate this run: the {profile.Label} profile's provider does not confine its file tools to the worktree, so it was refused rather than allowed to edit your real checkout."
+                    ? $"Could not isolate this run: the \"{profile.Label}\" profile does not confine its file tools to the worktree, so it was refused rather than allowed to edit your real checkout. A Claude profile stops confining in a permission-bypassing mode — set the Autopilot autonomy mode to \"acceptEdits\" — and a local model never confines, so route steps that need autonomous shell to a Codex profile."
                     : "Could not isolate this run: its session did not start, so it was refused rather than run unisolated.";
                 session.Statusline = reason;
                 await _CloseEmbeddedSessionAsync(session, reason);
