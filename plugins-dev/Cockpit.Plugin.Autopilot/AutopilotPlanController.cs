@@ -292,6 +292,24 @@ internal sealed class AutopilotPlanController
         _Raise();
     }
 
+    /// <summary>
+    /// The operator stopped the run mid-flight (AC-196): settle it <see cref="AutopilotPlanPhase.Stopped"/> with
+    /// <paramref name="reason"/> so it is recorded as a deliberate stop rather than vanishing while still Running. Set
+    /// before the run's cancellation tears the driver down, so the settled phase the surface snapshots is Stopped — the
+    /// driver only calls <see cref="Settle"/> when every step finished, which a mid-run stop never reaches.
+    /// </summary>
+    public void Stop(string reason)
+    {
+        lock (_lock)
+        {
+            _phase = AutopilotPlanPhase.Stopped;
+            _blockReason = reason;
+            _pendingQuestion = null;
+        }
+
+        _Raise();
+    }
+
     /// <summary>Binds a step's embedded session pane so a report from that pane is trusted as this run's. Does not raise
     /// <see cref="Changed"/> — it changes no visible state, and firing mid-embed would re-enter the body's render.</summary>
     public void BindSession(string paneId)

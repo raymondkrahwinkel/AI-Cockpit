@@ -227,6 +227,49 @@ public class AutopilotPlanControllerTests
     }
 
     [Fact]
+    public void Stop_SettlesTheRun_Stopped_WithTheReason()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+        controller.StartStep("1");
+
+        controller.Stop("Stopped by operator");
+
+        controller.Phase.Should().Be(AutopilotPlanPhase.Stopped);
+        controller.BlockReason.Should().Be("Stopped by operator");
+        controller.PendingQuestion.Should().BeNull();
+    }
+
+    [Fact]
+    public void Stop_FromAwaitingOperator_ClearsThePendingQuestion_AndSettlesStopped()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+        controller.Block("Which region?");
+
+        controller.Stop("Stopped by operator");
+
+        controller.Phase.Should().Be(AutopilotPlanPhase.Stopped);
+        controller.PendingQuestion.Should().BeNull();
+    }
+
+    [Fact]
+    public void Stop_RaisesChanged()
+    {
+        var controller = new AutopilotPlanController();
+        controller.BeginPlanning(PlanWith(Step("1")));
+        controller.Approve();
+        var count = 0;
+        controller.Changed += (_, _) => count++;
+
+        controller.Stop("Stopped by operator");
+
+        count.Should().Be(1);
+    }
+
+    [Fact]
     public void Changed_Fires_OnPlanningAndStepTransitions()
     {
         var controller = new AutopilotPlanController();

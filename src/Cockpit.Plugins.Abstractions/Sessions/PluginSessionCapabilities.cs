@@ -60,4 +60,21 @@ public sealed record PluginSessionCapabilities(
     /// vouched for confinement fails closed, not open.
     /// </summary>
     public bool ConfinesFileAccessToWorkingDirectory { get; init; }
+
+    /// <summary>
+    /// Whether the confinement vouched by <see cref="ConfinesFileAccessToWorkingDirectory"/> holds <em>only while the
+    /// provider's permission system is engaged</em> (AC-190). A provider that confines via a real OS sandbox
+    /// (Codex's <c>workspace-write</c>) leaves this <see langword="false"/>: its confinement is independent of the
+    /// permission mode and holds unconditionally. A provider whose confinement to the working directory rests on its
+    /// permission prompts (Claude — cwd-bound native tools kept in check by per-tool approval) sets this
+    /// <see langword="true"/>, because a bypass permission mode (<c>bypassPermissions</c>,
+    /// <c>--dangerously-skip-permissions</c>) disables exactly that guard and lets the session write to an absolute
+    /// path outside its worktree. When set, the host's driver adapter downgrades the mapped
+    /// <c>ConfinesFileAccessToWorkingDirectory</c> to <see langword="false"/> for a session whose effective permission
+    /// mode is not a known permission-engaged one, so the fail-closed isolation gate refuses an isolate-in-worktree run
+    /// that a bypass mode would leave unconfined. Init-only for the same back-compat reason as
+    /// <see cref="SupportsLiveModelSwitch"/>; defaults to <see langword="false"/>, so an unaware provider keeps its
+    /// unconditional confinement contract unchanged.
+    /// </summary>
+    public bool ConfinesViaPermissionsOnly { get; init; }
 }

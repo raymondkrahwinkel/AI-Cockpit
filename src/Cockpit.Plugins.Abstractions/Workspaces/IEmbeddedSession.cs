@@ -47,4 +47,24 @@ public interface IEmbeddedSession
     /// wait it can act on (and explain), not a hang. Never faults; it simply completes.
     /// </summary>
     Task<string?> Completion { get; }
+
+    /// <summary>
+    /// Whether this embedded session is mid-turn (AC-195): true from the moment a turn is sent until it settles,
+    /// mirroring the session's own busy state. An embedder that runs a session the operator watches — the Autopilot
+    /// plan pop-out's CEO, whose planning turn can run silently for minutes — shows a "working" cue while this is true
+    /// so a long turn does not read as a hang. Default <see langword="false"/> for a host or adapter that does not
+    /// surface it, so an implementation from before this signal keeps compiling and simply reports "not busy".
+    /// </summary>
+    bool IsBusy => false;
+
+    /// <summary>
+    /// Raised when <see cref="IsBusy"/> flips, carrying the new value, so an embedder can light or clear its "working"
+    /// cue as the turn starts and settles without polling. Marshalled to the UI thread by the host. Default no-op for
+    /// an adapter that does not surface a busy signal.
+    /// </summary>
+    event Action<bool>? BusyChanged
+    {
+        add { }
+        remove { }
+    }
 }

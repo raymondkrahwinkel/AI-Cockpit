@@ -46,4 +46,14 @@ public sealed record McpServerConfig
     /// the cockpit runs, never to a third party's.
     /// </summary>
     public bool CockpitHosted { get; init; }
+
+    /// <summary>
+    /// Whether this server is internal-only (AC-204): kept out of every user-facing MCP selection (the New-session
+    /// checklist, the profile preselection and its token estimate) and out of the no-selection "all enabled servers"
+    /// fan-out, yet still reachable when a launch names it explicitly in its per-session selection. It is how a
+    /// cockpit-hosted endpoint that only a specific spawn is meant to mount — the Autopilot CEO/step endpoints, which
+    /// only a run's own agents scope to by name — stays mountable without an ordinary operator ever seeing or ticking
+    /// it. Never set for a user-added server.
+    /// </summary>
+    public bool Internal { get; init; }
 }

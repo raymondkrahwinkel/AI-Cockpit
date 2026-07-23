@@ -89,6 +89,43 @@ public class AutopilotRunManagerTests
         await _Eventually(() => started.Contains("b") && manager.Active.Count == 1);
     }
 
+    [Fact]
+    public void WhenTheRunnerThrows_TheReservedSlotIsReleased_SoALaterSubmitStillStartsARun()
+    {
+        // AC-205: starting a run embeds a session and can throw. The slot reservation (_starting) is bumped before the
+        // runner is called; without a finally to release it, a throw would leak the slot forever and the queue would
+        // start fewer and fewer runs. A later submit must still start once the runner works again.
+        var storage = new FakeStorage();
+        var settings = new AutopilotSettings(storage); // default cap 1
+        var queue = new AutopilotRunQueue(storage);
+
+        var started = new List<string>();
+        var throwOnStart = true;
+        AutopilotRunHandle Start(AutopilotPlan plan)
+        {
+            if (throwOnStart)
+            {
+                throw new InvalidOperationException("failed to embed the run's session");
+            }
+
+            started.Add(plan.Goal);
+            return new AutopilotRunHandle(_Coordinator(), new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        }
+
+        var manager = new AutopilotRunManager(queue, settings) { Runner = Start };
+
+        // The runner throws while starting the first plan — the reservation must be released, not leaked.
+        manager.Invoking(m => m.Submit(_Plan("a"))).Should().Throw<InvalidOperationException>();
+        started.Should().BeEmpty();
+
+        // The single slot is free again (cap is 1): a later submit with a now-working runner actually starts a run.
+        throwOnStart = false;
+        manager.Submit(_Plan("b"));
+
+        started.Should().ContainSingle().Which.Should().Be("b");
+        manager.Active.Should().HaveCount(1);
+    }
+
     private static async Task _Eventually(Func<bool> condition)
     {
         for (var i = 0; i < 200 && !condition(); i++)

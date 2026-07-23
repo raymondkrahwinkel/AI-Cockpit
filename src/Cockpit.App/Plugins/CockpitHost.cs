@@ -203,6 +203,14 @@ internal sealed class CockpitHost(
     public bool CanSendIntent(string targetPluginId, string action) =>
         services.GetRequiredService<IPluginIntentRegistry>().HasHandler(targetPluginId, action);
 
+    // The owner id is stamped here from this host's own pluginId, never taken from the caller — a plugin cannot
+    // register a template under another plugin's name (same rule as RegisterIntentHandler above).
+    public void RegisterAutopilotTemplate(PluginAutopilotTemplate template) =>
+        services.GetRequiredService<IAutopilotTemplateRegistry>().Register(pluginId, template);
+
+    public IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates =>
+        services.GetRequiredService<IAutopilotTemplateRegistry>().Registrations;
+
     /// <summary>
     /// A plugin's dialog gets a gear in its title bar when the plugin has settings to open — asked for at the
     /// moment the dialog opens rather than when the plugin was built, since a plugin registers its settings and
@@ -294,9 +302,9 @@ internal sealed class CockpitHost(
         }
     }
 
-    public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) =>
+    public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) =>
         services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
-            ? endpointHost.MountAsync(serverName, tools, isEnabled)
+            ? endpointHost.MountAsync(serverName, tools, isEnabled, isInternal)
             : Task.CompletedTask;
 
     public void AddManagedCli(ManagedCliDescriptor descriptor) =>

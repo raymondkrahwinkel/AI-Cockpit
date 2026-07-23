@@ -32,6 +32,18 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a persistent "Needs you" badge on the Autopilot bar while any run is waiting for your answer, so you
+  notice a waiting run even when you are looking at another run or the history — not just the moment's toast.
+  It clears once you answer.
+- added: a "CEO is working…" cue in the Plan-with-the-CEO dialog while the CEO is planning, so a long
+  planning turn no longer looks like the dialog is stuck — shown only on the CEO session, the rest of the
+  app's sessions are unaffected.
+- added: a "Stop run" button on a running Autopilot run, so you can end a run mid-flight instead of only
+  intervening on a step or closing the whole workspace. A stopped run settles cleanly and is recorded in the
+  history as "Stopped" — a neutral outcome, not a failure — with any unmerged work left as-is.
+- added: an Autopilot run now raises a toast the moment it needs your answer, so you notice a run waiting on
+  you even while you are working elsewhere in the app — before, it only showed inline on the run surface and
+  was easy to miss.
 - added: Autopilot — take a piece of work all the way to a merge-ready pull request. A CEO agent plans the
   run with you (from a YouTrack or GitHub issue, or a goal you type), resolves the open questions up front,
   and once you approve the plan it runs the steps autonomously — each in the run's own isolated git
@@ -100,6 +112,23 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: an Autopilot run started from a YouTrack or GitHub issue now moves that issue's stage itself as it
+  progresses — to an in-progress stage when it starts, and a review stage when it reaches merge-ready —
+  instead of relying on the CEO to move it by hand (which it did not always do, so a run could sit on the
+  backlog while it worked). A blocked or stopped run is left where it is, and the final merge stage still
+  stays yours. Each tracker maps these to its own stage names.
+- changed: when an Autopilot worker gets stuck it now consults the run's CEO first, instead of interrupting
+  you directly. The CEO — which has the plan and can read the code — answers most questions itself (a
+  convention to follow, a reasonable default, a design call within the plan), relayed straight back to the
+  worker so the run keeps going without you. Only a decision that genuinely needs you — an irreversible
+  choice, a missing credential, a business preference — is escalated to you, and better phrased. A per-step
+  limit stops a weak model looping on questions.
+- changed: Autopilot is more reliable and faster to plan. An approved run no longer stops mid-way to ask a
+  question it could answer itself — for anything the plan did not spell out, the step agent now makes a
+  reasonable assumption that follows the codebase's existing conventions and notes it, keeping the run
+  autonomous rather than waiting on you. The CEO also plans quicker: it is handed only the tools it needs
+  instead of every tool in the cockpit, and searches the code deliberately (a scoped read) instead of
+  sweeping the whole repository, so planning uses less context and stalls less.
 - changed: an Autopilot run now lets you name the folder it works in, right where you name the run — pick a
   recent or pinned folder (the same ones the New-session dialog remembers) or browse to one. A run planned
   from a YouTrack or GitHub issue no longer needs a session open on a repository to know where to work, and
@@ -144,6 +173,32 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the Autopilot run queue no longer stops starting queued runs after one fails to start — a run that
+  errored while starting used to permanently consume a concurrency slot.
+- fixed: answering an Autopilot run's blockade with an empty reply, or a step that reports an empty summary,
+  no longer leaves the run stalled or shows the CEO a blank block.
+- fixed: the three internal Autopilot endpoints (autopilot-plan, autopilot-run, autopilot-ceo) no longer
+  appear in the New-session MCP checklist or a profile's MCP pre-selection. They are the cockpit's own
+  endpoints that only an Autopilot run's own agents use, so an ordinary session should never see or tick
+  them — a run still mounts them internally.
+- fixed: an Autopilot step running on a free local model (qwen-coder via Ollama) no longer hangs the whole
+  run. Some local models write their tool calls as plain text instead of the structured form the runtime
+  can run, so the call was never executed and the step waited forever while appearing to "succeed". Those
+  text tool-calls are now recognised and run like any other; a step that still goes silent is failed after a
+  hard timeout instead of hanging indefinitely; and a tool-call that slips through as text surfaces as a
+  clear error rather than a stuck run.
+- fixed: an Autopilot run started from a YouTrack or GitHub issue moves that issue's stage as it progresses
+  again — the stage and note calls were addressed to the wrong tool endpoint and silently did nothing, so a
+  tracker-triggered run stopped keeping its issue in sync. The run name now also carries the ticket key
+  ("AC-191 - …") in the queue and history instead of only the bare summary, so a tracker-triggered run is
+  recognisable at a glance.
+- fixed: the history and Browse buttons in the Autopilot run's working-directory row now line up with the
+  text box beside them instead of stretching to different heights.
+- fixed: an isolated Autopilot step on Claude is now genuinely confined to its worktree. If such a step is
+  set to a bypass-permissions mode — which switches off the permission guard its confinement relies on — it
+  is no longer allowed to run, because it could otherwise write outside its worktree (reachable via a
+  malicious issue title/description). The default remains safe, and Codex, confined by a real OS sandbox, is
+  unaffected in every mode.
 - fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
   runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
   down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation

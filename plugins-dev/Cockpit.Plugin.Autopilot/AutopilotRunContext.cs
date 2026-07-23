@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
 namespace Cockpit.Plugin.Autopilot;
@@ -18,7 +19,16 @@ internal sealed class AutopilotRunContext
     private readonly AutopilotSettings _settings;
     private readonly Func<Action, Task> _runOnUi;
     private readonly CancellationTokenSource _cts = new();
+    private readonly Lock _phaseLock = new();
+    private AutopilotPlanPhase _lastPhase = AutopilotPlanPhase.Planning;
     private IEmbeddedSession? _ceo;
+
+    // The MCP surface the run's validator CEO is scoped to (AC-197): only the CEO endpoint that hosts its own tools —
+    // autopilot_validate plus autopilot_tracker_stage / autopilot_tracker_note. Left on the request's default empty list
+    // it would inherit the host's whole selection (161 tools observed): every tool definition in its context, and it
+    // would still leave the tracker-stage flow to chance. Mounting AutopilotCeoTools.EndpointName explicitly guarantees
+    // the validate and tracker tools are present — the exact endpoint the validator/tracker brief tells it to call.
+    internal static readonly IReadOnlyList<string> ValidatorCeoMcpServers = [AutopilotCeoTools.EndpointName];
 
     public AutopilotRunContext(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
     {
@@ -76,8 +86,14 @@ internal sealed class AutopilotRunContext
     private async Task _RunAsync(AutopilotPlan plan)
     {
         // Re-raise the controller's own change (a step started/settled/noted) as this run's Changed so the surface
-        // re-renders this run's pipeline; dropped with the run since the controller is not shared.
-        void OnControllerChanged(object? sender, EventArgs e) => Changed?.Invoke();
+        // re-renders this run's pipeline; dropped with the run since the controller is not shared. It is also where the
+        // "needs you" toast fires on the edge into AwaitingOperator (AC-194).
+        void OnControllerChanged(object? sender, EventArgs e)
+        {
+            _MaybeNotifyAwaiting();
+            Changed?.Invoke();
+        }
+
         Controller.Changed += OnControllerChanged;
 
         try
@@ -127,6 +143,7 @@ internal sealed class AutopilotRunContext
                 {
                     ProfileId = _settings.CeoProfileLabel(),
                     Model = _settings.CeoModel(),
+                    McpServers = ValidatorCeoMcpServers,
                     WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
                     // Confine the validator's file tools to whatever directory it is pointed at (Raymond 2026-07-22): the
                     // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree
@@ -171,6 +188,39 @@ internal sealed class AutopilotRunContext
             });
         }
     }
+
+    // A run entered the AwaitingOperator wait (AC-155/AC-194): tell the operator once, since they may be working
+    // elsewhere in the app while the run sits blocked on their answer. OnControllerChanged fires on every re-render, so
+    // an unguarded toast would repeat on each render while the run waits — the previous-phase edge guard keeps it to one
+    // toast per time the run enters the wait. Marshalled to the UI thread since Changed is raised from MCP-call/driver
+    // threads too.
+    private void _MaybeNotifyAwaiting()
+    {
+        var current = Controller.Phase;
+        bool entered;
+        lock (_phaseLock)
+        {
+            entered = ShouldToastAwaiting(_lastPhase, current);
+            _lastPhase = current;
+        }
+
+        if (!entered)
+        {
+            return;
+        }
+
+        var label = Controller.Plan?.Label is { Length: > 0 } text ? text : "Autopilot run";
+        var question = Controller.PendingQuestion;
+        var message = string.IsNullOrWhiteSpace(question)
+            ? $"Run “{label}” needs you."
+            : $"Run “{label}” needs you — {question}";
+        _ = _runOnUi(() => _host.ShowToast(message, PluginToastSeverity.Warning));
+    }
+
+    // The phase edge that warrants a "needs you" toast: only the transition INTO AwaitingOperator, never a re-render
+    // while already there. Pure so the edge guard is unit-testable without a host or a UI thread.
+    internal static bool ShouldToastAwaiting(AutopilotPlanPhase previous, AutopilotPlanPhase current) =>
+        previous != AutopilotPlanPhase.AwaitingOperator && current == AutopilotPlanPhase.AwaitingOperator;
 
     private void _ShowStepView(Control view)
     {

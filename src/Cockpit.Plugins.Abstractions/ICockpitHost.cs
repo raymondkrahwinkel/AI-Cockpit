@@ -188,6 +188,21 @@ public interface ICockpitHost
     /// </summary>
     bool CanSendIntent(string targetPluginId, string action) => false;
 
+    /// <summary>
+    /// Registers an Autopilot goal/brief template this plugin contributes (AC-189) — the template equivalent of
+    /// <see cref="AddWorkflowTemplate"/>. The Autopilot plugin collects every registered template (with the host
+    /// stamping this plugin's own id as its owner, the same way <see cref="RegisterIntentHandler"/> does) into the
+    /// list an operator picks a run's brief from. Registrations live only in memory — call this from
+    /// <see cref="ICockpitPlugin.Initialize"/> on every start. Default no-op so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void RegisterAutopilotTemplate(PluginAutopilotTemplate template)
+    {
+    }
+
+    /// <summary>The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.</summary>
+    IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 
@@ -377,10 +392,15 @@ public interface ICockpitHost
     /// its own tools (workflows, say) without any Kestrel code. The endpoint is the cockpit's own and is not written
     /// to the operator's MCP-servers registry (AC-40); the session fan-out sees it live. Idempotent per name.
     /// <paramref name="isEnabled"/> gates it on the plugin's own setting — read each time servers are gathered, so a
-    /// toggle takes effect live; <see langword="null"/> means always on. Call it fire-and-forget from
-    /// <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host implementations keep compiling.
+    /// toggle takes effect live; <see langword="null"/> means always on. <paramref name="isInternal"/> marks the
+    /// endpoint internal-only (AC-204): hidden from every user-facing MCP selection (the New-session checklist, the
+    /// profile preselection and its token estimate) and from the no-selection fan-out, yet still mountable when a
+    /// launch names it explicitly in its per-session selection — for an endpoint only a specific spawn should mount
+    /// (say the Autopilot CEO/step tools its own run agents scope to by name), never an ordinary operator's to tick.
+    /// Call it fire-and-forget from <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host
+    /// implementations keep compiling.
     /// </summary>
-    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) => Task.CompletedTask;
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) => Task.CompletedTask;
 
     /// <summary>
     /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):

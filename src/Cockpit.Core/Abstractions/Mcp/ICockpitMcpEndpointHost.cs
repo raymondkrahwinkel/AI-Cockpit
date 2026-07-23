@@ -16,7 +16,9 @@ public interface ICockpitMcpEndpointHost
     /// under <paramref name="serverName"/>. The endpoint is the cockpit's own, not written to the operator's registry
     /// (AC-40): the session fan-out sees it live. Idempotent per name: mounting a name that is already up is a no-op.
     /// <paramref name="isEnabled"/> lets a plugin gate its endpoint on its own setting — read each time the servers
-    /// are gathered; <see langword="null"/> means always on.
+    /// are gathered; <see langword="null"/> means always on. <paramref name="isInternal"/> marks it internal-only
+    /// (AC-204): hidden from every user-facing MCP selection and the no-selection fan-out, yet still mountable when a
+    /// launch names it explicitly — for an endpoint only a specific spawn should mount (the Autopilot CEO/step tools).
     /// </summary>
-    Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, CancellationToken cancellationToken = default);
+    Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, CancellationToken cancellationToken = default);
 }

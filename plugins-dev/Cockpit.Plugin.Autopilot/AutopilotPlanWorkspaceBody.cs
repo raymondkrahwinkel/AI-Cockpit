@@ -30,6 +30,18 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly AutopilotRunHistory _history;
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
+
+    // The MCP surface the planning CEO is scoped to (AC-197): the plan-emit endpoint it uses to draft the plan. Left on
+    // the request's default empty list it would inherit the host's entire selection (161 tools observed) — every tool
+    // definition in its context (tokens), none of it needed to plan. A source-triggered run also gets the CEO endpoint:
+    // its brief tells the CEO to move the source issue's stage and leave notes via autopilot_tracker_stage /
+    // autopilot_tracker_note (hosted on that endpoint), so without it the brief would name tools the session does not
+    // have. A CEO-first run has no issue to sync, so it stays scoped to the plan endpoint alone.
+    internal static IReadOnlyList<string> PlanningCeoMcpServers(bool hasSource) =>
+        hasSource
+            ? [AutopilotPlanTools.EndpointName, AutopilotCeoTools.EndpointName]
+            : [AutopilotPlanTools.EndpointName];
+
     private bool _popoutOpen;
     private int _completedRuns;
     private IEmbeddedSession? _ceo;
@@ -231,8 +243,18 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private Control _BuildHistoryRow(AutopilotRunRecord record)
     {
         var mergeReady = record.Outcome == AutopilotPlanPhase.MergeReady;
+        var stopped = record.Outcome == AutopilotPlanPhase.Stopped;
         var failedCount = record.Steps.Count(step => step.Status is AutopilotStepStatus.Failed);
         var clean = mergeReady && failedCount == 0;
+
+        // A clean merge-ready is green; a run the operator stopped is neutral grey (not a failure, a deliberate stop,
+        // AC-196); a merge-ready that still had failed (optional) steps, or a blocked run, is amber — so a run with
+        // failures never reads as an unqualified success.
+        var outcomeBrush = clean
+            ? _Brush("CockpitStatusDoneBrush")
+            : stopped
+                ? _Brush("CockpitTextSecondaryBrush")
+                : _Brush("CockpitStatusWaitingBrush");
 
         var dot = new Border
         {
@@ -242,9 +264,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(0, 4, 10, 0),
             [DockPanel.DockProperty] = Dock.Left,
-            // A clean merge-ready is green; a merge-ready that still had failed (optional) steps, or a blocked run, is
-            // amber — so a run with failures never reads as an unqualified success.
-            Background = clean ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+            Background = outcomeBrush,
         };
 
         var title = new DockPanel
@@ -272,9 +292,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        var outcomeText = mergeReady
-            ? failedCount > 0 ? $"Merge-ready · {failedCount} optional step(s) failed" : "Merge-ready"
-            : $"Blocked — {record.BlockReason}";
+        var outcomeText = stopped
+            ? "Stopped"
+            : mergeReady
+                ? failedCount > 0 ? $"Merge-ready · {failedCount} optional step(s) failed" : "Merge-ready"
+                : $"Blocked — {record.BlockReason}";
 
         var meta = new StackPanel { Spacing = 2, Children = { title } };
         meta.Children.Add(new TextBlock
@@ -282,7 +304,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Text = outcomeText,
             FontSize = 11,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = clean ? _Brush("CockpitStatusDoneBrush") : _Brush("CockpitStatusWaitingBrush"),
+            Foreground = outcomeBrush,
         });
 
         // Each step on its own line with a mark, and — where it failed or was blocked — the reason it carried underneath,
@@ -364,13 +386,24 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             [DockPanel.DockProperty] = Dock.Left,
         };
 
+        var headRow = new DockPanel { LastChildFill = false, Children = { newRun, summary } };
+
+        // The persistent "needs you" marker (AC-203): while any active run sits in AwaitingOperator it stands here on the
+        // queue bar, so it appears whichever run or the history the operator is looking at. Added docked Right on the same
+        // row as New run / the summary — see _BuildNeedsYouBadge for why it persists and why a consult never trips it.
+        var awaiting = _activeContexts.Count(context => context.Controller.Phase == AutopilotPlanPhase.AwaitingOperator);
+        if (NeedsOperatorAttention(_activeContexts.Select(context => context.Controller.Phase)))
+        {
+            headRow.Children.Add(_BuildNeedsYouBadge(awaiting));
+        }
+
         var head = new Border
         {
             Padding = new Thickness(12, 8),
             BorderThickness = new Thickness(0, 0, 0, 1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             [DockPanel.DockProperty] = Dock.Top,
-            Child = new DockPanel { LastChildFill = false, Children = { newRun, summary } },
+            Child = headRow,
         };
 
         if (_queue.Count == 0)
@@ -385,6 +418,56 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         }
 
         return new DockPanel { LastChildFill = false, Children = { head, new Border { [DockPanel.DockProperty] = Dock.Top, Child = list } } };
+    }
+
+    // Whether the surface needs the operator (AC-203): true while any active run sits in AwaitingOperator — a step hit a
+    // blockade only the operator can answer (AC-155). Pure so the persistent "needs you" marker's condition is unit-testable
+    // without a host or a UI thread. Keyed on the phase alone, so a CEO consult — which keeps the run Running (spoor 2,
+    // AC-201) — never trips it; only a real operator escalation (spoor 3, AwaitingOperator) does.
+    internal static bool NeedsOperatorAttention(IEnumerable<AutopilotPlanPhase> activePhases) =>
+        activePhases.Any(phase => phase == AutopilotPlanPhase.AwaitingOperator);
+
+    // The persistent "needs you" badge (AC-203): a standing amber marker on the queue bar, which docks at the top of the
+    // surface and never scrolls away with a specific run's view or the history. It is rebuilt from the live phase on every
+    // render — a run entering the wait raises Changed, which re-renders the surface — so it appears the moment a run turns
+    // AwaitingOperator and disappears as soon as the operator answers (→ Running) or the run settles. This is the lasting
+    // signal for an operator who missed the one-shot AC-194 toast and is not looking at the blocked run; the toast stays as
+    // the in-the-moment nudge, this outlives it.
+    private Control _BuildNeedsYouBadge(int count)
+    {
+        var onWaiting = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E));
+        return new Border
+        {
+            [DockPanel.DockProperty] = Dock.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = _Brush("CockpitStatusWaitingBrush"),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(9, 3),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new MaterialIcon
+                    {
+                        Kind = MaterialIconKind.AlertCircleOutline,
+                        Width = 14,
+                        Height = 14,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = onWaiting,
+                    },
+                    new TextBlock
+                    {
+                        Text = count > 1 ? $"{count} runs need you" : "Needs you",
+                        FontSize = 11,
+                        FontWeight = FontWeight.SemiBold,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = onWaiting,
+                    },
+                },
+            },
+        };
     }
 
     // One queued run: its goal, and controls to move it up/down or drop it before it runs.
@@ -502,10 +585,17 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     // nothing to record) and raise a toast (Raymond 2026-07-22). Every settled run gets its own done/blocked toast; when
     // that empties both the running set and the queue after more than one run, an extra "whole queue finished" summary
     // follows, so a single run is one toast and a staged queue ends with a clear all-done.
+    // Whether a run's final phase is one that gets recorded in history and toasted (AC-196): merge-ready, blocked, or
+    // operator-stopped. A run that is still Running when its context is dropped was cancelled by a closed workspace and
+    // has nothing to record. Pure so the "a stopped run is recorded, not silently dropped" rule is unit-testable.
+    internal static bool IsSettledOutcome(AutopilotPlanPhase outcome) =>
+        outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked or AutopilotPlanPhase.Stopped;
+
     private void _RecordAndNotify(AutopilotPlan? plan, AutopilotPlanPhase outcome, string? blockReason)
     {
-        var settled = outcome is AutopilotPlanPhase.MergeReady or AutopilotPlanPhase.Blocked;
-        if (settled && plan is not null)
+        // A run counts as settled — recorded and toasted — when it merged-ready, blocked, or the operator stopped it
+        // (AC-196). A run still Running is a cancelled/closed workspace with nothing to record.
+        if (IsSettledOutcome(outcome) && plan is not null)
         {
             _completedRuns++;
             _history.Add(new AutopilotRunRecord(
@@ -517,13 +607,17 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 [.. plan.Steps.Select(step => new AutopilotRunStepRecord(step.Title, step.Status, step.Note))]));
 
             var label = string.IsNullOrWhiteSpace(plan.Label) ? "Autopilot run" : plan.Label;
-            if (outcome == AutopilotPlanPhase.MergeReady)
+            switch (outcome)
             {
-                _host.ShowToast($"Run “{label}” is merge-ready.", PluginToastSeverity.Success);
-            }
-            else
-            {
-                _host.ShowToast($"Run “{label}” is blocked — {blockReason}", PluginToastSeverity.Warning);
+                case AutopilotPlanPhase.MergeReady:
+                    _host.ShowToast($"Run “{label}” is merge-ready.", PluginToastSeverity.Success);
+                    break;
+                case AutopilotPlanPhase.Stopped:
+                    _host.ShowToast($"Run “{label}” stopped.", PluginToastSeverity.Information);
+                    break;
+                default:
+                    _host.ShowToast($"Run “{label}” is blocked — {blockReason}", PluginToastSeverity.Warning);
+                    break;
             }
         }
 
@@ -563,6 +657,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             {
                 ProfileId = ceoLabel,
                 Model = _settings.CeoModel(),
+                McpServers = PlanningCeoMcpServers(_plan.Plan?.Source is not null),
                 WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context, _plan.Plan?.WorkingDirectory),
                 AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
                 // A tracker-triggered run (the "Plan in Autopilot" button, Raymond 2026-07-22) has a real goal from the
@@ -792,9 +887,59 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        var right = new Border { Child = ceo.View };
+        // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for minutes,
+        // and the shared session view's own indicator stays deaf during streaming on purpose — so without this the
+        // pop-out reads as hung. It follows the embedded session's busy signal alone, leaving the global indicator
+        // untouched. Overlaid top-right so it never covers the composer or the transcript's live text.
+        var working = _BuildCeoWorkingCue();
+        var busy = new CeoBusyIndicatorModel(ceo, isWorking =>
+            Dispatcher.UIThread.Post(() => working.IsVisible = isWorking));
+        var right = new Border
+        {
+            Child = new Grid { Children = { ceo.View, working } },
+        };
+        right.DetachedFromVisualTree += (_, _) => busy.Dispose();
+
         return new DockPanel { LastChildFill = true, Children = { footer, left, right } };
     }
+
+    // The CEO-only "working" cue (AC-195): a small pill that appears while the CEO's planning turn is in flight, so a
+    // long silent turn shows progress rather than looking stuck. Hidden until the busy signal lights it.
+    private Control _BuildCeoWorkingCue() => new Border
+    {
+        IsVisible = false,
+        HorizontalAlignment = HorizontalAlignment.Right,
+        VerticalAlignment = VerticalAlignment.Top,
+        Margin = new Thickness(0, 10, 12, 0),
+        Background = _Brush("CockpitPanelBgBrush"),
+        BorderThickness = new Thickness(1),
+        BorderBrush = _Brush("CockpitHairlineBrush"),
+        CornerRadius = new CornerRadius(11),
+        Padding = new Thickness(10, 4),
+        Child = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 7,
+            Children =
+            {
+                new Border
+                {
+                    Width = 8,
+                    Height = 8,
+                    CornerRadius = new CornerRadius(4),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Background = _Brush("CockpitStatusBusyBrush"),
+                },
+                new TextBlock
+                {
+                    Text = "CEO is working…",
+                    FontSize = 11.5,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                },
+            },
+        },
+    };
 
     // The plan is approvable only when the CEO has planned at least one step — an empty plan would start a run with
     // nothing to do.
@@ -810,15 +955,20 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var box = new TextBox
         {
             FontSize = 12,
+            // Match the Compact buttons beside it so the three controls in the row are the same height (AC-200).
+            MinHeight = 28,
             PlaceholderText = "Folder this run works in — pick a recent one or browse",
         };
 
+        // The history and Browse buttons follow the app-wide Compact button pattern (Theme.axaml: Padding 10,0 +
+        // MinHeight 28 + centred content), the same as the New-session / profile dialogs — so they align with the text
+        // box in the row instead of stretching to their own height (AC-200).
         var pick = new Button
         {
             Content = new MaterialIcon { Kind = MaterialIconKind.History, Width = 16, Height = 16 },
-            Padding = new Thickness(7, 0),
+            Classes = { "Compact" },
+            VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Stretch,
             [ToolTip.TipProperty] = "Recent and pinned folders",
             [DockPanel.DockProperty] = Dock.Right,
         };
@@ -858,9 +1008,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var browse = new Button
         {
             Content = "Browse…",
-            Padding = new Thickness(10, 0),
+            Classes = { "Compact" },
+            VerticalContentAlignment = VerticalAlignment.Center,
             Margin = new Thickness(6, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Stretch,
             [DockPanel.DockProperty] = Dock.Right,
         };
         browse.Click += async (_, _) =>
@@ -1074,14 +1224,44 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         var controller = context.Controller;
         var plan = controller.Plan;
 
-        var goal = new TextBlock
+        var goalText = new TextBlock
         {
             Text = plan?.Label is { Length: > 0 } text ? text : "Autopilot run",
             FontWeight = FontWeight.SemiBold,
             FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // While the run is live the operator can stop it (AC-196): a mid-run stop settles it Stopped and records it in
+        // history, rather than the run vanishing silently while still Running. Only shown while the run is actually
+        // running or waiting — a settled run has nothing left to stop.
+        // TODO(AC-196): a confirmation ("Stop run? unmerged work is discarded") is UX-wanted but out of scope here.
+        var live = controller.Phase is AutopilotPlanPhase.Running or AutopilotPlanPhase.AwaitingOperator;
+        var stop = new Button
+        {
+            Content = "Stop run",
+            Classes = { "Compact" },
+            VerticalContentAlignment = VerticalAlignment.Center,
+            IsVisible = live,
+            Margin = new Thickness(8, 0, 0, 0),
+            [DockPanel.DockProperty] = Dock.Right,
+        };
+        stop.Click += (_, _) =>
+        {
+            // Set the Stopped phase first, then cancel (order matters — see AutopilotPlanController.Stop): the driver
+            // settles only when every step finished, never on a mid-run cancel, so the phase the surface snapshots after
+            // the run tears down stays Stopped rather than being overwritten.
+            context.Controller.Stop("Stopped by operator");
+            context.Cancel();
+        };
+
+        var goal = new DockPanel
+        {
+            LastChildFill = true,
             Margin = new Thickness(14, 12, 14, 8),
             [DockPanel.DockProperty] = Dock.Top,
+            Children = { stop, goalText },
         };
 
         var left = new Border

@@ -21,16 +21,30 @@ internal static class AutopilotStepBrief
             ? $"\n\nYou are agent {agentNumber} of {agentCount} working this step in parallel, each in its own worktree — keep to your part and do not touch what the others own."
             : string.Empty;
 
-        // The agent starts non-interactively under the profile the CEO assigned this step (AC-174). No human is here to
-        // answer a startup question, so anything that would normally stop to ask — a project prompt asking which
-        // persona/brain/config to load — must be treated as already decided (stay in the identity it launched with) and
-        // stepped past, or the autonomous run stalls on an unanswered question (the same brain-select trap a spawned
-        // sub-agent hits). Kept generic on purpose: it names no specific persona, so it holds whatever the profile is.
+        // The agent starts non-interactively under the profile the CEO assigned this step (AC-174, AC-193). No human is
+        // here to answer anything this turn, and that cuts two ways. First, a startup question — a project prompt asking
+        // which persona/brain/config to load — must be treated as already decided (stay in the identity it launched with)
+        // and stepped past, or the run stalls on an unanswered question (the same brain-select trap a spawned sub-agent
+        // hits). Second, and the AC-193 fix: a TASK ambiguity the brief did not spell out must not become a mid-run
+        // question either — the agent makes the most reasonable assumption in line with the goal and acceptance, follows
+        // the codebase's existing conventions (looks at how comparable parts/projects already do it), and carries on,
+        // noting the assumption in its done-summary. AC-201: only when it genuinely cannot get there with a reasonable
+        // assumption does it consult its MANAGER (the CEO) via autopilot_blocked — the CEO answers or escalates to the
+        // operator, so the worker never reaches the operator directly. Kept generic on purpose: it names no specific
+        // persona, so it holds whatever the profile is.
         const string autonomy =
             "You are an autonomous agent in an Autopilot run, working under the profile you were launched with — no human "
-            + "is available to answer setup questions this turn. If your startup asks you to pick a persona, brain, or "
-            + "configuration before you begin, treat it as already decided, stay in the identity you launched with, and "
-            + "go straight to the task below. Do not stop to ask.";
+            + "is available to answer questions this turn. Two things follow. (1) Setup questions: if your startup asks you "
+            + "to pick a persona, brain, or configuration before you begin, treat it as already decided, stay in the "
+            + "identity you launched with, and go straight to the task below — do not stop to ask. (2) Task ambiguity: for "
+            + "anything the brief and acceptance below do not spell out, first try to resolve it yourself — make the most "
+            + "reasonable assumption in line with the goal and acceptance, FOLLOW THE EXISTING CONVENTIONS in the codebase "
+            + "(look at how comparable parts or projects already do it rather than inventing a new way), and keep going; "
+            + "note the assumption in your autopilot_step_done summary. Your manager (the CEO) is reachable when you "
+            + "genuinely cannot get there with a reasonable assumption — a real ambiguity, a design call beyond the plan, "
+            + "a truly irreversible or destructive choice, or a missing credential: call autopilot_blocked to consult your "
+            + "manager, who answers you or escalates to the operator. Never stop for an ordinary judgement call you can "
+            + "make yourself.";
 
         return $$"""
             {{autonomy}}
@@ -57,8 +71,11 @@ internal static class AutopilotStepBrief
 
     public static string ValidationTurn(AutopilotStep step, IReadOnlyList<string> summaries)
     {
+        // A single whitespace-only summary is treated as no summary, like the zero-summary case — otherwise the CEO gets a
+        // blank "What the agent(s) reported:" block instead of the clear "(the agent reported no summary)" fallback.
+        const string noSummary = "(the agent reported no summary)";
         var reported = summaries.Count <= 1
-            ? summaries.Count == 1 ? summaries[0] : "(the agent reported no summary)"
+            ? summaries.Count == 1 && !string.IsNullOrWhiteSpace(summaries[0]) ? summaries[0] : noSummary
             : string.Join("\n", summaries.Select((summary, index) => $"- Agent {index + 1}: {summary}"));
 
         var acceptance = string.IsNullOrWhiteSpace(step.Acceptance)
