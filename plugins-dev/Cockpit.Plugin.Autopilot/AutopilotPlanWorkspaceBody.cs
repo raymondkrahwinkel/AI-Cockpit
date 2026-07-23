@@ -843,9 +843,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             return radio;
         }
 
-        AddOption(0, "Plan free — no template (blank)", source is { } src
-            ? $"The CEO drafts the plan from {src.Tracker} {src.IssueId}."
-            : "The CEO asks what the run should achieve, then plans it with you.");
+        AddOption(0, "Plan free — no template  ·  default", source is { } src
+            ? $"Selected by default. Leave it as-is to plan without a template: the CEO drafts the plan from {src.Tracker} {src.IssueId}, exactly as a run without a template does."
+            : "Selected by default. Leave it as-is to plan without a template: the CEO asks what the run should achieve, then plans it with you.");
         for (var i = 0; i < templates.Count; i++)
         {
             AddOption(i + 1, AutopilotTemplateOptionLabel.For(templates[i], _PluginName), string.Empty);
