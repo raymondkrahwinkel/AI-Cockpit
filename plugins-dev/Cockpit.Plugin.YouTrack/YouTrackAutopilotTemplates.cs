@@ -23,8 +23,14 @@ internal static class YouTrackAutopilotTemplates
 
             Reproduce the bug first, then fix the root cause — not just the symptom. Add or extend a test that fails
             before the fix and passes after it, and keep the change tight. Link: {{issue.url}}
+
+            This is a code run: commit your work on the run's branch with a clear, conventional message and push the
+            branch — the run must end with a merge-ready pull request for review. Do not merge it yourself; a human does
+            the final merge. Keep the commits clean: no "Co-Authored-By" trailer and no mention of an AI, agent or
+            assistant anywhere in a commit message.
             """,
-            ["issue.id", "issue.title"]),
+            ["issue.id", "issue.title"],
+            DeliversPullRequest: true),
 
         new PluginAutopilotTemplate(
             "youtrack.feature",
@@ -36,8 +42,14 @@ internal static class YouTrackAutopilotTemplates
 
             Design it to fit the existing code and conventions, cover it with tests, and update any docs the change
             touches. Keep the scope to what the issue asks for. Link: {{issue.url}}
+
+            This is a code run: commit your work on the run's branch with a clear, conventional message and push the
+            branch — the run must end with a merge-ready pull request for review. Do not merge it yourself; a human does
+            the final merge. Keep the commits clean: no "Co-Authored-By" trailer and no mention of an AI, agent or
+            assistant anywhere in a commit message.
             """,
-            ["issue.id", "issue.title"]),
+            ["issue.id", "issue.title"],
+            DeliversPullRequest: true),
 
         new PluginAutopilotTemplate(
             "youtrack.epic",
@@ -58,6 +70,7 @@ internal static class YouTrackAutopilotTemplates
             record the epic id ({{issue.id}}) and every child issue id you built in the plan and in the PR description, so
             the PR names exactly which issues it closes. Link: {{issue.url}}
             """,
-            ["issue.id", "issue.title"]),
+            ["issue.id", "issue.title"],
+            DeliversPullRequest: true),
     ];
 }

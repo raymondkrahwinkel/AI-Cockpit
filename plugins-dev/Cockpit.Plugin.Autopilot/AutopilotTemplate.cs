@@ -18,6 +18,7 @@ namespace Cockpit.Plugin.Autopilot;
 /// <param name="Editable">Whether the operator may edit it. True for every origin.</param>
 /// <param name="Deletable">Whether the operator may delete it. True only for User templates.</param>
 /// <param name="RequiredPlaceholders">The placeholder names the brief cannot do without, so the surface can warn before a run starts with one unfilled. Optional.</param>
+/// <param name="DeliversPullRequest">Whether a run from this template is a code run that ends with a merge-ready pull request (AC-216) — carried from the plugin's <see cref="PluginAutopilotTemplate.DeliversPullRequest"/>. False for an administrative template (no PR expected).</param>
 internal sealed record AutopilotTemplate(
     string Id,
     string Name,
@@ -26,9 +27,10 @@ internal sealed record AutopilotTemplate(
     string? OwnerPluginId,
     bool Editable,
     bool Deletable,
-    IReadOnlyList<string>? RequiredPlaceholders = null)
+    IReadOnlyList<string>? RequiredPlaceholders = null,
+    bool DeliversPullRequest = false)
 {
-    /// <summary>A plugin's registration as a template: editable (the edit is kept as an override), never deletable, attributed to its owner.</summary>
+    /// <summary>A plugin's registration as a template: editable (the edit is kept as an override), never deletable, attributed to its owner. Carries the plugin's PR-delivery signal (AC-216) through unchanged.</summary>
     public static AutopilotTemplate ForPlugin(string ownerPluginId, PluginAutopilotTemplate registration) => new(
         registration.Id,
         registration.Name,
@@ -37,10 +39,11 @@ internal sealed record AutopilotTemplate(
         ownerPluginId,
         Editable: true,
         Deletable: false,
-        registration.RequiredPlaceholders);
+        registration.RequiredPlaceholders,
+        registration.DeliversPullRequest);
 
-    /// <summary>A template the operator authored: theirs to edit and to delete.</summary>
-    public static AutopilotTemplate ForUser(string id, string name, string body, IReadOnlyList<string>? requiredPlaceholders = null) => new(
+    /// <summary>A template the operator authored: theirs to edit and to delete. An operator template is administrative (no PR expectation) unless a future editor lets them opt in.</summary>
+    public static AutopilotTemplate ForUser(string id, string name, string body, IReadOnlyList<string>? requiredPlaceholders = null, bool deliversPullRequest = false) => new(
         id,
         name,
         body,
@@ -48,5 +51,6 @@ internal sealed record AutopilotTemplate(
         OwnerPluginId: null,
         Editable: true,
         Deletable: true,
-        requiredPlaceholders);
+        requiredPlaceholders,
+        deliversPullRequest);
 }

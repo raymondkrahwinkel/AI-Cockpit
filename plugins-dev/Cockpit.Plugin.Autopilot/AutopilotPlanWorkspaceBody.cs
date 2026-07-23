@@ -63,6 +63,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private int _completedRuns;
     private IEmbeddedSession? _ceo;
 
+    // The chosen template's PR-delivery signal (AC-216), remembered from the template picker until Approve stamps it on
+    // the submitted plan. A code template ("Bug fix", "Feature") sets it true; free planning or an admin template leaves
+    // it false. One planning round is open at a time (a single pop-out), so one field suffices; reset on each pick.
+    private bool _deliversPullRequest;
+
     public AutopilotPlanWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue, AutopilotRunHistory history, AutopilotTemplateStore templates)
     {
         _host = host;
@@ -674,6 +679,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
 
                 return;
             }
+
+            // Remember the chosen template's PR-delivery signal (AC-216) so Approve can stamp it on the submitted plan —
+            // a code template ends the run with a merge-ready PR, free planning or an admin template does not.
+            _deliversPullRequest = pick.Template?.DeliversPullRequest ?? false;
 
             var kickoff = AutopilotTemplateKickoff.Build(pick.Template, _plan.Plan?.Source);
             if (pick.Template is not null && kickoff.MissingPlaceholders.Count > 0)
@@ -1362,7 +1371,9 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             {
                 var name = nameProvider().Trim();
                 var approved = string.IsNullOrEmpty(name) ? plan : plan.WithName(name);
-                _manager.Submit(approved.WithWorkingDirectory(workingDirectoryProvider().Trim()));
+                _manager.Submit(approved
+                    .WithWorkingDirectory(workingDirectoryProvider().Trim())
+                    .WithDeliversPullRequest(_deliversPullRequest));
             }
 
             (sender as Control)?.FindAncestorOfType<Window>()?.Close();
