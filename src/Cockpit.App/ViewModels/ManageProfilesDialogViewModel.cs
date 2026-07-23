@@ -135,9 +135,11 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
 
         // The MCP catalog for the per-profile pre-selection (AC-130) — registry plus each active plugin's own
         // servers, the same set the New-session checklist offers. Fetched once here so every row shares it.
+        // Internal-only endpoints (AC-204, the Autopilot CEO/step tools) are excluded just as the New-session
+        // checklist excludes them: a run's agents mount them by name, but an operator never pre-selects them.
         _availableMcpServerNames = _mcpServerCatalog is null
             ? []
-            : [.. (await _mcpServerCatalog.GetServersAsync()).Where(server => server.Enabled).Select(server => server.Name)];
+            : [.. (await _mcpServerCatalog.GetServersAsync()).Where(server => server.Enabled && !server.Internal).Select(server => server.Name)];
 
         var profiles = await _profileStore.LoadAsync();
         Profiles.Clear();

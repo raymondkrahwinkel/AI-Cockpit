@@ -302,9 +302,9 @@ internal sealed class CockpitHost(
         }
     }
 
-    public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) =>
+    public Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) =>
         services.GetService<ICockpitMcpEndpointHost>() is { } endpointHost
-            ? endpointHost.MountAsync(serverName, tools, isEnabled)
+            ? endpointHost.MountAsync(serverName, tools, isEnabled, isInternal)
             : Task.CompletedTask;
 
     public void AddManagedCli(ManagedCliDescriptor descriptor) =>

@@ -19,4 +19,9 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// An optional live gate: when it returns false the endpoint is hosted but not advertised to a session's
 /// <c>--mcp-config</c>, so for an agent the server does not exist (AC-34's master switch). Null means always on.
 /// </param>
-public sealed record CockpitMcpEndpoint(string ServerName, Type ToolsType, Func<bool>? IsEnabled = null);
+/// <param name="Internal">
+/// When true the endpoint is internal-only (AC-204): hidden from every user-facing MCP selection and from the
+/// no-selection fan-out, yet still mountable when a launch names it explicitly. For a cockpit endpoint only a
+/// specific spawn should mount (the Autopilot CEO/step tools), never an ordinary operator's to tick.
+/// </param>
+public sealed record CockpitMcpEndpoint(string ServerName, Type ToolsType, Func<bool>? IsEnabled = null, bool Internal = false);
