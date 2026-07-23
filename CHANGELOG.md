@@ -156,6 +156,7 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+<<<<<<< HEAD
 - fixed: an Autopilot step running on a free local model (qwen-coder via Ollama) no longer hangs the whole
   run. Some local models write their tool calls as plain text instead of the structured form the runtime
   can run, so the call was never executed and the step waited forever while appearing to "succeed". Those
@@ -169,6 +170,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   recognisable at a glance.
 - fixed: the history and Browse buttons in the Autopilot run's working-directory row now line up with the
   text box beside them instead of stretching to different heights.
+- fixed: an isolated Autopilot step on Claude is now genuinely confined to its worktree. If such a step is
+  set to a bypass-permissions mode — which switches off the permission guard its confinement relies on — it
+  is no longer allowed to run, because it could otherwise write outside its worktree (reachable via a
+  malicious issue title/description). The default remains safe, and Codex, confined by a real OS sandbox, is
+  unaffected in every mode.
 - fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
   runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
   down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation

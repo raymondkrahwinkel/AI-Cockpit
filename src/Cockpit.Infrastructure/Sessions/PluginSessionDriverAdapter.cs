@@ -27,11 +27,33 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // mapped straight through instead of forced false: every built-in example plugin already reports it
     // false (IPluginSessionDriver.SendUserMessageAsync has no images parameter yet, #64 fase 2), so this
     // stays honest without another host-side change once that surface can actually carry images.
+    // The permission modes that keep a permission-based provider's file-access guard engaged (AC-190). A provider that
+    // confines to its working directory only through its permission prompts (PluginSessionCapabilities.
+    // ConfinesViaPermissionsOnly) genuinely confines in these; bypassPermissions (--dangerously-skip-permissions)
+    // disables the guard, and any unrecognised mode is treated as not-confining — an allowlist, so a future mode is
+    // refused until reviewed rather than silently trusted (fail closed).
+    private static readonly IReadOnlySet<string> PermissionEngagedModes =
+        new HashSet<string>(StringComparer.Ordinal) { "default", "acceptEdits", "plan" };
+
+    // The mode assumed when a session carries no explicit permission-mode selection — the Claude driver's own default,
+    // which keeps the permission system engaged (and so confines).
+    private const string DefaultPermissionMode = "default";
+
+    // Whether this session's effective permission mode keeps a permission-based provider's confinement engaged. Null
+    // until StartAsync resolves it; a permission-based provider (ConfinesViaPermissionsOnly) reads null as "not yet
+    // confirmed" and reports unconfined, so it fails closed before start and the isolation gate never proceeds on an
+    // assumption.
+    private bool? _permissionModeConfines;
+
     // Live model switch and permission-mode switch are now mapped straight through (Fase 4 D4): the narrow surface can
     // back them via SetLiveOptionAsync, which SetModelAsync/SetPermissionModeAsync below are wired to, so a plugin that
     // declares it (the Claude provider) drives the host's native model/permission dropdowns. Plan mode and thinking
     // budget still have no equivalent on the narrow surface and stay false.
-    public SessionCapabilities Capabilities { get; } = new(
+    // ConfinesFileAccessToWorkingDirectory is recomputed on each read rather than fixed at construction (AC-190): for a
+    // provider whose confinement rests on its permission system (ConfinesViaPermissionsOnly), a bypass permission mode
+    // disables that guard, so the static registration capability would vouch a confinement the session does not deliver.
+    // The host reads this instance capability after start, so the value reflects the session's resolved permission mode.
+    public SessionCapabilities Capabilities => new(
         SupportsTools: pluginCapabilities.SupportsTools,
         SupportsPermissions: pluginCapabilities.SupportsPermissions,
         SupportsLiveModelSwitch: pluginCapabilities.SupportsLiveModelSwitch,
@@ -41,8 +63,29 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         SupportsPermissionModeSwitch: pluginCapabilities.SupportsPermissionModeSwitch)
     {
         SupportsEnvVars = pluginCapabilities.SupportsEnvVars,
-        ConfinesFileAccessToWorkingDirectory = pluginCapabilities.ConfinesFileAccessToWorkingDirectory,
+        ConfinesFileAccessToWorkingDirectory = _EffectiveConfinesFileAccessToWorkingDirectory(),
     };
+
+    // The honest per-session confinement (AC-190). A provider that has not vouched confinement at all never confines.
+    // A provider whose confinement is independent of its permission mode (a real OS sandbox — ConfinesViaPermissionsOnly
+    // false) confines unconditionally. A permission-based provider confines only once the session's effective permission
+    // mode is confirmed to keep the permission guard engaged; anything else (a bypass mode, or the mode not yet resolved
+    // before start) reports unconfined, so the fail-closed isolation gate refuses an isolate-in-worktree run it cannot
+    // vouch for.
+    private bool _EffectiveConfinesFileAccessToWorkingDirectory()
+    {
+        if (!pluginCapabilities.ConfinesFileAccessToWorkingDirectory)
+        {
+            return false;
+        }
+
+        if (!pluginCapabilities.ConfinesViaPermissionsOnly)
+        {
+            return true;
+        }
+
+        return _permissionModeConfines ?? false;
+    }
 
     public string? SessionId => inner.SessionId;
 
@@ -104,6 +147,13 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
         // fills the key when the launch options carry none (see _MergePermissionMode) — folding it over an explicit
         // choice is what let a profile's stale default run a write tool ungated.
         var options = _MergePermissionMode(launchOptions, permissionMode);
+
+        // Resolve, from the same effective options the driver starts with, whether this session's permission mode keeps a
+        // permission-based provider's confinement engaged (AC-190). Read by Capabilities so the host's post-start
+        // isolation gate sees the real per-session confinement rather than the static registration vouch — a Claude
+        // session launched in bypassPermissions then reports unconfined and an isolate-in-worktree run is refused.
+        _permissionModeConfines = _PermissionModeConfines(options);
+
         var environment = _SpawnEnvironment(profile, launchOptions);
         await inner.StartAsync(model, workingDirectory, resumeSessionId, options, mcpServers, environment, cancellationToken).ConfigureAwait(false);
     }
@@ -156,6 +206,24 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
 
         return environment;
     }
+
+    // Whether the effective launch options' permission mode keeps a permission-based provider's confinement engaged
+    // (AC-190). No permission-mode key means the driver falls back to its own default (which confines); an explicit
+    // value is confining only when it is on the permission-engaged allowlist — bypassPermissions and any unrecognised
+    // mode are not, so the session reports unconfined (fail closed).
+    private static bool _PermissionModeConfines(IReadOnlyDictionary<string, string>? options) =>
+        _ModeConfines(options is not null
+            && options.TryGetValue(WellKnownPluginSessionOptions.PermissionMode, out var value)
+            && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : null);
+
+    // Whether a permission-mode string keeps a permission-based provider's confinement engaged (AC-190): the mode is on
+    // the engaged allowlist, or absent (the driver's own confining default). bypassPermissions and any unrecognised mode
+    // are not — fail closed. Shared by the start-time resolution and the live-switch recompute so both read the guard
+    // the same way.
+    private static bool _ModeConfines(string? mode) =>
+        PermissionEngagedModes.Contains(string.IsNullOrWhiteSpace(mode) ? DefaultPermissionMode : mode);
 
     private static IReadOnlyDictionary<string, string>? _MergePermissionMode(IReadOnlyDictionary<string, string>? launchOptions, string? permissionMode)
     {
@@ -286,8 +354,15 @@ internal sealed class PluginSessionDriverAdapter(IPluginSessionDriver inner, Plu
     // generic live-option surface under the well-known keys (Fase 4 D4). A plugin that does not declare the matching
     // SupportsLiveModelSwitch / SupportsPermissionModeSwitch capability never has the host call these, and one that
     // declares no such live option no-ops it in SetLiveOptionAsync — so this is safe for every plugin.
-    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default) =>
-        inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
+    public Task SetPermissionModeAsync(string mode, CancellationToken cancellationToken = default)
+    {
+        // Keep the per-session confinement honest across a live permission-mode switch (AC-190 defense-in-depth):
+        // recompute whether the new mode keeps the guard engaged, so Capabilities never reports a stale "confined" after
+        // a switch. The Claude driver only offers confining live modes today (it hides the bypass switch), but this stops
+        // the guard from resting on that staying true — a mode the host cannot vouch confines now reports unconfined.
+        _permissionModeConfines = _ModeConfines(mode);
+        return inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.PermissionMode, mode, cancellationToken);
+    }
 
     public Task SetModelAsync(string? model, CancellationToken cancellationToken = default) =>
         inner.SetLiveOptionAsync(WellKnownPluginSessionOptions.Model, model ?? string.Empty, cancellationToken);
