@@ -190,6 +190,9 @@ public partial class App : Application
         // told about is an update nobody installs. It never nags: a failed check is silent here, and only says
         // what went wrong when someone asks from Options.
         _ = cockpitViewModel.InitialiseUpdatesAsync();
+        // AC-188: and keep looking every hour after that, so a window left open for a workday still learns about a
+        // build cut hours later. Reuses the same toast/banner/dedup path; cancelled when the view model disposes.
+        cockpitViewModel.StartPeriodicUpdateChecks();
 
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
         // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,
