@@ -93,4 +93,16 @@ public sealed record EmbeddedSessionRequest
     /// planning round) is a conversation and keeps its composer live.
     /// </summary>
     public bool StartWithInputDisabled { get; init; }
+
+    /// <summary>
+    /// Tool names this embedded session may run without raising a mid-run permission prompt (AC-215) — the plugin's own
+    /// control tools for an autonomous run (Autopilot's <c>autopilot_step_done</c>, <c>autopilot_blocked</c>,
+    /// <c>autopilot_validate</c>), authorized up front so a self-driving run does not stop halfway to ask the operator to
+    /// allow a tool the run itself depends on. These are the plugin's <em>own</em> in-process endpoint tools, never file,
+    /// shell or egress tools — those stay gated by the permission mode and the host's ConsentBroker regardless. Names as
+    /// the agent sees them (e.g. <c>mcp__cockpit-autopilot-run__autopilot_step_done</c>). Empty (the default) pre-approves
+    /// nothing, so an ordinary embedded session keeps prompting as before, and a host that does not honour this keeps
+    /// compiling untouched.
+    /// </summary>
+    public IReadOnlyList<string> PreApprovedTools { get; init; } = [];
 }

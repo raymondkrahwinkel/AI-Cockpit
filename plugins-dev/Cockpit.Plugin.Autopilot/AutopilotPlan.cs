@@ -28,6 +28,16 @@ internal sealed record AutopilotPlan(
     /// </summary>
     public string WorkingDirectory { get; init; } = string.Empty;
 
+    /// <summary>
+    /// Whether this run is a <em>code</em> run that must end with a merge-ready pull request (AC-216) — set at approval
+    /// from the chosen template's <see cref="AutopilotTemplate.DeliversPullRequest"/>. When true, the run's merge-ready
+    /// finalizer pushes the run branch and opens a PR (or reports a clear outcome and leaves the work on its branch when
+    /// it cannot — no <c>gh</c>, no remote). When false (an administrative run, or a free/CEO-first plan), the run
+    /// settles merge-ready with no PR expectation and no error for the missing PR. Defaults to false — silence is only
+    /// wrong for a code run.
+    /// </summary>
+    public bool DeliversPullRequest { get; init; }
+
     /// <summary>The run's display label — its <see cref="Name"/>, or the <see cref="Goal"/> when no name was set yet,
     /// prefixed with the source issue key (AC-199) so a tracker-triggered run reads as "AC-191 - …" in the queue and
     /// history rather than by its bare summary.</summary>
@@ -63,6 +73,9 @@ internal sealed record AutopilotPlan(
 
     /// <summary>This plan with the operator's chosen working directory, set at approval.</summary>
     public AutopilotPlan WithWorkingDirectory(string workingDirectory) => this with { WorkingDirectory = workingDirectory };
+
+    /// <summary>This plan carrying the chosen template's PR-delivery signal (AC-216), stamped at approval — true only for a code run that must end with a merge-ready pull request.</summary>
+    public AutopilotPlan WithDeliversPullRequest(bool deliversPullRequest) => this with { DeliversPullRequest = deliversPullRequest };
 
     /// <summary>An empty plan to open the planning round on — the CEO fills the steps from there.</summary>
     public static AutopilotPlan Empty(AutopilotPlanSource? source, string goal) => new(goal, source, []);

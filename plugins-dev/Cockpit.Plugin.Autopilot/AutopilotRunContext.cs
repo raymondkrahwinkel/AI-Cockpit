@@ -40,7 +40,7 @@ internal sealed class AutopilotRunContext
         Plan = plan;
         Controller = new AutopilotPlanController();
         Controller.BeginPlanning(plan);
-        Coordinator = new AutopilotRunCoordinator(host, Controller);
+        Coordinator = new AutopilotRunCoordinator(host, Controller, prPublisher: new GitCliPrPublisher());
         Completed = _RunAsync(plan);
     }
 
@@ -144,6 +144,9 @@ internal sealed class AutopilotRunContext
                     ProfileId = _settings.CeoProfileLabel(),
                     Model = _settings.CeoModel(),
                     McpServers = ValidatorCeoMcpServers,
+                    // Pre-authorize the CEO's own control tools (AC-215) so validating a step never stops mid-run to ask
+                    // the operator to allow autopilot_validate — an autonomous run must not need a hand on its own tools.
+                    PreApprovedTools = AutopilotRunToolNames.ForValidatorCeo,
                     WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
                     // Confine the validator's file tools to whatever directory it is pointed at (Raymond 2026-07-22): the
                     // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree
@@ -164,7 +167,7 @@ internal sealed class AutopilotRunContext
             Controller.BindSession(ceo.PaneId);
             Controller.Approve();
 
-            var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps);
+            var environment = new AutopilotRunEnvironment(repositoryDirectory, runWorktree?.Path, isolateSteps, runWorktree?.Branch);
             await Coordinator.RunAsync(_context, ceo, _settings, _ShowStepView, _SetValidating, environment, _runOnUi, _cts.Token);
         }
         catch (Exception)

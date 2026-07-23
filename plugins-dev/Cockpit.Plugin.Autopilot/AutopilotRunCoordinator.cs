@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.Plugins.Abstractions.Notifications;
 using Cockpit.Plugins.Abstractions.Tracking;
 using Cockpit.Plugins.Abstractions.Workspaces;
 
@@ -23,9 +24,14 @@ internal sealed class AutopilotRunCoordinator(
     ICockpitHost host,
     AutopilotPlanController plan,
     TimeSpan? stepDoneReminderDelay = null,
-    TimeSpan? stepStallTimeout = null)
+    TimeSpan? stepStallTimeout = null,
+    IAutopilotPrPublisher? prPublisher = null)
 {
     private readonly Lock _lock = new();
+
+    // Publishes a merge-ready code run's branch and opens its PR (AC-216); null in a bare test graph, where finalization
+    // is skipped. The app supplies the real GitCliPrPublisher through AutopilotRunContext.
+    private readonly IAutopilotPrPublisher? _prPublisher = prPublisher;
 
     // Injectable for tests (short values keep the stall test fast); production uses the defaults below.
     private readonly TimeSpan _stepDoneReminderDelay = stepDoneReminderDelay ?? StepDoneReminderDelay;
@@ -83,6 +89,10 @@ internal sealed class AutopilotRunCoordinator(
         // by hand (AC-195 did exactly that). A CEO-first run has no issue, so this is a no-op there.
         await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InProgress, cancellationToken);
 
+        // AC-215 preflight: a code run (the template asked for a PR) that will not be able to deliver one — a plain-folder
+        // run, no git remote, no gh — is flagged up front, so the operator learns it now rather than at the silent end.
+        await _PreflightPullRequestAsync(environment, runOnUi, cancellationToken);
+
         var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
         await driver.RunAsync(
             step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
@@ -93,8 +103,111 @@ internal sealed class AutopilotRunCoordinator(
         // left where it is (its stage stays in-progress, so the operator sees it still needs them).
         if (!cancellationToken.IsCancellationRequested && plan.Phase == AutopilotPlanPhase.MergeReady)
         {
+            // AC-216: deliver the merge-ready pull request for a code run (commit → push → PR), or report a clear outcome
+            // and leave the work on its branch when it cannot — never a silent "done". An admin run reports nothing.
+            await _FinalizeMergeReadyAsync(environment, runOnUi, cancellationToken);
             await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InReview, cancellationToken);
         }
+    }
+
+    // AC-216: does this merge-ready run deliver a PR, and can it? Combines the template signal (plan.DeliversPullRequest)
+    // with a live probe of the run worktree (git run, remote, gh). Kept off the pure decision so the decision stays
+    // testable without a git repo. A run that expects no PR short-circuits to NotExpected without probing.
+    private async Task<AutopilotPrDelivery> _DecideDeliveryAsync(AutopilotRunEnvironment environment, CancellationToken cancellationToken)
+    {
+        var deliversPullRequest = plan.Plan?.DeliversPullRequest ?? false;
+        if (!deliversPullRequest || _prPublisher is null || !environment.HasRunBranch)
+        {
+            // No PR expected, no publisher (a bare test graph), or no single run branch (a plain-folder or parallel-only
+            // run): the decision is NotExpected or NoGitRun without a probe.
+            return AutopilotMergeReadyDecision.Decide(deliversPullRequest, isGitRun: false, hasRemote: false, ghAvailable: false);
+        }
+
+        var probe = await _prPublisher.ProbeAsync(environment.RunWorktreePath!, cancellationToken);
+        return AutopilotMergeReadyDecision.Decide(deliversPullRequest, probe.IsGitRun, probe.HasRemote, probe.GhAvailable);
+    }
+
+    // AC-215: probe the delivery up front and warn the operator when a code run will not be able to open its PR.
+    private async Task _PreflightPullRequestAsync(AutopilotRunEnvironment environment, Func<Action, Task> runOnUi, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var delivery = await _DecideDeliveryAsync(environment, cancellationToken);
+            if (AutopilotMergeReadyDecision.PreflightWarning(delivery) is { } warning)
+            {
+                await runOnUi(() => host.ShowToast(warning, PluginToastSeverity.Warning));
+            }
+        }
+        catch (Exception)
+        {
+            // The preflight is advisory (AC-215): a probe fault must never keep a run from starting.
+        }
+    }
+
+    // AC-216: at merge-ready, publish the code run's branch and open its PR — or report a clear outcome and leave the
+    // work on its branch when it cannot. Fail-soft: a publish fault is recorded, never a crashed run. Silent for an admin
+    // run (NotExpected), which reports the plain "settled merge-ready".
+    private async Task _FinalizeMergeReadyAsync(AutopilotRunEnvironment environment, Func<Action, Task> runOnUi, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var delivery = await _DecideDeliveryAsync(environment, cancellationToken);
+
+            string? prUrl = null;
+            string? error = null;
+            if (delivery is AutopilotPrDelivery.CanCreatePr or AutopilotPrDelivery.PushOnly
+                && _prPublisher is not null
+                && environment.HasRunBranch)
+            {
+                var request = new AutopilotPrRequest(
+                    environment.RunWorktreePath!,
+                    environment.RunWorktreeBranch!,
+                    _PullRequestTitle(),
+                    _PullRequestBody());
+
+                var result = await _prPublisher.PublishAsync(request, createPullRequest: delivery == AutopilotPrDelivery.CanCreatePr, cancellationToken);
+                prUrl = result.PrUrl;
+                error = result.Error;
+            }
+
+            var outcome = AutopilotMergeReadyDecision.Outcome(delivery, environment.RunWorktreeBranch, environment.RunWorktreePath, prUrl);
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                outcome = $"{outcome} ({error})";
+            }
+
+            // Surface the outcome so a code run that could not produce its PR is never a silent "done": a toast the
+            // operator sees now, and a note on the last step so it persists in the run's pipeline/afronding.
+            var clean = delivery == AutopilotPrDelivery.NotExpected || (!string.IsNullOrWhiteSpace(prUrl) && string.IsNullOrWhiteSpace(error));
+            await runOnUi(() => host.ShowToast(outcome, clean ? PluginToastSeverity.Success : PluginToastSeverity.Warning));
+
+            if (delivery != AutopilotPrDelivery.NotExpected && plan.Plan?.Steps.LastOrDefault() is { } lastStep)
+            {
+                plan.NoteStep(lastStep.Id, outcome);
+            }
+        }
+        catch (Exception)
+        {
+            // Fail-soft (AC-216): the run already did its work; a finalization fault must not crash the settle.
+        }
+    }
+
+    // The PR title for a merge-ready code run (AC-216) — the run's label (issue key + name), a clean human title. It also
+    // becomes any leftover-work safety commit's message, so it carries no Co-Authored-By trailer and no AI/agent mention.
+    private string _PullRequestTitle()
+    {
+        var label = plan.Plan?.Label;
+        return string.IsNullOrWhiteSpace(label) ? "Autopilot run" : label.Trim();
+    }
+
+    // The PR body — the run's goal and, when it came from a tracker item, the source link so the PR points back at it.
+    private string _PullRequestBody()
+    {
+        var current = plan.Plan;
+        var goal = current?.Goal;
+        var url = current?.Source?.Url;
+        var body = string.IsNullOrWhiteSpace(goal) ? "Autopilot run." : goal.Trim();
+        return string.IsNullOrWhiteSpace(url) ? body : $"{body}\n\n{url.Trim()}";
     }
 
     /// <summary>Called on an MCP thread: a step agent's pane reports its work done. False when the pane is not a live step agent.</summary>
@@ -464,6 +577,9 @@ internal sealed class AutopilotRunCoordinator(
                     ProfileId = step.ProfileLabel,
                     Model = step.Model,
                     McpServers = _StepMcpServers(step),
+                    // Pre-authorize the step worker's own control tools (AC-215) — report-done and consult-CEO — so an
+                    // autonomous step never stops mid-run to ask the operator to allow autopilot_step_done.
+                    PreApprovedTools = AutopilotRunToolNames.ForStepWorker,
                     // Isolate each step in a worktree for a git repository (the fail-closed default — the confinement
                     // guarantee holds, and a non-confining provider is refused by the host gate). False only for a
                     // folder the host reported is not a git repository (Raymond 2026-07-22): an admin task with no repo
