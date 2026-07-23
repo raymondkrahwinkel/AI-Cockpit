@@ -27,6 +27,25 @@ public class AutopilotCeoBriefTests
     }
 
     [Fact]
+    public void For_ATriggeredRun_DoesNotNameTrackerTools_SoThePlanningCeoDoesNotGrabForToolsItLacks()
+    {
+        // AC-212: the planning brief must not tell the CEO to keep the issue in sync via autopilot_tracker_stage /
+        // autopilot_tracker_note. Those tools live on the CEO endpoint, which is only mounted while a run is active — so
+        // during planning naming them made the CEO search for, and report missing, tools it never had. Tracker sync is the
+        // run's job (AutopilotValidatorBrief plus the coordinator's auto-advance, AC-202), not the planning round's.
+        var plan = new AutopilotPlan(
+            "Ship reading levels in the chat view",
+            new AutopilotPlanSource("youtrack", "AC-138", "Reading levels"),
+            []);
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        brief.Should().NotContain("autopilot_tracker_stage");
+        brief.Should().NotContain("autopilot_tracker_note");
+        brief.Should().NotContain("keep that");
+    }
+
+    [Fact]
     public void For_ATriggeredRun_SurfacesTheIssueDescription_SoTheCeoDraftsFromWhatItAsks()
     {
         var plan = new AutopilotPlan(

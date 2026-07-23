@@ -20,12 +20,15 @@ public class AutopilotCeoMcpScopeTests
     }
 
     [Fact]
-    public void PlanningCeo_SourceTriggeredRun_AlsoGetsTheCeoEndpointForTracker()
+    public void PlanningCeo_SourceTriggeredRun_IsAlsoScopedToThePlanEndpointOnly()
     {
-        // A source-triggered run's brief tells the planning CEO to move the issue's stage and leave notes via the tracker
-        // tools on the CEO endpoint — so that endpoint must be mounted too, or the brief names tools the session lacks.
+        // AC-212: the planning CEO does NOT get the CEO (tracker) endpoint, even for a source-triggered run. That endpoint
+        // is only mounted while a run is active (AutopilotPlugin gates it on manager.Active.Count > 0), so during planning
+        // it mounts nothing — listing it only made the CEO grab for tracker tools it never had and report them missing.
+        // Keeping the source issue in sync is the run's job (the CEO validator plus the coordinator's auto-advance, AC-202),
+        // not the planning round's, so a source-triggered run plans on the plan endpoint alone, same as a CEO-first run.
         AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(hasSource: true)
-            .Should().BeEquivalentTo(new[] { AutopilotPlanTools.EndpointName, AutopilotCeoTools.EndpointName });
+            .Should().ContainSingle().Which.Should().Be(AutopilotPlanTools.EndpointName);
     }
 
     [Fact]

@@ -32,16 +32,17 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
 
-    // The MCP surface the planning CEO is scoped to (AC-197): the plan-emit endpoint it uses to draft the plan. Left on
-    // the request's default empty list it would inherit the host's entire selection (161 tools observed) — every tool
-    // definition in its context (tokens), none of it needed to plan. A source-triggered run also gets the CEO endpoint:
-    // its brief tells the CEO to move the source issue's stage and leave notes via autopilot_tracker_stage /
-    // autopilot_tracker_note (hosted on that endpoint), so without it the brief would name tools the session does not
-    // have. A CEO-first run has no issue to sync, so it stays scoped to the plan endpoint alone.
+    // The MCP surface the planning CEO is scoped to (AC-197): the plan-emit endpoint it uses to draft the plan, and
+    // nothing else. Left on the request's default empty list it would inherit the host's entire selection (161 tools
+    // observed) — every tool definition in its context (tokens), none of it needed to plan. The CEO tools endpoint
+    // (autopilot_tracker_stage / autopilot_tracker_note) is deliberately NOT here (AC-212): that endpoint is only mounted
+    // once a run is active (AutopilotPlugin gates it on manager.Active.Count > 0), so listing it during planning mounted
+    // nothing and only made the CEO grab for tracker tools it never had and report them missing. Keeping the source issue
+    // in sync is the run's job — the CEO validator (AutopilotValidatorBrief) plus the coordinator's auto-advance (AC-202),
+    // both during execution — not the planning round's. So both a source-triggered and a CEO-first run plan on the plan
+    // endpoint alone.
     internal static IReadOnlyList<string> PlanningCeoMcpServers(bool hasSource) =>
-        hasSource
-            ? [AutopilotPlanTools.EndpointName, AutopilotCeoTools.EndpointName]
-            : [AutopilotPlanTools.EndpointName];
+        [AutopilotPlanTools.EndpointName];
 
     private bool _popoutOpen;
     private int _completedRuns;
@@ -1127,7 +1128,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for minutes,
         // and the shared session view's own indicator stays deaf during streaming on purpose — so without this the
         // pop-out reads as hung. It follows the embedded session's busy signal alone, leaving the global indicator
-        // untouched. Overlaid top-right so it never covers the composer or the transcript's live text.
+        // untouched. Overlaid at the TOP-CENTRE of the chat pane (AC-214): the old top-right corner placement sat right
+        // next to the session's reading-level dropdown and read as an unnoticeable afterthought; centred over the chat,
+        // where the CEO is actually working, it is the clear "the CEO is thinking" banner the operator looks for, while
+        // still clearing the composer and the transcript's live text below it.
         var working = _BuildCeoWorkingCue();
         var busy = new CeoBusyIndicatorModel(ceo, isWorking =>
             Dispatcher.UIThread.Post(() => working.IsVisible = isWorking));
@@ -1140,39 +1144,42 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return new DockPanel { LastChildFill = true, Children = { footer, left, right } };
     }
 
-    // The CEO-only "working" cue (AC-195): a small pill that appears while the CEO's planning turn is in flight, so a
-    // long silent turn shows progress rather than looking stuck. Hidden until the busy signal lights it.
+    // The CEO-only "working" cue (AC-195/AC-214): a pill that appears while the CEO's planning turn is in flight, so a
+    // long silent turn shows progress rather than looking stuck. Hidden until the busy signal lights it. Anchored
+    // top-centre over the chat pane (AC-214) — not tucked in the top-right corner beside the reading-level dropdown where
+    // it went unnoticed — and given an accent-tinted fill so it reads as a clear banner over the conversation.
     private Control _BuildCeoWorkingCue() => new Border
     {
         IsVisible = false,
-        HorizontalAlignment = HorizontalAlignment.Right,
+        HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Top,
-        Margin = new Thickness(0, 10, 12, 0),
-        Background = _Brush("CockpitPanelBgBrush"),
+        Margin = new Thickness(0, 12, 0, 0),
+        Background = _Brush("CockpitAccentSoftBrush") ?? _Brush("CockpitPanelBgBrush"),
         BorderThickness = new Thickness(1),
-        BorderBrush = _Brush("CockpitHairlineBrush"),
-        CornerRadius = new CornerRadius(11),
-        Padding = new Thickness(10, 4),
+        BorderBrush = _Brush("CockpitStatusBusyBrush") ?? _Brush("CockpitHairlineBrush"),
+        CornerRadius = new CornerRadius(13),
+        Padding = new Thickness(14, 6),
         Child = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 7,
+            Spacing = 8,
             Children =
             {
                 new Border
                 {
-                    Width = 8,
-                    Height = 8,
-                    CornerRadius = new CornerRadius(4),
+                    Width = 9,
+                    Height = 9,
+                    CornerRadius = new CornerRadius(4.5),
                     VerticalAlignment = VerticalAlignment.Center,
                     Background = _Brush("CockpitStatusBusyBrush"),
                 },
                 new TextBlock
                 {
                     Text = "CEO is working…",
-                    FontSize = 11.5,
+                    FontSize = 12.5,
+                    FontWeight = FontWeight.SemiBold,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                    Foreground = _Brush("CockpitTextPrimaryBrush") ?? _Brush("CockpitTextSecondaryBrush"),
                 },
             },
         },

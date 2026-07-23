@@ -52,18 +52,12 @@ internal static class AutopilotCeoBrief
         var costGuidance = _CostGuidance(costStrategy);
         var executionFit = _ExecutionFit();
 
-        // Only a source-triggered run has an issue to keep in sync; a CEO-first run has none, so this stays out.
-        var tracker = plan.Source is { } tracked
-            ? $$"""
-
-                This run came from {{tracked.Tracker}} {{tracked.IssueId}}, and you are the only one who can keep that
-                issue in sync — the step agents cannot touch the tracker. As the run reaches each stage, call
-                mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_tracker_stage to move the issue (use the tracker's own
-                stage names) and mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_tracker_note to leave evidence — what
-                was done, the result — on it.
-
-                """
-            : "\n";
+        // No tracker-sync instruction here (AC-212): this is the *planning* brief, and the CEO tools endpoint that hosts
+        // autopilot_tracker_stage / autopilot_tracker_note is only mounted once a run is active (AutopilotPlugin gates it
+        // on manager.Active.Count > 0). During planning there is no run yet — nothing has been built, and the operator has
+        // not even approved the plan — so naming those tools here only made the planning CEO grab for tools it does not
+        // have and report them missing. Keeping the issue in sync is the *run's* CEO validator's job (AutopilotValidatorBrief)
+        // plus the coordinator's automatic stage-advance (AC-202); planning stays scoped to drafting and emitting the plan.
 
         return $$"""
             You are the CEO of an Autopilot run. In this planning round you build an ordered, executable plan that takes
@@ -121,7 +115,7 @@ internal static class AutopilotCeoBrief
             or files that are relevant, then read those with targeted tools (Grep, Glob, Read) and the project's
             graph/index if one is available. Do not run repeated `bash grep -rn` sweeps over the whole repository — that
             burns tokens and time for little signal; reach for a broad scan only after a scoped search has come up empty.
-            {{tracker}}
+
             Re-emit the whole plan every time you draft or revise it, so the operator always sees the current plan. You do
             not merge or approve anything: the operator approves the plan in the cockpit to start the autonomous run, and
             the final merge stays with them.
