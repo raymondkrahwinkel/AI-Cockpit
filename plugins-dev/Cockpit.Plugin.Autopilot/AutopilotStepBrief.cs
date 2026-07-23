@@ -21,16 +21,26 @@ internal static class AutopilotStepBrief
             ? $"\n\nYou are agent {agentNumber} of {agentCount} working this step in parallel, each in its own worktree — keep to your part and do not touch what the others own."
             : string.Empty;
 
-        // The agent starts non-interactively under the profile the CEO assigned this step (AC-174). No human is here to
-        // answer a startup question, so anything that would normally stop to ask — a project prompt asking which
-        // persona/brain/config to load — must be treated as already decided (stay in the identity it launched with) and
-        // stepped past, or the autonomous run stalls on an unanswered question (the same brain-select trap a spawned
-        // sub-agent hits). Kept generic on purpose: it names no specific persona, so it holds whatever the profile is.
+        // The agent starts non-interactively under the profile the CEO assigned this step (AC-174, AC-193). No human is
+        // here to answer anything this turn, and that cuts two ways. First, a startup question — a project prompt asking
+        // which persona/brain/config to load — must be treated as already decided (stay in the identity it launched with)
+        // and stepped past, or the run stalls on an unanswered question (the same brain-select trap a spawned sub-agent
+        // hits). Second, and the AC-193 fix: a TASK ambiguity the brief did not spell out must not become a mid-run
+        // question either — the agent makes the most reasonable assumption in line with the goal and acceptance, follows
+        // the codebase's existing conventions (looks at how comparable parts/projects already do it), and carries on,
+        // noting the assumption in its done-summary. The last-resort autopilot_blocked tool stays for a genuine hard
+        // blocker only. Kept generic on purpose: it names no specific persona, so it holds whatever the profile is.
         const string autonomy =
             "You are an autonomous agent in an Autopilot run, working under the profile you were launched with — no human "
-            + "is available to answer setup questions this turn. If your startup asks you to pick a persona, brain, or "
-            + "configuration before you begin, treat it as already decided, stay in the identity you launched with, and "
-            + "go straight to the task below. Do not stop to ask.";
+            + "is available to answer questions this turn. Two things follow. (1) Setup questions: if your startup asks you "
+            + "to pick a persona, brain, or configuration before you begin, treat it as already decided, stay in the "
+            + "identity you launched with, and go straight to the task below — do not stop to ask. (2) Task ambiguity: for "
+            + "anything the brief and acceptance below do not spell out, do not stop to ask either — make the most "
+            + "reasonable assumption in line with the goal and acceptance, FOLLOW THE EXISTING CONVENTIONS in the codebase "
+            + "(look at how comparable parts or projects already do it rather than inventing a new way), and keep going; "
+            + "note the assumption in your autopilot_step_done summary. Only use autopilot_blocked for a genuine hard "
+            + "blocker — a missing credential, a truly irreversible or destructive choice, or progress being objectively "
+            + "impossible — never for an ordinary judgement call you can make yourself.";
 
         return $$"""
             {{autonomy}}

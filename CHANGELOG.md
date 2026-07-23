@@ -100,6 +100,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: Autopilot is more reliable and faster to plan. An approved run no longer stops mid-way to ask a
+  question it could answer itself — for anything the plan did not spell out, the step agent now makes a
+  reasonable assumption that follows the codebase's existing conventions and notes it, keeping the run
+  autonomous rather than waiting on you. The CEO also plans quicker: it is handed only the tools it needs
+  instead of every tool in the cockpit, and searches the code deliberately (a scoped read) instead of
+  sweeping the whole repository, so planning uses less context and stalls less.
 - changed: an Autopilot run now lets you name the folder it works in, right where you name the run — pick a
   recent or pinned folder (the same ones the New-session dialog remembers) or browse to one. A run planned
   from a YouTrack or GitHub issue no longer needs a session open on a repository to know where to work, and

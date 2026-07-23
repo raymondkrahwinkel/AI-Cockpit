@@ -48,11 +48,28 @@ public class AutopilotStepBriefTests
         // human — and it names no specific persona, so it stays generic across profiles.
         brief.Should().Contain("autonomous agent");
         brief.Should().Contain("persona, brain, or");
-        brief.Should().Contain("Do not stop to ask");
+        brief.Should().Contain("do not stop to ask");
         brief.Should().NotContain("Zyra");
         brief.Should().NotContain("Aura");
         // The task itself still comes through.
         brief.Should().Contain("do the work");
+    }
+
+    [Fact]
+    public void For_TellsTheAgentToAssumeAndFollowConventions_ForATaskAmbiguity_NotStopToAsk()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // AC-193: a task ambiguity the brief did not spell out is not a mid-run question — the agent makes the most
+        // reasonable assumption, follows the codebase's existing conventions, and records it in its done-summary.
+        brief.Should().Contain("Task ambiguity");
+        brief.Should().Contain("most reasonable assumption");
+        brief.Should().Contain("FOLLOW THE EXISTING CONVENTIONS");
+        brief.Should().Contain("note the assumption in your autopilot_step_done summary");
+        // autopilot_blocked is scoped to a genuine hard blocker only, not an ordinary judgement call.
+        brief.Should().Contain("Only use autopilot_blocked for a genuine hard blocker");
     }
 
     [Fact]

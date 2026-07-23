@@ -20,6 +20,13 @@ internal sealed class AutopilotRunContext
     private readonly CancellationTokenSource _cts = new();
     private IEmbeddedSession? _ceo;
 
+    // The MCP surface the run's validator CEO is scoped to (AC-197): only the CEO endpoint that hosts its own tools —
+    // autopilot_validate plus autopilot_tracker_stage / autopilot_tracker_note. Left on the request's default empty list
+    // it would inherit the host's whole selection (161 tools observed): every tool definition in its context, and it
+    // would still leave the tracker-stage flow to chance. Mounting AutopilotCeoTools.EndpointName explicitly guarantees
+    // the validate and tracker tools are present — the exact endpoint the validator/tracker brief tells it to call.
+    internal static readonly IReadOnlyList<string> ValidatorCeoMcpServers = [AutopilotCeoTools.EndpointName];
+
     public AutopilotRunContext(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlan plan, Func<Action, Task> runOnUi)
     {
         _host = host;
@@ -127,6 +134,7 @@ internal sealed class AutopilotRunContext
                 {
                     ProfileId = _settings.CeoProfileLabel(),
                     Model = _settings.CeoModel(),
+                    McpServers = ValidatorCeoMcpServers,
                     WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
                     // Confine the validator's file tools to whatever directory it is pointed at (Raymond 2026-07-22): the
                     // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree

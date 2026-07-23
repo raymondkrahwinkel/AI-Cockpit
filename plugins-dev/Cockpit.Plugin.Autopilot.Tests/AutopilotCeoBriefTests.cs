@@ -107,6 +107,21 @@ public class AutopilotCeoBriefTests
     }
 
     [Fact]
+    public void For_TellsTheCeoToSearchDeliberately_ScopeFirst_NotSweepTheWholeRepo()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        // AC-197: the CEO is steered to scope-first, targeted search tools and the project graph/index, and away from
+        // repeated whole-repo `bash grep -rn` sweeps that burn tokens.
+        brief.Should().Contain("scope first");
+        brief.Should().Contain("Grep, Glob, Read");
+        brief.Should().Contain("graph/index");
+        brief.Should().Contain("bash grep -rn");
+    }
+
+    [Fact]
     public void For_WithNoProfilesOrIdentity_OmitsTheRosterAndIdentityLine()
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
