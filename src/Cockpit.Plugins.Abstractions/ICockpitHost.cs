@@ -400,7 +400,22 @@ public interface ICockpitHost
     /// Call it fire-and-forget from <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host
     /// implementations keep compiling.
     /// </summary>
-    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) => Task.CompletedTask;
+    /// <remarks>
+    /// This <c>isInternal</c> overload is kept binary-separate from the three-argument one below: adding an
+    /// optional parameter to the original signature would have been source-compatible but binary-breaking —
+    /// a plugin compiled against the old three-argument method throws <see cref="MissingMethodException"/> at
+    /// load time on a host that only exposes the four-argument shape. Keeping both signatures lets pre-AC-204
+    /// plugin binaries (workflows, kubernetes, …) resolve their three-argument call against a real method.
+    /// </remarks>
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled, bool isInternal) => Task.CompletedTask;
+
+    /// <summary>
+    /// Three-argument <see cref="AddMcpEndpoint(string, object, Func{bool}?, bool)"/> — the original signature,
+    /// preserved verbatim for binary compatibility with plugins compiled before the <c>isInternal</c> flag
+    /// existed. Registers a non-internal endpoint (visible to user-facing MCP selection).
+    /// </summary>
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) =>
+        AddMcpEndpoint(serverName, tools, isEnabled, isInternal: false);
 
     /// <summary>
     /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):
