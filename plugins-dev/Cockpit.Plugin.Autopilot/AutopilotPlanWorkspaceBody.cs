@@ -826,9 +826,59 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             },
         };
 
-        var right = new Border { Child = ceo.View };
+        // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for minutes,
+        // and the shared session view's own indicator stays deaf during streaming on purpose — so without this the
+        // pop-out reads as hung. It follows the embedded session's busy signal alone, leaving the global indicator
+        // untouched. Overlaid top-right so it never covers the composer or the transcript's live text.
+        var working = _BuildCeoWorkingCue();
+        var busy = new CeoBusyIndicatorModel(ceo, isWorking =>
+            Dispatcher.UIThread.Post(() => working.IsVisible = isWorking));
+        var right = new Border
+        {
+            Child = new Grid { Children = { ceo.View, working } },
+        };
+        right.DetachedFromVisualTree += (_, _) => busy.Dispose();
+
         return new DockPanel { LastChildFill = true, Children = { footer, left, right } };
     }
+
+    // The CEO-only "working" cue (AC-195): a small pill that appears while the CEO's planning turn is in flight, so a
+    // long silent turn shows progress rather than looking stuck. Hidden until the busy signal lights it.
+    private Control _BuildCeoWorkingCue() => new Border
+    {
+        IsVisible = false,
+        HorizontalAlignment = HorizontalAlignment.Right,
+        VerticalAlignment = VerticalAlignment.Top,
+        Margin = new Thickness(0, 10, 12, 0),
+        Background = _Brush("CockpitPanelBgBrush"),
+        BorderThickness = new Thickness(1),
+        BorderBrush = _Brush("CockpitHairlineBrush"),
+        CornerRadius = new CornerRadius(11),
+        Padding = new Thickness(10, 4),
+        Child = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 7,
+            Children =
+            {
+                new Border
+                {
+                    Width = 8,
+                    Height = 8,
+                    CornerRadius = new CornerRadius(4),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Background = _Brush("CockpitStatusBusyBrush"),
+                },
+                new TextBlock
+                {
+                    Text = "CEO is working…",
+                    FontSize = 11.5,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                },
+            },
+        },
+    };
 
     // The plan is approvable only when the CEO has planned at least one step — an empty plan would start a run with
     // nothing to do.

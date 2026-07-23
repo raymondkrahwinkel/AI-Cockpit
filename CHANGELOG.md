@@ -32,6 +32,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a "CEO is working…" cue in the Plan-with-the-CEO dialog while the CEO is planning, so a long
+  planning turn no longer looks like the dialog is stuck — shown only on the CEO session, the rest of the
+  app's sessions are unaffected.
 - added: a "Stop run" button on a running Autopilot run, so you can end a run mid-flight instead of only
   intervening on a step or closing the whole workspace. A stopped run settles cleanly and is recorded in the
   history as "Stopped" — a neutral outcome, not a failure — with any unmerged work left as-is.

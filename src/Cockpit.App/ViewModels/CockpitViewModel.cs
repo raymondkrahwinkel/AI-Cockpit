@@ -4806,7 +4806,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // the driver launches; a failed start leaves the session showing its own error rather than taking the app down.
         _ = _StartEmbeddedSessionAsync(session, request);
 
-        return new EmbeddedSession(view, session.PaneId, ended.Task, enabled => _SetEmbeddedInputEnabled(session, enabled), () => _CloseEmbeddedSessionAsync(session));
+        return new EmbeddedSession(view, session, ended.Task, enabled => _SetEmbeddedInputEnabled(session, enabled), () => _CloseEmbeddedSessionAsync(session));
     }
 
     public void CloseForWorkspace(string workspaceId)
