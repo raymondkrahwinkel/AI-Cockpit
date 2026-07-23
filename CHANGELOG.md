@@ -53,6 +53,14 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   decision only you can make. You can queue several runs and see a history of what each did and why it
   passed or failed. You approve once and always do the merge yourself — Autopilot stops at merge-ready and
   never merges.
+- added: SDK chat sessions now have a reading level — Developer, Focus or Simple — so one session can be read
+  by a developer or handed to a non-technical viewer without changing what the agent does. Developer shows
+  everything; Focus stays complete but calm (runs of auto-executed tool calls fold into one "N steps run" line
+  you can expand, and the running cost moves onto the usage pill instead of a "$" figure); Simple drops the tool
+  noise, the cost and the model chip and puts jargon in plain words. Tool calls that asked for your approval —
+  waiting, or already allowed or denied — stay visible at every level, in human language at Simple ("✓ Changed a
+  file — you approved this"). Pick the default per profile ("Default view"), override it when starting a session,
+  or switch it live from the session header. Terminal (TTY) sessions are a raw terminal and have no reading level.
 - added: the New-session dialog and the profile's MCP pre-selection now show a rough estimate of the prompt
   tokens the ticked MCP servers' tools add — a per-server figure and a live running total — so you can see a
   heavy selection heading toward a context limit before you start, instead of only hitting an error mid-turn.

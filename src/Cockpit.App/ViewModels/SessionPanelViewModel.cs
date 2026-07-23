@@ -282,10 +282,27 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     public ObservableCollection<UsagePillItem> UsagePillItems { get; } = [];
 
     /// <summary>
-    /// Whether the standalone token/cost meter shows (#8): only when there is usage and the operator has not put
-    /// session usage on the pill itself (AC-105), so the same figure never appears twice on the header.
+    /// Whether the standalone token/cost meter shows (#8): only when there is usage, the operator has not put
+    /// session usage on the pill itself (AC-105) — so the same figure never appears twice on the header — and the
+    /// reading level is not suppressing it (AC-138: Focus/Simple prefer the usage pill over the "$" cost figure).
     /// </summary>
-    public bool ShowTokenMeter => HasUsage && !UsagePillVisibleFields.Contains(UsagePillField.SessionUsage);
+    public bool ShowTokenMeter => HasUsage && !UsagePillVisibleFields.Contains(UsagePillField.SessionUsage) && !SuppressCostMeter;
+
+    /// <summary>
+    /// Whether a reading level is hiding the standalone token/cost meter (AC-138): false on the base (TTY and the
+    /// developer default show it), overridden by the SDK session to hide the "$" figure at Focus and Simple, where
+    /// the subscription-friendly usage pill (ctx / rate windows) carries usage instead.
+    /// </summary>
+    protected virtual bool SuppressCostMeter => false;
+
+    /// <summary>
+    /// Whether the header's kind chip (TTY / SDK / provider tag) shows: by default whenever there is a label. The SDK
+    /// session overrides this to drop the chip at the Simple reading level (AC-138), where a model/provider tag is
+    /// jargon the level exists to hide.
+    /// </summary>
+    public virtual bool ShowKindChip => !string.IsNullOrEmpty(KindLabel);
+
+    partial void OnKindLabelChanged(string? value) => OnPropertyChanged(nameof(ShowKindChip));
 
     /// <summary>Whether the usage pill shows at all: at least one metric segment, or the chevron's detail flyout.</summary>
     public bool HasUsagePillRegion => UsagePillItems.Count > 0 || HasUsagePill;

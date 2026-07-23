@@ -39,6 +39,11 @@ namespace Cockpit.App.ViewModels;
 /// <see cref="WorkingDirectory"/> is a git repository — a per-session choice made in the dialog next to the
 /// folder, not a profile setting. Ignored for a non-repository folder.
 /// </param>
+/// <param name="ReadingLevel">
+/// The reading level (AC-138) this SDK session opens with, overriding the profile's default view for this one
+/// session — chosen in the dialog and shown only for an SDK session. <see langword="null"/> keeps the profile
+/// default (the New-session dialog seeds it from there). Ignored for a TTY session, which has no reading level.
+/// </param>
 public sealed record NewSessionResult(
     SessionKind Kind,
     SessionProfile Profile,
@@ -51,4 +56,5 @@ public sealed record NewSessionResult(
     SessionResume? Resume = null,
     IReadOnlyDictionary<string, string>? PluginTtyOptions = null,
     IReadOnlyDictionary<string, string>? SdkLaunchOptions = null,
-    bool IsolateInWorktree = false);
+    bool IsolateInWorktree = false,
+    ReadingLevel? ReadingLevel = null);

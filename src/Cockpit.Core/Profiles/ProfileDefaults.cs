@@ -1,3 +1,5 @@
+using Cockpit.Core.Sessions;
+
 namespace Cockpit.Core.Profiles;
 
 /// <summary>
@@ -29,4 +31,12 @@ public sealed record ProfileDefaults(
     /// <see langword="null"/> means each option falls back to its own declared default.
     /// </summary>
     public IReadOnlyDictionary<string, string>? OptionDefaults { get; init; }
+
+    /// <summary>
+    /// The reading level a new SDK/chat session opens with (AC-138) — Developer/Focus/Simple. This is the
+    /// "Default view" the profile pre-selects; the New-session dialog inherits it and lets it be overridden,
+    /// and the running session's header can switch it live. <see langword="null"/> falls back to the app
+    /// default (<see cref="ReadingLevel.Developer"/>). Has no effect on a TTY session, which has no reading level.
+    /// </summary>
+    public ReadingLevel? DefaultReadingLevel { get; init; }
 }

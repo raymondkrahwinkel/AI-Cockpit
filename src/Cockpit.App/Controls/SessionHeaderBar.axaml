@@ -151,7 +151,7 @@
                  render diagnostics. -->
             <Border Grid.Column="2" Background="{StaticResource CockpitSecondaryBgBrush}" VerticalAlignment="Center"
                     CornerRadius="4" Padding="5,1" Margin="7,0,0,0"
-                    IsVisible="{Binding KindLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                    IsVisible="{Binding ShowKindChip}"
                     ToolTip.Tip="{Binding KindChipTooltip, RelativeSource={RelativeSource AncestorType=controls:SessionHeaderBar}}">
                 <TextBlock Text="{Binding KindLabel}" FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"/>
             </Border>

@@ -33,6 +33,14 @@
                  overflow this redesign fixes. Same bar height as before (hard constraint). -->
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <!-- Reading level (AC-138): how much of this SDK session to show — Developer (everything),
+                         Focus (tool runs fold, cost on the pill) or Simple (no tool noise, plain words). Lives in
+                         this SDK-only control strip, so it never shows on a TTY pane, which has no reading level.
+                         Binds the enum straight through the option's Value, so the running session switches live. -->
+                    <ComboBox x:Name="ReadingLevelPicker" ItemsSource="{Binding ReadingLevels}"
+                              SelectedValueBinding="{Binding Value}" SelectedValue="{Binding ReadingLevel, Mode=TwoWay}"
+                              DisplayMemberBinding="{Binding Label}" Classes="Compact" VerticalAlignment="Center"
+                              ToolTip.Tip="How much of the session to show — Developer, Focus or Simple"/>
                     <!-- The provider's own live controls (#45 D4): model, effort and permission mode, declared by the
                          driver and rendered generically. An SDK session can carry three of them, which crowded the
                          header — so they collapse behind a single sliders icon that opens a flyout to change them.
@@ -261,7 +269,8 @@
                              (Theme.axaml), never inline — an inline (local) value would beat the .userRow
                              setters and the user bubble could not right-align or re-tint (T2). -->
                         <Border Classes="transcriptRow" Classes.userRow="{Binding IsUserRow}"
-                                Padding="8,5" Margin="0,2" CornerRadius="{StaticResource CockpitControlRadius}">
+                                Padding="8,5" Margin="0,2" CornerRadius="{StaticResource CockpitControlRadius}"
+                                IsVisible="{Binding IsRowVisible}">
                             <StackPanel Spacing="4">
 
                                 <!-- Arrival timestamp (T7): a small faint label at the top of the row, shown
@@ -341,6 +350,28 @@
                                      A structured/code result renders in a monospace code box with a copy
                                      button (T6); a plain result stays inline text. -->
                                 <StackPanel IsVisible="{Binding IsToolUse}" Spacing="4" Margin="36,0,0,0">
+
+                                    <!-- Focus fold line (AC-138): a run of auto-executed tool calls collapses to one
+                                         "N steps run" line on the run's anchor row; clicking it expands the run's chips
+                                         (each row's own ShowToolBlock turns on). Only the anchor shows this line. -->
+                                    <Button IsVisible="{Binding ShowGroupSummary}" Command="{Binding ToggleGroupCommand}"
+                                            Classes="toolChip" HorizontalAlignment="Left">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <materialIcons:MaterialIcon Kind="{Binding GroupToggleIconKind}" Width="12" Height="12"/>
+                                            <TextBlock Text="{Binding GroupSummaryText}"/>
+                                        </StackPanel>
+                                    </Button>
+
+                                    <!-- Plain-language consent line (AC-138 Simple): a tool call that asked for approval
+                                         stays visible at every level; in Simple it reads in human words ("✓ Changed a
+                                         file — you approved this") instead of the tool chip. The Allow/Deny buttons below
+                                         still show while it is pending, so consent stays actionable here too. -->
+                                    <SelectableTextBlock IsVisible="{Binding ShowHumanToolLine}" Text="{Binding HumanToolText}"
+                                                         TextWrapping="Wrap" Classes="transcript"/>
+
+                                    <!-- The full tool chip + expandable body: shown at Developer always, at Focus only
+                                         when the fold group is expanded (or the call stands alone), and never at Simple. -->
+                                    <StackPanel IsVisible="{Binding ShowToolBlock}" Spacing="4">
                                     <!-- Header row: the tool chip, with the allow/deny outcome trailing on the same
                                          line (T5) so a resolved call reads "Bash · dotnet build   Allowed" instead of
                                          the verdict dropping onto its own line beneath the command. The arrival
@@ -385,6 +416,7 @@
                                                                  Foreground="{StaticResource CockpitTextSecondaryBrush}"
                                                                  IsVisible="{Binding !ResultIsCodeLike}"/>
                                         </StackPanel>
+                                    </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
 

@@ -1,4 +1,5 @@
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Configuration;
 using FluentAssertions;
 
@@ -190,5 +191,26 @@ public class SessionProfileEntryTests
         profile.Defaults!.OptionDefaults!["permission-mode"].Should().Be("bypassPermissions");
         profile.Defaults!.OptionDefaults!["model"].Should().Be("opus");
         profile.Defaults!.OptionDefaults!["effort"].Should().Be("high");
+    }
+
+    // AC-138: the profile's "Default view" reading level persists by name, and survives the round-trip both ways.
+    [Fact]
+    public void RoundTrip_KeepsTheDefaultReadingLevel()
+    {
+        var entry = new ProfileDefaultsEntry { DefaultReadingLevel = "Focus" };
+
+        entry.ToDomain().DefaultReadingLevel.Should().Be(ReadingLevel.Focus);
+
+        var resaved = ProfileDefaultsEntry.FromDomain(new ProfileDefaults(string.Empty, string.Empty, string.Empty) { DefaultReadingLevel = ReadingLevel.Simple });
+        resaved.DefaultReadingLevel.Should().Be("Simple");
+    }
+
+    // A config with no reading level (an older build, or a hand-edited value that names no level) reads as "no
+    // default" — the app default (Developer) then applies — rather than throwing on load.
+    [Fact]
+    public void ToDomain_WithAbsentOrUnknownReadingLevel_LeavesItUnset()
+    {
+        new ProfileDefaultsEntry { DefaultReadingLevel = null }.ToDomain().DefaultReadingLevel.Should().BeNull();
+        new ProfileDefaultsEntry { DefaultReadingLevel = "Nonsense" }.ToDomain().DefaultReadingLevel.Should().BeNull();
     }
 }

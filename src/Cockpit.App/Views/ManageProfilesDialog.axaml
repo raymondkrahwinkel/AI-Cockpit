@@ -296,6 +296,19 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <!-- Default view (AC-138): the reading level a new SDK session under this profile opens with —
+                         provider-neutral, since any profile can launch an SDK session, so it sits outside the
+                         Claude-only session-defaults block below. Has no effect on a TTY session, which has no levels. -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="DEFAULT VIEW" FontSize="11" Margin="0,4,0,0"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                        <ComboBox ItemsSource="{Binding ReadingLevels}" SelectedItem="{Binding SelectedReadingLevel}"
+                                  DisplayMemberBinding="{Binding Label}" HorizontalAlignment="Stretch"/>
+                        <TextBlock Text="{Binding SelectedReadingLevel.Description}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                    </StackPanel>
+
                     <!-- Session defaults + login are Claude-CLI concepts; a local provider has no permission
                          mode / thinking budget / login, so this whole block is hidden for those. -->
                     <StackPanel Spacing="11" IsVisible="{Binding IsClaudeProvider}">

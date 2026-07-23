@@ -137,6 +137,17 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     public IReadOnlyList<EffortOption> Efforts => SessionOptionCatalog.Efforts;
 
+    /// <summary>The three SDK reading levels (AC-138) offered by the override picker, shown only for an SDK session (<see cref="IsSdk"/>).</summary>
+    public IReadOnlyList<ReadingLevelOption> ReadingLevels => SessionOptionCatalog.ReadingLevels;
+
+    /// <summary>
+    /// The reading level this SDK session will open with (AC-138). Seeded from the selected profile's default view
+    /// (<see cref="OnSelectedProfileChanged"/>) and overridable here; only meaningful for an SDK session, so the
+    /// picker is hidden for a TTY one. Carried into <see cref="NewSessionResult"/> on confirm.
+    /// </summary>
+    [ObservableProperty]
+    private ReadingLevelOption _selectedReadingLevel = SessionOptionCatalog.DefaultReadingLevel;
+
     /// <summary>Optional friendly name for the session, shown in the sidebar and above the panel; blank falls back to "&lt;profile&gt; - N".</summary>
     [ObservableProperty]
     private string _sessionName = string.Empty;
@@ -744,6 +755,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         SelectedClaudeModel = SessionOptionCatalog.DefaultModel.Value;
         SelectedEffort = SessionOptionCatalog.DefaultEffort;
 
+        // Inherit the profile's default view (AC-138): the override picker opens on the profile's chosen reading
+        // level, and the operator can still change it for this one session before Start.
+        SelectedReadingLevel = SessionOptionCatalog.ResolveReadingLevel(value?.Defaults?.DefaultReadingLevel);
+
         // Pre-fill the folder and the MCP checklist from the profile's saved defaults (AC-130), so a per-project
         // profile lands in its folder with its servers ticked. Sticky: this keeps applying the newly-selected
         // profile's defaults until the operator sets the folder / edits the checklist themselves, after which their
@@ -1009,7 +1024,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
         CloseRequested?.Invoke(new NewSessionResult(
             SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,
-            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions, isolateInWorktree));
+            enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions, isolateInWorktree,
+            // A reading level is an SDK-only concept (AC-138); a TTY session carries none, so the override is left null there.
+            IsSdk ? SelectedReadingLevel.Value : null));
     }
 
     [RelayCommand]
