@@ -32,6 +32,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: an hourly background update re-check while the app is open, so a window left running for a workday still
+  learns about a build cut hours after it opened — not just at startup. It reuses the same toast/banner and dedup as
+  the startup check (a release is announced once, a dismissed build stays quiet), is gated by the same "check on
+  startup" setting, and never surfaces an error toast for a background poll that could not reach GitHub.
 - added: Autopilot templates — reusable goal/brief starting points for a run. Manage them in the Autopilot settings
   (a Templates section: create your own, edit any, delete your own, and reset a built-in or plugin one to its default),
   with placeholder help for the tokens you can use ({{issue.title}}, {{issue.url}}, {{input.…}} and more). When you
