@@ -32,17 +32,32 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
 
-    // The MCP surface the planning CEO is scoped to (AC-197): the plan-emit endpoint it uses to draft the plan, and
-    // nothing else. Left on the request's default empty list it would inherit the host's entire selection (161 tools
-    // observed) — every tool definition in its context (tokens), none of it needed to plan. The CEO tools endpoint
-    // (autopilot_tracker_stage / autopilot_tracker_note) is deliberately NOT here (AC-212): that endpoint is only mounted
-    // once a run is active (AutopilotPlugin gates it on manager.Active.Count > 0), so listing it during planning mounted
-    // nothing and only made the CEO grab for tracker tools it never had and report them missing. Keeping the source issue
-    // in sync is the run's job — the CEO validator (AutopilotValidatorBrief) plus the coordinator's auto-advance (AC-202),
-    // both during execution — not the planning round's. So both a source-triggered and a CEO-first run plan on the plan
-    // endpoint alone.
-    internal static IReadOnlyList<string> PlanningCeoMcpServers(bool hasSource) =>
-        [AutopilotPlanTools.EndpointName];
+    // The MCP surface the planning CEO is scoped to (AC-197/AC-212): the plan-emit endpoint it uses to draft the plan,
+    // plus — for a source-triggered run — the tracker's READ-only MCP servers (<paramref name="trackerReadServers"/>).
+    // Left on the request's default empty list the CEO would inherit the host's entire selection (161 tools observed) —
+    // every tool definition in its context (tokens), none of it needed to plan.
+    //
+    // Read vs write split (AC-212): the CEO gets the tracker's read tools while planning so it can open the source issue
+    // and, for an epic, pull its "parent for" child issues (AC-217) — but NOT the tracker's write tools. The write path
+    // (autopilot_tracker_stage / autopilot_tracker_note) lives on the CEO-tools endpoint, which AutopilotPlugin gates on
+    // manager.Active.Count > 0 (an active run) and which this scope never lists: moving the issue's stage or posting
+    // notes before the operator has approved would be premature. Stage/notes stay the run's job — the CEO validator
+    // (AutopilotValidatorBrief) plus the coordinator's auto-advance (AC-202), both during execution. The read servers are
+    // resolved provider-neutrally from the source's ITrackerProvider.ReadToolMcpServerNames, so no tracker is named here.
+    internal static IReadOnlyList<string> PlanningCeoMcpServers(IReadOnlyList<string>? trackerReadServers) =>
+        trackerReadServers is { Count: > 0 } servers
+            ? [AutopilotPlanTools.EndpointName, .. servers]
+            : [AutopilotPlanTools.EndpointName];
+
+    // The read-only tracker MCP servers a source-triggered planning round scopes the CEO to (AC-212): resolve the
+    // source's tracker provider by its id and take the read-tool server names it advertises. Empty for a CEO-first run
+    // (no source), an unknown/unregistered tracker, or a tracker that reads via a CLI rather than an MCP server (GitHub
+    // Issues via gh). Provider-neutral — Autopilot asks the provider, it never names a tracker.
+    private IReadOnlyList<string> _TrackerReadServers(AutopilotPlanSource? source) =>
+        source is { } item
+            && _host.TrackerProviders.FirstOrDefault(provider => string.Equals(provider.TrackerId, item.Tracker, StringComparison.OrdinalIgnoreCase)) is { } tracker
+            ? tracker.ReadToolMcpServerNames
+            : [];
 
     private bool _popoutOpen;
     private int _completedRuns;
@@ -686,7 +701,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             {
                 ProfileId = ceoLabel,
                 Model = _settings.CeoModel(),
-                McpServers = PlanningCeoMcpServers(_plan.Plan?.Source is not null),
+                McpServers = PlanningCeoMcpServers(_TrackerReadServers(_plan.Plan?.Source)),
                 WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context, _plan.Plan?.WorkingDirectory),
                 AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
                 // The kickoff (AC-189): a chosen template's resolved body, else — free planning — the tracker kickoff for

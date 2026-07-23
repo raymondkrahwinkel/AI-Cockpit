@@ -52,12 +52,25 @@ internal static class AutopilotCeoBrief
         var costGuidance = _CostGuidance(costStrategy);
         var executionFit = _ExecutionFit();
 
-        // No tracker-sync instruction here (AC-212): this is the *planning* brief, and the CEO tools endpoint that hosts
-        // autopilot_tracker_stage / autopilot_tracker_note is only mounted once a run is active (AutopilotPlugin gates it
-        // on manager.Active.Count > 0). During planning there is no run yet — nothing has been built, and the operator has
-        // not even approved the plan — so naming those tools here only made the planning CEO grab for tools it does not
-        // have and report them missing. Keeping the issue in sync is the *run's* CEO validator's job (AutopilotValidatorBrief)
-        // plus the coordinator's automatic stage-advance (AC-202); planning stays scoped to drafting and emitting the plan.
+        // Read/write split for a source-triggered run (AC-212). While planning the CEO gets the tracker's READ tools —
+        // it may open the source issue and, for an epic, pull its "parent for" child issues (AC-217) to plan them as one
+        // run — but it must NOT move the issue's stage or post notes yet: nothing has been built and the operator has not
+        // approved, so a write now is premature. The write tools (autopilot_tracker_stage / autopilot_tracker_note) are
+        // deliberately kept out of the planning scope and belong to the run — the CEO validator (AutopilotValidatorBrief)
+        // plus the coordinator's automatic stage-advance (AC-202), both during execution. Provider-neutral: it steers on
+        // reading vs writing, never on a specific tracker or tool brand. Omitted for a CEO-first run (no source issue).
+        var tracker = plan.Source is { } tracked
+            ? $$"""
+
+                This run was triggered from {{tracked.Tracker}} {{tracked.IssueId}}, so you may READ the tracker while you
+                plan to inform the plan: open the source issue with the tracker's read tools, and — when it is an epic —
+                pull its child issues (its "parent for" / child links) and fold every sub-item into this one plan, rather
+                than reading only the description. Do NOT move the issue's stage or post notes on it while planning: nothing
+                has been built and the operator has not approved yet, so changing the issue now would be premature. Those
+                updates happen during the run, not here — leave the issue where it is until then.
+
+                """
+            : "\n";
 
         return $$"""
             You are the CEO of an Autopilot run. In this planning round you build an ordered, executable plan that takes
@@ -115,7 +128,7 @@ internal static class AutopilotCeoBrief
             or files that are relevant, then read those with targeted tools (Grep, Glob, Read) and the project's
             graph/index if one is available. Do not run repeated `bash grep -rn` sweeps over the whole repository — that
             burns tokens and time for little signal; reach for a broad scan only after a scoped search has come up empty.
-
+            {{tracker}}
             Re-emit the whole plan every time you draft or revise it, so the operator always sees the current plan. You do
             not merge or approve anything: the operator approves the plan in the cockpit to start the autonomous run, and
             the final merge stays with them.

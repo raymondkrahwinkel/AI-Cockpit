@@ -13,6 +13,14 @@ internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrac
 
     public string TrackerId => "youtrack";
 
+    // The JetBrains YouTrack MCP server (one per fully-configured, opted-in instance) hosts the read tools — get an
+    // issue, follow its "parent for" child links, search — the planning CEO uses to read a source issue and pull an
+    // epic's children (AC-212/AC-217). Named exactly as YouTrackMcpRegistration mounts them (BuildContributions), so the
+    // planning scope names servers that actually exist; an instance with no MCP server (incomplete or opted out)
+    // contributes none, and a run whose YouTrack has no MCP configured simply gets no read tools scoped in.
+    public IReadOnlyList<string> ReadToolMcpServerNames =>
+        YouTrackMcpRegistration.BuildContributions(settings.Instances).Select(contribution => contribution.Name).ToList();
+
     // AC-202: map Autopilot's neutral lifecycle stages to this board's own "Stage" vocabulary (Backlog / Develop /
     // Review / Test / Staging / Done), so a source-triggered run moves the issue off Backlog automatically. Merge-ready
     // maps to Review — the work is done, but the merge/verify is a human's, so it is not closed to Done automatically.

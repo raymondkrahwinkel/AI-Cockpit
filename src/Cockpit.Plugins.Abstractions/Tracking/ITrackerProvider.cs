@@ -13,6 +13,17 @@ public interface ITrackerProvider
     /// <summary>The tracker's id — matches the <c>tracker</c> a "start" intent carries, e.g. <c>youtrack</c> or <c>github-issues</c>.</summary>
     string TrackerId { get; }
 
+    /// <summary>
+    /// The names of the MCP servers that host this tracker's READ-only tools — reading an issue, following its
+    /// linked / "parent for" child issues, searching (AC-212/AC-217). A consumer (Autopilot) scopes these into its
+    /// planning session so the CEO can inspect the source issue and, for an epic, pull its children before it drafts the
+    /// plan — while the tracker's WRITE tools (stage moves, notes) stay out of planning and remain the run's alone.
+    /// Names as the host advertises them via <see cref="ICockpitHost.AddMcpServer"/>. Default empty: a tracker whose
+    /// reads go through a CLI rather than an MCP server (GitHub Issues via <c>gh</c>) contributes none, and the consumer
+    /// falls back to that path. Providers list only the servers that actually exist (a configured, opted-in instance).
+    /// </summary>
+    IReadOnlyList<string> ReadToolMcpServerNames => [];
+
     /// <summary>Posts a comment on the issue. Returns whether it landed.</summary>
     Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default);
 
