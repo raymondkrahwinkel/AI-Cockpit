@@ -62,9 +62,6 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
     /// <summary>A CEO reported its validation verdict — hand it to the run whose CEO pane it is.</summary>
     public bool ReportValidation(string paneId, bool passed, string? reason) => _Route(coordinator => coordinator.ReportValidation(paneId, passed, reason));
 
-    /// <summary>A step agent or CEO raised a blockade — hand it to the run that owns the pane.</summary>
-    public bool ReportBlocked(string paneId, string question) => _Route(coordinator => coordinator.ReportBlocked(paneId, question));
-
     /// <summary>A step worker consults its manager (AC-201) — routed to the run that owns the worker's pane.</summary>
     public async Task<bool> ReportConsultAsync(string paneId, string question)
     {
@@ -148,15 +145,29 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
                 _starting++;
             }
 
-            var handle = runner(next!);
-            lock (_lock)
+            // The reservation must be released whatever the runner does: if it throws (a session failed to embed), a
+            // finally-less path would leak the slot forever — _starting never decremented — and the queue would start
+            // fewer and fewer runs. Release it in finally; only a run that actually started is added to _active.
+            AutopilotRunHandle? handle = null;
+            try
             {
-                _starting--;
-                _active.Add(handle.Coordinator);
+                handle = runner(next!);
+            }
+            finally
+            {
+                lock (_lock)
+                {
+                    _starting--;
+                    if (handle is not null)
+                    {
+                        _active.Add(handle.Coordinator);
+                    }
+                }
             }
 
+            // Reached only when the runner returned a handle (a throw is rethrown out of the finally above).
             Changed?.Invoke();
-            _ = _ReleaseWhenDoneAsync(handle);
+            _ = _ReleaseWhenDoneAsync(handle!);
         }
     }
 

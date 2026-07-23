@@ -71,8 +71,11 @@ internal static class AutopilotStepBrief
 
     public static string ValidationTurn(AutopilotStep step, IReadOnlyList<string> summaries)
     {
+        // A single whitespace-only summary is treated as no summary, like the zero-summary case — otherwise the CEO gets a
+        // blank "What the agent(s) reported:" block instead of the clear "(the agent reported no summary)" fallback.
+        const string noSummary = "(the agent reported no summary)";
         var reported = summaries.Count <= 1
-            ? summaries.Count == 1 ? summaries[0] : "(the agent reported no summary)"
+            ? summaries.Count == 1 && !string.IsNullOrWhiteSpace(summaries[0]) ? summaries[0] : noSummary
             : string.Join("\n", summaries.Select((summary, index) => $"- Agent {index + 1}: {summary}"));
 
         var acceptance = string.IsNullOrWhiteSpace(step.Acceptance)

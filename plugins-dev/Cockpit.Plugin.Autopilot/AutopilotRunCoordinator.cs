@@ -127,35 +127,6 @@ internal sealed class AutopilotRunCoordinator(
     }
 
     /// <summary>
-    /// Called on an MCP thread (AC-155): a live step agent or the CEO raises a blockade the operator must answer. Moves
-    /// the run to <see cref="AutopilotPlanPhase.AwaitingOperator"/> and remembers the pane to relay the answer to. Gated
-    /// to a session that is actually part of this run and to a run that is currently running — a second, concurrent
-    /// blockade is turned down (only one is answered at a time).
-    /// </summary>
-    public bool ReportBlocked(string paneId, string question)
-    {
-        lock (_lock)
-        {
-            if (_blockedPane is not null || plan.Phase != AutopilotPlanPhase.Running)
-            {
-                return false;
-            }
-
-            if (!_stepAgents.ContainsKey(paneId) && plan.SessionPaneId != paneId)
-            {
-                return false;
-            }
-
-            _blockedPane = paneId;
-        }
-
-        // Raises Changed for the surface (which shows the question and an answer box); done outside the lock so the
-        // render is not dispatched while it is held.
-        plan.Block(question);
-        return true;
-    }
-
-    /// <summary>
     /// Called on an MCP thread (AC-201, spoor 2): a live step worker consults the run's CEO before it continues instead
     /// of going straight to the operator. The worker's question is relayed as a turn into the CEO's own session, which
     /// answers it (<see cref="AnswerWorkerAsync"/>) or escalates it (<see cref="EscalateToOperator"/>). Two guarded
@@ -209,7 +180,8 @@ internal sealed class AutopilotRunCoordinator(
             return true;
         }
 
-        // Fail-closed or loop-cap fallback: this is a real operator blockade — raise it outside the lock like ReportBlocked.
+        // Fail-closed or loop-cap fallback: this is a real operator blockade — raise it (Changed for the surface) outside
+        // the lock so the render is not dispatched while it is held.
         plan.Block(question);
         return true;
     }
@@ -278,7 +250,7 @@ internal sealed class AutopilotRunCoordinator(
 
     /// <summary>
     /// The operator answered the blockade (AC-155): relay their reply to the blocked session as a turn — it carries on
-    /// in that same session and eventually reports done as usual — and resume the run. A blank answer just resumes.
+    /// in that same session and eventually reports done as usual — and resume the run.
     /// </summary>
     public async Task AnswerBlockadeAsync(string answer)
     {
@@ -296,9 +268,12 @@ internal sealed class AutopilotRunCoordinator(
             _blockedPane = null;
         }
 
-        if (pane is { Length: > 0 } && !string.IsNullOrWhiteSpace(answer))
+        if (pane is { Length: > 0 })
         {
-            await host.SendToSessionAsync(pane, answer);
+            // The blocked worker already ended its turn when it raised the blockade; without a new turn it would just sit
+            // until the stall deadline. So even a blank operator answer must send a turn — a minimal "carry on" nudge —
+            // rather than only resuming the phase, so the worker actually continues.
+            await host.SendToSessionAsync(pane, string.IsNullOrWhiteSpace(answer) ? "Continue." : answer);
         }
 
         plan.ResumeRunning();

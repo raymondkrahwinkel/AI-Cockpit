@@ -39,16 +39,6 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
-    public void ReportBlocked_WhenTheRunIsNotRunning_IsRejected()
-    {
-        var plan = new AutopilotPlanController();
-        plan.BindSession("ceo-pane");
-        var coordinator = new AutopilotRunCoordinator(Substitute.For<ICockpitHost>(), plan);
-
-        coordinator.ReportBlocked("ceo-pane", "which db?").Should().BeFalse();
-    }
-
-    [Fact]
     public async Task RunAsync_StepReportsDone_CeoValidatesPass_SettlesMergeReady()
     {
         var plan = _RunningPlan(_HardStep("1"));
@@ -256,58 +246,32 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
-    public async Task ReportBlocked_DuringAStep_ParksTheRun_ThenAnswerResumesTheSameSession()
-    {
-        var plan = _RunningPlan(_HardStep("1"));
-        var host = _Host();
-        var context = _Context(_Session("step-pane"));
-        var coordinator = new AutopilotRunCoordinator(host, plan);
-
-        var shown = new TaskCompletionSource();
-        var validationSent = new TaskCompletionSource();
-        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
-
-        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
-        await shown.Task.WaitAsync(Timeout);
-
-        // The step agent raises a blockade — the run parks and the operator's answer is relayed to that same session.
-        coordinator.ReportBlocked("step-pane", "Which database should it use?").Should().BeTrue();
-        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
-        plan.PendingQuestion.Should().Be("Which database should it use?");
-
-        await coordinator.AnswerBlockadeAsync("Use Postgres.");
-        await host.Received(1).SendToSessionAsync("step-pane", "Use Postgres.");
-        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
-
-        // The agent carries on and finishes as usual.
-        coordinator.ReportStepDone("step-pane", "used Postgres, opened PR").Should().BeTrue();
-        await validationSent.Task.WaitAsync(Timeout);
-        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
-
-        await run.WaitAsync(Timeout);
-        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
-    }
-
-    [Fact]
     public async Task ReportValidation_AfterABlockadeLeftRunning_IsRejected_UntilTheRunResumes()
     {
+        // AC-207: after AC-201 a blockade no longer comes from the CEO — it is a worker's consult the CEO escalates to
+        // the operator. This exercises the same validate-after-block race guard through that live mechanism: during the
+        // validation window a consult is escalated, moving the run off Running, so the pending validate must not resolve
+        // mid-blockade and corrupt the run.
         var plan = _RunningPlan(_HardStep("1"));
         var host = _Host();
         var context = _Context(_Session("step-pane"));
         var coordinator = new AutopilotRunCoordinator(host, plan);
 
         var shown = new TaskCompletionSource();
-        var validationSent = new TaskCompletionSource();
-        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+        var ceoSends = 0;
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
 
         var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
         await shown.Task.WaitAsync(Timeout);
         coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
-        await validationSent.Task.WaitAsync(Timeout);
+        await _Until(() => ceoSends >= 1); // the validation turn reached the CEO — a validation is now pending
 
-        // The CEO both blocks and validates in one turn: the block moves the run off Running, so the validate must not
-        // resolve mid-blockade and corrupt the run.
-        coordinator.ReportBlocked("ceo-pane", "one more question").Should().BeTrue();
+        // A worker consult during the validation window is escalated to the operator, moving the run to AwaitingOperator
+        // while the validation is still pending.
+        (await coordinator.ReportConsultAsync("step-pane", "one more question")).Should().BeTrue();
+        await _Until(() => ceoSends >= 2); // the consult reached the CEO
+        coordinator.EscalateToOperator("ceo-pane", "operator, please decide").Should().BeTrue();
+        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
         coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeFalse();
 
         // Once answered and running again, the pending validation resolves as normal and the run settles.
@@ -315,6 +279,40 @@ public class AutopilotRunCoordinatorTests
         coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
         await run.WaitAsync(Timeout);
         plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+    }
+
+    [Fact]
+    public async Task AnswerBlockadeAsync_WithABlankAnswer_StillSendsAContinueTurnToTheWorker_AndResumes()
+    {
+        // AC-206: the blocked worker already ended its turn when it raised the blockade. A blank operator answer must
+        // still send a turn (a minimal "Continue.") so the worker actually carries on, instead of only resuming the phase
+        // and stranding the worker until the stall deadline.
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var ceoSends = 0;
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
+
+        using var cts = new CancellationTokenSource();
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        await shown.Task.WaitAsync(Timeout);
+
+        // Park the run on the operator through the live mechanism: a worker consults, the CEO escalates it to the operator.
+        (await coordinator.ReportConsultAsync("step-pane", "need a decision")).Should().BeTrue();
+        await _Until(() => ceoSends >= 1);
+        coordinator.EscalateToOperator("ceo-pane", "operator, please decide").Should().BeTrue();
+        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
+
+        // A blank operator answer still relays a "Continue." turn to the worker's session and resumes the run.
+        await coordinator.AnswerBlockadeAsync("   ");
+        await host.Received(1).SendToSessionAsync("step-pane", "Continue.");
+        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
     }
 
     [Fact]

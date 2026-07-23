@@ -98,6 +98,18 @@ public class AutopilotStepBriefTests
     }
 
     [Fact]
+    public void ValidationTurn_WithAWhitespaceOnlySingleSummary_UsesTheNoSummaryFallback()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "compiles");
+
+        var turn = AutopilotStepBrief.ValidationTurn(step, ["   "]);
+
+        // AC-206: a single whitespace-only summary is treated as no summary — the CEO gets the clear fallback rather than
+        // a blank "What the agent(s) reported:" block, like the zero-summary case already does.
+        turn.Should().Contain("(the agent reported no summary)");
+    }
+
+    [Fact]
     public void ValidationTurn_ListsEveryAgentsReport_ForAParallelStep()
     {
         var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "a");

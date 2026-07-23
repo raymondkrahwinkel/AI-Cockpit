@@ -170,6 +170,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the Autopilot run queue no longer stops starting queued runs after one fails to start — a run that
+  errored while starting used to permanently consume a concurrency slot.
+- fixed: answering an Autopilot run's blockade with an empty reply, or a step that reports an empty summary,
+  no longer leaves the run stalled or shows the CEO a blank block.
 - fixed: the three internal Autopilot endpoints (autopilot-plan, autopilot-run, autopilot-ceo) no longer
   appear in the New-session MCP checklist or a profile's MCP pre-selection. They are the cockpit's own
   endpoints that only an Autopilot run's own agents use, so an ordinary session should never see or tick
