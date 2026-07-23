@@ -7,12 +7,18 @@ namespace Cockpit.Plugin.Autopilot;
 /// and steps grow out of the planning conversation. Kept source-neutral so a new trigger (a project, AC-158) plugs in
 /// without the plan model knowing which one.
 /// </summary>
-internal sealed record AutopilotPlanSource(string Tracker, string IssueId, string Title, string Description = "")
+internal sealed record AutopilotPlanSource(string Tracker, string IssueId, string Title, string Description = "", string Url = "")
 {
     /// <summary>The source a triggered run carries, or null when the run has no supplied item (a CEO-first plan). The
-    /// issue's description rides along (from the intent's "description" key) so the CEO drafts from the full item.</summary>
+    /// issue's description and url ride along (from the intent's "description" and "url" keys) so the CEO drafts from the
+    /// full item and a template's <c>{{issue.url}}</c> resolves to the real link instead of blank (AC-189).</summary>
     public static AutopilotPlanSource? FromRun(AutopilotRun? run) =>
         run is null || string.IsNullOrWhiteSpace(run.IssueId)
             ? null
-            : new AutopilotPlanSource(run.Tracker, run.IssueId, run.Title, run.Data.GetValueOrDefault("description", string.Empty));
+            : new AutopilotPlanSource(
+                run.Tracker,
+                run.IssueId,
+                run.Title,
+                run.Data.GetValueOrDefault("description", string.Empty),
+                run.Data.GetValueOrDefault("url", string.Empty));
 }

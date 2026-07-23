@@ -48,4 +48,30 @@ public class AutopilotRunTests
         run.Data.Should().ContainKey("url").WhoseValue.Should().Be("https://example/7");
         run.Data.Should().ContainKey("repository");
     }
+
+    [Fact]
+    public void FromRun_CarriesTheUrl_SoIssueUrlResolvesFromTheTriggeringItem()
+    {
+        // AC-189: the tracker-triggered path must carry the item's url through to the plan source, so a template's
+        // {{issue.url}} fills from the real link instead of staying blank.
+        var run = AutopilotRun.FromIntent(Intent(new Dictionary<string, string>
+        {
+            ["issue"] = "AC-138",
+            ["title"] = "Reading levels",
+            ["url"] = "https://youtrack.example/issue/AC-138",
+        }));
+
+        var source = AutopilotPlanSource.FromRun(run);
+
+        source.Should().NotBeNull();
+        source!.Url.Should().Be("https://youtrack.example/issue/AC-138");
+    }
+
+    [Fact]
+    public void FromRun_LeavesUrlEmpty_WhenTheTriggerCarriesNone()
+    {
+        var run = AutopilotRun.FromIntent(Intent(new Dictionary<string, string> { ["issue"] = "AC-1" }));
+
+        AutopilotPlanSource.FromRun(run)!.Url.Should().BeEmpty();
+    }
 }

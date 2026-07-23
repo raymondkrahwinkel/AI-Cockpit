@@ -747,16 +747,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         AutopilotTemplate? chosen = null;
         var cancelled = true;
 
-        // Index 0 is the "plan free" option; the templates follow, so the selected index maps to templates[index - 1].
-        var options = new List<string> { "Plan free — no template (blank)" };
-        options.AddRange(templates.Select(template => template.Name));
-
-        var list = new ListBox
-        {
-            ItemsSource = options,
-            SelectedIndex = 0,
-            MaxHeight = 300,
-        };
+        // The chosen option, held in a plain local the rows set on click and Continue reads — index 0 is "plan free", the
+        // templates follow, so it maps to templates[index - 1]. This replaces the ListBox whose SelectedIndex the operator
+        // could not move onto item 0 by clicking (default-selected, so re-selecting it was a silent no-op — the live bug):
+        // every option is now its own full-width RadioButton with a visible checked state, "Plan free" a big target of its own.
+        var selectedIndex = 0;
 
         var detail = new TextBlock
         {
@@ -765,10 +760,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             Foreground = _Brush("CockpitTextSecondaryBrush"),
         };
 
+        var radios = new List<RadioButton>();
+
         void ShowDetail()
         {
-            var index = list.SelectedIndex;
-            if (index <= 0)
+            if (selectedIndex <= 0)
             {
                 detail.Text = source is { } item
                     ? $"The CEO drafts the plan from {item.Tracker} {item.IssueId} as it does today."
@@ -776,15 +772,86 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 return;
             }
 
-            var template = templates[index - 1];
+            var template = templates[selectedIndex - 1];
             var preview = AutopilotTemplateResolver.Resolve(template.Body, AutopilotTemplateKickoff.SourceData(source));
+            var origin = AutopilotTemplateOptionLabel.OriginLabel(template, _PluginName);
             detail.Text = preview.MissingPlaceholders.Count > 0
-                ? $"{_OriginLabel(template.Origin)} · placeholders left blank: {string.Join(", ", preview.MissingPlaceholders)}\n\n{preview.Text}"
-                : $"{_OriginLabel(template.Origin)}\n\n{preview.Text}";
+                ? $"{origin} · placeholders left blank: {string.Join(", ", preview.MissingPlaceholders)}\n\n{preview.Text}"
+                : $"{origin}\n\n{preview.Text}";
         }
 
-        list.SelectionChanged += (_, _) => ShowDetail();
-        ShowDetail();
+        // Selecting an option: record it, tint the chosen row so the selection reads at a glance beyond the radio bullet,
+        // and refresh the detail pane. Called from each row's checked-change and once up front for the default (plan free).
+        void Select(int index)
+        {
+            selectedIndex = index;
+            for (var i = 0; i < radios.Count; i++)
+            {
+                radios[i].Background = i == index ? _Brush("CockpitSecondaryBgBrush") : Brushes.Transparent;
+            }
+
+            ShowDetail();
+        }
+
+        // One full-width clickable row per option (AC-189): a RadioButton in a single group, stretched so the whole row is
+        // the hit target, with a bold title and a muted subtitle. Unlike the old ListBox row, clicking anywhere on it —
+        // including the already-selected one — is an unambiguous, visible act.
+        var optionsPanel = new StackPanel { Spacing = 6 };
+        var group = Guid.NewGuid().ToString("N");
+
+        RadioButton AddOption(int index, string title, string subtitle)
+        {
+            var content = new StackPanel { Spacing = 2 };
+            content.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontSize = 13,
+                FontWeight = FontWeight.SemiBold,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = _Brush("CockpitTextPrimaryBrush"),
+            });
+            if (!string.IsNullOrEmpty(subtitle))
+            {
+                content.Children.Add(new TextBlock
+                {
+                    Text = subtitle,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = _Brush("CockpitTextSecondaryBrush"),
+                });
+            }
+
+            var radio = new RadioButton
+            {
+                GroupName = group,
+                Content = content,
+                Padding = new Thickness(12, 10),
+                CornerRadius = new CornerRadius(7),
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                IsChecked = index == 0,
+            };
+            radio.IsCheckedChanged += (_, _) =>
+            {
+                if (radio.IsChecked == true)
+                {
+                    Select(index);
+                }
+            };
+            radios.Add(radio);
+            optionsPanel.Children.Add(radio);
+            return radio;
+        }
+
+        AddOption(0, "Plan free — no template (blank)", source is { } src
+            ? $"The CEO drafts the plan from {src.Tracker} {src.IssueId}."
+            : "The CEO asks what the run should achieve, then plans it with you.");
+        for (var i = 0; i < templates.Count; i++)
+        {
+            AddOption(i + 1, AutopilotTemplateOptionLabel.For(templates[i], _PluginName), string.Empty);
+        }
+
+        Select(0);
 
         await _host.ShowDialogAsync("Start a run", () =>
         {
@@ -802,7 +869,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             start.Click += (sender, _) =>
             {
                 cancelled = false;
-                chosen = list.SelectedIndex > 0 ? templates[list.SelectedIndex - 1] : null;
+                chosen = selectedIndex > 0 ? templates[selectedIndex - 1] : null;
                 (sender as Control)?.FindAncestorOfType<Window>()?.Close();
             };
 
@@ -842,7 +909,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = _Brush("CockpitTextSecondaryBrush"),
                     },
-                    list,
+                    optionsPanel,
                     new Border
                     {
                         Padding = new Thickness(10, 8),
@@ -859,12 +926,10 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         return (cancelled, chosen);
     }
 
-    private static string _OriginLabel(AutopilotTemplateOrigin origin) => origin switch
-    {
-        AutopilotTemplateOrigin.Builtin => "Builtin",
-        AutopilotTemplateOrigin.Plugin => "Plugin",
-        _ => "User",
-    };
+    // A plugin's readable name for its host-stamped id (a template's OwnerPluginId), or null when no installed plugin
+    // matches — the origin-label helper then falls back to the bare id so a Plugin template's origin is never blank.
+    private string? _PluginName(string pluginId) =>
+        _host.InstalledPlugins.FirstOrDefault(plugin => string.Equals(plugin.Id, pluginId, StringComparison.Ordinal))?.DisplayName;
 
     // Runs a UI action for the coordinator (session embedding and teardown touch Avalonia controls; the driver loop does
     // not run on the UI thread). Inline when already on it, marshalled otherwise.

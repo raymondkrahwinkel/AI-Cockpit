@@ -189,6 +189,16 @@ public interface ICockpitHost
     bool CanSendIntent(string targetPluginId, string action) => false;
 
     /// <summary>
+    /// The plugins the host has loaded, each with its manifest id and human-readable name (AC-189) — what a plugin uses
+    /// to turn another plugin's id (a template's <see cref="RegisteredAutopilotTemplate.OwnerPluginId"/>, an intent
+    /// caller's <see cref="PluginIntent.CallerPluginId"/>) into a name to show, instead of the bare id. The
+    /// <see cref="PluginMetadata.Id"/> is the same host-stamped id those carry, so a lookup by it is exact. Default empty
+    /// so existing <see cref="ICockpitHost"/> implementations (test fakes, older plugin builds) keep compiling untouched —
+    /// only the app's own host reports the real list.
+    /// </summary>
+    IReadOnlyList<PluginMetadata> InstalledPlugins => [];
+
+    /// <summary>
     /// Registers an Autopilot goal/brief template this plugin contributes (AC-189) — the template equivalent of
     /// <see cref="AddWorkflowTemplate"/>. The Autopilot plugin collects every registered template (with the host
     /// stamping this plugin's own id as its owner, the same way <see cref="RegisterIntentHandler"/> does) into the
