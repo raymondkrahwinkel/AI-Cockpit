@@ -750,6 +750,15 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private string _offeredRelease = string.Empty;
     private string _dismissedRelease = string.Empty;
 
+    /// <summary>How often the background loop re-checks for a newer build while the cockpit is open (AC-188). The
+    /// startup look is a single shot; this keeps a long-running window from missing a release cut hours after it
+    /// opened. Deliberately unhurried — an update the operator did not ask for is not worth a busy poll.</summary>
+    private static readonly TimeSpan PeriodicUpdateCheckInterval = TimeSpan.FromHours(1);
+
+    /// <summary>Cancels the hourly update loop (AC-188) on shutdown; null until <see cref="StartPeriodicUpdateChecks"/>
+    /// runs and after <see cref="DisposeAsync"/> tears it down.</summary>
+    private CancellationTokenSource? _periodicUpdateCts;
+
     public bool CanCheckForUpdates => _updates is not null;
 
     public bool HasUpdate => UpdateUrl.Length > 0;
@@ -2959,9 +2968,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public bool CanBackUp => _backupService is not null;
 
     /// <summary>
-    /// Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup. A
-    /// failed check is silent here: the cockpit has just opened, and a toast saying GitHub was unreachable is noise
-    /// about a thing nobody asked for. Ask from the Options tab and it says exactly what went wrong.
+    /// Reads the update preferences and, if they say so, looks once for a newer build (#71). Called at startup — the
+    /// single first look; <see cref="StartPeriodicUpdateChecks"/> keeps looking every hour after this while the window
+    /// stays open. A failed check is silent here: the cockpit has just opened, and a toast saying GitHub was
+    /// unreachable is noise about a thing nobody asked for. Ask from the Options tab and it says exactly what went wrong.
     /// </summary>
     public async Task InitialiseUpdatesAsync()
     {
@@ -3002,6 +3012,102 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             ToastSeverity.Information,
             "Open it",
             OpenUpdate);
+    }
+
+    /// <summary>
+    /// One background re-check for a newer build (AC-188), run on the hourly cadence by <see cref="StartPeriodicUpdateChecks"/>.
+    /// Gated by the same <see cref="CheckForUpdatesOnStartup"/> setting as the startup look — that switch is the global
+    /// on/off for every automatic check, so an operator who turned startup checks off is not quietly polled every hour.
+    /// Toasts only the first time a given release is seen: the build is compared against the one already on offer before
+    /// <see cref="_Announce"/> overwrites it, so the same release does not re-toast every hour, and a build the operator
+    /// dismissed from the banner stays quiet. Like the startup path, a failed check says nothing — a background poll that
+    /// cannot reach GitHub must never surface an error toast.
+    /// </summary>
+    public async Task RunPeriodicUpdateCheckAsync()
+    {
+        if (_updates is not { } updates || !CheckForUpdatesOnStartup)
+        {
+            return;
+        }
+
+        UpdateCheckResult result;
+        try
+        {
+            result = await updates.CheckAsync(IncludeNightlyBuilds ? UpdateChannel.Nightly : UpdateChannel.Stable);
+        }
+        catch (Exception)
+        {
+            // A background check that cannot reach GitHub says nothing — see InitialiseUpdatesAsync for why silence
+            // is the only civil answer to a look nobody asked for.
+            return;
+        }
+
+        if (result.Release is not { } release)
+        {
+            return;
+        }
+
+        // Captured before _Announce overwrites _offeredRelease: true only when this hourly check turned up a build the
+        // operator has not already been offered, so we toast once per release rather than once per hour. Uses the same
+        // key builder as _Announce — the two must never drift, or every hourly check would re-toast the startup build.
+        var isNewRelease = _offeredRelease != _ReleaseKey(release);
+
+        _Announce(release);
+
+        // Only when it is genuinely new *and* the banner is showing (i.e. this build was not already dismissed) — a
+        // dismissed build that keeps turning up on the hourly check must not keep raising toasts.
+        if (isNewRelease && UpdateBannerVisible)
+        {
+            ToastHost.Add(
+                $"{release.Name} is out. You are on {CurrentBuild}.",
+                ToastSeverity.Information,
+                "Open it",
+                OpenUpdate);
+        }
+    }
+
+    /// <summary>
+    /// Starts the hourly background loop that re-checks for a newer build (AC-188) while the window stays open, so a
+    /// long-running cockpit does not miss a release cut hours after it opened. No-op without an update service. The
+    /// loop lives until <see cref="DisposeAsync"/> cancels it; each tick's UI-touching work (the banner and toast) is
+    /// marshalled onto the UI thread, and one failed tick never kills the loop. Reuses the startup toast/banner/dedup
+    /// path via <see cref="RunPeriodicUpdateCheckAsync"/> — no new setting or UI.
+    /// </summary>
+    public void StartPeriodicUpdateChecks()
+    {
+        if (_updates is null)
+        {
+            return;
+        }
+
+        _periodicUpdateCts = new CancellationTokenSource();
+        _ = _RunPeriodicUpdateLoopAsync(_periodicUpdateCts.Token);
+    }
+
+    private async Task _RunPeriodicUpdateLoopAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(PeriodicUpdateCheckInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                try
+                {
+                    // InvokeAsync runs the check on the UI thread: _Announce and ToastHost.Add mutate bound observable
+                    // state, and the tick fires off a background timer thread.
+                    await Dispatcher.UIThread.InvokeAsync(RunPeriodicUpdateCheckAsync);
+                }
+                catch (Exception)
+                {
+                    // A single bad tick — a transient dispatcher hiccup or an unexpected throw — must not take the
+                    // whole hourly loop down with it. Next hour tries again.
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on shutdown: DisposeAsync cancelled the token, so the loop just ends.
+        }
     }
 
     /// <summary>Looks now, because the operator asked (#71). Unlike the startup check, this one says when it could not look at all.</summary>
@@ -3071,12 +3177,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         UpdateStatus = $"{release.Name} is available (published {release.PublishedAt.ToLocalTime():d MMMM yyyy}).";
         OnPropertyChanged(nameof(HasUpdate));
 
-        // The banner shows unless the operator already dismissed this exact build. A release's identity is its
-        // version and commit — for a nightly the version is empty and the commit is the whole of it (a rolling
-        // tag has no number), so a newer build always has a different key and the banner returns on its own.
-        _offeredRelease = $"{release.Version} {release.Commit}";
+        // The banner shows unless the operator already dismissed this exact build; a newer build always has a
+        // different key (see _ReleaseKey) and so returns on its own.
+        _offeredRelease = _ReleaseKey(release);
         UpdateBannerVisible = _offeredRelease != _dismissedRelease;
     }
+
+    /// <summary>The dedup identity of a release — its version and commit. For a nightly the version is empty and the
+    /// commit is the whole of it (a rolling tag has no number), so a newer build always yields a different key. Single
+    /// source of truth: the startup banner (<see cref="_Announce"/>) and the hourly toast check
+    /// (<see cref="RunPeriodicUpdateCheckAsync"/>) must compare the same string, or dedup silently breaks.</summary>
+    private static string _ReleaseKey(AppRelease release) => $"{release.Version} {release.Commit}";
 
     partial void OnCheckForUpdatesOnStartupChanged(bool value) => _SaveUpdateSettings();
 
@@ -5227,6 +5338,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // Stop the hourly update loop (AC-188) so it does not keep ticking against a disposed view model.
+        _periodicUpdateCts?.Cancel();
+        _periodicUpdateCts?.Dispose();
+
         // The key holder is a process-wide singleton, so leaving this wired would keep the whole view model alive
         // past its window (AC-41).
         _secretKeyHolder.UnprotectedSecretsWritten -= OnUnprotectedSecretsWritten;
