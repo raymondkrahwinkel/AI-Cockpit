@@ -105,4 +105,15 @@ public sealed record EmbeddedSessionRequest
     /// compiling untouched.
     /// </summary>
     public IReadOnlyList<string> PreApprovedTools { get; init; } = [];
+
+    /// <summary>
+    /// Whether this session auto-allows <em>every</em> tool call without a prompt (AC-215, Raymond 2026-07-23) — the
+    /// "worktree is the boundary" stance for an autonomous run isolated in a throwaway git worktree: it needs to run
+    /// its work tools (Bash, edits, git) with no one to answer a prompt, so the run's isolation is the containment
+    /// rather than the per-call gate. Deliberately broad — it includes shell and egress, so the operator accepts that a
+    /// run can reach outside its worktree (prompt-injection from an untrusted issue), bounded to the run. Only an
+    /// autonomous, isolated embedded run (Autopilot's steps and its validating CEO) sets this; an ordinary session
+    /// leaves it false and keeps prompting. Supersedes <see cref="PreApprovedTools"/> when true.
+    /// </summary>
+    public bool PreApproveAllTools { get; init; }
 }

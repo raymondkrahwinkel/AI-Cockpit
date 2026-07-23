@@ -246,6 +246,48 @@ public class AutopilotRunCoordinatorTests
     }
 
     [Fact]
+    public async Task RunAsync_StepMakesToolProgress_IsNotStalled_EvenPastTheStallWindow()
+    {
+        // Raymond 2026-07-23: a step that is slow because it is working hard — a long turn with many tool calls — keeps
+        // resetting the stall window through its tool activity, so it is never failed as stalled (unlike AC-192, the
+        // silent agent above). Tool progress is raised across a span well past the stall window; the step is then handed
+        // to the CEO to validate rather than failed. Timing-based: the 30ms progress gap is well under the 100ms stall
+        // window (so each reset lands), while the total span is past it (so only the reset keeps the step alive).
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var stepSession = new ProgressingSession("step-pane");
+        var context = _Context(stepSession);
+        var coordinator = new AutopilotRunCoordinator(
+            host,
+            plan,
+            stepDoneReminderDelay: TimeSpan.FromMilliseconds(15),
+            stepStallTimeout: TimeSpan.FromMilliseconds(100));
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        await shown.Task.WaitAsync(Timeout);
+
+        // Steady progress across ~180ms — far past the 100ms stall window, but each 30ms gap resets it.
+        for (var i = 0; i < 6; i++)
+        {
+            stepSession.RaiseActivity();
+            await Task.Delay(30);
+        }
+
+        // Never failed as stalled: it reports done and reaches the CEO's validation, and the run settles merge-ready.
+        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        plan.Plan!.Steps[0].Note.Should().NotContain("stalled");
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+    }
+
+    [Fact]
     public async Task ReportValidation_AfterABlockadeLeftRunning_IsRejected_UntilTheRunResumes()
     {
         // AC-207: after AC-201 a blockade no longer comes from the CEO — it is a worker's consult the CEO escalates to
@@ -740,6 +782,35 @@ public class AutopilotRunCoordinatorTests
         context.EmbedSession(Arg.Any<EmbeddedSessionRequest>()).Returns(stepSession);
         context.Sessions.Returns(Substitute.For<ICockpitSessionObserver>());
         return context;
+    }
+
+    // A hand-rolled step session whose Activity event can be raised on demand — NSubstitute cannot reliably raise an
+    // interface event that carries a default (no-op) add/remove body, which IEmbeddedSession.Activity does.
+    private sealed class ProgressingSession : IEmbeddedSession
+    {
+        private readonly TaskCompletionSource<string?> _completion = new();
+
+        public ProgressingSession(string paneId) => PaneId = paneId;
+
+        public Control View { get; } = new TextBlock();
+
+        public string PaneId { get; }
+
+        public Task<string?> Completion => _completion.Task;
+
+        public event Action? Activity;
+
+        public void RaiseActivity() => Activity?.Invoke();
+
+        public Task CloseAsync()
+        {
+            _completion.TrySetResult(null);
+            return Task.CompletedTask;
+        }
+
+        public void SetInputEnabled(bool enabled)
+        {
+        }
     }
 
     private static IEmbeddedSession _Session(string paneId, Task<string?>? completion = null)

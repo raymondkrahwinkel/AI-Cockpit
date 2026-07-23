@@ -150,7 +150,22 @@
            tracker's vocabulary. An existing provider keeps compiling and loading; it simply is not auto-moved until it
            opts in.
          All four are additions (new types, init-properties with defaults, or default-implemented members) — a minor. -->
-    <Version>1.25.0</Version>
+    <!-- 1.26.0 is the Autopilot live-run minor that folds in three additive groups (AC-212, AC-215, AC-216). Nothing
+         was removed or changed, so the major and abstractionsVersion stay 1.
+         - AC-212: ITrackerProvider.ReadToolMcpServerNames (default empty) — the MCP servers hosting a tracker's read-only
+           tools, which a source-triggered plan scopes the planning CEO to so it can read the issue and pull an epic's
+           children, while the tracker's write tools stay out of planning. A provider that reads via a CLI (GitHub via gh)
+           contributes none and keeps the default.
+         - AC-215: EmbeddedSessionRequest.PreApprovedTools (init, default empty) and PreApproveAllTools (init, default
+           false) — an autonomous run's own control tools pre-authorized, or the "worktree is the boundary" all-tools
+           auto-approval an isolated self-driving run opts into, so it does not stall on a permission prompt it cannot
+           answer; plus IEmbeddedSession.Activity (default no-op event) — the tool-progress signal an embedder resets its
+           per-step stall deadline on. No plugin implements IEmbeddedSession (the host hands it out), so nothing breaks.
+         - AC-216: PluginAutopilotTemplate.DeliversPullRequest (init, default false) — whether a template is a code run
+           that must end with a merge-ready pull request, carried to the run's finalizer. An existing template omits it
+           and is treated as administrative.
+         All three are additions (a default-implemented member, init-properties with defaults, a default no-op event) — a minor. -->
+    <Version>1.26.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

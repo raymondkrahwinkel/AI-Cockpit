@@ -1,11 +1,11 @@
 {
   "id": "github-issues",
   "name": "GitHub Issues",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "entryAssembly": "Cockpit.Plugin.GitHubIssues.dll",
   "entryType": "Cockpit.Plugin.GitHubIssues.GitHubIssuesPlugin",
   "abstractionsVersion": 1,
-  "minHostVersion": "0.5.0",
+  "minHostVersion": "0.6.0",
   "description": "Browse open GitHub issues across your repos (via the gh CLI) or one repo in a searchable, sortable dialog, with an \"Assigned to me\" filter; click one to drop a prompt asking the agent to open and review it. An issue can also be started in Autopilot (the operator-triggered issue → merge-ready-PR pipeline), which posts its progress back as issue comments. The prompt template is editable in settings.",
   "author": "Cockpit"
 }

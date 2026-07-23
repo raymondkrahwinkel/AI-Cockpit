@@ -147,6 +147,10 @@ internal sealed class AutopilotRunContext
                     // Pre-authorize the CEO's own control tools (AC-215) so validating a step never stops mid-run to ask
                     // the operator to allow autopilot_validate — an autonomous run must not need a hand on its own tools.
                     PreApprovedTools = AutopilotRunToolNames.ForValidatorCeo,
+                    // "Worktree is the boundary" (Raymond 2026-07-23): the validating CEO runs autonomously too — it may
+                    // read the diff and run the tests (Bash) to check the work against acceptance — so it auto-allows
+                    // every tool rather than stall on a prompt, contained by the run's worktree.
+                    PreApproveAllTools = true,
                     WorkingDirectory = runWorktree?.Path ?? repositoryDirectory,
                     // Confine the validator's file tools to whatever directory it is pointed at (Raymond 2026-07-22): the
                     // run worktree when there is one, else the run's folder (a non-git run, or a git run whose worktree

@@ -610,6 +610,87 @@ public class SessionViewModelTests
     }
 
     [Fact]
+    public async Task Apply_PermissionRequested_ForAPreApprovedTool_AutoAllows_WithoutPromptingOrNeedsAttention()
+    {
+        // AC-215: a self-driving embedded run pre-authorizes its own control tools, so a permission request for one is
+        // auto-allowed here instead of raising a prompt the autonomous run (composer off) has no one to answer — the
+        // stall that left a run stuck on its own autopilot_step_done.
+        const string preApproved = "mcp__cockpit-autopilot-run__autopilot_step_done";
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
+        var profile = new SessionProfile("ollama", new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort,
+            preApprovedTools: [preApproved]);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = preApproved, InputJson = "{}" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = preApproved, InputJson = "{}" });
+
+        var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
+        entry.IsPendingPermission.Should().BeFalse("the pre-approved tool is auto-allowed, so no prompt is raised");
+        entry.PermissionDecision.Should().Be("Allowed");
+        vm.SessionStatus.Should().NotBe(SessionStatus.NeedsAttention);
+        await session.Received(1).RespondToPermissionAsync("t1", true, Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Apply_PermissionRequested_ForAToolNotPreApproved_StillPrompts()
+    {
+        // The pre-approval is exact and narrow: a tool that is not on the list still raises the normal prompt, even in
+        // a session that pre-approves others — file/shell/egress tools are never auto-allowed.
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
+        var profile = new SessionProfile("ollama", new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort,
+            preApprovedTools: ["mcp__cockpit-autopilot-run__autopilot_step_done"]);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+
+        vm.Transcript.Single(t => t.ToolUseId == "t1").IsPendingPermission.Should().BeTrue();
+        vm.SessionStatus.Should().Be(SessionStatus.NeedsAttention);
+        await session.DidNotReceive().RespondToPermissionAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Apply_PermissionRequested_WhenPreApproveAllToolsIsSet_AutoAllowsEvenABashPrompt()
+    {
+        // "Worktree is the boundary" (Raymond 2026-07-23): an autonomous isolated run auto-allows every tool — not just
+        // its own control tools — so its worker can run Bash/git/edits with no one to answer the prompt.
+        var session = Substitute.For<ISessionDriver>();
+        session.Events.Returns(EmptyEvents());
+        session.Capabilities.Returns(new SessionCapabilities(
+            SupportsTools: true, SupportsPermissions: true, SupportsLiveModelSwitch: false, SupportsPlanMode: false, SupportsThinking: false));
+        var profile = new SessionProfile("ollama", new OllamaConfig("http://localhost:11434", "llama3.1"));
+        var vm = new SessionViewModel(new SessionManager(FactoryFor(session)));
+        await vm.StartConfiguredAsync(
+            profile, SessionOptionCatalog.DefaultPermissionMode, SessionOptionCatalog.DefaultModel, SessionOptionCatalog.DefaultEffort,
+            preApprovedTools: null, preApproveAllTools: true);
+
+        vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+        vm.Apply(new PermissionRequested { SessionId = "S1", ToolUseId = "t1", ToolName = "Bash", InputJson = "{}" });
+
+        var entry = vm.Transcript.Single(t => t.ToolUseId == "t1");
+        entry.IsPendingPermission.Should().BeFalse();
+        entry.PermissionDecision.Should().Be("Allowed");
+        vm.SessionStatus.Should().NotBe(SessionStatus.NeedsAttention);
+        await session.Received(1).RespondToPermissionAsync("t1", true, Arg.Any<CancellationToken>());
+
+        await vm.DisposeAsync();
+    }
+
+    [Fact]
     public void Apply_SessionStatusChangedWithNeedsAction_SetsStatusToNeedsAttention()
     {
         var vm = NewVm();

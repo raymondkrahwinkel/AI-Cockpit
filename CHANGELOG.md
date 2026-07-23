@@ -47,7 +47,20 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   It clears once you answer.
 - added: a "CEO is working…" cue in the Plan-with-the-CEO dialog while the CEO is planning, so a long
   planning turn no longer looks like the dialog is stuck — shown only on the CEO session, the rest of the
-  app's sessions are unaffected.
+  app's sessions are unaffected. It is a bar across the top of the chat, the same accent bar the run shows
+  when work returns to the CEO for validation.
+- added: Autopilot takes a code run all the way to a merge-ready pull request — it commits the run's work on
+  its branch, pushes it, and opens the PR for you (you still do the merge). When it cannot — a plain folder,
+  no git remote, or no GitHub CLI — it says so up front and leaves the work on its branch to publish by hand.
+- added: an Epic template for a YouTrack epic — it reads the epic's child issues (its "parent for" links) and
+  plans them as one coherent run that lands as a single pull request naming every issue it closes.
+- added: extended thinking is shown again at the Developer reading level — a dimmed, collapsible "Thinking"
+  section that streams the model's reasoning as it comes, and stays hidden at Focus and Simple so those levels
+  keep calm.
+- changed: an autonomous Autopilot run no longer stops for permission prompts it has no one to answer — its own
+  control tools are pre-authorized, and a run isolated in a throwaway worktree runs its work tools (edits, shell,
+  git) without prompting, with the worktree as the boundary. A step that is slow because it is working hard is no
+  longer mistaken for a stuck one and failed: the stall timer only trips when a step makes no tool progress at all.
 - added: a "Stop run" button on a running Autopilot run, so you can end a run mid-flight instead of only
   intervening on a step or closing the whole workspace. A stopped run settles cleanly and is recorded in the
   history as "Stopped" — a neutral outcome, not a failure — with any unmerged work left as-is.

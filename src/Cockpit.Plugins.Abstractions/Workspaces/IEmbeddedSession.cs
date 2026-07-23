@@ -67,4 +67,18 @@ public interface IEmbeddedSession
         add { }
         remove { }
     }
+
+    /// <summary>
+    /// Raised when this session makes real tool progress — a tool call surfacing or a tool result landing. An embedder
+    /// that fails a silent step on a stall deadline (Autopilot's per-step timeout) resets that deadline on this, so a
+    /// step that is slow because it is working hard is not failed as stuck — only a genuinely no-progress agent (AC-192:
+    /// a turn that emits text describing a tool it never runs) hits the deadline. Deliberately not raised on text or
+    /// thinking, which a stuck agent still produces. Marshalled to the UI thread by the host. Default no-op for an
+    /// adapter that does not surface it, so an implementation from before this signal keeps compiling.
+    /// </summary>
+    event Action? Activity
+    {
+        add { }
+        remove { }
+    }
 }

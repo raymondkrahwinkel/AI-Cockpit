@@ -1152,58 +1152,61 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         // A CEO-only "working" cue over the session view (AC-195): the CEO's planning turn can run silently for minutes,
         // and the shared session view's own indicator stays deaf during streaming on purpose — so without this the
         // pop-out reads as hung. It follows the embedded session's busy signal alone, leaving the global indicator
-        // untouched. Overlaid at the TOP-CENTRE of the chat pane (AC-214): the old top-right corner placement sat right
-        // next to the session's reading-level dropdown and read as an unnoticeable afterthought; centred over the chat,
-        // where the CEO is actually working, it is the clear "the CEO is thinking" banner the operator looks for, while
-        // still clearing the composer and the transcript's live text below it.
+        // untouched. Docked as a full-width bar across the top of the chat pane (AC-214, Raymond's live-test call): the
+        // same accent bar the run shows when work returns to the CEO for validation (_BuildValidatingSurface), so the
+        // two read as one visual language — not a floating pill. Collapsed it takes no layout space, so the chat fills
+        // the pane until the CEO starts thinking, then the bar drops in at the top and pushes the conversation down.
         var working = _BuildCeoWorkingCue();
         var busy = new CeoBusyIndicatorModel(ceo, isWorking =>
             Dispatcher.UIThread.Post(() => working.IsVisible = isWorking));
         var right = new Border
         {
-            Child = new Grid { Children = { ceo.View, working } },
+            Child = new DockPanel
+            {
+                LastChildFill = true,
+                Children = { working, new Border { Child = ceo.View } },
+            },
         };
         right.DetachedFromVisualTree += (_, _) => busy.Dispose();
 
         return new DockPanel { LastChildFill = true, Children = { footer, left, right } };
     }
 
-    // The CEO-only "working" cue (AC-195/AC-214): a pill that appears while the CEO's planning turn is in flight, so a
-    // long silent turn shows progress rather than looking stuck. Hidden until the busy signal lights it. Anchored
-    // top-centre over the chat pane (AC-214) — not tucked in the top-right corner beside the reading-level dropdown where
-    // it went unnoticed — and given an accent-tinted fill so it reads as a clear banner over the conversation.
+    // The CEO-only "working" cue (AC-195/AC-214): a full-width bar across the top of the CEO's chat pane while its
+    // planning turn is in flight, so a long silent turn shows progress rather than looking stuck. Mirrors the
+    // step-validation banner (_BuildValidatingSurface) exactly — the accent bar the run shows when work returns to the
+    // CEO — so both "the CEO has the ball" moments read the same, on CockpitStatusBusyBrush with dark-on-accent text.
+    // Replaces the earlier floating pill (AC-214), whose intended accent tint fell back to the panel background because
+    // its brush key did not exist. Hidden until the busy signal lights it; collapsed it takes no layout space.
     private Control _BuildCeoWorkingCue() => new Border
     {
         IsVisible = false,
-        HorizontalAlignment = HorizontalAlignment.Center,
-        VerticalAlignment = VerticalAlignment.Top,
-        Margin = new Thickness(0, 12, 0, 0),
-        Background = _Brush("CockpitAccentSoftBrush") ?? _Brush("CockpitPanelBgBrush"),
-        BorderThickness = new Thickness(1),
-        BorderBrush = _Brush("CockpitStatusBusyBrush") ?? _Brush("CockpitHairlineBrush"),
-        CornerRadius = new CornerRadius(13),
-        Padding = new Thickness(14, 6),
+        Padding = new Thickness(12, 8),
+        BorderThickness = new Thickness(0, 0, 0, 1),
+        BorderBrush = _Brush("CockpitHairlineBrush"),
+        Background = _Brush("CockpitStatusBusyBrush"),
+        [DockPanel.DockProperty] = Dock.Top,
         Child = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 8,
+            Spacing = 9,
             Children =
             {
-                new Border
+                new MaterialIcon
                 {
-                    Width = 9,
-                    Height = 9,
-                    CornerRadius = new CornerRadius(4.5),
+                    Kind = MaterialIconKind.HeadCogOutline,
+                    Width = 16,
+                    Height = 16,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Background = _Brush("CockpitStatusBusyBrush"),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
                 },
                 new TextBlock
                 {
-                    Text = "CEO is working…",
-                    FontSize = 12.5,
+                    Text = "The CEO is working…",
                     FontWeight = FontWeight.SemiBold,
+                    FontSize = 12,
                     VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = _Brush("CockpitTextPrimaryBrush") ?? _Brush("CockpitTextSecondaryBrush"),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x0F, 0x1A, 0x13)),
                 },
             },
         },

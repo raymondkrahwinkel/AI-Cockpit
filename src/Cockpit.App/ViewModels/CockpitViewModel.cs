@@ -4934,8 +4934,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // effort, with the profile's own start defaults in the generic OptionDefaults map — the same shape
             // StartSessionForPluginAsync builds. When the request names an MCP set, the session is restricted to exactly
             // those servers (AC-174 minimal-MCP-per-step: fewer tokens, tighter least-privilege); an empty set keeps the
-            // host's usual selection. A self-driving run (AC-152) asks for a more autonomous mode; the ConsentBroker
-            // still gates shell and egress regardless.
+            // host's usual selection. A self-driving run (AC-152) asks for a more autonomous mode, and when it opts into
+            // the "worktree is the boundary" stance (PreApproveAllTools, AC-215) its SDK tool permissions — including
+            // shell and edits — are auto-allowed here rather than prompted; the host's ConsentBroker still gates the
+            // host's own MCP tools (terminal, worktree, verify), which are never in the pre-approval set.
             await session.StartConfiguredAsync(
                 profile,
                 _ResolveEmbeddedPermissionMode(request),
@@ -4946,7 +4948,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                     : null,
                 workingDirectory: string.IsNullOrWhiteSpace(workingDirectory) ? null : workingDirectory,
                 resume: null,
-                launchOptions: _EmbeddedLaunchOptions(profile, request));
+                launchOptions: _EmbeddedLaunchOptions(profile, request),
+                // Pre-authorize the run's own control tools (AC-215) so a self-driving step never stalls mid-run on a
+                // permission prompt for autopilot_step_done / autopilot_validate it has no one to answer — and, when the
+                // run opts into "worktree is the boundary" (Raymond 2026-07-23), auto-allow every tool so an autonomous
+                // isolated run can run its work (Bash, edits, git) without a prompt it cannot answer.
+                preApprovedTools: request.PreApprovedTools,
+                preApproveAllTools: request.PreApproveAllTools);
 
             // Closed while the driver was launching: the teardown that ran then disposed a session whose runtime did
             // not exist yet, so tear it down now that it does — or its pty and child process outlive the workspace.

@@ -37,6 +37,24 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
     /// <summary>The per-session plugin-provider launch options (sandbox, model) from the New-session dialog, set the same way as <see cref="_enabledMcpServerNames"/> just before <see cref="StartWithProfileAsync"/> reads them.</summary>
     private IReadOnlyDictionary<string, string>? _launchOptions;
+
+    /// <summary>
+    /// Tool names this session auto-allows without an operator prompt (AC-215) — an autonomous embedded run's own
+    /// control tools (Autopilot's <c>autopilot_step_done</c>, <c>autopilot_validate</c>, …), pre-authorized at embed
+    /// time so a self-driving run does not stall mid-run on a permission prompt it has no one to answer. Empty for an
+    /// ordinary session, which keeps prompting as before. Only the plugin's own endpoint tools are ever placed here;
+    /// file/shell/egress tools are never pre-approved and stay gated by the permission mode and the ConsentBroker.
+    /// </summary>
+    private IReadOnlySet<string> _preApprovedTools = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether this session auto-allows every tool call without a prompt (AC-215, Raymond 2026-07-23) — the "worktree is
+    /// the boundary" stance for an autonomous run isolated in a throwaway worktree, which must run its work tools (Bash,
+    /// edits, git) with no one to answer a prompt. False for an ordinary session, which keeps prompting. Set from the
+    /// embedded request's <see cref="EmbeddedSessionRequest.PreApproveAllTools"/>.
+    /// </summary>
+    private bool _preApproveAllTools;
+
     private TranscriptEntryViewModel? _currentAssistantEntry;
 
     /// <summary>The reasoning/thinking row currently being streamed into (AC-213), or null when no thinking block is open. Mirrors <see cref="_currentAssistantEntry"/>: contiguous thinking deltas append onto one row rather than spawning a row per delta.</summary>
@@ -469,7 +487,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     /// launched in bypass the panel mode dropdown locks, since bypass cannot be switched into or out of
     /// on a running session (#15).
     /// </summary>
-    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, ReadingLevel? readingLevel = null)
+    public async Task StartConfiguredAsync(SessionProfile profile, PermissionModeOption mode, ModelOption model, EffortOption effort, IReadOnlySet<string>? enabledMcpServerNames = null, string? workingDirectory = null, SessionResume? resume = null, IReadOnlyDictionary<string, string>? launchOptions = null, ReadingLevel? readingLevel = null, IReadOnlyList<string>? preApprovedTools = null, bool preApproveAllTools = false)
     {
         if (_runtime is not null)
         {
@@ -491,6 +509,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         LiveModelText = model.Value;
         SelectedEffort = effort;
         _enabledMcpServerNames = enabledMcpServerNames;
+        // Pre-authorized tools for a self-driving run (AC-215): auto-allowed in the permission handler below instead
+        // of raising a prompt an autonomous run has no one to answer. Empty for an ordinary session.
+        _preApprovedTools = preApprovedTools is { Count: > 0 }
+            ? new HashSet<string>(preApprovedTools, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+        _preApproveAllTools = preApproveAllTools;
 
         // AC-13: hand the provider this session's own pane id, which its plugin turns into COCKPIT_PANE_ID in the
         // child's environment, so the agent can name its own session to the cockpit-session MCP's set_status tool.
@@ -1122,6 +1146,13 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     // runtime marshals nothing.
     private void _OnSessionEvent(SessionEvent evt) => Dispatcher.UIThread.Post(() => Apply(evt));
 
+    /// <summary>
+    /// Raised when the session makes real tool progress — a tool call surfacing or a tool result landing (AC-215/stall).
+    /// An embedder that fails a silent step on a stall deadline (Autopilot) resets that deadline on this, so a step that
+    /// is slow because it is working hard is not mistaken for a stuck one. Not raised on text/thinking on purpose.
+    /// </summary>
+    public event Action? ToolActivity;
+
     /// <summary>internal (rather than private) so <c>Cockpit.Core.Tests</c> can drive it directly, bypassing <c>Dispatcher.UIThread</c> — see <see cref="_OnSessionEvent"/>.</summary>
     internal void Apply(SessionEvent evt)
     {
@@ -1138,6 +1169,16 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         else if (evt is ToolResult)
         {
             IsAwaitingResponse = true;
+        }
+
+        // Real tool progress (AC-215/stall): a tool call surfacing or a tool result landing is the agent actually
+        // working — the signal that distinguishes a busy-but-progressing step from a genuinely stuck one (AC-192: a
+        // turn that emits text describing a tool it never runs, so no tool event ever fires). An embedder that fails a
+        // silent step on a stall deadline (Autopilot) resets that deadline on this, so a long, hard-working step is not
+        // failed for being slow. Deliberately NOT raised on text/thinking — a stuck agent still produces those.
+        if (evt is ToolUseRequested or ToolResult)
+        {
+            ToolActivity?.Invoke();
         }
 
         switch (evt)
@@ -1253,6 +1294,27 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
 
             case PermissionRequested permission:
                 var entry = Transcript.LastOrDefault(t => t.ToolUseId == permission.ToolUseId);
+
+                // A pre-authorized tool for a self-driving run (AC-215): auto-allow it here rather than raising a prompt
+                // the autonomous run has no one to answer — that stall left the run stuck first on its own
+                // autopilot_step_done, then on the Bash its work needs. Either the named control-tool set (the narrow
+                // default) or the "worktree is the boundary" stance (Raymond 2026-07-23), where an autonomous run
+                // isolated in a throwaway worktree auto-allows every tool so it can actually run its work — the run's
+                // isolation is the containment, not the per-call gate. Sends the same allow the Allow button does, but
+                // fire-and-forget: Apply is a synchronous event handler, so it cannot await the driver call the way the
+                // command can (a driver fault here is rare and would surface as the run stalling on this one permission).
+                if ((_preApproveAllTools || _preApprovedTools.Contains(permission.ToolName)) && _runtime is not null)
+                {
+                    if (entry is not null)
+                    {
+                        entry.PermissionDecision = "Allowed";
+                        entry.IsPendingPermission = false;
+                    }
+
+                    _ = _runtime.RespondToPermissionAsync(permission.ToolUseId, allow: true);
+                    break;
+                }
+
                 if (entry is not null)
                 {
                     entry.IsPendingPermission = true;

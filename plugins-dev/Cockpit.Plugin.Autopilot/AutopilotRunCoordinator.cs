@@ -580,6 +580,11 @@ internal sealed class AutopilotRunCoordinator(
                     // Pre-authorize the step worker's own control tools (AC-215) — report-done and consult-CEO — so an
                     // autonomous step never stops mid-run to ask the operator to allow autopilot_step_done.
                     PreApprovedTools = AutopilotRunToolNames.ForStepWorker,
+                    // "Worktree is the boundary" (Raymond 2026-07-23): an autonomous step must run its real work tools
+                    // (Bash to build/test/grep, edits, git) with no one to answer a prompt, so it auto-allows every tool.
+                    // The step's isolation in a throwaway worktree is the containment, not the per-call gate — the
+                    // operator accepts a run can reach outside its worktree (prompt-injection), bounded to the run.
+                    PreApproveAllTools = true,
                     // Isolate each step in a worktree for a git repository (the fail-closed default — the confinement
                     // guarantee holds, and a non-confining provider is refused by the host gate). False only for a
                     // folder the host reported is not a git repository (Raymond 2026-07-22): an admin task with no repo
@@ -764,19 +769,22 @@ internal sealed class AutopilotRunCoordinator(
             // and takes effect when the turn ends — which is exactly when a finished-but-silent agent needs it.
             await host.SendToSessionAsync(agent.PaneId, AutopilotStepBrief.StepDoneReminder());
 
-            var secondWinner = await Task.WhenAny(report, ended, Task.Delay(_stepStallTimeout)).WaitAsync(cancellationToken);
-            if (secondWinner == report)
+            // Wait for the report or the session ending, but measure the stall deadline from the agent's last real tool
+            // progress rather than from the reminder (Raymond 2026-07-23): a step that is slow because it is working
+            // hard — a long single turn with many edits and a build — keeps resetting that deadline through
+            // agent.Activity, so it is never failed for being slow. Only an agent that makes no tool progress at all for
+            // the whole window (AC-192 — a turn that emits text describing a tool it never runs) hits the deadline.
+            if (await _StalledWithoutProgressAsync(report, ended, agent, cancellationToken))
             {
-                return await report;
+                // No report, no end, and no tool progress for the stall window: the agent is stuck. Fail the step so the
+                // driver reworks or gives up, instead of hanging the run forever.
+                throw new InvalidOperationException(
+                    $"The step agent made no tool progress and did not report its work done within {_stepStallTimeout.TotalMinutes:0.#} minutes — treating the step as stalled.");
             }
 
-            if (secondWinner != ended)
+            if (report.IsCompleted)
             {
-                // The stall deadline passed with no report and the session still live: the agent is stuck (AC-192 — a
-                // local model that keeps emitting a text tool-call it never runs, a turn that never ends). Fail the step
-                // so the driver reworks or gives up, instead of hanging the run forever.
-                throw new InvalidOperationException(
-                    $"The step agent did not report its work done within {_stepStallTimeout.TotalMinutes:0.#} minutes of the reminder — treating the step as stalled.");
+                return await report;
             }
         }
 
@@ -786,6 +794,53 @@ internal sealed class AutopilotRunCoordinator(
         throw new InvalidOperationException(string.IsNullOrWhiteSpace(reason)
             ? "The step agent's session ended before it reported its work done."
             : reason);
+    }
+
+    // Waits for the step's done-report or its session ending, returning true only when the agent makes no tool progress
+    // for the whole stall window (Raymond 2026-07-23). Each agent.Activity — a tool call surfacing or a tool result
+    // landing — restarts the window, so a step that is genuinely working (however slowly) is never failed; a stuck one
+    // that only emits text (AC-192) makes no tool events and times out. Returns false when the report landed or the
+    // session ended first — the caller reads which. The stall delay carries no token so it cannot throw an unobserved
+    // cancellation once another task wins; cancellation rides WaitAsync, mirroring the reminder wait above.
+    private async Task<bool> _StalledWithoutProgressAsync(Task report, Task ended, IEmbeddedSession agent, CancellationToken cancellationToken)
+    {
+        while (!report.IsCompleted && !ended.IsCompleted)
+        {
+            // A fresh signal each round, completed by the next tool progress — subscribed before the race so an event
+            // between rounds still resolves it — so the stall delay below is measured from the most recent activity.
+            var progressed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnActivity() => progressed.TrySetResult();
+            agent.Activity += OnActivity;
+            // A fresh linked source per round so this round's stall timer is torn down the moment another task wins,
+            // rather than left ticking for the full timeout — an active step re-enters this loop on every tool event,
+            // and an uncancelled Task.Delay per round would pile up orphaned timers for the whole step. A delay that
+            // loses cancels here (a canceled task is not a fault, so nothing is left unobserved); cancellation of the
+            // outer token still rides WaitAsync.
+            using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            try
+            {
+                var winner = await Task.WhenAny(report, ended, progressed.Task, Task.Delay(_stepStallTimeout, stall.Token)).WaitAsync(cancellationToken);
+                if (winner == report || winner == ended)
+                {
+                    return false;
+                }
+
+                if (winner != progressed.Task)
+                {
+                    // The stall delay won: no report, no end, no tool progress for the whole window — stalled.
+                    return true;
+                }
+
+                // Tool progress: loop, restarting the stall window from now.
+            }
+            finally
+            {
+                agent.Activity -= OnActivity;
+                stall.Cancel();
+            }
+        }
+
+        return false;
     }
 
     // The MCP set a step agent is launched with (AC-117, Raymond 2026-07-22): the step's own report endpoint, plus

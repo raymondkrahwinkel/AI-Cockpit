@@ -33,6 +33,7 @@ internal sealed class EmbeddedSession : IEmbeddedSession
         _close = close;
         _isBusy = session.IsBusy;
         session.PropertyChanged += _OnSessionPropertyChanged;
+        session.ToolActivity += _OnToolActivity;
     }
 
     public Control View { get; }
@@ -44,6 +45,8 @@ internal sealed class EmbeddedSession : IEmbeddedSession
     public bool IsBusy => _isBusy;
 
     public event Action<bool>? BusyChanged;
+
+    public event Action? Activity;
 
     public void SetInputEnabled(bool enabled) => _setInput(enabled);
 
@@ -62,4 +65,9 @@ internal sealed class EmbeddedSession : IEmbeddedSession
         _isBusy = _session.IsBusy;
         BusyChanged?.Invoke(_isBusy);
     }
+
+    // The session raises ToolActivity on the UI thread, so the forwarded Activity is already marshalled for an embedder
+    // that touches its controls. A pure pass-through: the embedder decides what progress means (Autopilot resets its
+    // per-step stall deadline on it).
+    private void _OnToolActivity() => Activity?.Invoke();
 }
