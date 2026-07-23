@@ -151,6 +151,129 @@ public class PluginSessionDriverAdapterTests
         inner.LiveOptionSwitches.Should().Contain(("permission-mode", "plan"));
     }
 
+    // AC-190: a provider that confines to its working directory via a real OS sandbox (Codex — ConfinesViaPermissionsOnly
+    // left false) confines in every permission mode. The static registration capability maps straight through, unchanged.
+    private static PluginSessionCapabilities _SandboxConfining() =>
+        new(SupportsTools: true, SupportsPermissions: true) { ConfinesFileAccessToWorkingDirectory = true };
+
+    // AC-190: a provider whose confinement rests on its permission system (Claude) — a bypass mode disables the guard,
+    // so the adapter must vouch confinement only for a permission-engaged mode.
+    private static PluginSessionCapabilities _PermissionConfining() =>
+        new(SupportsTools: true, SupportsPermissions: true) { ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true };
+
+    [Fact]
+    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsUnconfined_WhenStartedInBypass()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // bypassPermissions (--dangerously-skip-permissions) disables the permission guard the confinement leans on, so
+        // the isolate-in-worktree gate must see this session as NOT confined and refuse it — the AC-190 fail-closed fix.
+        // Proven red before the fix: the adapter copied the static "true" registration capability regardless of mode.
+        await adapter.StartAsync(permissionMode: "bypassPermissions");
+
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("acceptEdits")]
+    [InlineData("default")]
+    [InlineData("plan")]
+    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsConfined_WhenStartedInAPermissionEngagedMode(string mode)
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // The permission system stays engaged in these modes, so cwd-bound tools remain confined — the isolated run is
+        // allowed to proceed. acceptEdits is the shipped Autopilot default (the interim mitigation), so this must pass.
+        await adapter.StartAsync(permissionMode: mode);
+
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsConfined_WhenStartedWithNoExplicitMode()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // No permission mode selected falls back to the driver's own default (which confines) — not a bypass, so confined.
+        await adapter.StartAsync();
+
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Capabilities_ForAPermissionBasedConfiningProvider_ReportsUnconfined_ForAnUnrecognisedMode()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // Allowlist, not denylist (fail closed): a mode the adapter does not recognise as permission-engaged is treated
+        // as not confining, so a future/unknown mode is refused until reviewed rather than silently trusted.
+        await adapter.StartAsync(permissionMode: "yolo");
+
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Capabilities_ForAPermissionBasedConfiningProvider_ReportsUnconfined_BeforeStart()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // Fail closed before the permission mode is resolved: an isolation gate that read the capability before start
+        // must not be told the session is confined on an assumption. (The host reads it after start; this guards the seam.)
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Capabilities_ForASandboxConfiningProvider_StaysConfined_EvenInBypass()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _SandboxConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // Codex confines via a real OS sandbox, independent of its permission/approval mode — it must NOT be downgraded
+        // by the AC-190 permission-mode check. Regression guard that the fix touches only permission-based providers.
+        await adapter.StartAsync(permissionMode: "bypassPermissions");
+
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Capabilities_ForASandboxConfiningProvider_IsConfined_BeforeStart()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _SandboxConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // A sandbox provider's confinement does not depend on a resolved permission mode, so it holds from construction.
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+
+        await adapter.StartAsync(permissionMode: "acceptEdits");
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Capabilities_ForAPermissionBasedConfiningProvider_RecomputesConfinement_OnALivePermissionModeSwitch()
+    {
+        var inner = new FakePluginSessionDriver { Capabilities = _PermissionConfining() };
+        var adapter = new PluginSessionDriverAdapter(inner, inner.Capabilities, _authKey);
+
+        // Started in a permission-engaged mode → confined.
+        await adapter.StartAsync(permissionMode: "acceptEdits");
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+
+        // AC-190 defense-in-depth: a live switch to a bypass mode disables the guard the confinement leans on, so the
+        // capability must not stay a stale "confined". Proven red before the recompute in SetPermissionModeAsync — it
+        // kept the start-time value, so a session that went bypass live still vouched confinement.
+        await adapter.SetPermissionModeAsync("bypassPermissions");
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeFalse();
+
+        // And a switch back to a permission-engaged mode re-engages it.
+        await adapter.SetPermissionModeAsync("plan");
+        adapter.Capabilities.ConfinesFileAccessToWorkingDirectory.Should().BeTrue();
+    }
+
     [Fact]
     public void CurrentStatus_IsNull_WhenTheDriverReportsNoStatus()
     {

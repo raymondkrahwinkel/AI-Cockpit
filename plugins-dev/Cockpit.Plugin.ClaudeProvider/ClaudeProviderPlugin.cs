@@ -75,7 +75,12 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             // ConfinesFileAccessToWorkingDirectory (AC-174): Claude spawns in the session's working directory and edits
             // with cwd-bound tools, so an isolated Autopilot run stays in its worktree — without this on the registration
             // the host refuses a Claude step for "does not confine its file tools to the worktree".
-            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true },
+            // ConfinesViaPermissionsOnly (AC-190): that confinement leans on Claude's permission system, which
+            // bypassPermissions (--dangerously-skip-permissions) disables — so the host's driver adapter downgrades the
+            // mapped confinement to false for a bypass session, and the fail-closed isolation gate refuses an isolated
+            // Claude step that a bypass mode would leave free to write outside its worktree. Codex, confined by a real OS
+            // sandbox, leaves this false and stays confined in every mode.
+            Capabilities: new PluginSessionCapabilities(SupportsTools: true, SupportsPermissions: true, SupportsVision: true) { SupportsEnvVars = true, ConfinesFileAccessToWorkingDirectory = true, ConfinesViaPermissionsOnly = true },
             CreateConfigView: existingConfigJson => new ClaudeProviderConfigView(existingConfigJson, host))
         {
             Options =

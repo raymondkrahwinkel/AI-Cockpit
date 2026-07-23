@@ -144,6 +144,11 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: an isolated Autopilot step on Claude is now genuinely confined to its worktree. If such a step is
+  set to a bypass-permissions mode — which switches off the permission guard its confinement relies on — it
+  is no longer allowed to run, because it could otherwise write outside its worktree (reachable via a
+  malicious issue title/description). The default remains safe, and Codex, confined by a real OS sandbox, is
+  unaffected in every mode.
 - fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
   runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
   down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation
