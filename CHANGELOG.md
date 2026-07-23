@@ -32,6 +32,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a "Stop run" button on a running Autopilot run, so you can end a run mid-flight instead of only
+  intervening on a step or closing the whole workspace. A stopped run settles cleanly and is recorded in the
+  history as "Stopped" — a neutral outcome, not a failure — with any unmerged work left as-is.
+- added: an Autopilot run now raises a toast the moment it needs your answer, so you notice a run waiting on
+  you even while you are working elsewhere in the app — before, it only showed inline on the run surface and
+  was easy to miss.
 - added: Autopilot — take a piece of work all the way to a merge-ready pull request. A CEO agent plans the
   run with you (from a YouTrack or GitHub issue, or a goal you type), resolves the open questions up front,
   and once you approve the plan it runs the steps autonomously — each in the run's own isolated git
@@ -144,6 +150,8 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the history and Browse buttons in the Autopilot run's working-directory row now line up with the
+  text box beside them instead of stretching to different heights.
 - fixed: voice dictation now transcribes in a separate process, so a crash in the speech engine's native
   runtime — a bad model or a GPU backend the machine can't really use — no longer takes the whole cockpit
   down. The worker restarts on its own, and a crash while loading falls back to the CPU, so dictation
