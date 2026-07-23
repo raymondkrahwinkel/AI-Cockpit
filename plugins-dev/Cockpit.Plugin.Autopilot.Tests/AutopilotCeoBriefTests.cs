@@ -27,6 +27,44 @@ public class AutopilotCeoBriefTests
     }
 
     [Fact]
+    public void For_ATriggeredRun_TellsTheCeoToReadTheTracker_ButNotToWriteToItWhilePlanning()
+    {
+        // AC-212 read/write split: while planning the CEO may READ the tracker (open the issue, pull an epic's "parent
+        // for" children — AC-217), but must NOT move the issue's stage or post notes yet — that is the run's job (the CEO
+        // validator plus the coordinator's auto-advance, AC-202). The write tools autopilot_tracker_stage /
+        // autopilot_tracker_note live on the run-only CEO endpoint and must never be named in the planning brief, or the
+        // CEO searches for, and reports missing, tools it does not have while planning.
+        var plan = new AutopilotPlan(
+            "Ship reading levels in the chat view",
+            new AutopilotPlanSource("youtrack", "AC-138", "Reading levels"),
+            []);
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        // Reads are invited.
+        brief.Should().Contain("READ the tracker");
+        brief.Should().Contain("child issues");
+        brief.Should().Contain("parent for");
+        // Writes are forbidden while planning — the guardrail, not the tool names.
+        brief.Should().Contain("Do NOT move the issue's stage or post notes");
+        brief.Should().NotContain("autopilot_tracker_stage");
+        brief.Should().NotContain("autopilot_tracker_note");
+    }
+
+    [Fact]
+    public void For_ACeoFirstRun_HasNoTrackerReadOrWriteGuidance()
+    {
+        // A CEO-first run has no source issue, so neither the read invitation nor the write guardrail belongs — the whole
+        // tracker paragraph stays out.
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        brief.Should().NotContain("READ the tracker");
+        brief.Should().NotContain("Do NOT move the issue's stage");
+    }
+
+    [Fact]
     public void For_ATriggeredRun_SurfacesTheIssueDescription_SoTheCeoDraftsFromWhatItAsks()
     {
         var plan = new AutopilotPlan(

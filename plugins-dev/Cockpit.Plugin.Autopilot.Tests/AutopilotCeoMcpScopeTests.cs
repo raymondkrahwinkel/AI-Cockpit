@@ -12,20 +12,27 @@ public class AutopilotCeoMcpScopeTests
     [Fact]
     public void PlanningCeo_CeoFirstRun_IsScopedToThePlanEndpointOnly()
     {
-        // A CEO-first run has no source issue to keep in sync, so the planning CEO only emits the plan through
+        // A CEO-first run has no source issue, so no tracker read servers — the planning CEO only emits the plan through
         // AutopilotPlanTools; nothing else is needed to plan.
-        AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(hasSource: false)
+        AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: null)
+            .Should().ContainSingle().Which.Should().Be(AutopilotPlanTools.EndpointName);
+        AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: [])
             .Should().ContainSingle().Which.Should().Be(AutopilotPlanTools.EndpointName);
         AutopilotPlanTools.EndpointName.Should().Be("cockpit-autopilot-plan");
     }
 
     [Fact]
-    public void PlanningCeo_SourceTriggeredRun_AlsoGetsTheCeoEndpointForTracker()
+    public void PlanningCeo_SourceTriggeredRun_AddsTheTrackerReadServers_ButNotTheWriteEndpoint()
     {
-        // A source-triggered run's brief tells the planning CEO to move the issue's stage and leave notes via the tracker
-        // tools on the CEO endpoint — so that endpoint must be mounted too, or the brief names tools the session lacks.
-        AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(hasSource: true)
-            .Should().BeEquivalentTo(new[] { AutopilotPlanTools.EndpointName, AutopilotCeoTools.EndpointName });
+        // AC-212 read/write split: a source-triggered run scopes the planning CEO to the plan endpoint plus the tracker's
+        // READ-only MCP servers (so it can read the issue and, for an epic, pull its children — AC-217). The CEO (write)
+        // endpoint that hosts autopilot_tracker_stage / autopilot_tracker_note is NEVER in the planning scope: it is only
+        // mounted while a run is active, and moving the issue before approval would be premature — stage/notes stay the
+        // run's job (the CEO validator plus the coordinator's auto-advance, AC-202).
+        var scope = AutopilotPlanWorkspaceBody.PlanningCeoMcpServers(trackerReadServers: ["YouTrack: Personal"]);
+
+        scope.Should().BeEquivalentTo(new[] { AutopilotPlanTools.EndpointName, "YouTrack: Personal" });
+        scope.Should().NotContain(AutopilotCeoTools.EndpointName);
     }
 
     [Fact]
