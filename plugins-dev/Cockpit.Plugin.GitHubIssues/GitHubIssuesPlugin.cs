@@ -63,6 +63,14 @@ public sealed class GitHubIssuesPlugin : ICockpitPlugin
             host.AddWorkflowTemplate(template);
         }
 
+        // The Autopilot goal/brief templates this plugin contributes (AC-189): a Bug fix and a Feature starting point,
+        // with {{issue.*}} placeholders Autopilot fills from the triggering issue. Re-registered on every start (the host
+        // keeps them in memory, stamped with this plugin as their owner); the operator picks one in the Autopilot plan flow.
+        foreach (var template in GitHubAutopilotTemplates.All)
+        {
+            host.RegisterAutopilotTemplate(template);
+        }
+
         // And the trigger is fired by the act it names: you picked an issue for a session.
         links.Picked += (_, picked) => host.RaiseWorkflowTrigger(
             GitHubWorkflowSteps.PickedTrigger,

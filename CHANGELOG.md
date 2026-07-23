@@ -32,6 +32,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: Autopilot templates — reusable goal/brief starting points for a run. Manage them in the Autopilot settings
+  (a Templates section: create your own, edit any, delete your own, and reset a built-in or plugin one to its default),
+  with placeholder help for the tokens you can use ({{issue.title}}, {{issue.url}}, {{input.…}} and more). When you
+  start a run you pick a template or plan free; a chosen template's text — with its placeholders filled from the
+  triggering issue — becomes the CEO's kickoff. The YouTrack and GitHub Issues plugins ship "Bug fix" and "Feature"
+  templates out of the box.
 - added: a persistent "Needs you" badge on the Autopilot bar while any run is waiting for your answer, so you
   notice a waiting run even when you are looking at another run or the history — not just the moment's toast.
   It clears once you answer.

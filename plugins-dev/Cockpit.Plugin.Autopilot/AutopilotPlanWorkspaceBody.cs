@@ -28,6 +28,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private readonly AutopilotRunManager _manager;
     private readonly AutopilotRunQueue _queue;
     private readonly AutopilotRunHistory _history;
+    private readonly AutopilotTemplateStore _templates;
     private readonly List<AutopilotRunContext> _activeContexts = [];
     private readonly ContentControl _bodyHost = new();
 
@@ -46,7 +47,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     private int _completedRuns;
     private IEmbeddedSession? _ceo;
 
-    public AutopilotPlanWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue, AutopilotRunHistory history)
+    public AutopilotPlanWorkspaceBody(ICockpitHost host, IWorkspaceContext context, AutopilotSettings settings, AutopilotPlanController plan, AutopilotRunManager manager, AutopilotRunQueue queue, AutopilotRunHistory history, AutopilotTemplateStore templates)
     {
         _host = host;
         _context = context;
@@ -55,6 +56,7 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         _manager = manager;
         _queue = queue;
         _history = history;
+        _templates = templates;
 
         // While this workspace is open it is the manager's runner — a run embeds its sessions in this context — so setting
         // it starts any runs already queued, and clearing it on close stops runs from starting with no surface. The
@@ -641,6 +643,32 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
     {
         try
         {
+            // The template choice (AC-189, slice 3): before the CEO session starts — its kickoff is fixed at embed — let
+            // the operator pick a template or plan free. A chosen template's resolved body becomes the CEO's kickoff
+            // instead of the hardcoded source kickoff; "free" keeps the current behaviour exactly. Cancelling the picker
+            // backs out of the whole round, the same as closing the pop-out unapproved.
+            var pick = await _PickTemplateAsync(_plan.Plan?.Source);
+            if (pick.Cancelled)
+            {
+                _popoutOpen = false;
+                if (_plan.Phase == AutopilotPlanPhase.Planning)
+                {
+                    _plan.CancelPlanning();
+                }
+
+                return;
+            }
+
+            var kickoff = AutopilotTemplateKickoff.Build(pick.Template, _plan.Plan?.Source);
+            if (pick.Template is not null && kickoff.MissingPlaceholders.Count > 0)
+            {
+                // The resolver never fails on an unfilled placeholder — it leaves the gap blank and reports it — so tell
+                // the operator which ones were empty rather than letting a silent hole ride into the CEO's brief.
+                _host.ShowToast(
+                    $"Template “{pick.Template.Name}”: no value for {string.Join(", ", kickoff.MissingPlaceholders)} — left blank.",
+                    PluginToastSeverity.Information);
+            }
+
             // The CEO plans on the profile and model configured in the plugin settings (AC-174) — blank = the app
             // default — and gets its briefing as a hidden system prompt given at start (AC-180): who it is, the goal
             // (and the source item), the profiles it can route steps to (with each one's cost), and to emit the plan
@@ -660,12 +688,11 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
                 McpServers = PlanningCeoMcpServers(_plan.Plan?.Source is not null),
                 WorkingDirectory = AutopilotWorkingDirectory.Resolve(_context, _plan.Plan?.WorkingDirectory),
                 AppendSystemPrompt = _plan.Plan is { } plan ? AutopilotCeoBrief.For(plan, profiles, ceoIdentity, _settings.CostStrategy()) : null,
-                // A tracker-triggered run (the "Plan in Autopilot" button, Raymond 2026-07-22) has a real goal from the
-                // issue already, so kick the CEO off to draft the plan immediately — a system prompt alone leaves the
-                // model idle waiting for a turn, which read as "the prompt stays empty". A CEO-first run has no goal yet,
-                // so it stays null and waits for the operator to say what the run should achieve. The host submits this
-                // after the runtime is up, so it does not race the session coming online.
-                InitialUserMessage = _plan.Plan?.Source is { } source ? AutopilotCeoBrief.SourceKickoff(source) : null,
+                // The kickoff (AC-189): a chosen template's resolved body, else — free planning — the tracker kickoff for
+                // a run triggered from an item, or null for a CEO-first run so it idles waiting for the operator to say
+                // what it should achieve. Built above from the picker choice. The host submits it after the runtime is
+                // up, so it does not race the session coming online.
+                InitialUserMessage = kickoff.Message,
             });
             _ceo = ceo;
             _plan.BindSession(ceo.PaneId);
@@ -693,6 +720,151 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             _plan.CancelPlanning();
         }
     }
+
+    // The template picker (AC-189, slice 3): a small modal before the CEO pop-out where the operator picks a template to
+    // start the run from, or plans free. It lists the combined templates — the plugin/builtin registrations with any
+    // override applied, then the operator's own — each with its origin badge. Returns Cancelled when the operator backed
+    // out (the round is then aborted), else the chosen template or null for free planning. When no templates exist at all
+    // it skips straight to free planning, so an empty catalogue never puts a needless dialog in the way.
+    private async Task<(bool Cancelled, AutopilotTemplate? Template)> _PickTemplateAsync(AutopilotPlanSource? source)
+    {
+        IReadOnlyList<AutopilotTemplate> templates;
+        try
+        {
+            templates = _templates.List(_host.RegisteredAutopilotTemplates);
+        }
+        catch (Exception)
+        {
+            // A template store that cannot list must not block a run — fall back to free planning.
+            return (false, null);
+        }
+
+        if (templates.Count == 0)
+        {
+            return (false, null);
+        }
+
+        AutopilotTemplate? chosen = null;
+        var cancelled = true;
+
+        // Index 0 is the "plan free" option; the templates follow, so the selected index maps to templates[index - 1].
+        var options = new List<string> { "Plan free — no template (blank)" };
+        options.AddRange(templates.Select(template => template.Name));
+
+        var list = new ListBox
+        {
+            ItemsSource = options,
+            SelectedIndex = 0,
+            MaxHeight = 300,
+        };
+
+        var detail = new TextBlock
+        {
+            FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = _Brush("CockpitTextSecondaryBrush"),
+        };
+
+        void ShowDetail()
+        {
+            var index = list.SelectedIndex;
+            if (index <= 0)
+            {
+                detail.Text = source is { } item
+                    ? $"The CEO drafts the plan from {item.Tracker} {item.IssueId} as it does today."
+                    : "The CEO asks you what the run should achieve, then plans it with you.";
+                return;
+            }
+
+            var template = templates[index - 1];
+            var preview = AutopilotTemplateResolver.Resolve(template.Body, AutopilotTemplateKickoff.SourceData(source));
+            detail.Text = preview.MissingPlaceholders.Count > 0
+                ? $"{_OriginLabel(template.Origin)} · placeholders left blank: {string.Join(", ", preview.MissingPlaceholders)}\n\n{preview.Text}"
+                : $"{_OriginLabel(template.Origin)}\n\n{preview.Text}";
+        }
+
+        list.SelectionChanged += (_, _) => ShowDetail();
+        ShowDetail();
+
+        await _host.ShowDialogAsync("Start a run", () =>
+        {
+            var start = new Button
+            {
+                Content = "Continue",
+                Padding = new Thickness(15, 8),
+                CornerRadius = new CornerRadius(7),
+                FontWeight = FontWeight.SemiBold,
+                Background = _Brush("CockpitAccentBrush"),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E)),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                [DockPanel.DockProperty] = Dock.Right,
+            };
+            start.Click += (sender, _) =>
+            {
+                cancelled = false;
+                chosen = list.SelectedIndex > 0 ? templates[list.SelectedIndex - 1] : null;
+                (sender as Control)?.FindAncestorOfType<Window>()?.Close();
+            };
+
+            var cancel = new Button
+            {
+                Content = "Cancel",
+                Padding = new Thickness(13, 8),
+                Margin = new Thickness(0, 0, 8, 0),
+                CornerRadius = new CornerRadius(7),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(1),
+                BorderBrush = _Brush("CockpitHairlineBrush"),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                [DockPanel.DockProperty] = Dock.Right,
+            };
+            cancel.Click += (sender, _) => (sender as Control)?.FindAncestorOfType<Window>()?.Close();
+
+            var footer = new Border
+            {
+                Padding = new Thickness(14, 11),
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                BorderBrush = _Brush("CockpitHairlineBrush"),
+                [DockPanel.DockProperty] = Dock.Bottom,
+                Child = new DockPanel { LastChildFill = false, Children = { start, cancel } },
+            };
+
+            var body = new StackPanel
+            {
+                Margin = new Thickness(16, 14),
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Pick a template to start this run from, or plan free.",
+                        FontSize = 12,
+                        TextWrapping = TextWrapping.Wrap,
+                        Foreground = _Brush("CockpitTextSecondaryBrush"),
+                    },
+                    list,
+                    new Border
+                    {
+                        Padding = new Thickness(10, 8),
+                        CornerRadius = new CornerRadius(6),
+                        Background = _Brush("CockpitSecondaryBgBrush"),
+                        Child = detail,
+                    },
+                },
+            };
+
+            return new DockPanel { LastChildFill = true, Children = { footer, new ScrollViewer { Content = body } } };
+        }, 560, 520);
+
+        return (cancelled, chosen);
+    }
+
+    private static string _OriginLabel(AutopilotTemplateOrigin origin) => origin switch
+    {
+        AutopilotTemplateOrigin.Builtin => "Builtin",
+        AutopilotTemplateOrigin.Plugin => "Plugin",
+        _ => "User",
+    };
 
     // Runs a UI action for the coordinator (session embedding and teardown touch Avalonia controls; the driver loop does
     // not run on the UI thread). Inline when already on it, marshalled otherwise.

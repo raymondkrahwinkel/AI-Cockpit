@@ -112,6 +112,38 @@ public class AutopilotTemplateStoreTests
     }
 
     [Fact]
+    public void List_MergesRegistrationsWithOverridesAndUserTemplates_InOneCombinedList()
+    {
+        // The glue the plan flow and the settings section both read (AC-189): the in-memory plugin registrations with any
+        // persisted override applied, then the operator's own persisted templates — one list, right order, right flags.
+        var storage = new FakeStorage();
+        var store = new AutopilotTemplateStore(storage);
+        store.UpsertOverride(new AutopilotTemplateOverride("acme.triage", "My triage", "My {{issue.id}}", null));
+        store.UpsertUserTemplate(AutopilotTemplate.ForUser("user.mine", "Mine", "Do {{input.thing}}"));
+
+        // A fresh store over the same storage proves the persisted half survives a restart while the registrations are
+        // re-supplied in memory.
+        var combined = new AutopilotTemplateStore(storage).List(
+        [
+            _Registration("acme.triage", "Triage", "Triage {{issue.id}}"),
+            _Registration("acme.release", "Release", "Cut a release"),
+        ]);
+
+        combined.Select(t => t.Id).Should().Equal("acme.triage", "acme.release", "user.mine");
+
+        combined[0].Name.Should().Be("My triage");                       // the override won over the registration...
+        combined[0].Body.Should().Be("My {{issue.id}}");
+        combined[0].Origin.Should().Be(AutopilotTemplateOrigin.Plugin);  // ...while it stayed a plugin template
+        combined[0].Deletable.Should().BeFalse();
+
+        combined[1].Name.Should().Be("Release");                         // an un-overridden registration shows through as-is
+        combined[1].Origin.Should().Be(AutopilotTemplateOrigin.Plugin);
+
+        combined[2].Origin.Should().Be(AutopilotTemplateOrigin.User);    // the operator's own, deletable
+        combined[2].Deletable.Should().BeTrue();
+    }
+
+    [Fact]
     public void UpsertUserTemplate_RefusesANonUserTemplate()
     {
         var store = new AutopilotTemplateStore(new FakeStorage());

@@ -43,9 +43,16 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         // it is recorded here to be shown in the history section rather than vanishing.
         var history = new AutopilotRunHistory(host.Storage);
 
+        // The template store (AC-189): the operator's own templates and their edits of the plugin/builtin ones, persisted
+        // like the queue and history above. It follows the same IPluginStorage pattern; List() merges the passed-in
+        // in-memory plugin registrations (host.RegisteredAutopilotTemplates) with those persisted user/override templates
+        // into the one list both the settings beheer-UI and the plan-flow picker read from.
+        var templates = new AutopilotTemplateStore(host.Storage);
+
         // The gear next to the plugin in the manager opens this — the global-level settings. Handed the host so the
-        // CEO-profile picker can list the cockpit's profiles and offer each one's models.
-        host.AddSettings(() => new AutopilotSettingsControl(settings, host));
+        // CEO-profile picker can list the cockpit's profiles and offer each one's models, and the template store so the
+        // Templates section lists/creates/edits/resets the combined templates.
+        host.AddSettings(() => new AutopilotSettingsControl(settings, host, templates));
 
         // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, and pane-scoped so only
         // the bound CEO session may set the plan. The workspace body briefs the CEO to call it; approving submits the plan.
@@ -89,7 +96,7 @@ public sealed class AutopilotPlugin : ICockpitPlugin
         });
 
         // The CEO plan-flow surface (AC-174/AC-175): the pipeline as blocks with, later, the running step's session.
-        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot (CEO)", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue, history))
+        host.AddWorkspaceType(new WorkspaceTypeRegistration("workspace.autopilot.plan", "Autopilot (CEO)", context => new AutopilotPlanWorkspaceBody(host, context, settings, planController, manager, queue, history, templates))
         {
             IconKind = MaterialIconKind.RobotHappyOutline,
             Description = "The CEO plans the work, you approve it once, then it runs autonomously — the pipeline on one surface.",

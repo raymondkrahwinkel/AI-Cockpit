@@ -76,6 +76,14 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
             host.AddWorkflowTemplate(template);
         }
 
+        // The Autopilot goal/brief templates this plugin contributes (AC-189): a Bug fix and a Feature starting point,
+        // with {{issue.*}} placeholders Autopilot fills from the triggering issue. Re-registered on every start (the host
+        // keeps them in memory, stamped with this plugin as their owner); the operator picks one in the Autopilot plan flow.
+        foreach (var template in YouTrackAutopilotTemplates.All)
+        {
+            host.RegisterAutopilotTemplate(template);
+        }
+
         // And the trigger is fired by the act it names: you picked a ticket for a session. A trigger nobody fires is
         // worse than a trigger nobody offers.
         links.Linked += (_, linked) => host.RaiseWorkflowTrigger(
