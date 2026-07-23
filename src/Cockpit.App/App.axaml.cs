@@ -191,7 +191,7 @@ public partial class App : Application
         // what went wrong when someone asks from Options.
         _ = cockpitViewModel.InitialiseUpdatesAsync();
         // AC-188: and keep looking every hour after that, so a window left open for a workday still learns about a
-        // build cut hours later. Reuses the same toast/banner/dedup path; cancelled when the view model disposes.
+        // build cut hours later. Reuses the same toast/banner/dedup path; stopped when the view model disposes.
         cockpitViewModel.StartPeriodicUpdateChecks();
 
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
