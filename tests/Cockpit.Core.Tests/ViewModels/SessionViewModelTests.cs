@@ -423,18 +423,70 @@ public class SessionViewModelTests
     }
 
     [Fact]
-    public void Apply_ThinkingDelta_AddsNoTranscriptRow_AndLeavesTheIndicatorUp()
+    public void Apply_ThinkingDelta_OnDeveloper_AddsAThinkingRow_AndLeavesTheIndicatorUp()
     {
-        var vm = NewVm();
+        var vm = NewVm(); // NewVm defaults to the Developer reading level
         vm.IsAwaitingResponse = true; // a dispatched turn leaves it up until the first *visible* output
 
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
-        // The inline "Thinking…" row was removed (AC-144): reasoning deltas render nothing in the transcript.
-        vm.Transcript.Should().BeEmpty();
-        // And the model is still working toward its first visible output, so the indicator stays lit — dousing
-        // it the moment thinking began left a gap where the session read as idle while the answer was still coming.
+        // AC-213 revises AC-144: reasoning deltas stream into a dimmed, collapsible Thinking row on Developer.
+        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.Thinking && t.Text == "Pondering...");
+        vm.Transcript.Single().IsRowVisible.Should().BeTrue();
+        // The pulsing indicator is separate from the row and stays lit — thinking is still not "visible output",
+        // so dousing it here would leave a gap where the session read as idle while the answer was still coming.
         vm.IsAwaitingResponse.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(ReadingLevel.Focus)]
+    [InlineData(ReadingLevel.Simple)]
+    public void Apply_ThinkingDelta_BelowDeveloper_AddsTheRowButKeepsItHidden(ReadingLevel level)
+    {
+        var vm = NewVm();
+        vm.ReadingLevel = level;
+
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
+
+        // The row is still added at every level, but Focus/Simple stay calm (AC-138): it renders hidden.
+        var row = vm.Transcript.Single(t => t.Kind == TranscriptEntryKind.Thinking);
+        row.IsRowVisible.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Apply_ThinkingDeltas_SameBlock_StreamOntoOneRow()
+    {
+        var vm = NewVm();
+
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pon" });
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "dering..." });
+
+        // Contiguous deltas of the same provider block append onto one row, like assistant prose.
+        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.Thinking && t.Text == "Pondering...");
+    }
+
+    [Fact]
+    public void Apply_ThinkingDeltas_DifferentBlocks_StartSeparateRows()
+    {
+        var vm = NewVm();
+
+        // e.g. Codex's raw reasoning (block 0) and its summary (block 1) must not concatenate into one row.
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "raw" });
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 1, Thinking = "summary" });
+
+        vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.Thinking).Select(t => t.Text)
+            .Should().Equal("raw", "summary");
+    }
+
+    [Fact]
+    public void Apply_EmptyThinkingDelta_AddsNoRow()
+    {
+        var vm = NewVm();
+
+        // A bare content_block_start carries empty thinking; it must not spawn an empty row.
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "" });
+
+        vm.Transcript.Should().BeEmpty();
     }
 
     [Fact]
@@ -461,32 +513,45 @@ public class SessionViewModelTests
     }
 
     [Fact]
-    public void Apply_TextDeltaAfterThinking_AddsOnlyTheAssistantRow()
+    public void Apply_TextDeltaAfterThinking_AddsTheAssistantRowBeneathTheThinkingRow()
     {
         var vm = NewVm();
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
         vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "Here you go." });
 
-        // No stray thinking row precedes it (AC-144): the assistant text row is the only row.
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.AssistantText && t.Text == "Here you go.");
-        vm.Transcript.Should().HaveCount(1);
+        // AC-213: the thinking row stays and the assistant text streams into its own row beneath it, in order.
+        vm.Transcript.Select(t => t.Kind).Should().Equal(TranscriptEntryKind.Thinking, TranscriptEntryKind.AssistantText);
+        vm.Transcript.Last().Text.Should().Be("Here you go.");
     }
 
     [Fact]
-    public void Apply_ToolUseAfterThinking_AddsOnlyTheToolRow()
+    public void Apply_TextDeltaAfterThinking_ClosesTheThinkingRow_SoLaterThinkingStartsFresh()
+    {
+        var vm = NewVm();
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "first" });
+        vm.Apply(new AssistantTextDelta { SessionId = "S1", BlockIndex = 1, Text = "answer" });
+
+        // Thinking resuming after visible prose (same block index) must not append back onto the closed row.
+        vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "second" });
+
+        vm.Transcript.Where(t => t.Kind == TranscriptEntryKind.Thinking).Select(t => t.Text)
+            .Should().Equal("first", "second");
+    }
+
+    [Fact]
+    public void Apply_ToolUseAfterThinking_AddsTheToolRowBeneathTheThinkingRow()
     {
         var vm = NewVm();
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
 
         vm.Apply(new ToolUseRequested { SessionId = "S1", ToolUseId = "toolu_1", ToolName = "Read", InputJson = "{}" });
 
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.ToolUse);
-        vm.Transcript.Should().HaveCount(1);
+        vm.Transcript.Select(t => t.Kind).Should().Equal(TranscriptEntryKind.Thinking, TranscriptEntryKind.ToolUse);
     }
 
     [Fact]
-    public void Apply_FailedTurnCompletedAfterThinking_AddsOnlyTheTurnRow()
+    public void Apply_FailedTurnCompletedAfterThinking_AddsTheTurnRowBeneathTheThinkingRow()
     {
         var vm = NewVm();
         vm.Apply(new AssistantThinkingDelta { SessionId = "S1", BlockIndex = 0, Thinking = "Pondering..." });
@@ -494,8 +559,7 @@ public class SessionViewModelTests
         // A failed turn is surfaced as a row; a successful one is not (T4), so use an error here.
         vm.Apply(new TurnCompleted { SessionId = "S1", Subtype = "error", Result = "boom", IsError = true });
 
-        vm.Transcript.Should().ContainSingle(t => t.Kind == TranscriptEntryKind.TurnCompleted);
-        vm.Transcript.Should().HaveCount(1);
+        vm.Transcript.Select(t => t.Kind).Should().Equal(TranscriptEntryKind.Thinking, TranscriptEntryKind.TurnCompleted);
     }
 
     [Theory]

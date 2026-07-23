@@ -86,6 +86,33 @@ public class ReadingLevelTests
     }
 
     [Fact]
+    public void Thinking_IsVisibleOnlyAtDeveloper()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, "Pondering...");
+
+        entry.ReadingLevel = ReadingLevel.Developer;
+        entry.IsRowVisible.Should().BeTrue("thinking is restored at the developer surface (AC-213)");
+
+        entry.ReadingLevel = ReadingLevel.Focus;
+        entry.IsRowVisible.Should().BeFalse("Focus stays calm (AC-138)");
+
+        entry.ReadingLevel = ReadingLevel.Simple;
+        entry.IsRowVisible.Should().BeFalse("Simple stays calm (AC-138)");
+    }
+
+    [Fact]
+    public void Thinking_IsNeitherMarkdownNorAPlainTextRow()
+    {
+        var entry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, "reasoning");
+
+        // It renders in its own dimmed section, so it must not also match the assistant-markdown or plain-text templates.
+        entry.IsThinking.Should().BeTrue();
+        entry.IsAssistantMarkdown.Should().BeFalse();
+        entry.IsPlainNonMarkdown.Should().BeFalse();
+        entry.IsTopTimestampRow.Should().BeFalse();
+    }
+
+    [Fact]
     public void Focus_FoldsARunOfAutoToolCalls_UnderOneAnchor()
     {
         var vm = NewSession();
