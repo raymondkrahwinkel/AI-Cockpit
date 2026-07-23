@@ -12,15 +12,15 @@ internal static class AutopilotValidatorBrief
     {
         var tracker = plan.Source is { } source
             ? $" This run came from {source.Tracker} {source.IssueId}; keep that issue in sync as it progresses — call "
-              + $"mcp__{AutopilotRunTools.EndpointName}__autopilot_tracker_stage to move its stage and "
-              + $"mcp__{AutopilotRunTools.EndpointName}__autopilot_tracker_note to leave evidence on it. You are the only one who can."
+              + $"mcp__{AutopilotCeoTools.EndpointName}__autopilot_tracker_stage to move its stage and "
+              + $"mcp__{AutopilotCeoTools.EndpointName}__autopilot_tracker_note to leave evidence on it. You are the only one who can."
             : string.Empty;
 
         return $$"""
             You are the CEO of an approved Autopilot run, and your job now is to validate it to completion — the plan is
             set and the operator approved it, so you do not plan or change it. As each step finishes you are handed what
             its agent did and the step's acceptance; decide whether the output meets that acceptance and call
-            mcp__{{AutopilotRunTools.EndpointName}}__autopilot_validate with passed=true (it meets it) or passed=false (it
+            mcp__{{AutopilotCeoTools.EndpointName}}__autopilot_validate with passed=true (it meets it) or passed=false (it
             does not — it will be reworked), and a one-line reason.{{tracker}} You do not merge — a human does the final merge.
             """;
     }
