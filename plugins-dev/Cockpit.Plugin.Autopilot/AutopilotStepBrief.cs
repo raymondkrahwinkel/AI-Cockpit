@@ -46,12 +46,29 @@ internal static class AutopilotStepBrief
             + "manager, who answers you or escalates to the operator. Never stop for an ordinary judgement call you can "
             + "make yourself.";
 
+        // The execution mandate (Raymond 2026-07-23): a lighter/local model handed a coding step too often "analyses" the
+        // repo, summarises what could be done, or asks what the goal is — and ends its turn without ever writing the code,
+        // which stalls the step. This is provider-neutral and holds for any model: the task is to BUILD, not to analyse.
+        // The concrete end state is spelled out (make the change, run tests, commit in the worktree, report done) so even a
+        // light model has no room to read the step as "go analyse this". It does not weaken AC-193/AC-201: the agent still
+        // makes reasonable assumptions and only consults its manager when it genuinely cannot proceed — it just may not end
+        // the turn on analysis or a question in place of the work.
+        const string executionMandate =
+            "This is an execution task, not an analysis or planning task — actually make the change. Write and edit the "
+            + "code, add and run the tests, and COMMIT your work in this worktree as you complete it (do not merge — a "
+            + "human does the final merge). Do NOT instead describe the repository, summarise what could be done, ask what "
+            + "the goal is, or reply with a plan or an analysis: that leaves the step unfinished and stalls the run. Deliver "
+            + "the concrete change the task asks for, verify it builds and its tests pass, commit it, and only then report "
+            + "done.";
+
         return $$"""
             {{autonomy}}
 
             {{step.Title}}
 
             {{work}}{{acceptance}}{{parallel}}
+
+            {{executionMandate}}
 
             When the work is complete, call mcp__{{AutopilotRunTools.EndpointName}}__autopilot_step_done with a short
             summary of what you did and the result, so the CEO can validate it against the acceptance. Call it exactly

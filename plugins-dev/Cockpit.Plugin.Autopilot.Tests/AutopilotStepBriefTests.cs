@@ -86,6 +86,39 @@ public class AutopilotStepBriefTests
     }
 
     [Fact]
+    public void For_DirectsTheAgentToExecuteAndCommit_NotAnalyseOrPlan()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Qwen (local)", null, "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // The execution mandate (Raymond 2026-07-23): every model, however light, is told to BUILD — write the code, run
+        // the tests, commit in the worktree — and explicitly not to analyse, summarise, ask, or reply with a plan, which
+        // is the failure that strands a step on a lighter model.
+        brief.Should().Contain("execution task, not an analysis or planning task");
+        brief.Should().Contain("COMMIT your work in this worktree");
+        brief.Should().Contain("Do NOT instead describe the repository");
+        brief.Should().Contain("verify it builds and its tests pass, commit it, and only then report");
+        // Provider-neutral — the mandate names no brand or model.
+        brief.Should().NotContain("Claude");
+        brief.Should().NotContain("opus");
+    }
+
+    [Fact]
+    public void For_KeepsTheAssumptionAndConsultFlow_AlongsideTheExecutionMandate()
+    {
+        var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "do the work", "compiles");
+
+        var brief = AutopilotStepBrief.For(step, 1, 1);
+
+        // The new execution mandate must not have displaced AC-193 (assume + follow conventions) or AC-201 (consult the
+        // manager, do not stop for an ordinary judgement call).
+        brief.Should().Contain("most reasonable assumption");
+        brief.Should().Contain("autopilot_blocked to consult your manager");
+        brief.Should().Contain("Never stop for an ordinary judgement call");
+    }
+
+    [Fact]
     public void ValidationTurn_AsksTheCeoToJudgeAgainstAcceptance_ViaTheTool()
     {
         var step = new AutopilotStep("1", "Code", "d", "Claude", "opus", "b", "compiles");
