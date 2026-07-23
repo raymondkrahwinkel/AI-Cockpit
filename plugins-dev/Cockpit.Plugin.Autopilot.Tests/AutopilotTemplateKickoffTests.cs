@@ -11,7 +11,7 @@ namespace Cockpit.Plugin.Autopilot.Tests;
 public class AutopilotTemplateKickoffTests
 {
     private static readonly AutopilotPlanSource _Source =
-        new("youtrack", "AC-138", "Reading levels", "Add reading levels to the chat view.");
+        new("youtrack", "AC-138", "Reading levels", "Add reading levels to the chat view.", "https://youtrack.example/issue/AC-138");
 
     [Fact]
     public void NoTemplate_WithSource_KeepsTheSourceKickoff()
@@ -46,17 +46,27 @@ public class AutopilotTemplateKickoffTests
     }
 
     [Fact]
-    public void ChosenTemplate_ReportsPlaceholdersItCouldNotFill_ButNeverThrows()
+    public void ChosenTemplate_FillsIssueUrlFromTheSource_AndDoesNotReportItMissing()
     {
-        // The source carries no url and no operator input, so {{issue.url}} and {{input.branch}} cannot be filled — they
-        // are left blank and reported, not thrown on.
+        // The source now carries the item's url (AC-189), so {{issue.url}} resolves to the real link and is no longer
+        // reported missing — the gebrek where it always resolved empty. Only {{input.branch}} (no operator input) is left blank.
         var template = AutopilotTemplate.ForPlugin("youtrack", new(
             "t", "T", "Fix {{issue.id}} at {{issue.url}} on branch {{input.branch}}."));
 
         var kickoff = AutopilotTemplateKickoff.Build(template, _Source);
 
-        kickoff.Message.Should().Be("Fix AC-138 at  on branch .");
-        kickoff.MissingPlaceholders.Should().BeEquivalentTo("issue.url", "input.branch");
+        kickoff.Message.Should().Be("Fix AC-138 at https://youtrack.example/issue/AC-138 on branch .");
+        kickoff.MissingPlaceholders.Should().BeEquivalentTo("input.branch");
+        kickoff.MissingPlaceholders.Should().NotContain("issue.url");
+    }
+
+    [Fact]
+    public void SourceData_CarriesTheUrl_KeyedTheWayTheResolverExpects()
+    {
+        var data = AutopilotTemplateKickoff.SourceData(_Source);
+
+        data.Should().NotBeNull();
+        data!.Should().ContainKey("url").WhoseValue.Should().Be("https://youtrack.example/issue/AC-138");
     }
 
     [Fact]

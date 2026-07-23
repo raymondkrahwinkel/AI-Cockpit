@@ -203,6 +203,19 @@ internal sealed class CockpitHost(
     public bool CanSendIntent(string targetPluginId, string action) =>
         services.GetRequiredService<IPluginIntentRegistry>().HasHandler(targetPluginId, action);
 
+    // The loaded plugins by their host-stamped FolderId (the same id stamped on intents and template registrations) and
+    // their manifest name, so a plugin can show a readable name for another plugin's id. GetService, not required: the
+    // manager is absent in some hosting/test paths, in which case there is simply nothing to attribute.
+    public IReadOnlyList<PluginMetadata> InstalledPlugins =>
+        services.GetService<PluginManager>() is { } manager
+            ? [.. manager.Loaded.Select(plugin => new PluginMetadata(
+                plugin.FolderId,
+                plugin.Manifest.Name,
+                plugin.Manifest.Version,
+                plugin.Manifest.Author,
+                plugin.Manifest.Description))]
+            : [];
+
     // The owner id is stamped here from this host's own pluginId, never taken from the caller — a plugin cannot
     // register a template under another plugin's name (same rule as RegisterIntentHandler above).
     public void RegisterAutopilotTemplate(PluginAutopilotTemplate template) =>

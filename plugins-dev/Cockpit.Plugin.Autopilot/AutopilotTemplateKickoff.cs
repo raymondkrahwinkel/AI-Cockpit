@@ -43,9 +43,10 @@ internal static class AutopilotTemplateKickoff
 
     /// <summary>
     /// The intent-Data view of a plan source, keyed the way <see cref="AutopilotTemplateResolver"/> expects
-    /// (<c>issue</c>/<c>title</c>/<c>description</c>/<c>tracker</c>), so a template's <c>{{issue.*}}</c> tokens fill from
-    /// the triggering item. The plan source does not carry the item's url, so <c>{{issue.url}}</c> resolves empty and is
-    /// reported missing. Null when there is no source (a CEO-first run), so every issue token is reported missing.
+    /// (<c>issue</c>/<c>title</c>/<c>description</c>/<c>url</c>/<c>tracker</c>), so a template's <c>{{issue.*}}</c> tokens
+    /// fill from the triggering item. The plan source now carries the item's url (from the intent's <c>url</c> key, AC-189),
+    /// so <c>{{issue.url}}</c> resolves to the real link — present, even when blank, so it is never reported missing from a
+    /// source. Null when there is no source (a CEO-first run), so every issue token is reported missing.
     /// </summary>
     public static IReadOnlyDictionary<string, string>? SourceData(AutopilotPlanSource? source) =>
         source is null
@@ -55,6 +56,7 @@ internal static class AutopilotTemplateKickoff
                 ["issue"] = source.IssueId,
                 ["title"] = source.Title,
                 ["description"] = source.Description,
+                ["url"] = source.Url,
                 ["tracker"] = source.Tracker,
             };
 }
