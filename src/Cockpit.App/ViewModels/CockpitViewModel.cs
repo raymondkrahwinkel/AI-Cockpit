@@ -5007,8 +5007,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     // The launch options an embedded session starts with: the profile's own defaults, plus the request's hidden system
     // prompt (AC-180) folded in under its well-known key so it rides the options map to whichever driver runs the
-    // session — each applies it its own way. A blank prompt leaves the profile defaults untouched.
-    private static IReadOnlyDictionary<string, string>? _EmbeddedLaunchOptions(SessionProfile profile, EmbeddedSessionRequest request)
+    // session — each applies it its own way. A blank prompt leaves the profile defaults untouched. When the request
+    // names its own permission mode, the profile's stored permission-mode default is dropped so the explicit request
+    // mode is the one that reaches the driver (see the comment on dropProfilePermissionMode below).
+    // Internal (not private) so a test can drive the request-mode-vs-profile-default precedence directly.
+    internal static IReadOnlyDictionary<string, string>? _EmbeddedLaunchOptions(SessionProfile profile, EmbeddedSessionRequest request)
     {
         var defaults = profile.Defaults?.OptionDefaults;
         var addPrompt = !string.IsNullOrWhiteSpace(request.AppendSystemPrompt);
@@ -5017,7 +5020,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // escape channel, then vouches confinement so the fail-closed gate lets it run. The flag rides the options map so
         // it reaches every provider without a signature change.
         var addConfine = request.IsolateInWorktree || request.ConfineFileToolsToWorkingDirectory;
-        if (!addPrompt && !addConfine)
+        // The embedded run's explicit permission mode (an Autopilot step's autonomy mode, AC-152) is a deliberate
+        // per-run choice and must win over the profile's own stored permission-mode default. The host carries that
+        // explicit mode as the typed StartAsync permissionMode, but the driver's launch-option merge
+        // (PluginSessionDriverAdapter._MergePermissionMode) keeps a permission-mode already present in the launch options
+        // over that typed fold — by design, so an operator's launch-time dropdown choice is never overridden. If the
+        // profile's stored permission-mode (e.g. a "work" profile saved on bypassPermissions) were left in these launch
+        // options, it would defeat the explicit request mode (acceptEdits): the driver would start in bypass, the session
+        // would report unconfined, and an isolate-in-worktree run's fail-closed confinement gate would be unpassable on
+        // that profile — so Autopilot could never run on it. Drop the profile's permission-mode default here whenever the
+        // request names its own mode, leaving the explicit request mode the one that reaches the driver. Provider-neutral:
+        // keyed on the well-known permission-mode option, not on any one provider or brand.
+        var dropProfilePermissionMode = !string.IsNullOrWhiteSpace(request.PermissionMode) && defaults is { Count: > 0 };
+        if (!addPrompt && !addConfine && !dropProfilePermissionMode)
         {
             return defaults;
         }
@@ -5025,6 +5040,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         var options = defaults is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(defaults, StringComparer.OrdinalIgnoreCase);
+        if (dropProfilePermissionMode)
+        {
+            options.Remove(Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.PermissionMode);
+        }
+
         if (request.AppendSystemPrompt is { } prompt && !string.IsNullOrWhiteSpace(prompt))
         {
             options[Cockpit.Plugins.Abstractions.Sessions.WellKnownPluginSessionOptions.AppendSystemPrompt] = prompt.Trim();
