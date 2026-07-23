@@ -49,18 +49,21 @@ public sealed class AutopilotPlugin : ICockpitPlugin
 
         // The CEO's plan-emit tool during the planning round (AC-174): live only while planning, and pane-scoped so only
         // the bound CEO session may set the plan. The workspace body briefs the CEO to call it; approving submits the plan.
-        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning);
+        // Internal-only (AC-204): the run's own agents scope to these endpoints by name (McpServers), so they must
+        // stay mountable — but a normal operator must never see or tick them in the New-session/profile MCP selection,
+        // nor have them fan into an unrelated no-selection session while a run is live.
+        _ = host.AddMcpEndpoint(AutopilotPlanTools.EndpointName, new AutopilotPlanTools(host, planController), isEnabled: () => planController.Phase == AutopilotPlanPhase.Planning, isInternal: true);
 
         // The autonomous run's report channel (AC-174): a step agent signals done, a run's CEO validator reports its
         // verdict — both pane-scoped, routed by the manager to whichever run owns the caller pane. Live while any run is
         // executing; dark when none is.
-        _ = host.AddMcpEndpoint(AutopilotRunTools.EndpointName, new AutopilotRunTools(host, manager), isEnabled: () => manager.Active.Count > 0);
+        _ = host.AddMcpEndpoint(AutopilotRunTools.EndpointName, new AutopilotRunTools(host, manager), isEnabled: () => manager.Active.Count > 0, isInternal: true);
 
         // The CEO validator's own tools (AC-174, Raymond 2026-07-22): validate a step, keep the source issue in sync. A
         // separate endpoint from the step agents' one above, so a step agent is never handed the CEO's tools — tighter
         // least-privilege, and a weaker local model is not distracted into calling a validate/tracker tool. Same
         // pane-scoping and live-only gating; the CEO validator session is given this endpoint, the step agents are not.
-        _ = host.AddMcpEndpoint(AutopilotCeoTools.EndpointName, new AutopilotCeoTools(host, manager), isEnabled: () => manager.Active.Count > 0);
+        _ = host.AddMcpEndpoint(AutopilotCeoTools.EndpointName, new AutopilotCeoTools(host, manager), isEnabled: () => manager.Active.Count > 0, isInternal: true);
 
         // The CEO-flow trigger (AC-174): a tracker's "Plan in Autopilot" hands the item to the CEO planning round with
         // its source to draft from.

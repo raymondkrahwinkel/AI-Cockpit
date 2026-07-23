@@ -167,6 +167,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: the three internal Autopilot endpoints (autopilot-plan, autopilot-run, autopilot-ceo) no longer
+  appear in the New-session MCP checklist or a profile's MCP pre-selection. They are the cockpit's own
+  endpoints that only an Autopilot run's own agents use, so an ordinary session should never see or tick
+  them — a run still mounts them internally.
 - fixed: an Autopilot step running on a free local model (qwen-coder via Ollama) no longer hangs the whole
   run. Some local models write their tool calls as plain text instead of the structured form the runtime
   can run, so the call was never executed and the step waited forever while appearing to "succeed". Those

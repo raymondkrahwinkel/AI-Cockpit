@@ -320,6 +320,21 @@ public class NewSessionDialogViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_ExcludesInternalEndpoints_FromTheChecklist()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));
+        var vm = NewVmWithMcp(out _, [profile],
+            new McpServerConfig { Name = "server-a" },
+            // An internal-only endpoint (AC-204, the Autopilot CEO/step tools) is enabled and mountable but must not
+            // appear in the operator's checklist. Red without the fix, which offered every enabled catalog server.
+            new McpServerConfig { Name = "cockpit-autopilot-ceo", Url = "http://127.0.0.1:1/mcp", Internal = true });
+
+        await vm.LoadAsync();
+
+        vm.McpServers.Select(server => server.Name).Should().Equal("server-a");
+    }
+
+    [Fact]
     public async Task LoadAsync_WithNoRegistryServers_HasMcpServersIsFalse()
     {
         var profile = new SessionProfile("work", new ClaudeConfig("/home/r/.claude-work"));

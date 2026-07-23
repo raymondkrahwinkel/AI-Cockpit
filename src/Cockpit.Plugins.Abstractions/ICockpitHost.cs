@@ -392,10 +392,15 @@ public interface ICockpitHost
     /// its own tools (workflows, say) without any Kestrel code. The endpoint is the cockpit's own and is not written
     /// to the operator's MCP-servers registry (AC-40); the session fan-out sees it live. Idempotent per name.
     /// <paramref name="isEnabled"/> gates it on the plugin's own setting — read each time servers are gathered, so a
-    /// toggle takes effect live; <see langword="null"/> means always on. Call it fire-and-forget from
-    /// <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host implementations keep compiling.
+    /// toggle takes effect live; <see langword="null"/> means always on. <paramref name="isInternal"/> marks the
+    /// endpoint internal-only (AC-204): hidden from every user-facing MCP selection (the New-session checklist, the
+    /// profile preselection and its token estimate) and from the no-selection fan-out, yet still mountable when a
+    /// launch names it explicitly in its per-session selection — for an endpoint only a specific spawn should mount
+    /// (say the Autopilot CEO/step tools its own run agents scope to by name), never an ordinary operator's to tick.
+    /// Call it fire-and-forget from <see cref="ICockpitPlugin.Initialize"/>. Default no-op so existing host
+    /// implementations keep compiling.
     /// </summary>
-    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null) => Task.CompletedTask;
+    Task AddMcpEndpoint(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false) => Task.CompletedTask;
 
     /// <summary>
     /// The read/observe surface over the cockpit's sessions (the contract's first "read-as" capability):
