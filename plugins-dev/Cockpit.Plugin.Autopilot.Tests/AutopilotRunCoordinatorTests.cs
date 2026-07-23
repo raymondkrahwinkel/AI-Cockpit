@@ -374,10 +374,203 @@ public class AutopilotRunCoordinatorTests
         await provider.DidNotReceive().PostCommentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    // AC-201 tiered blocker escalation: a worker's autopilot_blocked routes to ReportConsultAsync, which consults the run's
+    // CEO first (spoor 2) instead of the operator; the CEO answers (spoor 2 done) or escalates to the operator (spoor 3).
+
+    [Fact]
+    public async Task ReportConsult_DuringAStep_RelaysToTheCeo_AndLeavesTheRunRunning()
+    {
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var ceoSends = 0;
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
+
+        using var cts = new CancellationTokenSource();
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        await shown.Task.WaitAsync(Timeout);
+
+        // The worker consults its manager — the question is relayed into the CEO session and the run stays Running (a
+        // consult is not an operator blockade).
+        (await coordinator.ReportConsultAsync("step-pane", "Which database should it use?")).Should().BeTrue();
+        await _Until(() => ceoSends >= 1);
+        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+
+        // Only one consult may be open at a time — a second, while the first is unanswered, is turned down.
+        (await coordinator.ReportConsultAsync("step-pane", "and another?")).Should().BeFalse();
+        // A pane that is not a live step worker cannot consult.
+        (await coordinator.ReportConsultAsync("intruder", "let me in")).Should().BeFalse();
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task AnswerWorker_AfterAConsult_RelaysTheAnswerToTheWorker_AndClearsTheConsult()
+    {
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var ceoSends = 0;
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
+
+        using var cts = new CancellationTokenSource();
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        await shown.Task.WaitAsync(Timeout);
+
+        (await coordinator.ReportConsultAsync("step-pane", "Which db?")).Should().BeTrue();
+        await _Until(() => ceoSends >= 1);
+
+        // Only the run's CEO session answers a consult — an intruder cannot.
+        (await coordinator.AnswerWorkerAsync("intruder", "not you")).Should().BeFalse();
+
+        // The CEO's answer is relayed into the worker's session as a turn; the phase never left Running.
+        (await coordinator.AnswerWorkerAsync("ceo-pane", "Use Postgres.")).Should().BeTrue();
+        await host.Received(1).SendToSessionAsync("step-pane", "Use Postgres.");
+        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+
+        // The consult is cleared: a second answer with none pending is rejected.
+        (await coordinator.AnswerWorkerAsync("ceo-pane", "again?")).Should().BeFalse();
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task EscalateToOperator_AfterAConsult_BlocksOnTheWorker_ThenTheOperatorAnswerReachesTheWorker()
+    {
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var ceoSends = 0;
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
+
+        using var cts = new CancellationTokenSource();
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        await shown.Task.WaitAsync(Timeout);
+
+        (await coordinator.ReportConsultAsync("step-pane", "Need a prod credential.")).Should().BeTrue();
+        await _Until(() => ceoSends >= 1);
+
+        // Only the CEO session escalates a consult.
+        coordinator.EscalateToOperator("intruder", "nope").Should().BeFalse();
+
+        // The CEO decides it is genuinely the operator's call: the run parks on the operator, and the pending pane is the
+        // WORKER (not the CEO), so the operator's answer is later relayed to the worker through the unchanged AnswerBlockadeAsync.
+        coordinator.EscalateToOperator("ceo-pane", "The step needs a production credential.").Should().BeTrue();
+        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
+        plan.PendingQuestion.Should().Be("The step needs a production credential.");
+
+        await coordinator.AnswerBlockadeAsync("Here is the credential: XYZ.");
+        await host.Received(1).SendToSessionAsync("step-pane", "Here is the credential: XYZ.");
+        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task ReportConsult_WithTheCeoSessionEnded_FailsClosedToTheOperator_WithoutRelayingToTheCeo()
+    {
+        var plan = _RunningPlan(_HardStep("1"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        using var cts = new CancellationTokenSource();
+        // The CEO session has already ended (its Completion has fired) — there is no live manager to consult.
+        var endedCeo = _Session("ceo-pane", Task.FromResult<string?>("the CEO session ended"));
+        var run = coordinator.RunAsync(context, endedCeo, _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, cts.Token);
+        await shown.Task.WaitAsync(Timeout);
+
+        // Fail-closed: with no live CEO the consult goes straight to the operator instead of being dropped.
+        (await coordinator.ReportConsultAsync("step-pane", "Which db?")).Should().BeTrue();
+        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
+        plan.PendingQuestion.Should().Be("Which db?");
+        // Nothing was relayed to the (ended) CEO session.
+        await host.DidNotReceive().SendToSessionAsync("ceo-pane", Arg.Any<string>());
+
+        cts.Cancel();
+        await run.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task ReportConsult_OverTheStepConsultCap_FallsBackToTheOperator_AndTheCapResetsPerStep()
+    {
+        // Loop-cap (MaxConsultsPerStep = 1): the first consult of a step reaches the CEO; the next exceeds the step's
+        // budget and falls back to the operator. The budget then resets for the next step — a fresh consult there reaches
+        // the CEO again rather than being capped on the previous step's count.
+        var plan = _RunningPlanSteps(_HardStep("1"), _HardStep("2"));
+        var host = _Host();
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var embeds = 0;
+        var ceoSends = 0;
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => Interlocked.Increment(ref ceoSends));
+
+        using var cts = new CancellationTokenSource();
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(maxAttempts: 1, maxConsults: 1), _ => Interlocked.Increment(ref embeds), _ => { }, _Env(), _DirectUi, cts.Token);
+
+        // Step 1: first consult reaches the CEO (count 1, not over the cap of 1).
+        await _Until(() => embeds >= 1);
+        (await coordinator.ReportConsultAsync("step-pane", "q1")).Should().BeTrue();
+        await _Until(() => ceoSends >= 1);
+        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+        (await coordinator.AnswerWorkerAsync("ceo-pane", "a1")).Should().BeTrue();
+
+        // Step 1: the second consult exceeds the cap → it goes to the operator, not the CEO (ceoSends stays 1).
+        (await coordinator.ReportConsultAsync("step-pane", "q2")).Should().BeTrue();
+        plan.Phase.Should().Be(AutopilotPlanPhase.AwaitingOperator);
+        plan.PendingQuestion.Should().Be("q2");
+        ceoSends.Should().Be(1);
+
+        // The operator answers (relayed to the worker), which then finishes step 1 and the CEO validates it.
+        await coordinator.AnswerBlockadeAsync("operator says X");
+        coordinator.ReportStepDone("step-pane", "done 1").Should().BeTrue();
+        await _Until(() => ceoSends >= 2); // the validation turn was sent to the CEO
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        // Step 2 starts with a fresh consult budget: its first consult reaches the CEO again (proving the per-step reset —
+        // without it the count would still be over the cap and this would go to the operator).
+        await _Until(() => embeds >= 2);
+        (await coordinator.ReportConsultAsync("step-pane", "q3")).Should().BeTrue();
+        await _Until(() => ceoSends >= 3);
+        plan.Phase.Should().Be(AutopilotPlanPhase.Running);
+
+        // Finish step 2 cleanly so the run settles.
+        (await coordinator.AnswerWorkerAsync("ceo-pane", "a3")).Should().BeTrue();
+        coordinator.ReportStepDone("step-pane", "done 2").Should().BeTrue();
+        await _Until(() => ceoSends >= 4);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+    }
+
     private static AutopilotPlanController _RunningPlan(AutopilotStep step)
     {
         var plan = new AutopilotPlanController();
         plan.BeginPlanning(new AutopilotPlan("goal", null, [step]));
+        plan.BindSession("ceo-pane");
+        plan.Approve().Should().BeTrue();
+        return plan;
+    }
+
+    private static AutopilotPlanController _RunningPlanSteps(params AutopilotStep[] steps)
+    {
+        var plan = new AutopilotPlanController();
+        plan.BeginPlanning(new AutopilotPlan("goal", null, steps));
         plan.BindSession("ceo-pane");
         plan.Approve().Should().BeTrue();
         return plan;
@@ -425,7 +618,7 @@ public class AutopilotRunCoordinatorTests
         return session;
     }
 
-    private static AutopilotSettings _Settings(int? maxAttempts = null)
+    private static AutopilotSettings _Settings(int? maxAttempts = null, int? maxConsults = null)
     {
         var storage = Substitute.For<IPluginStorage>();
         if (maxAttempts is { } cap)
@@ -433,7 +626,22 @@ public class AutopilotRunCoordinatorTests
             storage.Get<int?>("maxSelfFixAttempts").Returns(cap);
         }
 
+        if (maxConsults is { } consultCap)
+        {
+            storage.Get<int?>("maxConsultsPerStep").Returns(consultCap);
+        }
+
         return new AutopilotSettings(storage);
+    }
+
+    private static async Task _Until(Func<bool> condition)
+    {
+        for (var i = 0; i < 500 && !condition(); i++)
+        {
+            await Task.Delay(10);
+        }
+
+        condition().Should().BeTrue("the condition should hold within the timeout");
     }
 
     private static AutopilotRunEnvironment _Env(bool isolate = true) => new("/repo", null, isolate);

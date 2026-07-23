@@ -36,6 +36,17 @@ internal sealed class AutopilotRunCoordinator(
     private string? _validationReason;
     private string? _blockedPane;
 
+    // AC-201 tiered escalation state, all guarded by _lock. A worker's autopilot_blocked now consults the run's CEO
+    // first (spoor 2) instead of going straight to the operator: _consultPane is the worker awaiting the CEO's answer
+    // (at most one at a time), _ceoSession is the live CEO the consult is relayed to and the fail-closed check reads,
+    // _activeStepId names the running step whose consult budget _consultCounts tracks, and _maxConsultsPerStep caps how
+    // often one step may consult before the run falls back to the operator.
+    private string? _consultPane;
+    private IEmbeddedSession? _ceoSession;
+    private string? _activeStepId;
+    private readonly Dictionary<string, int> _consultCounts = new(StringComparer.Ordinal);
+    private int _maxConsultsPerStep;
+
     /// <summary>
     /// Runs the approved plan to a settled end. Builds the bounded run-driver on the run's rework cap and feeds it the
     /// executeStep adapter; returns when the run settles (merge-ready or blocked) or <paramref name="cancellationToken"/>
@@ -53,6 +64,14 @@ internal sealed class AutopilotRunCoordinator(
         Func<Action, Task> runOnUi,
         CancellationToken cancellationToken)
     {
+        // Remember the run's CEO session and its per-step consult budget so a worker's mid-step consult (AC-201) can be
+        // relayed to the CEO and the fail-closed check can see whether the CEO is still live.
+        lock (_lock)
+        {
+            _ceoSession = ceo;
+            _maxConsultsPerStep = settings.MaxConsultsPerStep();
+        }
+
         var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
         await driver.RunAsync(
             step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
@@ -115,6 +134,127 @@ internal sealed class AutopilotRunCoordinator(
         // render is not dispatched while it is held.
         plan.Block(question);
         return true;
+    }
+
+    /// <summary>
+    /// Called on an MCP thread (AC-201, spoor 2): a live step worker consults the run's CEO before it continues instead
+    /// of going straight to the operator. The worker's question is relayed as a turn into the CEO's own session, which
+    /// answers it (<see cref="AnswerWorkerAsync"/>) or escalates it (<see cref="EscalateToOperator"/>). Two guarded
+    /// fallbacks send it straight to the operator instead: <em>fail-closed</em> when there is no live CEO to consult, and
+    /// the <em>loop-cap</em> when this step has already spent its consult budget (a worker stuck asking in circles).
+    /// Gated to a live step worker of a running run with no other consult or blockade already open. False when the gate
+    /// turns it down; true whether it went to the CEO or fell back to the operator.
+    /// </summary>
+    public async Task<bool> ReportConsultAsync(string workerPane, string question)
+    {
+        bool toCeo;
+        string? ceoPane = null;
+        AutopilotStep? step = null;
+        lock (_lock)
+        {
+            if (!_stepAgents.ContainsKey(workerPane)
+                || plan.Phase != AutopilotPlanPhase.Running
+                || _consultPane is not null
+                || _blockedPane is not null)
+            {
+                return false;
+            }
+
+            // Fail-closed: with no live CEO to consult (never embedded, or already ended) the consult cannot be answered,
+            // so it falls back to the operator rather than being silently dropped.
+            if (_ceoSession is not { } ceo || ceo.Completion.IsCompleted)
+            {
+                _blockedPane = workerPane;
+                toCeo = false;
+            }
+            // Loop-cap: count this consult against the running step's budget; once a step exceeds it, stop bouncing the
+            // worker off the CEO and put the question to the operator instead.
+            else if (_activeStepId is { } stepId && _BumpConsult(stepId) > _maxConsultsPerStep)
+            {
+                _blockedPane = workerPane;
+                toCeo = false;
+            }
+            else
+            {
+                _consultPane = workerPane;
+                ceoPane = plan.SessionPaneId;
+                step = plan.ActiveStep;
+                toCeo = true;
+            }
+        }
+
+        if (toCeo)
+        {
+            // Relay the question into the CEO's session as a turn — the phase stays Running (a consult is not a blockade).
+            await host.SendToSessionAsync(ceoPane!, AutopilotConsultBrief.ConsultTurn(step, question));
+            return true;
+        }
+
+        // Fail-closed or loop-cap fallback: this is a real operator blockade — raise it outside the lock like ReportBlocked.
+        plan.Block(question);
+        return true;
+    }
+
+    /// <summary>
+    /// Called on an MCP thread (AC-201): the CEO answers a worker's consult. Relays the answer as a turn into the
+    /// worker's session — it carries on there and eventually reports done as usual — and clears the pending consult. The
+    /// phase never changed (a consult keeps the run Running), so nothing here moves it. Gated to the run's CEO session
+    /// with a consult actually pending; false otherwise. A blank answer just clears the consult without relaying.
+    /// </summary>
+    public async Task<bool> AnswerWorkerAsync(string ceoPane, string answer)
+    {
+        string? workerPane;
+        lock (_lock)
+        {
+            if (plan.SessionPaneId != ceoPane || _consultPane is null)
+            {
+                return false;
+            }
+
+            workerPane = _consultPane;
+            _consultPane = null;
+        }
+
+        if (workerPane is { Length: > 0 } && !string.IsNullOrWhiteSpace(answer))
+        {
+            await host.SendToSessionAsync(workerPane, answer);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Called on an MCP thread (AC-201, spoor 3): the CEO decides a worker's consult is genuinely an operator call and
+    /// escalates it. The worker (not the CEO) becomes the blocked pane, so the operator's answer is later relayed to the
+    /// worker through the unchanged <see cref="AnswerBlockadeAsync"/>. Gated to the run's CEO session with a consult
+    /// pending; false otherwise.
+    /// </summary>
+    public bool EscalateToOperator(string ceoPane, string question)
+    {
+        lock (_lock)
+        {
+            if (plan.SessionPaneId != ceoPane || _consultPane is null)
+            {
+                return false;
+            }
+
+            // The worker awaiting the consult becomes the blocked pane so the operator's reply reaches the worker, not the CEO.
+            _blockedPane = _consultPane;
+            _consultPane = null;
+        }
+
+        plan.Block(question);
+        return true;
+    }
+
+    // Counts a consult against a step's budget under _lock and returns the running total, so ReportConsultAsync can cap
+    // how often one step may consult before the run falls back to the operator.
+    private int _BumpConsult(string stepId)
+    {
+        _consultCounts.TryGetValue(stepId, out var count);
+        count++;
+        _consultCounts[stepId] = count;
+        return count;
     }
 
     /// <summary>
@@ -229,6 +369,13 @@ internal sealed class AutopilotRunCoordinator(
 
         // A fresh attempt clears any note the previous one left, so a rework does not show a stale reason.
         plan.NoteStep(step.Id, string.Empty);
+
+        // This is the running step a consult belongs to (AC-201), with a fresh consult budget for the attempt.
+        lock (_lock)
+        {
+            _activeStepId = step.Id;
+            _consultCounts.Remove(step.Id);
+        }
 
         try
         {
@@ -357,6 +504,20 @@ internal sealed class AutopilotRunCoordinator(
                 {
                     _blockedPane = null;
                 }
+
+                // Likewise a consult raised by this step's own worker (AC-201) cannot outlive the step. Clear the active
+                // step and its consult budget so the next step (or the next attempt) starts with a clean tier.
+                if (_consultPane is not null && sessions.Any(session => session.PaneId == _consultPane))
+                {
+                    _consultPane = null;
+                }
+
+                if (_activeStepId == step.Id)
+                {
+                    _activeStepId = null;
+                }
+
+                _consultCounts.Remove(step.Id);
             }
 
             await runOnUi(() =>

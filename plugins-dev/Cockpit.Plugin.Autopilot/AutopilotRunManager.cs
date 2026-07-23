@@ -65,6 +65,37 @@ internal sealed class AutopilotRunManager(AutopilotRunQueue queue, AutopilotSett
     /// <summary>A step agent or CEO raised a blockade — hand it to the run that owns the pane.</summary>
     public bool ReportBlocked(string paneId, string question) => _Route(coordinator => coordinator.ReportBlocked(paneId, question));
 
+    /// <summary>A step worker consults its manager (AC-201) — routed to the run that owns the worker's pane.</summary>
+    public async Task<bool> ReportConsultAsync(string paneId, string question)
+    {
+        foreach (var coordinator in Active)
+        {
+            if (await coordinator.ReportConsultAsync(paneId, question))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The CEO answers a worker's consult (AC-201) — routed to the run whose CEO pane it is.</summary>
+    public async Task<bool> AnswerWorkerAsync(string paneId, string answer)
+    {
+        foreach (var coordinator in Active)
+        {
+            if (await coordinator.AnswerWorkerAsync(paneId, answer))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The CEO escalates a worker's consult to the operator (AC-201) — routed to the run whose CEO pane it is.</summary>
+    public bool EscalateToOperator(string paneId, string question) => _Route(coordinator => coordinator.EscalateToOperator(paneId, question));
+
     /// <summary>The CEO moves its source issue's tracker stage — routed to the run whose CEO pane it is.</summary>
     public async Task<bool> ReportTrackerStageAsync(string paneId, string stage)
     {

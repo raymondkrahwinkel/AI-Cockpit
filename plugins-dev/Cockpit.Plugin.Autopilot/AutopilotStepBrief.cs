@@ -28,19 +28,23 @@ internal static class AutopilotStepBrief
         // hits). Second, and the AC-193 fix: a TASK ambiguity the brief did not spell out must not become a mid-run
         // question either — the agent makes the most reasonable assumption in line with the goal and acceptance, follows
         // the codebase's existing conventions (looks at how comparable parts/projects already do it), and carries on,
-        // noting the assumption in its done-summary. The last-resort autopilot_blocked tool stays for a genuine hard
-        // blocker only. Kept generic on purpose: it names no specific persona, so it holds whatever the profile is.
+        // noting the assumption in its done-summary. AC-201: only when it genuinely cannot get there with a reasonable
+        // assumption does it consult its MANAGER (the CEO) via autopilot_blocked — the CEO answers or escalates to the
+        // operator, so the worker never reaches the operator directly. Kept generic on purpose: it names no specific
+        // persona, so it holds whatever the profile is.
         const string autonomy =
             "You are an autonomous agent in an Autopilot run, working under the profile you were launched with — no human "
             + "is available to answer questions this turn. Two things follow. (1) Setup questions: if your startup asks you "
             + "to pick a persona, brain, or configuration before you begin, treat it as already decided, stay in the "
             + "identity you launched with, and go straight to the task below — do not stop to ask. (2) Task ambiguity: for "
-            + "anything the brief and acceptance below do not spell out, do not stop to ask either — make the most "
+            + "anything the brief and acceptance below do not spell out, first try to resolve it yourself — make the most "
             + "reasonable assumption in line with the goal and acceptance, FOLLOW THE EXISTING CONVENTIONS in the codebase "
             + "(look at how comparable parts or projects already do it rather than inventing a new way), and keep going; "
-            + "note the assumption in your autopilot_step_done summary. Only use autopilot_blocked for a genuine hard "
-            + "blocker — a missing credential, a truly irreversible or destructive choice, or progress being objectively "
-            + "impossible — never for an ordinary judgement call you can make yourself.";
+            + "note the assumption in your autopilot_step_done summary. Your manager (the CEO) is reachable when you "
+            + "genuinely cannot get there with a reasonable assumption — a real ambiguity, a design call beyond the plan, "
+            + "a truly irreversible or destructive choice, or a missing credential: call autopilot_blocked to consult your "
+            + "manager, who answers you or escalates to the operator. Never stop for an ordinary judgement call you can "
+            + "make yourself.";
 
         return $$"""
             {{autonomy}}

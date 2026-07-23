@@ -46,6 +46,23 @@ public class AutopilotSettingsTests
     }
 
     [Fact]
+    public void MaxConsultsPerStep_DefaultsToThree_ThenRoundTrips()
+    {
+        var settings = new AutopilotSettings(new FakeStorage());
+
+        // AC-201 loop-cap default.
+        settings.MaxConsultsPerStep().Should().Be(3);
+
+        settings.SetMaxConsultsPerStep(5);
+        settings.MaxConsultsPerStep().Should().Be(5);
+
+        const string project = "/home/me/repo";
+        settings.SetMaxConsultsPerStep(1, project);
+        settings.MaxConsultsPerStep(project).Should().Be(1);
+        settings.MaxConsultsPerStep().Should().Be(5);
+    }
+
+    [Fact]
     public void ProjectOverride_WinsOverGlobal()
     {
         var settings = new AutopilotSettings(new FakeStorage());

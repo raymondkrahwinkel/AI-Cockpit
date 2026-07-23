@@ -36,6 +36,18 @@ public class AutopilotValidatorBriefTests
     }
 
     [Fact]
+    public void For_TellsTheCeoItManagesWorkerConsults_ViaAnswerAndEscalateTools()
+    {
+        var brief = AutopilotValidatorBrief.For(_SourcePlan());
+
+        // AC-201: the CEO is also the workers' manager — a mid-step consult is answered (relayed to the worker) or, only
+        // when it is genuinely an operator call, escalated. Both tools live on the CEO endpoint.
+        brief.Should().Contain("consult you before it continues");
+        brief.Should().Contain("mcp__cockpit-autopilot-ceo__autopilot_answer_worker");
+        brief.Should().Contain("mcp__cockpit-autopilot-ceo__autopilot_escalate_to_operator");
+    }
+
+    [Fact]
     public void For_CeoFirstPlan_StillNamesValidateOnTheCeoEndpoint_AndCarriesNoTrackerSentence()
     {
         var brief = AutopilotValidatorBrief.For(new AutopilotPlan("Do the work", null, []));

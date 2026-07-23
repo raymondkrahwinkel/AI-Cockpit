@@ -106,6 +106,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Changed
 
+- changed: when an Autopilot worker gets stuck it now consults the run's CEO first, instead of interrupting
+  you directly. The CEO — which has the plan and can read the code — answers most questions itself (a
+  convention to follow, a reasonable default, a design call within the plan), relayed straight back to the
+  worker so the run keeps going without you. Only a decision that genuinely needs you — an irreversible
+  choice, a missing credential, a business preference — is escalated to you, and better phrased. A per-step
+  limit stops a weak model looping on questions.
 - changed: Autopilot is more reliable and faster to plan. An approved run no longer stops mid-way to ask a
   question it could answer itself — for anything the plan did not spell out, the step agent now makes a
   reasonable assumption that follows the codebase's existing conventions and notes it, keeping the run
