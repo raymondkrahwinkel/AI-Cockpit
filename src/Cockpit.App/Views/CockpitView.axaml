@@ -288,6 +288,16 @@
                                 <TextBlock Text="{Binding Plugins.UpdateBadgeCount}" FontSize="10" FontWeight="SemiBold"
                                            Foreground="White"/>
                             </Border>
+                            <!-- AC-208: a persistent badge while any installed plugin is sitting at awaiting-approval
+                                 (new, or its bytes changed) — mirrors the AC-76 update pill so the two read as the
+                                 same kind of indicator; it clears once every such plugin is approved or disabled. -->
+                            <Border DockPanel.Dock="Right" IsVisible="{Binding Plugins.HasPendingApproval}"
+                                    Background="{StaticResource CockpitStatusWaitingBrush}" CornerRadius="20" Padding="7,1"
+                                    VerticalAlignment="Center" Margin="6,0,0,0"
+                                    ToolTip.Tip="Plugins awaiting your approval — click to review them">
+                                <TextBlock Text="{Binding Plugins.PendingApprovalCount}" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="White"/>
+                            </Border>
                             <TextBlock Text="Plugin store" VerticalAlignment="Center"/>
                         </DockPanel>
                     </Button>
@@ -936,20 +946,42 @@
                 </Grid>
             </DockPanel>
 
-            <!-- Plugin-failure banner (#14): the app kept running; details live in the Plugin store → Installed. -->
-            <Border IsVisible="{Binding HasPluginFailures}" VerticalAlignment="Top" Margin="12,12,12,0"
-                    Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
-                    BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0"
-                            Foreground="{StaticResource CockpitTextFaintBrush}"
-                            Command="{Binding DismissPluginFailuresCommand}">
-                        <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
-                    </Button>
-                    <TextBlock Text="{Binding PluginFailureBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
-                               Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
-                </DockPanel>
-            </Border>
+            <!-- Startup banners: plugin failures (#14) and pending approvals (AC-208) stack top-down in a StackPanel
+                 rather than each sitting at a fixed Margin — either can be one or two lines depending on how many
+                 plugins are named, and a fixed offset would either overlap or leave a gap. Both can show at once:
+                 the two states are unrelated (a plugin can fail to load while a different one awaits approval). -->
+            <StackPanel VerticalAlignment="Top" Margin="12,12,12,0" Spacing="8">
+                <!-- Plugin-failure banner (#14): the app kept running; details live in the Plugin store → Installed. -->
+                <Border IsVisible="{Binding HasPluginFailures}"
+                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Command="{Binding DismissPluginFailuresCommand}">
+                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                        </Button>
+                        <TextBlock Text="{Binding PluginFailureBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- Pending-approval banner (AC-208): plugins sitting at awaiting-approval (new, or bytes changed
+                     since approved) otherwise showed up nowhere except a row in Plugin Manager. -->
+                <Border IsVisible="{Binding HasPendingApprovals}"
+                        Background="{StaticResource CockpitSecondaryBgBrush}" BorderBrush="{StaticResource CockpitStatusWaitingBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CockpitControlRadius}" Padding="12,8">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Classes="Subtle" Padding="6,0"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Command="{Binding DismissPendingApprovalsCommand}">
+                            <materialIcons:MaterialIcon Kind="Close" Width="12" Height="12"/>
+                        </Button>
+                        <TextBlock Text="{Binding PendingApprovalBanner}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitStatusWaitingBrush}" FontSize="12"/>
+                    </DockPanel>
+                </Border>
+            </StackPanel>
         </Grid>
 
         <!-- The toasts (#61), now a control of their own so a plugin's modal dialog shows the same ones. -->

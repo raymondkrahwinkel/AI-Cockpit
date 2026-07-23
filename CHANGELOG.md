@@ -38,6 +38,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   start a run you pick a template or plan free; a chosen template's text — with its placeholders filled from the
   triggering issue — becomes the CEO's kickoff. The YouTrack and GitHub Issues plugins ship "Bug fix" and "Feature"
   templates out of the box.
+- added: a startup banner and a persistent badge on the "Plugin store" button for plugins sitting at
+  awaiting-approval — new, or their bytes changed since you last approved them — so that state is visible from
+  the main window instead of only as a row in Plugin store → Installed. Both clear once every such plugin is
+  approved or disabled; the banner can also be dismissed on its own.
 - added: a persistent "Needs you" badge on the Autopilot bar while any run is waiting for your answer, so you
   notice a waiting run even when you are looking at another run or the history — not just the moment's toast.
   It clears once you answer.
