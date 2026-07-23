@@ -18,6 +18,13 @@ public enum TranscriptEntryKind
     Question,
     TurnCompleted,
     Error,
+
+    /// <summary>
+    /// A streamed reasoning/extended-thinking block (AC-213). Rendered as a dimmed, collapsible section, and
+    /// only at the Developer reading level — <see cref="TranscriptEntryViewModel.IsRowVisible"/> keeps it hidden
+    /// at Focus/Simple, which stay calm (AC-138), restoring thinking that AC-144 had dropped app-wide.
+    /// </summary>
+    Thinking,
 }
 
 /// <summary>
@@ -33,8 +40,11 @@ public partial class TranscriptEntryViewModel : ViewModelBase
 
     public bool IsToolUse => Kind == TranscriptEntryKind.ToolUse;
 
-    /// <summary>Rows not rendered as a tool-use or a standalone tool result — assistant/user text, questions, errors.</summary>
-    public bool IsPlainText => !IsToolResult && !IsToolUse;
+    /// <summary>A streamed reasoning/extended-thinking row (AC-213), rendered as its own dimmed, collapsible section.</summary>
+    public bool IsThinking => Kind == TranscriptEntryKind.Thinking;
+
+    /// <summary>Rows not rendered as a tool-use, a standalone tool result, or a thinking section — assistant/user text, questions, errors.</summary>
+    public bool IsPlainText => !IsToolResult && !IsToolUse && !IsThinking;
 
     /// <summary>Assistant prose renders as markdown (T9).</summary>
     public bool IsAssistantMarkdown => Kind == TranscriptEntryKind.AssistantText;
@@ -50,7 +60,7 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// results). User and tool-use rows carry their timestamp inline in their own header line instead
     /// (AC-144), so the generic top-row timestamp is suppressed for them to avoid a doubled label.
     /// </summary>
-    public bool IsTopTimestampRow => !IsUserRow && !IsToolUse;
+    public bool IsTopTimestampRow => !IsUserRow && !IsToolUse && !IsThinking;
 
     /// <summary>Chevron icon for a row's expand/collapse toggle, shared by the tool-use header and the standalone tool-result row.</summary>
     public MaterialIconKind ToggleIconKind => IsExpanded ? MaterialIconKind.ChevronDown : MaterialIconKind.ChevronRight;
@@ -224,6 +234,9 @@ public partial class TranscriptEntryViewModel : ViewModelBase
     /// </summary>
     public bool IsRowVisible => Kind switch
     {
+        // Reasoning/thinking (AC-213): the developer surface only. Focus and Simple stay calm (AC-138) —
+        // the row is still added to the transcript at every level, but it renders hidden below Developer.
+        TranscriptEntryKind.Thinking => ReadingLevel == ReadingLevel.Developer,
         TranscriptEntryKind.ToolResult => ReadingLevel != ReadingLevel.Simple,
         TranscriptEntryKind.ToolUse => ReadingLevel switch
         {

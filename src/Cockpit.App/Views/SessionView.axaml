@@ -345,6 +345,26 @@
                                     </StackPanel>
                                 </Grid>
 
+                                <!-- Reasoning / extended-thinking (AC-213): the model's streamed thinking, shown
+                                     only at Developer — the row's IsRowVisible gates the whole Border off at
+                                     Focus/Simple (AC-138), so those levels stay calm. A dimmed, collapsible section
+                                     headed "Thinking" (default expanded) that grows in place as deltas append, like
+                                     assistant prose; the pulsing "Thinking…" indicator above the composer is separate. -->
+                                <StackPanel IsVisible="{Binding IsThinking}" Spacing="4" Margin="36,0,0,0">
+                                    <Button Command="{Binding ToggleExpandedCommand}"
+                                            Classes="toolChip" HorizontalAlignment="Left">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <materialIcons:MaterialIcon Kind="{Binding ToggleIconKind}" Width="12" Height="12"/>
+                                            <materialIcons:MaterialIcon Kind="ThoughtBubble" Width="13" Height="13"/>
+                                            <TextBlock Text="Thinking"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                                         Classes="toolBody" FontStyle="Italic"
+                                                         Foreground="{StaticResource CockpitTextFaintBrush}"
+                                                         IsVisible="{Binding IsExpanded}"/>
+                                </StackPanel>
+
                                 <!-- Tool-use rows: a compact header (tool name + short hint, T5) that expands
                                      to the full input plus the coupled result (L14, matched on tool_use_id).
                                      A structured/code result renders in a monospace code box with a copy

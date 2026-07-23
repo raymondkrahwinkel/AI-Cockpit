@@ -39,6 +39,12 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
     private IReadOnlyDictionary<string, string>? _launchOptions;
     private TranscriptEntryViewModel? _currentAssistantEntry;
 
+    /// <summary>The reasoning/thinking row currently being streamed into (AC-213), or null when no thinking block is open. Mirrors <see cref="_currentAssistantEntry"/>: contiguous thinking deltas append onto one row rather than spawning a row per delta.</summary>
+    private TranscriptEntryViewModel? _currentThinkingEntry;
+
+    /// <summary>The provider block index of <see cref="_currentThinkingEntry"/>; a delta from a different block (e.g. Codex's raw reasoning vs. its summary) starts a fresh row so the two never concatenate.</summary>
+    private int _currentThinkingBlockIndex = -1;
+
     /// <summary>Assistant-text rows added since the last <see cref="TurnCompleted"/> — a turn can produce several (text, tool call, more text), so the read-aloud trigger (#35) reads all of them, not just the last.</summary>
     private readonly List<TranscriptEntryViewModel> _currentTurnAssistantEntries = [];
 
@@ -929,6 +935,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
             : images.Count == 0 ? text : $"{text}  {imageSuffix}";
         Transcript.Add(new TranscriptEntryViewModel(TranscriptEntryKind.UserText, echo));
         _currentAssistantEntry = null;
+        _CloseThinkingRow();
         IsBusy = true;
         IsAwaitingResponse = true;
         _needsAttention = false;
@@ -1162,6 +1169,9 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextDelta delta:
+                // Visible prose has started, so the reasoning block that preceded it is done: close the thinking
+                // row (AC-213) so a later thinking block opens a fresh row instead of appending onto this one.
+                _CloseThinkingRow();
                 if (_currentAssistantEntry is null)
                 {
                     _currentAssistantEntry = new TranscriptEntryViewModel(TranscriptEntryKind.AssistantText, string.Empty);
@@ -1173,6 +1183,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 break;
 
             case AssistantTextCompleted completed:
+                _CloseThinkingRow();
                 if (_currentAssistantEntry is not null)
                 {
                     // Streaming deltas already built the text; nothing further to append.
@@ -1195,6 +1206,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 // fresh row beneath the tool, in the order it happened — otherwise post-tool text appends back
                 // onto the pre-tool row and the whole reply collapses above the tools it actually followed.
                 _currentAssistantEntry = null;
+                _CloseThinkingRow();
                 Transcript.Add(new TranscriptEntryViewModel(
                     TranscriptEntryKind.ToolUse,
                     $"Tool: {toolUse.ToolName}({toolUse.InputJson})")
@@ -1273,6 +1285,7 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _currentTurnAssistantEntries.Clear();
                 _readAloudFlushedLength = 0;
                 _currentAssistantEntry = null;
+                _CloseThinkingRow();
                 // This turn's images belong to this turn only (AC-116): drop them so a later image-less turn's
                 // tool call attaches nothing stale.
                 ClearCurrentTurnImages();
@@ -1319,15 +1332,43 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
                 _RecomputeStatus();
                 break;
 
-            // Reasoning/thinking deltas still arrive from providers that stream them, but the transcript no
-            // longer renders a "Thinking…" row (AC-144): a literal thinking line said little, and the pulsing
-            // indicator above the composer already signals the model is working. The event still flows through
-            // the pipeline (ConsumeEventsAsync delivers it to any subscriber); here it is ignored for rendering.
-            case AssistantThinkingDelta:
+            // Reasoning/thinking deltas stream into their own dimmed, collapsible row (AC-213, revising AC-144).
+            // The row is added at every reading level but only *renders* at Developer — its IsRowVisible gates it
+            // off at Focus/Simple, which stay calm (AC-138). Contiguous deltas of the same provider block append
+            // onto one row (like assistant prose); a new block index starts a fresh row. The "Thinking…" indicator
+            // is left untouched (thinking is deliberately absent from the clear-set above), so the pulse still
+            // signals the model is working and this row does not double it. Empty deltas (a bare block_start) add
+            // nothing.
+            case AssistantThinkingDelta thinkingDelta:
+                if (!string.IsNullOrEmpty(thinkingDelta.Thinking))
+                {
+                    if (_currentThinkingEntry is null || thinkingDelta.BlockIndex != _currentThinkingBlockIndex)
+                    {
+                        _currentThinkingEntry = new TranscriptEntryViewModel(TranscriptEntryKind.Thinking, string.Empty)
+                        {
+                            IsExpanded = true,
+                        };
+                        _currentThinkingBlockIndex = thinkingDelta.BlockIndex;
+                        Transcript.Add(_currentThinkingEntry);
+                    }
+
+                    _currentThinkingEntry.AppendText(thinkingDelta.Thinking);
+                }
+
+                break;
+
             case RateLimitInfo:
             case UnknownEvent:
                 break;
         }
+    }
+
+    // Ends the currently-streaming reasoning row (AC-213) so the next thinking block, or the next turn, opens a
+    // fresh row instead of appending onto a stale one. Called wherever the assistant text row is likewise reset.
+    private void _CloseThinkingRow()
+    {
+        _currentThinkingEntry = null;
+        _currentThinkingBlockIndex = -1;
     }
 
     /// <summary>
