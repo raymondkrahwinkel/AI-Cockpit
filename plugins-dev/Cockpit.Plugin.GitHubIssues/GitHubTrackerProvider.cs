@@ -14,6 +14,17 @@ internal sealed class GitHubTrackerProvider : ITrackerProvider
 
     public string TrackerId => "github-issues";
 
+    // AC-202: a GitHub issue has no status field, so its stage is a label. Map Autopilot's neutral lifecycle stages to
+    // conventional label names; a run adds the label as it reaches each stage. A label the repo does not have makes the
+    // gh call fail, which SetStageAsync degrades to "did not land" — never a crash.
+    public string? SuggestStageName(TrackerWorkStage stage) => stage switch
+    {
+        TrackerWorkStage.InProgress => "in progress",
+        TrackerWorkStage.InReview => "in review",
+        TrackerWorkStage.Done => "done",
+        _ => null,
+    };
+
     public async Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default)
     {
         if (_Reference(issueId) is not { } issue)

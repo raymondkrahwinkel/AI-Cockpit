@@ -47,6 +47,12 @@ internal sealed class AutopilotRunCoordinator(
     private readonly Dictionary<string, int> _consultCounts = new(StringComparer.Ordinal);
     private int _maxConsultsPerStep;
 
+    // AC-202: the last stage this run's automatic phase→stage mapping set on the source issue, so a lifecycle edge does
+    // not set the same stage twice (idempotent). Guarded by _lock. The CEO's manual autopilot_tracker_stage does not
+    // touch this — the auto-mapping fires only on the two lifecycle edges (start, merge-ready), far from the CEO's own
+    // mid-run stage/notes, so it is a safety net that never immediately reverts a stage the CEO set by hand.
+    private TrackerWorkStage? _lastAutoStage;
+
     /// <summary>
     /// Runs the approved plan to a settled end. Builds the bounded run-driver on the run's rework cap and feeds it the
     /// executeStep adapter; returns when the run settles (merge-ready or blocked) or <paramref name="cancellationToken"/>
@@ -72,10 +78,23 @@ internal sealed class AutopilotRunCoordinator(
             _maxConsultsPerStep = settings.MaxConsultsPerStep();
         }
 
+        // AC-202: the run has just started (the plan is Running after its single approval). Move the source issue to the
+        // in-progress stage automatically — a source-triggered run must not sit on Backlog waiting for the CEO to move it
+        // by hand (AC-195 did exactly that). A CEO-first run has no issue, so this is a no-op there.
+        await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InProgress, cancellationToken);
+
         var driver = new AutopilotRunDriver(plan, settings.MaxSelfFixAttempts());
         await driver.RunAsync(
             step => _ExecuteStepAsync(context, ceo, settings, showStepSession, setValidating, environment, runOnUi, step, cancellationToken),
             cancellationToken);
+
+        // AC-202: the run settled. When it reached merge-ready (every hard step passed), move the source issue to the
+        // review stage — the work is done, the merge itself is left to the human. A blocked, stopped or cancelled run is
+        // left where it is (its stage stays in-progress, so the operator sees it still needs them).
+        if (!cancellationToken.IsCancellationRequested && plan.Phase == AutopilotPlanPhase.MergeReady)
+        {
+            await AutoAdvanceTrackerStageAsync(TrackerWorkStage.InReview, cancellationToken);
+        }
     }
 
     /// <summary>Called on an MCP thread: a step agent's pane reports its work done. False when the pane is not a live step agent.</summary>
@@ -306,19 +325,91 @@ internal sealed class AutopilotRunCoordinator(
     // session, a run with no source (CEO-first), or a tracker id no plugin backs, all yield false rather than an action.
     private async Task<bool> _WithSourceTrackerAsync(string paneId, Func<ITrackerProvider, AutopilotPlanSource, Task<bool>> action)
     {
-        AutopilotPlanSource? source;
+        bool isRunCeo;
         lock (_lock)
         {
-            source = plan.SessionPaneId == paneId ? plan.Plan?.Source : null;
+            isRunCeo = plan.SessionPaneId == paneId;
         }
 
-        if (source is null)
+        if (!isRunCeo || _ResolveSourceTracker() is not { } resolved)
         {
             return false;
         }
 
+        return await action(resolved.Provider, resolved.Source);
+    }
+
+    // The run's source and the tracker plugin backing its tracker id, or null when the run has no source (CEO-first) or
+    // no installed plugin backs it. The read of the plan's source is under _lock; the provider lookup is a pure host read.
+    private (ITrackerProvider Provider, AutopilotPlanSource Source)? _ResolveSourceTracker()
+    {
+        AutopilotPlanSource? source;
+        lock (_lock)
+        {
+            source = plan.Plan?.Source;
+        }
+
+        if (source is null)
+        {
+            return null;
+        }
+
         var provider = host.TrackerProviders.FirstOrDefault(candidate => string.Equals(candidate.TrackerId, source.Tracker, StringComparison.OrdinalIgnoreCase));
-        return provider is not null && await action(provider, source);
+        return provider is null ? null : (provider, source);
+    }
+
+    /// <summary>
+    /// AC-202: automatically move the run's source issue to <paramref name="stage"/> as the run crosses a lifecycle edge
+    /// (started, merge-ready). Only for a source-triggered run — a CEO-first run has no issue; <em>idempotent</em> — it
+    /// never sets the same stage twice; and <em>fail-soft</em> — a tracker error (API down, no permission, cancellation)
+    /// never breaks the run. The neutral stage is mapped to the tracker's own vocabulary through
+    /// <see cref="ITrackerProvider.SuggestStageName"/>, so no tracker-specific stage name is hardcoded here; a tracker
+    /// that maps the stage to null is left untouched. Internal (not private) so a focused test can exercise the
+    /// idempotency guard directly. This is a safety net beside the CEO's manual autopilot_tracker_stage, not a
+    /// replacement — see <see cref="_lastAutoStage"/> on why it does not fight the CEO's own mid-run stage.
+    /// </summary>
+    internal async Task AutoAdvanceTrackerStageAsync(TrackerWorkStage stage, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            // Idempotent: this run's auto-mapping already moved the issue to this stage.
+            if (_lastAutoStage == stage)
+            {
+                return;
+            }
+        }
+
+        if (_ResolveSourceTracker() is not { } resolved)
+        {
+            // A CEO-first run (no source) or no installed plugin backs its tracker — nothing to move.
+            return;
+        }
+
+        try
+        {
+            var stageName = resolved.Provider.SuggestStageName(stage);
+            if (string.IsNullOrWhiteSpace(stageName))
+            {
+                // The tracker maps this neutral stage to no column of its own — leave the issue where it is.
+                return;
+            }
+
+            if (await resolved.Provider.SetStageAsync(resolved.Source.IssueId, stageName, cancellationToken))
+            {
+                // Remember the last stage that actually landed, so this edge is not retried and a later, different edge
+                // still proceeds. A set that did not land (API down) is not remembered, so a subsequent edge can try again.
+                lock (_lock)
+                {
+                    _lastAutoStage = stage;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Fail-soft (AC-202): a tracker fault must never take the run down. Providers already degrade a failure to a
+            // false return; this guards the run against anything they might still throw (a cancellation, an unexpected
+            // error). The CEO's manual tracker tools remain as the fallback.
+        }
     }
 
     /// <summary>

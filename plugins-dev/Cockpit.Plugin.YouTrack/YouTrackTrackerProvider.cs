@@ -13,6 +13,17 @@ internal sealed class YouTrackTrackerProvider(YouTrackSettings settings) : ITrac
 
     public string TrackerId => "youtrack";
 
+    // AC-202: map Autopilot's neutral lifecycle stages to this board's own "Stage" vocabulary (Backlog / Develop /
+    // Review / Test / Staging / Done), so a source-triggered run moves the issue off Backlog automatically. Merge-ready
+    // maps to Review — the work is done, but the merge/verify is a human's, so it is not closed to Done automatically.
+    public string? SuggestStageName(TrackerWorkStage stage) => stage switch
+    {
+        TrackerWorkStage.InProgress => "Develop",
+        TrackerWorkStage.InReview => "Review",
+        TrackerWorkStage.Done => "Done",
+        _ => null,
+    };
+
     public async Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default)
     {
         if (_Instance() is not { } instance)

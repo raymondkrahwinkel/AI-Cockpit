@@ -374,6 +374,144 @@ public class AutopilotRunCoordinatorTests
         await provider.DidNotReceive().PostCommentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    // AC-202 automatic phase→stage mapping: the coordinator itself moves the source issue as the run crosses a lifecycle
+    // edge (start → in-progress, merge-ready → review), so the stage no longer hangs on the CEO calling autopilot_tracker_stage.
+
+    [Fact]
+    public async Task RunAsync_ForASourceRun_MovesTheIssueToDevelopAtStart_AndReviewAtMergeReady()
+    {
+        var plan = _RunningPlanWithSource(new AutopilotPlanSource("youtrack", "AC-1", "Do it"), _HardStep("1"));
+        var provider = new FakeTrackerProvider("youtrack");
+        var host = _Host();
+        host.TrackerProviders.Returns(new ITrackerProvider[] { provider });
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+
+        await shown.Task.WaitAsync(Timeout);
+        // The run moved the issue to Develop the moment it started — before any step reports, so it never sits on Backlog.
+        provider.StageCalls.Should().ContainSingle().Which.Should().Be(("AC-1", "Develop"));
+
+        coordinator.ReportStepDone("step-pane", "opened PR").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        // Merge-ready moved it to Review (the tracker's own vocabulary via SuggestStageName) — the work is done, the
+        // merge is left to the human, so it is not closed to Done automatically.
+        provider.StageCalls.Should().Equal(("AC-1", "Develop"), ("AC-1", "Review"));
+    }
+
+    [Fact]
+    public async Task RunAsync_ForACeoFirstRun_WithNoSource_SetsNoStage()
+    {
+        // A CEO-first run has no tracker issue, so the auto-mapping must never touch a tracker even when one is installed.
+        var plan = _RunningPlan(_HardStep("1"));
+        var provider = new FakeTrackerProvider("youtrack");
+        var host = _Host();
+        host.TrackerProviders.Returns(new ITrackerProvider[] { provider });
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        await shown.Task.WaitAsync(Timeout);
+        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+        provider.StageCalls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AutoAdvanceTrackerStage_IsIdempotent_DoesNotSetTheSameStageTwice()
+    {
+        var plan = _RunningPlanWithSource(new AutopilotPlanSource("youtrack", "AC-1", "t"), _HardStep("1"));
+        var provider = new FakeTrackerProvider("youtrack");
+        var host = _Host();
+        host.TrackerProviders.Returns(new ITrackerProvider[] { provider });
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        await coordinator.AutoAdvanceTrackerStageAsync(TrackerWorkStage.InProgress);
+        await coordinator.AutoAdvanceTrackerStageAsync(TrackerWorkStage.InProgress);
+
+        // The same lifecycle edge fired twice sets the stage once — a re-render or a retried edge does not re-move it.
+        provider.StageCalls.Should().ContainSingle().Which.Should().Be(("AC-1", "Develop"));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenTheTrackerThrows_TheRunStillSettlesMergeReady()
+    {
+        // Fail-soft: a tracker that throws (API down, no permission) must never take the run down — it settles as usual.
+        var plan = _RunningPlanWithSource(new AutopilotPlanSource("youtrack", "AC-1", "t"), _HardStep("1"));
+        var provider = new FakeTrackerProvider("youtrack", throwOnSet: true);
+        var host = _Host();
+        host.TrackerProviders.Returns(new ITrackerProvider[] { provider });
+        var context = _Context(_Session("step-pane"));
+        var coordinator = new AutopilotRunCoordinator(host, plan);
+
+        var shown = new TaskCompletionSource();
+        var validationSent = new TaskCompletionSource();
+        host.When(h => h.SendToSessionAsync("ceo-pane", Arg.Any<string>())).Do(_ => validationSent.TrySetResult());
+
+        var run = coordinator.RunAsync(context, _Session("ceo-pane"), _Settings(), _ => shown.TrySetResult(), _ => { }, _Env(), _DirectUi, CancellationToken.None);
+        await shown.Task.WaitAsync(Timeout);
+        coordinator.ReportStepDone("step-pane", "done").Should().BeTrue();
+        await validationSent.Task.WaitAsync(Timeout);
+        coordinator.ReportValidation("ceo-pane", passed: true, reason: "ok").Should().BeTrue();
+
+        // The run completes without faulting despite the tracker throwing on every stage move.
+        await run.WaitAsync(Timeout);
+        plan.Phase.Should().Be(AutopilotPlanPhase.MergeReady);
+    }
+
+    // A concrete tracker provider that records SetStageAsync calls (a substitute cannot intercept SuggestStageName — it
+    // is a default interface method), mapping the neutral stages to the AC board's own vocabulary like YouTrack does.
+    private sealed class FakeTrackerProvider(string trackerId, bool throwOnSet = false) : ITrackerProvider
+    {
+        public string TrackerId => trackerId;
+
+        public List<(string IssueId, string Stage)> StageCalls { get; } = [];
+
+        public string? SuggestStageName(TrackerWorkStage stage) => stage switch
+        {
+            TrackerWorkStage.InProgress => "Develop",
+            TrackerWorkStage.InReview => "Review",
+            TrackerWorkStage.Done => "Done",
+            _ => null,
+        };
+
+        public Task<bool> SetStageAsync(string issueId, string stage, CancellationToken cancellationToken = default)
+        {
+            if (throwOnSet)
+            {
+                throw new InvalidOperationException("tracker down");
+            }
+
+            lock (StageCalls)
+            {
+                StageCalls.Add((issueId, stage));
+            }
+
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> PostCommentAsync(string issueId, string comment, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> AttachAsync(string issueId, string fileName, byte[] content, string mediaType, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<IReadOnlyList<TrackerComment>> ReadCommentsAsync(string issueId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<TrackerComment>>([]);
+    }
+
     // AC-201 tiered blocker escalation: a worker's autopilot_blocked routes to ReportConsultAsync, which consults the run's
     // CEO first (spoor 2) instead of the operator; the CEO answers (spoor 2 done) or escalates to the operator (spoor 3).
 
