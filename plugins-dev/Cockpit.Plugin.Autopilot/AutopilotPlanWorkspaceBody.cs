@@ -386,13 +386,24 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
             [DockPanel.DockProperty] = Dock.Left,
         };
 
+        var headRow = new DockPanel { LastChildFill = false, Children = { newRun, summary } };
+
+        // The persistent "needs you" marker (AC-203): while any active run sits in AwaitingOperator it stands here on the
+        // queue bar, so it appears whichever run or the history the operator is looking at. Added docked Right on the same
+        // row as New run / the summary — see _BuildNeedsYouBadge for why it persists and why a consult never trips it.
+        var awaiting = _activeContexts.Count(context => context.Controller.Phase == AutopilotPlanPhase.AwaitingOperator);
+        if (NeedsOperatorAttention(_activeContexts.Select(context => context.Controller.Phase)))
+        {
+            headRow.Children.Add(_BuildNeedsYouBadge(awaiting));
+        }
+
         var head = new Border
         {
             Padding = new Thickness(12, 8),
             BorderThickness = new Thickness(0, 0, 0, 1),
             BorderBrush = _Brush("CockpitHairlineBrush"),
             [DockPanel.DockProperty] = Dock.Top,
-            Child = new DockPanel { LastChildFill = false, Children = { newRun, summary } },
+            Child = headRow,
         };
 
         if (_queue.Count == 0)
@@ -407,6 +418,56 @@ internal sealed class AutopilotPlanWorkspaceBody : UserControl
         }
 
         return new DockPanel { LastChildFill = false, Children = { head, new Border { [DockPanel.DockProperty] = Dock.Top, Child = list } } };
+    }
+
+    // Whether the surface needs the operator (AC-203): true while any active run sits in AwaitingOperator — a step hit a
+    // blockade only the operator can answer (AC-155). Pure so the persistent "needs you" marker's condition is unit-testable
+    // without a host or a UI thread. Keyed on the phase alone, so a CEO consult — which keeps the run Running (spoor 2,
+    // AC-201) — never trips it; only a real operator escalation (spoor 3, AwaitingOperator) does.
+    internal static bool NeedsOperatorAttention(IEnumerable<AutopilotPlanPhase> activePhases) =>
+        activePhases.Any(phase => phase == AutopilotPlanPhase.AwaitingOperator);
+
+    // The persistent "needs you" badge (AC-203): a standing amber marker on the queue bar, which docks at the top of the
+    // surface and never scrolls away with a specific run's view or the history. It is rebuilt from the live phase on every
+    // render — a run entering the wait raises Changed, which re-renders the surface — so it appears the moment a run turns
+    // AwaitingOperator and disappears as soon as the operator answers (→ Running) or the run settles. This is the lasting
+    // signal for an operator who missed the one-shot AC-194 toast and is not looking at the blocked run; the toast stays as
+    // the in-the-moment nudge, this outlives it.
+    private Control _BuildNeedsYouBadge(int count)
+    {
+        var onWaiting = new SolidColorBrush(Color.FromRgb(0x1A, 0x12, 0x0E));
+        return new Border
+        {
+            [DockPanel.DockProperty] = Dock.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = _Brush("CockpitStatusWaitingBrush"),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(9, 3),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Children =
+                {
+                    new MaterialIcon
+                    {
+                        Kind = MaterialIconKind.AlertCircleOutline,
+                        Width = 14,
+                        Height = 14,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = onWaiting,
+                    },
+                    new TextBlock
+                    {
+                        Text = count > 1 ? $"{count} runs need you" : "Needs you",
+                        FontSize = 11,
+                        FontWeight = FontWeight.SemiBold,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Foreground = onWaiting,
+                    },
+                },
+            },
+        };
     }
 
     // One queued run: its goal, and controls to move it up/down or drop it before it runs.

@@ -58,4 +58,42 @@ public class AutopilotRunContextTests
         AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.Running).Should().BeFalse();
         AutopilotPlanWorkspaceBody.IsSettledOutcome(AutopilotPlanPhase.AwaitingOperator).Should().BeFalse();
     }
+
+    [Fact]
+    public void NeedsOperatorAttention_IsTrue_WhileAnyRunAwaitsTheOperator()
+    {
+        // The persistent "needs you" marker's condition (AC-203): a run in AwaitingOperator raises the standing signal,
+        // and it stays raised as long as any active run is in that phase — regardless of what the others are doing.
+        AutopilotPlanWorkspaceBody.NeedsOperatorAttention([AutopilotPlanPhase.AwaitingOperator]).Should().BeTrue();
+        AutopilotPlanWorkspaceBody.NeedsOperatorAttention(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.AwaitingOperator]).Should().BeTrue();
+    }
+
+    [Fact]
+    public void NeedsOperatorAttention_IsFalse_OnceTheRunLeavesTheWait()
+    {
+        // The marker clears the moment the run leaves AwaitingOperator — answered (→ Running) or settled — so it never
+        // outlives the wait it signals. No active run at all is likewise nothing to flag.
+        AutopilotPlanWorkspaceBody.NeedsOperatorAttention([]).Should().BeFalse();
+        foreach (var phase in new[]
+        {
+            AutopilotPlanPhase.Planning,
+            AutopilotPlanPhase.Running,
+            AutopilotPlanPhase.Blocked,
+            AutopilotPlanPhase.MergeReady,
+            AutopilotPlanPhase.Stopped,
+        })
+        {
+            AutopilotPlanWorkspaceBody.NeedsOperatorAttention([phase]).Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public void NeedsOperatorAttention_IsNotTrippedByACeoConsult()
+    {
+        // A CEO consult (spoor 2, AC-201) keeps the run Running — only an operator escalation (spoor 3) turns it
+        // AwaitingOperator. A run that is merely Running, however many, must not raise the marker.
+        AutopilotPlanWorkspaceBody.NeedsOperatorAttention(
+            [AutopilotPlanPhase.Running, AutopilotPlanPhase.Running]).Should().BeFalse();
+    }
 }

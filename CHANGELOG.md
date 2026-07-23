@@ -32,6 +32,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: a persistent "Needs you" badge on the Autopilot bar while any run is waiting for your answer, so you
+  notice a waiting run even when you are looking at another run or the history — not just the moment's toast.
+  It clears once you answer.
 - added: a "CEO is working…" cue in the Plan-with-the-CEO dialog while the CEO is planning, so a long
   planning turn no longer looks like the dialog is stuck — shown only on the CEO session, the rest of the
   app's sessions are unaffected.
