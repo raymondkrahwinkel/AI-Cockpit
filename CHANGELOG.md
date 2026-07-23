@@ -156,7 +156,6 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
-<<<<<<< HEAD
 - fixed: an Autopilot step running on a free local model (qwen-coder via Ollama) no longer hangs the whole
   run. Some local models write their tool calls as plain text instead of the structured form the runtime
   can run, so the call was never executed and the step waited forever while appearing to "succeed". Those
