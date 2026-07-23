@@ -50,6 +50,7 @@ internal static class AutopilotCeoBrief
 
         var roster = _Roster(profiles);
         var costGuidance = _CostGuidance(costStrategy);
+        var executionFit = _ExecutionFit();
 
         // Only a source-triggered run has an issue to keep in sync; a CEO-first run has none, so this stays out.
         var tracker = plan.Source is { } tracked
@@ -93,6 +94,8 @@ internal static class AutopilotCeoBrief
               the parts touching the same files.
 
             {{costGuidance}}
+
+            {{executionFit}}
 
             Standard gates for a run that changes code: end the plan with two required (hard) gates, kept as distinct
             steps so a security miss is never lost inside a general pass — a code review (correctness, the actual diff,
@@ -149,8 +152,33 @@ internal static class AutopilotCeoBrief
             + "it. Do not put the whole plan on an expensive model \"to be safe\"; that is the waste this avoids.",
     };
 
+    // Two things the CEO must get right for a step to actually get built, independent of the cost strategy above (the
+    // live failure this addresses, Raymond 2026-07-23: a demanding coding step put on the lightest local model and handed
+    // a vague brief, where the worker "analyses" the repo instead of writing and committing the code, and the step stalls).
+    // Provider-neutral on purpose: it steers on capability and cost, never on a brand or a specific model name.
+    private static string _ExecutionFit() =>
+        """
+        Fit the model to the step's real demand, not just its price. An EXECUTING step — one that writes or edits code,
+        adds and runs tests, and commits the result — is demanding, multi-step tool work; assign it a model actually
+        capable of carrying that through to a finished, committed diff. The lightest, cheapest models (a small local model
+        especially) tend to analyse, summarise, or ask a question instead of executing, which stalls the step, so do not
+        put an executing coding step on the lightest option merely because it is free — pick the cheapest model that can
+        genuinely do it. Keep the lightest and cheapest models for the genuinely trivial steps (a rename, a one-line edit,
+        a mechanical change) where they plainly suffice.
+
+        Write each step's brief as a glass-clear, imperative, fully self-sufficient instruction the worker can execute
+        without interpreting or asking: spell out exactly what to change, in which files or areas, the concrete end
+        result, which tests to add or run, and that the work must be committed in the worktree. Be concrete enough that
+        even a light model builds it rather than "analysing" it — a vague or open-ended brief ("look at X", "review the
+        repo", "consider whether…") is exactly what makes a worker chat and analyse instead of writing code. A sharper
+        brief lets a cheaper model succeed: clear instructions and the cheapest-adequate model reinforce each other.
+        """;
+
     // The profiles the CEO can route steps to, each tagged local-free or hosted-paid, so its model choice is cost-aware.
     // Empty (or none supplied) yields nothing — the brief then leaves the roster out rather than showing an empty header.
+    // There is no per-model price/tier field to surface (see PluginProfileInfo: only RunsLocally and the model-alias list),
+    // so the roster gives the CEO the two signals that do exist — local-vs-paid and the model names — and tells it how to
+    // weigh them, rather than inventing a cost number that is not there.
     private static string _Roster(IReadOnlyList<PluginProfileInfo>? profiles)
     {
         if (profiles is not { Count: > 0 })
@@ -162,11 +190,20 @@ internal static class AutopilotCeoBrief
         {
             var cost = profile.RunsLocally ? "runs locally, free" : "hosted API, paid";
             var models = profile.ModelSuggestions is { Count: > 0 } suggestions
-                ? $"; models: {string.Join(", ", suggestions)} — a step on this profile must use exactly one of these"
+                ? $"; models (lighter/cheaper to heavier/more capable): {string.Join(", ", suggestions)} — a step on this profile must use exactly one of these"
                 : "; pins its own model — leave a step's model empty on this profile";
             return $"- {profile.Label} ({cost}{models})";
         });
 
-        return $"\nProfiles you can assign steps to (a step's model must be one the profile lists here, or empty for a profile that pins its own):\n{string.Join("\n", lines)}\n";
+        return "\nProfiles you can assign steps to (a step's model must be one the profile lists here, or empty for a "
+            + "profile that pins its own):\n"
+            + string.Join("\n", lines)
+            + "\n\nHow to read this roster: \"runs locally, free\" means no API cost, but a local profile is usually a "
+            + "lighter model that can stall on a demanding step — it may analyse or summarise instead of executing. "
+            + "\"hosted API, paid\" costs money but is generally more capable. Where a profile lists several models, they "
+            + "run from lighter and cheaper to heavier and more capable. There is no per-model price tag beyond this "
+            + "local-vs-paid signal and the model names, so weigh each step's difficulty against them and pick the "
+            + "cheapest option that can actually carry the step to a finished, committed result — not simply the cheapest "
+            + "one.\n";
     }
 }

@@ -84,6 +84,57 @@ public class AutopilotCeoBriefTests
     }
 
     [Fact]
+    public void For_WithProfiles_ExplainsALocalProfileMayStall_AndToPickCheapestThatCanCarryTheStep()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+        var profiles = new[]
+        {
+            new PluginProfileInfo("Claude", "Plugin", string.Empty) { ModelSuggestions = ["opus", "sonnet", "haiku"] },
+            new PluginProfileInfo("Qwen (local)", "Ollama", string.Empty) { RunsLocally = true },
+        };
+
+        var brief = AutopilotCeoBrief.For(plan, profiles);
+
+        // The roster now teaches the CEO how to read the (only) signals that exist — local-vs-paid and the model names —
+        // rather than pretending a per-model price tag it does not have.
+        brief.Should().Contain("lighter/cheaper to heavier/more capable");
+        brief.Should().Contain("a local profile is usually a lighter model that can stall on a demanding step");
+        brief.Should().Contain("the cheapest option that can actually carry the step to a finished, committed result");
+    }
+
+    [Fact]
+    public void For_InstructsExecutingStepsGetACapableModel_NotTheLightestJustBecauseItIsFree()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        // The execution-fit instruction is unconditional (present even without a roster) and provider-neutral — it steers
+        // an EXECUTING step onto a model that can carry it, and off the lightest option chosen merely because it is free.
+        brief.Should().Contain("EXECUTING step");
+        brief.Should().Contain("put an executing coding step on the lightest option merely because it is free");
+        brief.Should().Contain("genuinely do it");
+        // Provider-neutral: no brand is prescribed anywhere in the brief.
+        brief.Should().NotContain("Claude");
+        brief.Should().NotContain("qwen");
+    }
+
+    [Fact]
+    public void For_InstructsTheCeoToWriteClearImperativeSelfSufficientBriefs_ThatNameCommitAndTests()
+    {
+        var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
+
+        var brief = AutopilotCeoBrief.For(plan);
+
+        // The CEO is told to write each step's brief so a light model executes it without interpreting or asking — the
+        // second half of the fix (a sharper brief lets a cheaper model succeed).
+        brief.Should().Contain("glass-clear, imperative, fully self-sufficient instruction");
+        brief.Should().Contain("committed in the worktree");
+        brief.Should().Contain("even a light model builds it rather than \"analysing\" it");
+        brief.Should().Contain("cheapest-adequate model reinforce each other");
+    }
+
+    [Fact]
     public void For_CostStrategy_TunesTheModelChoiceInstruction()
     {
         var plan = AutopilotPlan.Empty(source: null, goal: "Build a feature");
