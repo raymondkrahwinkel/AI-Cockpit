@@ -188,6 +188,21 @@ public interface ICockpitHost
     /// </summary>
     bool CanSendIntent(string targetPluginId, string action) => false;
 
+    /// <summary>
+    /// Registers an Autopilot goal/brief template this plugin contributes (AC-189) — the template equivalent of
+    /// <see cref="AddWorkflowTemplate"/>. The Autopilot plugin collects every registered template (with the host
+    /// stamping this plugin's own id as its owner, the same way <see cref="RegisterIntentHandler"/> does) into the
+    /// list an operator picks a run's brief from. Registrations live only in memory — call this from
+    /// <see cref="ICockpitPlugin.Initialize"/> on every start. Default no-op so existing <see cref="ICockpitHost"/>
+    /// implementations (test fakes, older plugin builds) keep compiling untouched — only the app's own host wires it up.
+    /// </summary>
+    void RegisterAutopilotTemplate(PluginAutopilotTemplate template)
+    {
+    }
+
+    /// <summary>The Autopilot templates every plugin has contributed — what the Autopilot plugin reads to build its template picker. Default empty.</summary>
+    IReadOnlyList<RegisteredAutopilotTemplate> RegisteredAutopilotTemplates => [];
+
     /// <summary>Opens a modal dialog over the main window hosting <paramref name="createContent"/>; the plugin owns the content control.</summary>
     Task ShowDialogAsync(string title, Func<Control> createContent, double width = 720, double height = 560);
 
