@@ -38,8 +38,15 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
         _dialogs = dialogs;
     }
 
-    /// <summary>The saved projects, in the order the manager and the launcher show them.</summary>
+    /// <summary>The saved projects in the order they are stored — what the manager lists and edits.</summary>
     public ObservableCollection<Project> Projects { get; } = [];
+
+    /// <summary>
+    /// The same projects, most recently opened first and never-opened ones after them by name — what the overview
+    /// leads with. A separate list rather than a re-sorted <see cref="Projects"/>: the manager's order is the
+    /// operator's own, and re-ordering it under them every time a session starts would be its own small chaos.
+    /// </summary>
+    public ObservableCollection<Project> RecentProjects { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
@@ -48,6 +55,30 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     public bool HasSelection => SelectedProject is not null;
 
     public bool HasProjects => Projects.Count > 0;
+
+    /// <summary>How many projects there are, for the overview's summary line.</summary>
+    public int ProjectCount => Projects.Count;
+
+    /// <summary>How many have ever been opened — the rest are set up but never started, which is worth seeing at a glance.</summary>
+    public int OpenedProjectCount => Projects.Count(project => project.LastOpenedAt is not null);
+
+    /// <summary>The project a session was last started on, or null when none ever was.</summary>
+    public Project? MostRecentProject => RecentProjects.FirstOrDefault(project => project.LastOpenedAt is not null);
+
+    /// <summary>
+    /// Records that a session just started on <paramref name="project"/>, so the overview can lead with what is
+    /// actually worked on. Persists like every other change here; a project removed in the meantime is left alone
+    /// rather than written back.
+    /// </summary>
+    public async Task MarkOpenedAsync(Project project, DateTimeOffset openedAt)
+    {
+        if (_settings.Projects.FirstOrDefault(candidate => candidate.Id == project.Id) is not { } stored)
+        {
+            return;
+        }
+
+        await _PersistAsync(_settings.WithUpdated(stored with { LastOpenedAt = openedAt }));
+    }
 
     /// <summary>Reads the saved projects. Called when Options opens, so an edit made elsewhere is reflected rather than overwritten.</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -133,8 +164,19 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             Projects.Add(project);
         }
 
+        RecentProjects.Clear();
+        foreach (var project in _settings.Projects
+            .OrderByDescending(project => project.LastOpenedAt ?? DateTimeOffset.MinValue)
+            .ThenBy(project => project.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            RecentProjects.Add(project);
+        }
+
         SelectedProject = Projects.FirstOrDefault(project => project.Id == selectedId);
         OnPropertyChanged(nameof(HasProjects));
+        OnPropertyChanged(nameof(ProjectCount));
+        OnPropertyChanged(nameof(OpenedProjectCount));
+        OnPropertyChanged(nameof(MostRecentProject));
     }
 
     partial void OnSelectedProjectChanged(Project? value)

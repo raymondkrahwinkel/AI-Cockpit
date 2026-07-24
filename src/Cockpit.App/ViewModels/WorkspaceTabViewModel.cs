@@ -24,7 +24,7 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
         icon
         ?? (workspace.Type == WorkspaceType.Dashboard ? MaterialIconKind.ViewDashboardOutline
             : workspace.Type == WorkspaceType.Sessions ? MaterialIconKind.ChatOutline
-            : workspace.Type == WorkspaceType.Launcher ? MaterialIconKind.RocketLaunchOutline
+            : workspace.Type == WorkspaceType.Projects ? MaterialIconKind.FolderMultipleOutline
             : MaterialIconKind.PuzzleOutline);
 
     /// <summary>The tab's label. Set on commit so the strip updates before the rebuilt tabs arrive from the store.</summary>

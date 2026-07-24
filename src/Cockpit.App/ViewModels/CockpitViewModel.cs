@@ -4230,6 +4230,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
         _ = Worktrees.RefreshCountAsync();
+
+        // Record that this project was worked on, whichever door the session came through, so the overview can
+        // lead with what is actually used. Fire-and-forget like the worktree count: a small config write must not
+        // hold up a session that has already started, and a failed one costs an ordering, not the work.
+        if (result.ProjectId is { Length: > 0 } projectId
+            && Projects.Projects.FirstOrDefault(project => project.Id == projectId) is { } opened)
+        {
+            _ = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
+        }
+
         return paneId;
     }
 
@@ -4452,9 +4462,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private Task OptionsAsync() => _ShowOptionsAsync(selectTab: null);
 
-    /// <summary>Opens Options straight on its Projects tab (AC-162) — the launcher's "Manage projects", which is that tab and nothing else.</summary>
+    /// <summary>Opens Options straight on its Projects tab (AC-162) — the overview's "Manage projects", which is that tab and nothing else.</summary>
     [RelayCommand]
     private Task ManageProjectsAsync() => _ShowOptionsAsync("Projects");
+
+    /// <summary>
+    /// Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
+    /// so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
+    /// </summary>
+    [RelayCommand]
+    private Task OpenProjectsWorkspaceAsync() => Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
 
     private async Task _ShowOptionsAsync(string? selectTab)
     {

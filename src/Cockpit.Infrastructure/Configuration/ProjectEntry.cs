@@ -32,6 +32,10 @@ internal sealed class ProjectEntry
 
     public string? MemoryRef { get; set; }
 
+    /// <summary>Absent for a project no session has ever started on.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? LastOpenedAt { get; set; }
+
     public static ProjectEntry FromDomain(Project project) => new()
     {
         Id = project.Id,
@@ -44,6 +48,7 @@ internal sealed class ProjectEntry
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault,
         McpOverlay = ProjectMcpOverlayEntry.FromDomain(project.McpOverlay),
         MemoryRef = project.MemoryRef,
+        LastOpenedAt = project.LastOpenedAt,
     };
 
     public Project ToDomain() => new(Id, Name)
@@ -56,5 +61,6 @@ internal sealed class ProjectEntry
         IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
         McpOverlay = McpOverlay?.ToDomain() ?? ProjectMcpOverlay.None,
         MemoryRef = MemoryRef,
+        LastOpenedAt = LastOpenedAt,
     };
 }

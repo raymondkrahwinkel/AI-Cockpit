@@ -56,6 +56,13 @@ public sealed record Project(string Id, string Name)
     /// </summary>
     public string? MemoryRef { get; init; }
 
+    /// <summary>
+    /// When a session was last started on this project, or null for one never opened. Written by the host at
+    /// launch, so the overview can lead with what the operator actually works on rather than the order the
+    /// projects happen to be stored in.
+    /// </summary>
+    public DateTimeOffset? LastOpenedAt { get; init; }
+
     /// <summary>A new project with a generated id, mirroring <c>Workspace.Create</c>.</summary>
     public static Project Create(string name) => new(Guid.NewGuid().ToString("n"), name);
 }

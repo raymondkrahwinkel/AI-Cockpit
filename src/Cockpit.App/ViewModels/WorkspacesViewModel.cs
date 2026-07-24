@@ -186,8 +186,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// <summary>True when the active workspace hosts widgets — gates the ⚙ dashboard settings and the "Add widget" affordance.</summary>
     public bool IsDashboardActive => Active?.Type == WorkspaceType.Dashboard;
 
-    /// <summary>True when the project launcher is the active workspace (AC-162) — the host draws the project cards instead of a grid.</summary>
-    public bool IsLauncherActive => Active?.Type == WorkspaceType.Launcher;
+    /// <summary>True when the projects overview is the active workspace (AC-162) — the host draws the project cards instead of a grid.</summary>
+    public bool IsProjectsActive => Active?.Type == WorkspaceType.Projects;
 
     /// <summary>
     /// True when the active workspace is a plugin-registered type: the host draws neither the session grid nor the
@@ -210,7 +210,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     [
         new("Sessions", MaterialIconKind.ChatOutline, "AI sessions and terminals", WorkspaceType.Sessions),
         new("Dashboard", MaterialIconKind.ViewDashboardOutline, "Widgets", WorkspaceType.Dashboard),
-        new("Launcher", MaterialIconKind.RocketLaunchOutline, "Pick a project and start", WorkspaceType.Launcher),
+        new("Projects", MaterialIconKind.FolderMultipleOutline, "Everything you work on, one click from starting", WorkspaceType.Projects),
         .. AvailablePluginWorkspaceTypes.Select(type =>
             new WorkspaceMenuOption(type.Title, type.IconKind ?? MaterialIconKind.PuzzleOutline, type.Description, new WorkspaceType(type.Id))),
     ];
@@ -298,13 +298,13 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(type), type)));
 
     /// <summary>
-    /// Brings the workspace of plugin type <paramref name="workspaceTypeId"/> to the front, creating one when none
-    /// is open — the programmatic entry the host exposes for a plugin that surfaces its own workspace on an intent
-    /// ("Start in Autopilot", AC-150). Mirrors <see cref="EnsureSessionWorkspace"/>: an existing one is activated in
-    /// place rather than duplicated, so repeatedly starting runs lands them on the one Autopilot desk instead of
-    /// stacking empty copies. Built-in type ids resolve to their host type, so this is only meaningfully a plugin path.
+    /// Brings the workspace of type <paramref name="workspaceTypeId"/> to the front, creating one when none is open
+    /// — the programmatic entry behind a plugin surfacing its own workspace on an intent ("Start in Autopilot",
+    /// AC-150) and behind the sidebar's way to the projects overview (AC-162). Mirrors
+    /// <see cref="EnsureSessionWorkspace"/>: an existing one is activated in place rather than duplicated, so asking
+    /// twice lands on the one desk instead of stacking empty copies.
     /// </summary>
-    public Task OpenPluginWorkspaceAsync(string workspaceTypeId)
+    public Task OpenWorkspaceAsync(string workspaceTypeId)
     {
         var type = WorkspaceType.FromId(workspaceTypeId);
         if (Active is { } active && active.Type == type)
@@ -317,8 +317,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             return _ApplyAsync(Settings.WithActive(existing.Id));
         }
 
-        // Name the tab after the plugin type's registered title ("Autopilot"), the way the "+" menu does — the
-        // WorkspaceType-based _UniqueName only knows the two host names and would label a plugin desk "Sessions".
+        // Name the tab after the plugin type's registered title ("Autopilot"), the way the "+" menu does; a host
+        // type has no registration, and its own id already reads as the title ("Projects").
         var title = _workspaceTypes?.WorkspaceTypes.FirstOrDefault(registration => registration.Id == type.Id)?.Title ?? type.Id;
         return _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(title), type)));
     }
@@ -668,7 +668,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(ShowTabStrip));
         OnPropertyChanged(nameof(IsDashboardActive));
         OnPropertyChanged(nameof(IsSessionsActive));
-        OnPropertyChanged(nameof(IsLauncherActive));
+        OnPropertyChanged(nameof(IsProjectsActive));
         OnPropertyChanged(nameof(IsPluginWorkspaceActive));
         OnPropertyChanged(nameof(ActivePluginBody));
         OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));

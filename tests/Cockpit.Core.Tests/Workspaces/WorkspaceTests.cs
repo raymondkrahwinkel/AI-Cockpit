@@ -19,11 +19,11 @@ public class WorkspaceTests
         { WorkspaceType.Dashboard, PaneKind.Widget, true },
         { WorkspaceType.Dashboard, PaneKind.AiSession, false },
         { WorkspaceType.Dashboard, PaneKind.Terminal, false },
-        // The launcher (AC-162) owns its whole surface the way a plugin type does: it starts sessions, it does
-        // not hold them.
-        { WorkspaceType.Launcher, PaneKind.AiSession, false },
-        { WorkspaceType.Launcher, PaneKind.Terminal, false },
-        { WorkspaceType.Launcher, PaneKind.Widget, false },
+        // The projects overview (AC-162) owns its whole surface the way a plugin type does: it starts sessions,
+        // it does not hold them.
+        { WorkspaceType.Projects, PaneKind.AiSession, false },
+        { WorkspaceType.Projects, PaneKind.Terminal, false },
+        { WorkspaceType.Projects, PaneKind.Widget, false },
     };
 
     [Theory]
@@ -65,14 +65,14 @@ public class WorkspaceTests
     }
 
     [Theory]
-    [InlineData("Launcher")]
-    [InlineData("launcher")]
-    public void FromId_TheLauncher_ResolvesToTheBuiltInType(string id)
+    [InlineData("Projects")]
+    [InlineData("projects")]
+    public void FromId_TheProjectsOverview_ResolvesToTheBuiltInType(string id)
     {
         var type = WorkspaceType.FromId(id);
 
-        type.Should().Be(WorkspaceType.Launcher);
-        type.IsBuiltIn.Should().BeTrue("a saved launcher workspace must not come back as an unknown plugin type");
+        type.Should().Be(WorkspaceType.Projects);
+        type.IsBuiltIn.Should().BeTrue("a saved projects workspace must not come back as an unknown plugin type");
     }
 
     [Fact]

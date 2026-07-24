@@ -99,6 +99,42 @@ public class CockpitViewModelProjectStartTests
     }
 
     [Fact]
+    public async Task StartingASession_RecordsThatTheProjectWasWorkedOn()
+    {
+        var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [project] });
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var projects = new ProjectsViewModel(store, dialogs);
+        await projects.LoadAsync();
+
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([new SessionProfile("work", new ClaudeConfig(@"C:\fake\.claude"))]);
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
+        var vm = NewVm(dialogs, projects, new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>()));
+
+        await vm.StartProjectSessionCommand.ExecuteAsync(project);
+
+        // Recorded wherever the session came from, so the overview leads with what is actually used rather than
+        // the order the projects happen to be stored in.
+        await store.Received().SaveAsync(
+            Arg.Is<ProjectSettings>(settings => settings.Projects[0].LastOpenedAt != null),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OpenProjectsWorkspace_BringsUpTheOverview()
+    {
+        var vm = NewVm(Substitute.For<ISessionDialogService>());
+
+        await vm.OpenProjectsWorkspaceCommand.ExecuteAsync(null);
+
+        vm.Workspaces.IsProjectsActive.Should().BeTrue();
+        vm.Workspaces.Active!.Name.Should().Be("Projects");
+    }
+
+    [Fact]
     public async Task ManageProjects_OpensOptionsOnTheProjectsTab()
     {
         var dialogs = Substitute.For<ISessionDialogService>();

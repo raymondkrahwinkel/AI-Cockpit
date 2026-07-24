@@ -2,7 +2,7 @@ namespace Cockpit.Core.Workspaces;
 
 /// <summary>
 /// What a workspace hosts. Three host types ship built in — <see cref="Sessions"/>, <see cref="Dashboard"/> and
-/// <see cref="Launcher"/> — and a plugin can register its own (<c>ICockpitHost.AddWorkspaceType</c>), each identified by a stable,
+/// <see cref="Projects"/> — and a plugin can register its own (<c>ICockpitHost.AddWorkspaceType</c>), each identified by a stable,
 /// namespaced <see cref="Id"/>. A host type gates which <see cref="PaneKind"/>s may live in it, its "+"
 /// affordance and its empty state; a plugin type owns its whole body instead and holds no grid panes. The type
 /// is an invariant, fixed when the workspace is created.
@@ -23,13 +23,14 @@ public readonly record struct WorkspaceType(string Id)
     public static WorkspaceType Dashboard { get; } = new("Dashboard");
 
     /// <summary>
-    /// Hosts the project launcher (AC-162): the projects as cards, each one Start away. Holds no panes of its
-    /// own — like a plugin type it owns its whole surface, but built in, because what it starts is the host's.
+    /// Hosts the projects overview (AC-162): what there is to work on, as cards each one Start away, with adding
+    /// and editing alongside. Holds no panes of its own — like a plugin type it owns its whole surface, but built
+    /// in, because what it starts is the host's.
     /// </summary>
-    public static WorkspaceType Launcher { get; } = new("Launcher");
+    public static WorkspaceType Projects { get; } = new("Projects");
 
     /// <summary>Whether this is one of the built-in host types rather than a plugin-registered one.</summary>
-    public bool IsBuiltIn => this == Sessions || this == Dashboard || this == Launcher;
+    public bool IsBuiltIn => this == Sessions || this == Dashboard || this == Projects;
 
     /// <summary>
     /// The type for <paramref name="id"/>: one of the host types when it names one (case-insensitively, as
@@ -53,6 +54,6 @@ public readonly record struct WorkspaceType(string Id)
             return Dashboard;
         }
 
-        return string.Equals(id, Launcher.Id, StringComparison.OrdinalIgnoreCase) ? Launcher : new WorkspaceType(id);
+        return string.Equals(id, Projects.Id, StringComparison.OrdinalIgnoreCase) ? Projects : new WorkspaceType(id);
     }
 }

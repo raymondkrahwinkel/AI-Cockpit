@@ -37,11 +37,15 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   optional instructions for how to behave on that work, so a second codebase no longer means a second nearly
   identical profile. Manage them in Options → Projects.
 - added: starting a session from a project — a Projects section in the sidebar whose ▶ starts one on the project's
-  own defaults without a dialog, a right-click menu for the slower routes (a pre-filled New-session dialog, the
-  project's folder, its settings), and a Launcher workspace ("What do you want to work on?") that shows the projects
-  as cards with a single Start on each. Pick a project at the top of the New-session dialog to fill folder, profile,
+  own defaults without a dialog, and a right-click menu for the slower routes (a pre-filled New-session dialog, the
+  project's folder, its settings). Pick a project at the top of the New-session dialog to fill folder, profile,
   worktree choice and MCP selection in one go; every field stays changeable, and the dialog is unchanged for anyone
   with no projects.
+- added: a Projects workspace — "What do you want to work on?" over your projects as cards, most recently worked on
+  first, each showing what it is, when you last opened it and one Start button, with Open folder, Edit and a
+  new-project button alongside. Above them: how many projects there are, how many you have actually worked on, and
+  how many sessions are open. Reachable from the Projects section in the sidebar, or as a workspace you add
+  yourself. Built for someone who would rather not know what a profile or an MCP server is.
 - added: standing instructions per profile — who a session is and where its memory lives — appended to whatever the
   provider's own system prompt says, with a project's instructions added under them when a session starts on one.
   Both apply; the more specific one is read last.

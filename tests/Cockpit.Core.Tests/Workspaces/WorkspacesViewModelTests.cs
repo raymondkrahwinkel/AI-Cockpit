@@ -95,7 +95,7 @@ public class WorkspacesViewModelTests
         // "Autopilot", not "Sessions" — the WorkspaceType-based naming only knows the two host names.
         var viewModel = _CreateWithPluginType(out _);
 
-        await viewModel.OpenPluginWorkspaceAsync("workspace.autopilot");
+        await viewModel.OpenWorkspaceAsync("workspace.autopilot");
 
         viewModel.Active!.Type.Id.Should().Be("workspace.autopilot");
         viewModel.Active!.Name.Should().Be("Autopilot");
@@ -105,10 +105,10 @@ public class WorkspacesViewModelTests
     public async Task OpenPluginWorkspace_Twice_ActivatesTheExistingOne_RatherThanStackingASecond()
     {
         var viewModel = _CreateWithPluginType(out _);
-        await viewModel.OpenPluginWorkspaceAsync("workspace.autopilot");
+        await viewModel.OpenWorkspaceAsync("workspace.autopilot");
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        await viewModel.OpenPluginWorkspaceAsync("workspace.autopilot");
+        await viewModel.OpenWorkspaceAsync("workspace.autopilot");
 
         viewModel.Settings.Workspaces.Count(workspace => workspace.Type.Id == "workspace.autopilot").Should().Be(1);
         viewModel.Active!.Type.Id.Should().Be("workspace.autopilot");
@@ -196,37 +196,37 @@ public class WorkspacesViewModelTests
     }
 
     [Fact]
-    public async Task IsLauncherActive_TracksTheActiveWorkspacesType_SoTheProjectCardsCanGateOnIt()
+    public async Task IsProjectsActive_TracksTheActiveWorkspacesType_SoTheProjectCardsCanGateOnIt()
     {
         var viewModel = _Create(out _);
-        viewModel.IsLauncherActive.Should().BeFalse();
+        viewModel.IsProjectsActive.Should().BeFalse();
 
-        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Launcher);
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Projects);
 
-        viewModel.IsLauncherActive.Should().BeTrue();
-        viewModel.IsSessionsActive.Should().BeFalse("the grid and the launcher share the content area");
-        viewModel.IsPluginWorkspaceActive.Should().BeFalse("the launcher is the host's own surface, not a plugin's");
+        viewModel.IsProjectsActive.Should().BeTrue();
+        viewModel.IsSessionsActive.Should().BeFalse("the grid and the overview share the content area");
+        viewModel.IsPluginWorkspaceActive.Should().BeFalse("the overview is the host's own surface, not a plugin's");
     }
 
     [Fact]
     public async Task AddWorkspace_NamesTheTabAfterItsType()
     {
         // The name used to be picked from a two-way check that called everything-but-Dashboard "Sessions", so a
-        // launcher arrived as a tab named "Sessions" carrying a rocket.
+        // projects overview arrived as a tab named "Sessions" carrying another type's icon.
         var viewModel = _Create(out _);
 
-        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Launcher);
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Projects);
 
-        viewModel.Active!.Name.Should().Be("Launcher");
+        viewModel.Active!.Name.Should().Be("Projects");
     }
 
     [Fact]
-    public void WorkspaceMenuOptions_OfferTheLauncherBesideTheOtherHostTypes()
+    public void WorkspaceMenuOptions_OfferTheProjectsOverviewBesideTheOtherHostTypes()
     {
         var viewModel = _Create(out _);
 
         viewModel.WorkspaceMenuOptions.Select(option => option.Type)
-            .Should().Contain(WorkspaceType.Launcher);
+            .Should().Contain(WorkspaceType.Projects);
     }
 
     [Fact]
