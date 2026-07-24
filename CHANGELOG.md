@@ -43,6 +43,8 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   runs on by itself, and a waiting resume says so on the session until it fires or you cancel it. A resume whose
   moment passed while the cockpit was closed is reported rather than fired hours late, and one whose session has
   since been closed is reported too rather than sent somewhere it does not belong.
+- changed: the bundled Claude provider needs this version of AI-Cockpit — it reports what a session is running out
+  of through host abstractions that older builds do not have.
 
 - added: projects — a reusable answer to what a session works on. A project holds a folder (picked or cloned), the
   profile its sessions run under, whether they are isolated in a git worktree, which MCP servers they get, and

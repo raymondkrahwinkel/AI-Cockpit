@@ -8,7 +8,14 @@
        nightly passes a prerelease suffix plus the commit it was built from, so "which nightly is this?" has an
        answer that does not depend on release notes. -->
   <PropertyGroup>
-    <!-- 0.6.0: the Autopilot live-run release — new host-provided functionality the plugins consume: a run's own
+    <!-- 0.7.0: usage signals (AC-229) — new host-provided functionality the plugins consume: a provider declares
+         what its sessions can run out of and how full is worth mentioning (PluginUsageSignal / PluginUsageSignalKind
+         / PluginUsageReading, on TtyProviderRegistration.UsageSignals and SessionProviderRegistration.UsageSignals),
+         and a TTY provider reads its own statusline snapshot for the host to poll (TtyProviderRegistration.ReadUsage).
+         A plugin that uses any of these sets minHostVersion 0.7.0 — an older host has no such members, so a plugin
+         compiled against them loads and then fails on the first call. Minor because it is additive host
+         functionality, not a break; still 0.x.
+         0.6.0: the Autopilot live-run release — new host-provided functionality the plugins consume: a run's own
          control tools pre-authorized so a self-driving step does not stall on its own permission prompt, and the
          "worktree is the boundary" all-tools auto-approval an autonomous isolated run opts into (EmbeddedSessionRequest.
          PreApprovedTools / PreApproveAllTools honoured by the host's permission handler, AC-215); the embedded-session
@@ -28,7 +35,7 @@
          credentials. Deliberately still 0.x — under 1.0.0 semver promises nothing, which is the honest state of a
          thing whose plugin contract is still moving. 1.0.0 is a promise to keep, not a compliment to pay yourself,
          and it is what switches on the minHostVersion gate (PluginLoadPolicy). -->
-    <VersionPrefix>0.6.0</VersionPrefix>
+    <VersionPrefix>0.7.0</VersionPrefix>
 
     <Authors>Raymond Krahwinkel</Authors>
     <Company>Krahwinkel-IT</Company>
