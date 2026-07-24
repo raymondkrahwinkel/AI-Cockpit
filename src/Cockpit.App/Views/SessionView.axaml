@@ -18,7 +18,10 @@
 
     <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
     <Grid>
-    <DockPanel Margin="12">
+    <!-- Tight against the pane's own border on purpose: the pane already draws a frame and sits in a 4px grid
+         gutter, so a wide inset here was a second margin inside the first — space the transcript and the composer
+         can use better than the background can. -->
+    <DockPanel Margin="6,6,6,8">
 
         <!-- Compact one-row session header (AC-37): the shared SessionHeaderBar (identity · activity · cwd · branch
              · token meter · usage pill) flexes, and this view's live controls dock right. The session is started

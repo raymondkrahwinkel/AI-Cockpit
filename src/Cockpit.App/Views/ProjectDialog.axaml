@@ -9,7 +9,7 @@
         x:Class="Cockpit.App.Views.ProjectDialog"
         x:DataType="vm:ProjectDialogViewModel"
         Title="Project"
-        Width="780" Height="720" MinWidth="620" MinHeight="480"
+        Width="900" Height="760" MinWidth="700" MinHeight="520"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -73,13 +73,24 @@
                  scroller leaves its padding out of what it measures, so the bottom rows could not scroll clear of
                  the footer and a row was measured 18px wider than the window it had to fit — which is how a long
                  path pushed the buttons beside it off the edge. -->
-            <StackPanel Spacing="18" Margin="18,16,18,44">
+            <StackPanel Spacing="22" Margin="28,22,28,48">
 
-                <StackPanel Spacing="2">
-                    <TextBlock Classes="FieldLabel" Text="Name *"/>
-                    <TextBlock Classes="FieldHint" Text="What you call this project."/>
-                    <TextBox Text="{Binding Name}" PlaceholderText="Invoices"/>
-                </StackPanel>
+                <!-- Paired across the dialog rather than stacked down it: each of these is one short control, and
+                     alone on a row it left the other half of the width empty and pushed everything below further
+                     out of sight. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="22">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Name *"/>
+                        <TextBlock Classes="FieldHint" Text="What you call this project."/>
+                        <TextBox Text="{Binding Name}" PlaceholderText="Invoices"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Profile"/>
+                        <TextBlock Classes="FieldHint" Text="Which profile starts by default. The project uses a profile — it does not replace one."/>
+                        <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
+                                  HorizontalAlignment="Stretch" PlaceholderText="Leave the dialog's own choice"/>
+                    </StackPanel>
+                </Grid>
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Logo"/>
@@ -131,12 +142,6 @@
                     </Grid>
                 </StackPanel>
 
-                <StackPanel Spacing="2">
-                    <TextBlock Classes="FieldLabel" Text="Profile"/>
-                    <TextBlock Classes="FieldHint" Text="Which profile starts by default. The project uses a profile — it does not replace one."/>
-                    <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
-                              HorizontalAlignment="Stretch" PlaceholderText="Leave the dialog's own choice"/>
-                </StackPanel>
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Behaviour"/>
