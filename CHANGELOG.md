@@ -42,10 +42,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   worktree choice and MCP selection in one go; every field stays changeable, and the dialog is unchanged for anyone
   with no projects.
 - added: a Projects workspace — "What do you want to work on?" over your projects as cards, most recently worked on
-  first, each showing what it is, when you last opened it and one Start button, with Open folder, Edit and a
-  new-project button alongside. Above them: how many projects there are, how many you have actually worked on, and
-  how many sessions are open. Reachable from the Projects section in the sidebar, or as a workspace you add
-  yourself. Built for someone who would rather not know what a profile or an MCP server is.
+  first, each showing its logo, what it is, when you last opened it and one Start button, with Open folder, Edit and
+  a new-project button alongside. Above them: how many projects there are, how many you have actually worked on, and
+  how many sessions are open. It is always there, as its own tab, and cannot be closed or opened twice. Built for
+  someone who would rather not know what a profile or an MCP server is.
+- added: a logo per project, from a file or a link. The cockpit keeps a copy of its own, so moving or renaming the
+  original does not lose it, and the card shows the project's initial while it has none.
 - added: standing instructions per profile — who a session is and where its memory lives — appended to whatever the
   provider's own system prompt says, with a project's instructions added under them when a session starts on one.
   Both apply; the more specific one is read last.

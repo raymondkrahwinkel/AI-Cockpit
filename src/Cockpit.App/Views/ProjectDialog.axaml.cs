@@ -30,6 +30,32 @@ public partial class ProjectDialog : Window
 
         viewModel.CloseRequested += project => Close(project);
         viewModel.BrowseRequested += () => _ = _BrowseForFolderAsync(viewModel);
+        viewModel.PickLogoRequested += () => _ = _PickLogoAsync(viewModel);
+    }
+
+    // The picked file's path lands in LogoSource; the manager takes the copy when the project is saved, so a
+    // cancelled dialog leaves the operator's pictures and the stored one alone.
+    private async Task _PickLogoAsync(ProjectDialogViewModel viewModel)
+    {
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Choose the project's logo",
+                AllowMultiple = false,
+                FileTypeFilter = [FilePickerFileTypes.ImageAll],
+            });
+
+            if (files.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+            {
+                viewModel.LogoSource = path;
+            }
+        }
+        catch
+        {
+            // No picker on this platform, or the operator's file manager refused. The field takes a path or a URL
+            // typed by hand, so the flow is not lost.
+        }
     }
 
     // Pre-seeded with the current value so re-browsing opens where the project already points. A failed or

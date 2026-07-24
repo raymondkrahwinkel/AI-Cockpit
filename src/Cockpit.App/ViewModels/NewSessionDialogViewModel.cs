@@ -528,9 +528,9 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// (Re)builds the MCP checklist for the selected project (AC-163). Rebuilt rather than merely re-ticked on a
-    /// project switch, because a project's overlay changes which servers exist at all — its own servers appear and
-    /// the ones it turned off are gone, which a tick cannot express.
+    /// (Re)builds the MCP checklist for the selected project (AC-163). Rebuilt rather than merely re-ticked,
+    /// because a project can bring servers of its own — but it never takes one away: every server the registry
+    /// offers stays listed whichever project is picked, and the project's choice shows as the ticks.
     /// </summary>
     private async Task _PopulateMcpServersAsync()
     {
@@ -631,17 +631,33 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
+        // A project's choice beats the profile's (Raymond, 2026-07-24): where a project says which servers it works
+        // with, that is the answer, and the profile's saved selection is what a session started without one gets.
+        if (SelectedProject is { } project)
+        {
+            _ApplyMcpSelection(server => project.McpOverlay.IsSelectedByDefault(server.Name));
+            return;
+        }
+
         var restriction = SelectedProfile?.EnabledMcpServerNames is { } names
             ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
             : null;
 
-        // Guard so the re-ticking below does not trip the toggle handler into marking the checklist operator-touched.
+        _ApplyMcpSelection(server => restriction?.Contains(server.Name) ?? true);
+    }
+
+    /// <summary>
+    /// Ticks the checklist by <paramref name="isSelected"/>, guarded so the re-ticking is not mistaken for the
+    /// operator editing it — which would freeze the checklist against the next project or profile switch.
+    /// </summary>
+    private void _ApplyMcpSelection(Func<McpServerSelectionItemViewModel, bool> isSelected)
+    {
         _applyingMcpSelection = true;
         try
         {
             foreach (var server in McpServers)
             {
-                server.IsEnabledForSession = restriction?.Contains(server.Name) ?? true;
+                server.IsEnabledForSession = isSelected(server);
             }
         }
         finally

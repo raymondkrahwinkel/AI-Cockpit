@@ -17,6 +17,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 {
     private readonly IProjectStore _store;
 
+    /// <summary>Takes the cockpit's own copy of a picked or downloaded logo. Null under the previewer, where a project keeps whatever path it was given.</summary>
+    private readonly IProjectLogoStore? _logos;
+
     /// <summary>Null only under the previewer, which has no window to open a dialog over; every command that needs one is inert there.</summary>
     private readonly ISessionDialogService? _dialogs;
 
@@ -32,10 +35,11 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     {
     }
 
-    public ProjectsViewModel(IProjectStore store, ISessionDialogService? dialogs)
+    public ProjectsViewModel(IProjectStore store, ISessionDialogService? dialogs, IProjectLogoStore? logos = null)
     {
         _store = store;
         _dialogs = dialogs;
+        _logos = logos;
     }
 
     /// <summary>The saved projects in the order they are stored — what the manager lists and edits.</summary>
@@ -97,8 +101,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (await _dialogs.ShowProjectDialogAsync(null) is { } created)
         {
-            await _PersistAsync(_settings.WithProject(created));
-            SelectedProject = Projects.FirstOrDefault(project => project.Id == created.Id);
+            var stored = await _WithStoredLogoAsync(created);
+            await _PersistAsync(_settings.WithProject(stored));
+            SelectedProject = Projects.FirstOrDefault(project => project.Id == stored.Id);
         }
     }
 
@@ -120,8 +125,9 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (await _dialogs.ShowProjectDialogAsync(project) is { } edited)
         {
-            await _PersistAsync(_settings.WithUpdated(edited));
-            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == edited.Id);
+            var stored = await _WithStoredLogoAsync(edited);
+            await _PersistAsync(_settings.WithUpdated(stored));
+            SelectedProject = Projects.FirstOrDefault(candidate => candidate.Id == stored.Id);
         }
     }
 
@@ -143,8 +149,37 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
 
         if (confirmed)
         {
+            _logos?.Remove(project.Id);
             await _PersistAsync(_settings.WithoutProject(project.Id));
         }
+    }
+
+    /// <summary>
+    /// <paramref name="project"/> with its logo as a copy the cockpit owns. The editor hands back whatever the
+    /// operator pointed at — a file, a URL, or the path of the copy already stored; this turns the first two into
+    /// a copy, leaves the third alone, and drops the stored one when the field was cleared. A source that cannot be
+    /// read costs the picture and not the save: a project is not worth less for a logo that would not load.
+    /// </summary>
+    private async Task<Project> _WithStoredLogoAsync(Project project)
+    {
+        if (_logos is null)
+        {
+            return project;
+        }
+
+        if (project.LogoPath is not { Length: > 0 } source)
+        {
+            _logos.Remove(project.Id);
+            return project with { LogoPath = null };
+        }
+
+        // Already the copy: re-storing it would read the file the cockpit is about to overwrite.
+        if (_logos.IsStoredCopy(source))
+        {
+            return project;
+        }
+
+        return project with { LogoPath = await _logos.SaveAsync(project.Id, source) };
     }
 
     private async Task _PersistAsync(ProjectSettings settings)

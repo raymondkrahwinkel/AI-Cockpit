@@ -391,12 +391,18 @@
                                             <MenuItem Header="Edit project" Click="OnEditProject"/>
                                         </ContextMenu>
                                     </Border.ContextMenu>
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
+                                        <Border Grid.Column="0" Width="16" Height="16" CornerRadius="4"
+                                                ClipToBounds="True" VerticalAlignment="Center"
+                                                IsVisible="{Binding LogoPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                            <Image Source="{Binding LogoPath, Converter={x:Static conv:ProjectLogoConverter.Instance}}"
+                                                   Stretch="UniformToFill"/>
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"/>
                                         <!-- Hover-revealed quick start, mirroring the session rows' hover ✕. -->
-                                        <Button Grid.Column="1" Classes="Subtle startProject"
+                                        <Button Grid.Column="2" Classes="Subtle startProject"
                                                 Padding="4,0" VerticalAlignment="Center"
                                                 Foreground="{StaticResource CockpitAccentBrush}"
                                                 Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
@@ -935,8 +941,27 @@
                                         Background="{StaticResource CockpitPanelBgBrush}"
                                         BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
                                     <StackPanel Spacing="10">
-                                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
-                                                   TextTrimming="CharacterEllipsis"/>
+                                        <!-- The logo carries the recognition: a colleague finds their project by its
+                                             picture before they have read a word. Without one the well shows the
+                                             project's initial, so every card is the same shape either way. -->
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                            <Border Grid.Column="0" Width="34" Height="34" CornerRadius="8"
+                                                    ClipToBounds="True"
+                                                    Background="{StaticResource CockpitSecondaryBgBrush}"
+                                                    BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                                <Panel>
+                                                    <TextBlock Text="{Binding Name, Converter={x:Static conv:ProjectInitialConverter.Instance}}"
+                                                               FontSize="15" FontWeight="SemiBold"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                    <Image Source="{Binding LogoPath, Converter={x:Static conv:ProjectLogoConverter.Instance}}"
+                                                           Stretch="UniformToFill"/>
+                                                </Panel>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
                                         <!-- The description carries the card: it is what a colleague reads to know
                                              which one is theirs. MinHeight keeps a card without one the same size
                                              as its neighbours, so the row of buttons stays on one line. -->

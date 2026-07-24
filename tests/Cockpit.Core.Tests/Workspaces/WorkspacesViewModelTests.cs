@@ -32,26 +32,28 @@ public class WorkspacesViewModelTests
     }
 
     [Fact]
-    public async Task DeletingOneOfTwo_LeavesTheOtherVisible_RatherThanHidingTheWholeStrip()
+    public async Task DeletingOneOfThree_LeavesTheOthersVisible_RatherThanHidingTheWholeStrip()
     {
+        // Default already ships two tabs (Sessions plus the fixed overview); adding a third and closing it
+        // again must land back on those two, not on one.
         var viewModel = _Create(out _);
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
         var dashboard = viewModel.Active!;
 
         await viewModel.CloseWorkspaceCommand.ExecuteAsync(dashboard.Id);
 
-        viewModel.Tabs.Should().ContainSingle();
-        viewModel.ShowTabStrip.Should().BeTrue("the survivor must stay on screen — otherwise one deletion reads as two");
+        viewModel.Tabs.Should().HaveCount(2);
+        viewModel.ShowTabStrip.Should().BeTrue("the survivors must stay on screen — otherwise one deletion reads as more");
     }
 
     [Fact]
-    public async Task AddingASecondWorkspace_ShowsBothTabs()
+    public async Task AddingAWorkspace_AddsATabBesideTheDefaultTwo()
     {
         var viewModel = _Create(out _);
 
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
-        viewModel.Tabs.Should().HaveCount(2);
+        viewModel.Tabs.Should().HaveCount(3, "Sessions and the fixed overview were already there");
     }
 
     [Fact]
@@ -79,8 +81,8 @@ public class WorkspacesViewModelTests
         // A session started onto a dashboard would run invisibly, which is worse than not starting it.
         var viewModel = _Create(out _);
         await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
-        await viewModel.CloseWorkspaceCommand.ExecuteAsync(viewModel.Settings.Workspaces[0].Id);
-        viewModel.Settings.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Dashboard);
+        await viewModel.CloseWorkspaceCommand.ExecuteAsync(viewModel.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Id);
+        viewModel.Settings.Workspaces.Should().NotContain(workspace => workspace.Type == WorkspaceType.Sessions);
 
         var created = viewModel.EnsureSessionWorkspace();
 
@@ -177,7 +179,13 @@ public class WorkspacesViewModelTests
     [Fact]
     public async Task SwitchingWithOneWorkspace_DoesNotPersist_SinceNothingChanged()
     {
-        var viewModel = _Create(out var store);
+        // Default itself always carries the fixed overview beside Sessions, so a genuinely single-workspace
+        // cockpit only exists when the store held one before the overview became a fixture.
+        var store = Substitute.For<IWorkspaceSettingsStore>();
+        var only = Workspace.Create("A", WorkspaceType.Sessions);
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new WorkspaceSettings { Workspaces = [only], ActiveWorkspaceId = only.Id });
+        var viewModel = new WorkspacesViewModel(store);
+        await viewModel.InitializeAsync();
 
         await viewModel.SelectNextWorkspaceCommand.ExecuteAsync(null);
 
@@ -198,10 +206,12 @@ public class WorkspacesViewModelTests
     [Fact]
     public async Task IsProjectsActive_TracksTheActiveWorkspacesType_SoTheProjectCardsCanGateOnIt()
     {
+        // The overview is a fixture that Default already carries, not something AddWorkspaceCommand can add a
+        // second of — OpenWorkspaceAsync is how the sidebar (AC-162) brings the existing one to the front.
         var viewModel = _Create(out _);
         viewModel.IsProjectsActive.Should().BeFalse();
 
-        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Projects);
+        await viewModel.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
 
         viewModel.IsProjectsActive.Should().BeTrue();
         viewModel.IsSessionsActive.Should().BeFalse("the grid and the overview share the content area");
@@ -209,24 +219,26 @@ public class WorkspacesViewModelTests
     }
 
     [Fact]
-    public async Task AddWorkspace_NamesTheTabAfterItsType()
+    public void DefaultProjectsOverview_IsNamedProjects_NotSessions()
     {
         // The name used to be picked from a two-way check that called everything-but-Dashboard "Sessions", so a
-        // projects overview arrived as a tab named "Sessions" carrying another type's icon.
+        // projects overview arrived as a tab named "Sessions" carrying another type's icon. The overview is a
+        // fixture now rather than something AddWorkspaceCommand can add a second of, so this checks the naming
+        // on the one Default ships.
         var viewModel = _Create(out _);
 
-        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Projects);
-
-        viewModel.Active!.Name.Should().Be("Projects");
+        viewModel.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Projects).Name.Should().Be("Projects");
     }
 
     [Fact]
-    public void WorkspaceMenuOptions_OfferTheProjectsOverviewBesideTheOtherHostTypes()
+    public void WorkspaceMenuOptions_DoNotOfferTheProjectsOverview_SinceItIsAlwaysOpenAndCannotBeAddedASecondTime()
     {
         var viewModel = _Create(out _);
+        var offered = viewModel.WorkspaceMenuOptions.Select(option => option.Type).ToList();
 
-        viewModel.WorkspaceMenuOptions.Select(option => option.Type)
-            .Should().Contain(WorkspaceType.Projects);
+        offered.Should().Contain(WorkspaceType.Sessions);
+        offered.Should().Contain(WorkspaceType.Dashboard);
+        offered.Should().NotContain(WorkspaceType.Projects);
     }
 
     [Fact]
@@ -342,7 +354,7 @@ public class WorkspacesViewModelTests
 
         await viewModel.InitializeAsync();
 
-        viewModel.Tabs.Should().HaveCount(2);
+        viewModel.Tabs.Should().HaveCount(3, "Sessions and the fixed overview, plus the saved dashboard");
         viewModel.Active!.Name.Should().Be("Monitoring");
     }
 
@@ -443,7 +455,7 @@ public class WorkspacesViewModelTests
         var act = async () => await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Dashboard);
 
         await act.Should().NotThrowAsync();
-        viewModel.Tabs.Should().HaveCount(2, "what the operator did is still on screen");
+        viewModel.Tabs.Should().HaveCount(3, "what the operator did is still on screen, beside Sessions and the fixed overview");
     }
 
     [Fact]
@@ -454,7 +466,7 @@ public class WorkspacesViewModelTests
         var import = await viewModel.ImportDashboardAsync(_ExportJson("{\"ShowCpu\":true}"));
 
         import.Should().NotBeNull();
-        viewModel.Tabs.Should().HaveCount(2);
+        viewModel.Tabs.Should().HaveCount(3, "Sessions and the fixed overview, plus the imported dashboard");
         viewModel.Active!.Name.Should().Be("Monitoring");
         viewModel.Active.Panes.Should().ContainSingle().Which.WidgetId.Should().Be("w");
     }
@@ -473,8 +485,8 @@ public class WorkspacesViewModelTests
         var import = await viewModel.ImportDashboardAsync(_ExportJson("{not json at all"));
 
         import.Should().BeNull();
-        viewModel.Tabs.Should().ContainSingle("a file that cannot be read must not leave a dashboard behind");
-        viewModel.Settings.Workspaces.Should().ContainSingle();
+        viewModel.Tabs.Should().HaveCount(2, "Sessions and the fixed overview — a file that cannot be read must not leave a dashboard behind");
+        viewModel.Settings.Workspaces.Should().HaveCount(2);
     }
 
     /// <summary>A dashboard export carrying one widget of type "w", whose only setting holds <paramref name="configValue"/> verbatim.</summary>

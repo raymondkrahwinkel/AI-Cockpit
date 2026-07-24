@@ -210,7 +210,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     [
         new("Sessions", MaterialIconKind.ChatOutline, "AI sessions and terminals", WorkspaceType.Sessions),
         new("Dashboard", MaterialIconKind.ViewDashboardOutline, "Widgets", WorkspaceType.Dashboard),
-        new("Projects", MaterialIconKind.FolderMultipleOutline, "Everything you work on, one click from starting", WorkspaceType.Projects),
+        // The projects overview is deliberately absent: it is always open and cannot be added a second time, so
+        // offering it here would be a menu entry whose only possible outcome is nothing happening.
         .. AvailablePluginWorkspaceTypes.Select(type =>
             new WorkspaceMenuOption(type.Title, type.IconKind ?? MaterialIconKind.PuzzleOutline, type.Description, new WorkspaceType(type.Id))),
     ];
@@ -330,7 +331,12 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// than either.
     /// </summary>
     public bool CanClose(string workspaceId) =>
-        Settings.Workspaces.Count > 1 && Settings.Workspaces.Any(workspace => workspace.Id == workspaceId);
+        Settings.Workspaces.Count > 1
+        && Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is { } workspace
+        // The projects overview is a fixture: always there, exactly once, never closed. Answering false here is
+        // what greys its ✕ and its menu entry; WorkspaceSettings refuses the removal itself, so a caller that
+        // does not ask still cannot take it away.
+        && workspace.Type != WorkspaceType.Projects;
 
     [RelayCommand]
     private Task CloseWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithoutWorkspace(workspaceId));

@@ -60,7 +60,7 @@ public sealed class ProjectQuickStart(
             SessionOptionCatalog.DefaultModel,
             SessionOptionCatalog.DefaultEffort,
             project.Name,
-            await _TickedServerNamesAsync(project, defaults, cancellationToken).ConfigureAwait(true),
+            await _TickedServerNamesAsync(project, cancellationToken).ConfigureAwait(true),
             defaults.WorkingDirectory,
             // A provider's own declared start defaults, saved on the profile — the same values the dialog's option
             // rows open on. Only ever for the kind actually starting: the two vocabularies never both apply.
@@ -73,29 +73,22 @@ public sealed class ProjectQuickStart(
     }
 
     /// <summary>
-    /// The servers this session opens with ticked: the ones the project's catalog offers, narrowed to the profile's
-    /// saved selection where it has one.
+    /// The servers this session opens with ticked: everything the checklist would have offered, minus the ones the
+    /// project switched off. The project's choice, not the profile's — a project says which servers it works with,
+    /// and that is the answer wherever it has one (Raymond, 2026-07-24).
     /// </summary>
     /// <remarks>
     /// Always an explicit set, empty included, and never <see langword="null"/> — which downstream reads as "this
-    /// launch made no selection" and answers by falling back to the profile's saved one over the <em>unscoped</em>
-    /// registry. For a project that is the wrong answer: a project whose overlay leaves nothing to offer means this
-    /// session gets nothing, and saying null there would hand it every server the project had just switched off.
+    /// launch made no selection" and answers by falling back to the profile's saved one. That would quietly put the
+    /// profile back in charge of a session started from a project.
     /// </remarks>
-    private async Task<IReadOnlySet<string>> _TickedServerNamesAsync(
-        Project project,
-        SessionStartDefaults defaults,
-        CancellationToken cancellationToken)
+    private async Task<IReadOnlySet<string>> _TickedServerNamesAsync(Project project, CancellationToken cancellationToken)
     {
         var catalog = await mcpServers.GetServersForProjectAsync(project.Id, cancellationToken).ConfigureAwait(true);
-        var offered = McpServerRegistryFilter.OfferedToOperator(catalog).Select(server => server.Name);
 
-        if (defaults.EnabledMcpServerNames is not { } restriction)
-        {
-            return offered.ToHashSet(StringComparer.Ordinal);
-        }
-
-        var selected = new HashSet<string>(restriction, StringComparer.OrdinalIgnoreCase);
-        return offered.Where(selected.Contains).ToHashSet(StringComparer.Ordinal);
+        return McpServerRegistryFilter.OfferedToOperator(catalog)
+            .Where(server => project.McpOverlay.IsSelectedByDefault(server.Name))
+            .Select(server => server.Name)
+            .ToHashSet(StringComparer.Ordinal);
     }
 }

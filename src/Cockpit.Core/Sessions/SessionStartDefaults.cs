@@ -17,7 +17,11 @@ namespace Cockpit.Core.Sessions;
 /// <param name="WorkingDirectory">The folder to start in; null/blank leaves the caller on its own default.</param>
 /// <param name="IsolateInWorktree">Whether to isolate in a git worktree (AC-85) when the folder is a repository. Still a per-session choice — this only pre-selects it.</param>
 /// <param name="ProfileLabel">The profile to preselect, by label; null leaves the dialog's own selection alone.</param>
-/// <param name="EnabledMcpServerNames">Which servers open ticked; null means no restriction (every offered server).</param>
+/// <param name="EnabledMcpServerNames">
+/// Which servers open ticked for a session started <em>without</em> a project — the profile's saved selection, or
+/// null for no restriction. A project answers this itself (<see cref="ProjectMcpOverlay.IsSelectedByDefault"/>) and
+/// its answer wins, so this is the fallback rather than the resolved value.
+/// </param>
 /// <param name="SystemPrompt">
 /// The standing instructions to append to the provider's own system prompt: the profile's identity first
 /// (AC-142), then what the project asks of it. Null when neither has anything to say.
@@ -35,11 +39,10 @@ public sealed record SessionStartDefaults(
     /// </summary>
     /// <param name="globalWorkingDirectory">The configured app-wide working directory, used when neither the project nor the profile names one.</param>
     /// <remarks>
-    /// The MCP selection is the profile's on purpose, and it is not a gap in "the project wins". The two answer
-    /// different questions: the project's <see cref="ProjectMcpOverlay"/> decides which servers <em>exist</em> for
-    /// its sessions, while this list decides which of the offered ones open <em>ticked</em>. A name the overlay
-    /// removed simply is not offered, so the project still has the last word without owning a second list that
-    /// could contradict the first.
+    /// The MCP selection here stays the profile's, and that is not a gap in "the project wins": a project's
+    /// selection is a per-server answer rather than a list (<see cref="ProjectMcpOverlay.IsSelectedByDefault"/>),
+    /// applied where the checklist is built, and it beats this one wherever a project is in play. Resolving it into
+    /// a list here would need the catalog — which this rule deliberately knows nothing about.
     /// </remarks>
     public static SessionStartDefaults Resolve(
         Project? project,

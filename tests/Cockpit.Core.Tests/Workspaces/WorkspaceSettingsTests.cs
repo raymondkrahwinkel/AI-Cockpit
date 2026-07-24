@@ -11,12 +11,15 @@ namespace Cockpit.Core.Tests.Workspaces;
 public class WorkspaceSettingsTests
 {
     [Fact]
-    public void Default_IsASingleSessionsWorkspace_SoAnOperatorWhoNeverTouchedWorkspacesSeesTodaysCockpit()
+    public void Default_IsASessionsWorkspacePlusTheFixedOverview_SoAnOperatorWhoNeverTouchedWorkspacesSeesTodaysCockpit()
     {
         var settings = WorkspaceSettings.Default;
 
-        settings.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Sessions);
+        settings.Workspaces.Should().HaveCount(2);
+        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Sessions);
+        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Projects);
         settings.Active.Should().NotBeNull();
+        settings.Active!.Type.Should().Be(WorkspaceType.Sessions, "the cockpit still opens on the grid, not the overview");
     }
 
     [Fact]
@@ -31,7 +34,7 @@ public class WorkspaceSettingsTests
     [Fact]
     public void Normalized_NoWorkspaces_YieldsTheDefaultRatherThanAnEmptyCockpit()
     {
-        new WorkspaceSettings().Normalized().Workspaces.Should().ContainSingle();
+        new WorkspaceSettings().Normalized().Workspaces.Should().HaveCount(2, "the default is a Sessions workspace plus the fixed overview");
     }
 
     [Fact]
@@ -62,8 +65,16 @@ public class WorkspaceSettingsTests
 
         var settings = WorkspaceSettings.Default.WithWorkspace(added);
 
-        settings.Workspaces.Should().HaveCount(2);
+        settings.Workspaces.Should().HaveCount(3, "the default's Sessions workspace and its fixed overview, plus the one just added");
         settings.ActiveWorkspaceId.Should().Be(added.Id);
+    }
+
+    [Fact]
+    public void WithWorkspace_ASecondProjectsOverview_IsRefused_SinceThereIsAlwaysExactlyOne()
+    {
+        var settings = WorkspaceSettings.Default.WithWorkspace(Workspace.Create("Projects", WorkspaceType.Projects));
+
+        settings.Should().BeSameAs(WorkspaceSettings.Default);
     }
 
     [Fact]
@@ -87,9 +98,21 @@ public class WorkspaceSettingsTests
     [Fact]
     public void WithoutWorkspace_TheOnlyOne_IsRefused_SinceACockpitNeedsAWorkspace()
     {
-        var settings = WorkspaceSettings.Default;
+        var only = Workspace.Create("A", WorkspaceType.Sessions);
+        var settings = new WorkspaceSettings { Workspaces = [only], ActiveWorkspaceId = only.Id };
 
-        settings.WithoutWorkspace(settings.Workspaces[0].Id).Should().BeSameAs(settings);
+        settings.WithoutWorkspace(only.Id).Should().BeSameAs(settings);
+    }
+
+    [Fact]
+    public void WithoutWorkspace_TheProjectsOverview_IsRefused_EvenWithOtherWorkspacesPresent()
+    {
+        // A fixture, not one of the operator's desks: WorkspacesViewModel.CanClose already greys its ✕, but
+        // WorkspaceSettings refuses the removal itself, so a caller that does not ask still cannot take it away.
+        var settings = WorkspaceSettings.Default;
+        var overview = settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Projects);
+
+        settings.WithoutWorkspace(overview.Id).Should().BeSameAs(settings);
     }
 
     [Fact]
@@ -122,7 +145,8 @@ public class WorkspaceSettingsTests
     [Fact]
     public void WithSteppedActive_ASingleWorkspace_IsANoOp()
     {
-        var settings = WorkspaceSettings.Default;
+        var only = Workspace.Create("A", WorkspaceType.Sessions);
+        var settings = new WorkspaceSettings { Workspaces = [only], ActiveWorkspaceId = only.Id };
 
         settings.WithSteppedActive(1).ActiveWorkspaceId.Should().Be(settings.ActiveWorkspaceId);
     }

@@ -32,6 +32,10 @@ internal sealed class ProjectEntry
 
     public string? MemoryRef { get; set; }
 
+    /// <summary>Absent for a project with no logo.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LogoPath { get; set; }
+
     /// <summary>Absent for a project no session has ever started on.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTimeOffset? LastOpenedAt { get; set; }
@@ -48,6 +52,7 @@ internal sealed class ProjectEntry
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault,
         McpOverlay = ProjectMcpOverlayEntry.FromDomain(project.McpOverlay),
         MemoryRef = project.MemoryRef,
+        LogoPath = project.LogoPath,
         LastOpenedAt = project.LastOpenedAt,
     };
 
@@ -61,6 +66,7 @@ internal sealed class ProjectEntry
         IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
         McpOverlay = McpOverlay?.ToDomain() ?? ProjectMcpOverlay.None,
         MemoryRef = MemoryRef,
+        LogoPath = LogoPath,
         LastOpenedAt = LastOpenedAt,
     };
 }

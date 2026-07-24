@@ -42,6 +42,7 @@ public class ProjectStoreTests : IDisposable
             BehaviorPrompt = "Follow the project conventions. Test before opening a PR.",
             IsolateInWorktreeByDefault = true,
             MemoryRef = "depot:ai-cockpit",
+            LogoPath = "/home/raymond/.config/Cockpit/project-logos/abc.png",
             // Kept to the second: the overview orders on it, and a round-trip that quietly dropped it would put a
             // project the operator uses daily back among the ones they have never opened.
             LastOpenedAt = new DateTimeOffset(2026, 7, 24, 9, 30, 0, TimeSpan.FromHours(2)),

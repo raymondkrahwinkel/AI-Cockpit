@@ -89,12 +89,29 @@ public class ProjectQuickStartTests
     }
 
     [Fact]
-    public async Task TicksTheServersTheProjectOffers_NarrowedToTheProfilesSelection()
+    public async Task TicksWhatTheProjectSaysAndNotWhatTheProfileSaved()
     {
-        var profile = ClaudeProfile with { EnabledMcpServerNames = ["depot", "youtrack"] };
+        // The project's answer beats the profile's (Raymond, 2026-07-24): the profile here wants only depot, the
+        // project switched off playwright, and what starts is everything except playwright.
+        var profile = ClaudeProfile with { EnabledMcpServerNames = ["depot"] };
         var quickStart = Build(
             [profile],
             [Server("depot"), Server("youtrack"), Server("playwright")]);
+        var project = Project.Create("Cockpit") with
+        {
+            DefaultProfileLabel = "work",
+            McpOverlay = new ProjectMcpOverlay { DisabledServerNames = ["playwright"] },
+        };
+
+        var result = await quickStart.ComposeAsync(project);
+
+        result!.EnabledMcpServerNames.Should().BeEquivalentTo("depot", "youtrack");
+    }
+
+    [Fact]
+    public async Task AProjectThatSwitchedNothingOff_TicksEveryOfferedServer()
+    {
+        var quickStart = Build([ClaudeProfile], [Server("depot"), Server("youtrack")]);
         var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
 
         var result = await quickStart.ComposeAsync(project);
@@ -127,17 +144,17 @@ public class ProjectQuickStartTests
 
         await quickStart.ComposeAsync(project);
 
-        // The overlay decides which servers exist for this project, and everything downstream picks them by name:
-        // asking the plain catalog would silently drop a project-owned server.
+        // Read as the project sees it: the plain catalog does not hold the servers a project brings of its own,
+        // so asking that one would leave them off the checklist entirely.
         await catalog.Received(1).GetServersForProjectAsync(project.Id, Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task WithNothingOnOffer_SelectsNothingRatherThanLeavingItOpen()
     {
-        // The project's overlay decides what its catalog holds, so "nothing offered" can mean the project switched
-        // every server off. A null selection reads downstream as "this launch chose nothing", answered by falling
-        // back to the profile's list over the unscoped registry — which would mount exactly what the project removed.
+        // A null selection reads downstream as "this launch chose nothing", answered by falling back to the
+        // profile's saved list — which would quietly put the profile back in charge of a session started from a
+        // project. An empty set says what is true: this one starts with no servers.
         var quickStart = Build([ClaudeProfile with { EnabledMcpServerNames = ["depot"] }]);
         var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
 

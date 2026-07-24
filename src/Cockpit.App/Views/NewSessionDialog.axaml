@@ -56,10 +56,14 @@
             <!-- Project above profile (AC-163): picking one pre-fills the profile, folder, worktree choice and MCP
                  checklist below, so the usual case is one choice and Start. Hidden when there are no projects, which
                  leaves the dialog exactly as it was before they existed. -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center" IsVisible="{Binding HasProjects}">
-                <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Center" FontSize="12.5"
+            <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasProjects}">
+                <!-- The label sits on the control's line, not centred on the column: the right-hand side grows a
+                     hint under the picker, and centring on the pair drops the label below the box it names. The
+                     hint carries its own top margin rather than leaning on the stack's spacing, so a hidden one
+                     takes up nothing at all. -->
+                <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="3">
+                <StackPanel Grid.Column="1">
                     <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
                               HorizontalAlignment="Stretch" PlaceholderText="No project">
                         <ComboBox.ItemTemplate>
@@ -69,6 +73,7 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <TextBlock Text="{Binding SelectedProject.Description}" FontSize="11" TextWrapping="Wrap"
+                               Margin="0,3,0,0"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding SelectedProject.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
@@ -76,10 +81,10 @@
 
             <!-- Profile first: its provider decides which of the options below apply (#26). The picker shows
                  the provider (and local model) after the label, e.g. "default (Claude CLI)". -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
-                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" FontSize="12.5"
+            <Grid ColumnDefinitions="72,*">
+                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="3">
+                <StackPanel Grid.Column="1">
                     <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                               HorizontalAlignment="Stretch">
                         <ComboBox.ItemTemplate>
@@ -89,7 +94,7 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
-                               FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                               FontSize="11" Margin="0,3,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
                                FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"

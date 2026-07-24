@@ -24,19 +24,28 @@ public class ProjectMcpOverlayTests
     }
 
     [Fact]
-    public void ApplyTo_DisabledName_RemovesThatServerOnly()
+    public void ApplyTo_ADisabledName_StillOffersThatServer()
     {
+        // A project narrows what is selected, never what is offered (Raymond, 2026-07-24): the checklist lists every
+        // server whichever project is picked, and switching one off shows as an unticked box the operator can undo.
         var overlay = new ProjectMcpOverlay { DisabledServerNames = ["youtrack"] };
 
-        overlay.ApplyTo(Registry).Should().ContainSingle().Which.Name.Should().Be("depot");
+        overlay.ApplyTo(Registry).Select(server => server.Name).Should().BeEquivalentTo("depot", "youtrack");
     }
 
     [Fact]
-    public void ApplyTo_DisabledName_MatchesCaseInsensitively()
+    public void IsSelectedByDefault_ADisabledName_IsUnticked_MatchedCaseInsensitively()
     {
         var overlay = new ProjectMcpOverlay { DisabledServerNames = ["YouTrack"] };
 
-        overlay.ApplyTo(Registry).Should().NotContain(server => server.Name == "youtrack");
+        overlay.IsSelectedByDefault("youtrack").Should().BeFalse();
+        overlay.IsSelectedByDefault("depot").Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsSelectedByDefault_WithNoChoicesMade_TicksEverything()
+    {
+        ProjectMcpOverlay.None.IsSelectedByDefault("depot").Should().BeTrue();
     }
 
     [Fact]
@@ -70,15 +79,18 @@ public class ProjectMcpOverlayTests
     /// silence one would be to delete it and type it back in later.
     /// </summary>
     [Fact]
-    public void ApplyTo_ServerBothAddedAndDisabled_StaysOff()
+    public void ApplyTo_AServerBothAddedAndSwitchedOff_IsStillOffered_ButUnticked()
     {
+        // Switching off a project's own server leaves it defined and merely unticked — otherwise the only way to
+        // silence one would be to delete it and type it back in later.
         var overlay = new ProjectMcpOverlay
         {
             AdditionalServers = [new McpServerConfig { Name = "project-tools", Command = "uvx" }],
             DisabledServerNames = ["project-tools"],
         };
 
-        overlay.ApplyTo(Registry).Should().NotContain(server => server.Name == "project-tools");
+        overlay.ApplyTo(Registry).Should().Contain(server => server.Name == "project-tools");
+        overlay.IsSelectedByDefault("project-tools").Should().BeFalse();
     }
 
     /// <summary>A hand-edited config that lists a server twice costs the operator the duplicate, not the whole load.</summary>

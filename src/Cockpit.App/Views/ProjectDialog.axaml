@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:conv="using:Cockpit.App.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -34,9 +35,12 @@
         </Style>
     </Window.Styles>
 
-    <DockPanel>
+    <!-- Three explicit rows rather than a docked fill: the header and the footer are exactly as tall as they need
+         to be and the middle row gets what is left, so the scroll area can never be handed more height than there
+         is and paint its last row under the footer. -->
+    <Grid RowDefinitions="Auto,*,Auto">
         <!-- Header: what this dialog is, in the words of someone who is not a developer. -->
-        <Border DockPanel.Dock="Top" Background="{StaticResource CockpitSecondaryBgBrush}"
+        <Border Grid.Row="0" Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1" Padding="18,14">
             <StackPanel Spacing="2">
                 <TextBlock Text="{Binding DialogTitle}" FontSize="18" FontWeight="SemiBold"
@@ -47,7 +51,7 @@
         </Border>
 
         <!-- Footer: Cancel and the confirm button, which is the only thing gated on a name. -->
-        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+        <Border Grid.Row="2" Background="{StaticResource CockpitSecondaryBgBrush}"
                 BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" Text="* required" VerticalAlignment="Center" FontSize="11"
@@ -59,13 +63,37 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Padding="18,16">
+        <!-- The bottom padding is the room the last row needs to scroll clear of the footer: without it the list
+             ends flush against that edge, and a row cut in half there reads as one hidden behind the bar. -->
+        <ScrollViewer Grid.Row="1" Padding="18,16,18,24" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="18">
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Name *"/>
                     <TextBlock Classes="FieldHint" Text="What you call this project."/>
                     <TextBox Text="{Binding Name}" PlaceholderText="Invoices"/>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Logo"/>
+                    <TextBlock Classes="FieldHint" Text="An image file or a link to one. The cockpit keeps its own copy, so moving or renaming the original does not lose it."/>
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                        <!-- The preview is the check: it shows what the card will show, so a link that is not an
+                             image is visible here rather than as a missing picture later. -->
+                        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="8" ClipToBounds="True"
+                                Background="{StaticResource CockpitSecondaryBgBrush}"
+                                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                            <Image Source="{Binding LogoSource, Converter={x:Static conv:ProjectLogoConverter.Instance}}"
+                                   Stretch="UniformToFill"/>
+                        </Border>
+                        <TextBox Grid.Column="1" Text="{Binding LogoSource}" VerticalAlignment="Center"
+                                 PlaceholderText="No logo — pick a file or paste a link"/>
+                        <Button Grid.Column="2" Content="Choose…" VerticalAlignment="Center"
+                                Command="{Binding PickLogoCommand}"/>
+                        <Button Grid.Column="3" Content="Remove" Classes="Subtle" VerticalAlignment="Center"
+                                Command="{Binding ClearLogoCommand}"
+                                IsEnabled="{Binding LogoSource, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </Grid>
                 </StackPanel>
 
                 <StackPanel Spacing="2">
@@ -124,5 +152,5 @@
 
             </StackPanel>
         </ScrollViewer>
-    </DockPanel>
+    </Grid>
 </Window>

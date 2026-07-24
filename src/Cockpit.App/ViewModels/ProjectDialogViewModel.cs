@@ -26,6 +26,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// <summary>Raised when the operator picks "Clone…" (AC-90); the host clones and assigns <see cref="SourceDirectory"/>.</summary>
     public event Action? CloneRequested;
 
+    /// <summary>Raised when the operator wants to pick the logo from a file; the view opens the picker and assigns <see cref="LogoSource"/>.</summary>
+    public event Action? PickLogoRequested;
+
     /// <summary>Design-time constructor for the Avalonia previewer.</summary>
     public ProjectDialogViewModel()
     {
@@ -49,6 +52,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         SourceDirectory = project.SourceDirectory ?? string.Empty;
         GitUrl = project.GitUrl;
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
+        LogoSource = project.LogoPath ?? string.Empty;
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
         MemoryRef = project.MemoryRef;
         _additionalServers = project.McpOverlay.AdditionalServers;
@@ -116,6 +120,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
     [ObservableProperty]
     private string _description = string.Empty;
 
+    /// <summary>
+    /// The project's logo as the operator gave it: a file path, an <c>http(s)</c> URL, or the stored copy's path for
+    /// one already set. Blank means none — and, on save, means removing the one it had.
+    /// </summary>
+    [ObservableProperty]
+    private string _logoSource = string.Empty;
+
     [ObservableProperty]
     private string _sourceDirectory = string.Empty;
 
@@ -161,6 +172,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
             GitUrl = GitUrl,
             DefaultProfileLabel = SelectedProfileLabel,
             BehaviorPrompt = _NullIfBlank(BehaviorPrompt),
+            // What the operator pointed at — a file, a URL, or the stored copy's path when they left it alone. The
+            // manager turns it into a copy the cockpit owns; the editor only carries the answer, as it does the rest.
+            LogoPath = _NullIfBlank(LogoSource),
             IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
             MemoryRef = MemoryRef,
             McpOverlay = new ProjectMcpOverlay
@@ -176,6 +190,13 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void Browse() => BrowseRequested?.Invoke();
+
+    [RelayCommand]
+    private void PickLogo() => PickLogoRequested?.Invoke();
+
+    /// <summary>Drops the logo. The stored copy goes when the project is saved, not here — cancelling must leave it as it was.</summary>
+    [RelayCommand]
+    private void ClearLogo() => LogoSource = string.Empty;
 
     [RelayCommand]
     private void Clone() => CloneRequested?.Invoke();

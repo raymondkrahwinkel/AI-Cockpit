@@ -57,6 +57,14 @@ public sealed record Project(string Id, string Name)
     public string? MemoryRef { get; init; }
 
     /// <summary>
+    /// The project's logo: the path of the image the cockpit copied into its own storage when the operator picked a
+    /// file or gave a URL. A copy rather than the original's path (AC-162), so the card keeps its picture when the
+    /// source moves, is renamed, or lives on a drive that is not plugged in. Null for a project without one, which
+    /// shows its initial instead.
+    /// </summary>
+    public string? LogoPath { get; init; }
+
+    /// <summary>
     /// When a session was last started on this project, or null for one never opened. Written by the host at
     /// launch, so the overview can lead with what the operator actually works on rather than the order the
     /// projects happen to be stored in.

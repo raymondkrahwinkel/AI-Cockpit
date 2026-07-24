@@ -118,21 +118,26 @@ public class SessionWorkspaceSeparationTests
 
         cockpit.Sessions.Should().NotContain(mine);
         cockpit.Sessions.Should().Contain(survivor, "the other desk's session is none of this workspace's business");
-        workspaces.Settings.Workspaces.Should().ContainSingle().Which.Id.Should().Be(second.Id);
+        workspaces.Settings.Workspaces.Should().HaveCount(2, "the survivor, plus the fixed overview that was there all along");
+        workspaces.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Id.Should().Be(second.Id);
     }
 
     [Fact]
-    public async Task ClosingTheLastWorkspace_IsRefused_AndLeavesItsSessionsRunning()
+    public async Task ClosingTheProjectsOverview_IsRefused_AndLeavesItsSessionsRunning()
     {
-        // The one outcome worse than refusing: the desk survives and its work does not.
+        // The one workspace closing can no longer take away: the fixed overview is what guarantees the cockpit
+        // always has a desk to render, so unlike an ordinary Sessions workspace it stays un-closable regardless
+        // of how many other workspaces exist. The one outcome worse than refusing: the desk survives and its
+        // work does not — so a session elsewhere on the cockpit must be untouched by the refusal.
         var cockpit = _Create(out var workspaces);
-        var only = workspaces.Active!;
-        var session = _AddSession(cockpit, only.Id);
+        var sessions = workspaces.Active!;
+        var session = _AddSession(cockpit, sessions.Id);
+        var overview = workspaces.Settings.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Projects);
 
-        await cockpit.CloseWorkspaceAsync(only.Id);
+        await cockpit.CloseWorkspaceAsync(overview.Id);
 
         cockpit.Sessions.Should().Contain(session);
-        workspaces.Settings.Workspaces.Should().ContainSingle();
+        workspaces.Settings.Workspaces.Should().Contain(workspace => workspace.Id == overview.Id);
     }
 
     [Fact]

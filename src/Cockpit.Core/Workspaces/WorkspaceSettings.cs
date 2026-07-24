@@ -14,8 +14,8 @@ public sealed record WorkspaceSettings
     public string? ActiveWorkspaceId { get; init; }
 
     /// <summary>
-    /// A single Sessions workspace — what an operator who never touched workspaces gets, so the cockpit looks
-    /// and behaves exactly as it does today until they add a second one.
+    /// A Sessions workspace and the projects overview, with the sessions one active — so the cockpit still opens
+    /// on the grid it always opened on, with the overview a tab away rather than something to go and find.
     /// </summary>
     /// <remarks>
     /// One instance, not a fresh one per access. As a getter that called <see cref="Workspace.Create"/> it
@@ -28,8 +28,14 @@ public sealed record WorkspaceSettings
     private static WorkspaceSettings _CreateDefault()
     {
         var sessions = Workspace.Create("Sessions", WorkspaceType.Sessions);
-        return new WorkspaceSettings { Workspaces = [sessions], ActiveWorkspaceId = sessions.Id };
+        return new WorkspaceSettings
+        {
+            Workspaces = [sessions, _CreateProjects()],
+            ActiveWorkspaceId = sessions.Id,
+        };
     }
+
+    private static Workspace _CreateProjects() => Workspace.Create("Projects", WorkspaceType.Projects);
 
     /// <summary>
     /// The active workspace: the one <see cref="ActiveWorkspaceId"/> names, else the first. Null only when
@@ -39,10 +45,17 @@ public sealed record WorkspaceSettings
         Workspaces.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? Workspaces.FirstOrDefault();
 
     /// <summary>
-    /// These settings made safe to bind to: at least one workspace, an <see cref="ActiveWorkspaceId"/> that
-    /// actually resolves, and every dashboard layout clamped. Applied on load, so a hand-edited or truncated
-    /// <c>cockpit.json</c> yields a working cockpit instead of an empty window.
+    /// These settings made safe to bind to: at least one workspace, exactly one projects overview, an
+    /// <see cref="ActiveWorkspaceId"/> that actually resolves, and every dashboard layout clamped. Applied on
+    /// load, so a hand-edited or truncated <c>cockpit.json</c> yields a working cockpit instead of an empty window.
     /// </summary>
+    /// <remarks>
+    /// The overview is a fixture rather than something to add (Raymond, 2026-07-24): it always exists, exactly
+    /// once, and cannot be closed. Guaranteeing it here rather than at the view model is what makes that true of
+    /// every cockpit — an older <c>cockpit.json</c> written before it existed, and a hand-edited one that removed
+    /// it or holds two, all come back with one. It sits at the end of the strip: the first workspace is what a
+    /// session with no workspace of its own falls back to, and that has to stay a desk which can show one.
+    /// </remarks>
     public WorkspaceSettings Normalized()
     {
         if (Workspaces.Count == 0)
@@ -51,23 +64,36 @@ public sealed record WorkspaceSettings
         }
 
         var clamped = Workspaces.Select(workspace => workspace with { Layout = workspace.Layout.Clamped() }).ToList();
-        var active = clamped.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? clamped[0];
-        return new WorkspaceSettings { Workspaces = clamped, ActiveWorkspaceId = active.Id };
+
+        // Extra overviews are dropped rather than renamed apart: the type holds no panes, so a second one carries
+        // nothing to lose, and two tabs showing the same list is exactly what "exactly once" rules out.
+        var overviews = clamped.Where(workspace => workspace.Type == WorkspaceType.Projects).ToList();
+        var ordered = clamped.Where(workspace => workspace.Type != WorkspaceType.Projects).ToList();
+        ordered.Add(overviews.Count > 0 ? overviews[0] : _CreateProjects());
+
+        var active = ordered.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? ordered[0];
+        return new WorkspaceSettings { Workspaces = ordered, ActiveWorkspaceId = active.Id };
     }
 
-    /// <summary>These settings with <paramref name="workspace"/> appended and made active.</summary>
+    /// <summary>
+    /// These settings with <paramref name="workspace"/> appended and made active. Adding a second projects
+    /// overview is refused — there is one, always, and a second tab onto the same list is not a second desk.
+    /// </summary>
     public WorkspaceSettings WithWorkspace(Workspace workspace) =>
-        new() { Workspaces = [.. Workspaces, workspace], ActiveWorkspaceId = workspace.Id };
+        workspace.Type == WorkspaceType.Projects && Workspaces.Any(existing => existing.Type == WorkspaceType.Projects)
+            ? this
+            : new() { Workspaces = [.. Workspaces, workspace], ActiveWorkspaceId = workspace.Id };
 
     /// <summary>
     /// These settings with <paramref name="workspaceId"/> removed. Removing the active one selects its
     /// neighbour (the next, else the previous), matching how closing a session picks the next selection.
-    /// Removing the last workspace is refused — a cockpit with no workspace has nothing to show.
+    /// Removing the last workspace is refused — a cockpit with no workspace has nothing to show — and so is
+    /// removing the projects overview, which is a fixture of the cockpit rather than one of the operator's desks.
     /// </summary>
     public WorkspaceSettings WithoutWorkspace(string workspaceId)
     {
         var index = _IndexOf(workspaceId);
-        if (index < 0 || Workspaces.Count == 1)
+        if (index < 0 || Workspaces.Count == 1 || Workspaces[index].Type == WorkspaceType.Projects)
         {
             return this;
         }
