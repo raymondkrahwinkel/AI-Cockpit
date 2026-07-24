@@ -920,12 +920,14 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // profile lands in its folder with its servers ticked. Sticky: this keeps applying the newly-selected
         // profile's defaults until the operator sets the folder / edits the checklist themselves, after which their
         // choice stands and a profile re-select (or the Manage-profiles reload) no longer overwrites it.
+        // Through the resolver rather than straight off the profile, so a chosen project keeps overriding here too:
+        // reading the profile alone blanked the folder the project had just filled whenever the profile named none.
         if (!_workingDirectoryTouched)
         {
             _applyingProfileWorkingDirectory = true;
             try
             {
-                WorkingDirectory = value?.DefaultWorkingDirectory ?? string.Empty;
+                WorkingDirectory = SessionStartDefaults.Resolve(SelectedProject, value).WorkingDirectory ?? string.Empty;
             }
             finally
             {
