@@ -23,7 +23,7 @@ public interface IScreenLockMonitor : IDisposable
     /// <summary>The OS reported the screen has locked. May fire more than once for one lock (screensaver then lock, two D-Bus sources); the coordinator is idempotent so a duplicate costs nothing.</summary>
     event EventHandler? Locked;
 
-    /// <summary>The OS reported the screen has unlocked. Carried for completeness; AC-5 does not auto-unlock the cockpit — the password screen stays until the operator types it — so listeners may ignore this.</summary>
+    /// <summary>The OS reported the screen has unlocked. Does not unlock the cockpit — the password screen stays until the operator types it — but it is the first moment the operator's own desktop is back, so it is what gives that screen the keyboard (AC-187): a window shown while the OS was locked was never activated where the operator can see it.</summary>
     event EventHandler? Unlocked;
 
     /// <summary>Registers with the OS's lock notifications. Idempotent, and safe to call even where the feature cannot be provided — it then does nothing and never raises an event.</summary>
