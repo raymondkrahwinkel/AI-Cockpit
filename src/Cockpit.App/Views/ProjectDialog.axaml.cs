@@ -31,6 +31,35 @@ public partial class ProjectDialog : Window
         viewModel.CloseRequested += project => Close(project);
         viewModel.BrowseRequested += () => _ = _BrowseForFolderAsync(viewModel);
         viewModel.PickLogoRequested += () => _ = _PickLogoAsync(viewModel);
+        viewModel.PickMemoryRequested += () => _ = _PickMemoryFolderAsync(viewModel);
+    }
+
+    // Deliberately a folder picker and not the source-folder one: memory is somewhere else by definition, and
+    // seeding this picker at the project's own folder would suggest otherwise.
+    private async Task _PickMemoryFolderAsync(ProjectDialogViewModel viewModel)
+    {
+        try
+        {
+            var start = string.IsNullOrWhiteSpace(viewModel.MemoryRef)
+                ? null
+                : await StorageProvider.TryGetFolderFromPathAsync(viewModel.MemoryRef);
+
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select where this project's memory lives",
+                AllowMultiple = false,
+                SuggestedStartLocation = start,
+            });
+
+            if (folders.FirstOrDefault()?.TryGetLocalPath() is { Length: > 0 } path)
+            {
+                viewModel.MemoryRef = path;
+            }
+        }
+        catch
+        {
+            // No picker here either — the field takes a typed path, or a reference a plugin understands.
+        }
     }
 
     // The picked file's path lands in LogoSource; the manager takes the copy when the project is saved, so a

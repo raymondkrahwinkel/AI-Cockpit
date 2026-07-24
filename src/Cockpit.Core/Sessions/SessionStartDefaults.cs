@@ -53,19 +53,29 @@ public sealed record SessionStartDefaults(
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
             profile?.EnabledMcpServerNames,
-            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt));
+            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt, _MemoryNote(project)));
 
     private static string? _FirstNonBlank(params string?[] candidates) =>
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
+
+    /// <summary>
+    /// Where the project keeps its memory, said in a sentence the session can act on. Null for a project without
+    /// one. Deliberately told rather than loaded: the host does not know what lives there — a folder of notes, a
+    /// Depot project (AC-165/166) — and a session that is told where to look can go and look.
+    /// </summary>
+    private static string? _MemoryNote(Project? project) =>
+        project?.MemoryRef is { Length: > 0 } memory && !string.IsNullOrWhiteSpace(memory)
+            ? $"This project's memory lives at {memory.Trim()}. Read it there when you need what this project already knows, and keep it up to date as you work."
+            : null;
 
     /// <summary>
     /// The profile's standing instructions with the project's appended under them, blank-separated. Both apply and
     /// neither replaces the other: the profile says who the session is, the project what it is working on. Order
     /// matters — identity first, then the task, so the more specific instruction is the last thing read.
     /// </summary>
-    private static string? _JoinPrompts(string? profilePrompt, string? projectPrompt)
+    private static string? _JoinPrompts(params string?[] prompts)
     {
-        var parts = new[] { profilePrompt, projectPrompt }
+        var parts = prompts
             .Where(part => !string.IsNullOrWhiteSpace(part))
             .Select(part => part!.Trim())
             .ToList();

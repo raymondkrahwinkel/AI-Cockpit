@@ -51,8 +51,14 @@ public sealed record Project(string Id, string Name)
     public ProjectMcpOverlay McpOverlay { get; init; } = ProjectMcpOverlay.None;
 
     /// <summary>
-    /// Which knowledge store its sessions get (the Depot plugin's, today). Carried but not yet read: memory is a
-    /// plugin contribution (AC-165/166), and the host stores the reference so v2 only has to consume it.
+    /// Where this project's memory lives — a folder, deliberately separate from <see cref="SourceDirectory"/>,
+    /// because what a project knows and what it is made of are not the same place and often not the same disk.
+    /// Told to the session as part of its standing instructions, so it can go and look rather than be told again
+    /// every time.
+    /// <para>
+    /// Free text rather than a path type: a plugin will contribute other kinds of reference (a Depot project,
+    /// AC-165/166), and those are not folders. The host stores what it is given and says it plainly.
+    /// </para>
     /// </summary>
     public string? MemoryRef { get; init; }
 

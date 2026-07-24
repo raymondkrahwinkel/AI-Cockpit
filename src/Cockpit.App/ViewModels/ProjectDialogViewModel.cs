@@ -29,6 +29,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// <summary>Raised when the operator wants to pick the logo from a file; the view opens the picker and assigns <see cref="LogoSource"/>.</summary>
     public event Action? PickLogoRequested;
 
+    /// <summary>Raised when the operator wants to pick the memory folder; the view opens the folder picker and assigns <see cref="MemoryRef"/>.</summary>
+    public event Action? PickMemoryRequested;
+
     /// <summary>Design-time constructor for the Avalonia previewer.</summary>
     public ProjectDialogViewModel()
     {
@@ -54,7 +57,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         BehaviorPrompt = project.BehaviorPrompt ?? string.Empty;
         LogoSource = project.LogoPath ?? string.Empty;
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault;
-        MemoryRef = project.MemoryRef;
+        MemoryRef = project.MemoryRef ?? string.Empty;
         _additionalServers = project.McpOverlay.AdditionalServers;
     }
 
@@ -142,8 +145,12 @@ public partial class ProjectDialogViewModel : ViewModelBase
     /// <summary>Where <see cref="SourceDirectory"/> was cloned from, kept so an edit does not lose it. Set by the clone flow, never typed.</summary>
     public string? GitUrl { get; private set; }
 
-    /// <summary>The knowledge store reference (AC-166), carried through so editing a project in v1 does not drop what v2 wrote.</summary>
-    public string? MemoryRef { get; }
+    /// <summary>
+    /// Where this project's memory lives: a folder, or a reference a plugin understands (AC-165/166). Blank for a
+    /// project that keeps none.
+    /// </summary>
+    [ObservableProperty]
+    private string _memoryRef = string.Empty;
 
     /// <summary>The configured profiles, by label — a project points at one, it does not own one.</summary>
     public ObservableCollection<string> Profiles { get; } = [];
@@ -176,7 +183,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
             // manager turns it into a copy the cockpit owns; the editor only carries the answer, as it does the rest.
             LogoPath = _NullIfBlank(LogoSource),
             IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
-            MemoryRef = MemoryRef,
+            MemoryRef = _NullIfBlank(MemoryRef),
             McpOverlay = new ProjectMcpOverlay
             {
                 DisabledServerNames =
@@ -193,6 +200,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
     [RelayCommand]
     private void PickLogo() => PickLogoRequested?.Invoke();
+
+    [RelayCommand]
+    private void PickMemory() => PickMemoryRequested?.Invoke();
 
     /// <summary>Drops the logo. The stored copy goes when the project is saved, not here — cancelling must leave it as it was.</summary>
     [RelayCommand]

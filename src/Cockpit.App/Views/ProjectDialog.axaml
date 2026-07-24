@@ -2,13 +2,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:controls="using:Cockpit.App.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         x:Class="Cockpit.App.Views.ProjectDialog"
         x:DataType="vm:ProjectDialogViewModel"
         Title="Project"
-        Width="720" Height="720" MinWidth="560" MinHeight="480"
+        Width="780" Height="720" MinWidth="620" MinHeight="480"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource CockpitPanelBgBrush}">
 
@@ -63,13 +64,16 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1" Padding="18,16,18,0" VerticalScrollBarVisibility="Auto">
-            <!-- The room the last field needs to end clear of the footer sits on the content, not on the
-                 ScrollViewer's padding: padding is not part of what the scroller measures as its extent, so those
-                 last pixels stayed unreachable and the bottom row was cut in half against the bar however far you
-                 scrolled — which reads as content running behind it. Enough of it that the last row ends with air
-                 under it rather than against the bar. -->
-            <StackPanel Spacing="18" Margin="0,0,0,44">
+        <!-- Horizontal scrolling off, deliberately: left on, the scroller measures its content with unbounded
+             width, so a star-sized column never has to fit and a long path pushed the row's buttons off the
+             window instead of shrinking the box. -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <!-- Every inset lives on the content rather than as ScrollViewer.Padding, in both directions: the
+                 scroller leaves its padding out of what it measures, so the bottom rows could not scroll clear of
+                 the footer and a row was measured 18px wider than the window it had to fit — which is how a long
+                 path pushed the buttons beside it off the edge. -->
+            <StackPanel Spacing="18" Margin="18,16,18,44">
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Name *"/>
@@ -119,6 +123,15 @@
                 </StackPanel>
 
                 <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Memory"/>
+                    <TextBlock Classes="FieldHint" Text="Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told about it, so they can look things up instead of being told again."/>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                        <TextBox Grid.Column="0" Text="{Binding MemoryRef}" PlaceholderText="No memory location"/>
+                        <Button Grid.Column="1" Content="Choose…" Command="{Binding PickMemoryCommand}"/>
+                    </Grid>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Profile"/>
                     <TextBlock Classes="FieldHint" Text="Which profile starts by default. The project uses a profile — it does not replace one."/>
                     <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
@@ -140,18 +153,9 @@
                     </StackPanel>
                 </CheckBox>
 
-                <StackPanel Spacing="6" IsVisible="{Binding HasMcpServers}">
-                    <TextBlock Classes="SectionHeading" Text="MCP servers"/>
-                    <TextBlock Classes="FieldHint" Margin="0,0,0,2"
-                               Text="Which servers this project's sessions get. Unticking one turns it off here only — the server itself stays in the global configuration."/>
-                    <ItemsControl ItemsSource="{Binding McpServers}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
-                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}" Margin="0,1"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                <controls:McpServerChecklist IsVisible="{Binding HasMcpServers}"
+                                             Servers="{Binding McpServers}"
+                                             Hint="Which servers this project's sessions start with ticked. Unticking one turns it off for this project only — the server itself stays in the global configuration, and a session can tick it back on."/>
 
             </StackPanel>
         </ScrollViewer>

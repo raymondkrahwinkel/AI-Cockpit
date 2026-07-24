@@ -971,14 +971,32 @@
                                         <TextBlock Text="{Binding LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
                                                    FontSize="11"
                                                    Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                                        <!-- Start only promises a start when the project can actually deliver one.
+                                             Without a profile it has nothing to run on and would fall through to
+                                             the dialog — the same thing the button below it does, which is exactly
+                                             how the two came to look identical. Then the card asks for the missing
+                                             piece instead. -->
                                         <Button Classes="Accent" HorizontalAlignment="Stretch"
                                                 HorizontalContentAlignment="Center" Padding="12,7"
+                                                IsVisible="{Binding DefaultProfileLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                 Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
                                                 CommandParameter="{Binding}">
                                             <StackPanel Orientation="Horizontal" Spacing="7">
                                                 <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13"
                                                                             VerticalAlignment="Center"/>
                                                 <TextBlock Text="Start" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center" Padding="12,7"
+                                                IsVisible="{Binding DefaultProfileLabel, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                                ToolTip.Tip="This project has no profile yet, so there is nothing to start it on. Pick one and Start appears."
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <materialIcons:MaterialIcon Kind="Cog" Width="13" Height="13"
+                                                                            VerticalAlignment="Center"/>
+                                                <TextBlock Text="Finish setting up" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Button>
                                         <!-- The quieter half: everything that is not "carry on with this", kept
@@ -993,8 +1011,8 @@
                                             <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Edit"
                                                     Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).EditProjectCommand}"
                                                     CommandParameter="{Binding}"/>
-                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="More options…"
-                                                    ToolTip.Tip="Open the New-session dialog on this project"
+                                            <Button Classes="Subtle" Padding="6,2" FontSize="11" Content="Start with options…"
+                                                    ToolTip.Tip="Open the New-session dialog on this project, to change something before it starts"
                                                     Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).NewSessionForProjectCommand}"
                                                     CommandParameter="{Binding}"/>
                                         </StackPanel>

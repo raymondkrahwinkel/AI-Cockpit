@@ -56,6 +56,36 @@ public class ProjectDialogScrollTests
         gap.Should().BeGreaterThanOrEqualTo(16, "the last row must end with air under it, not against the bar");
     });
 
+    [Fact]
+    public void ALongPathInAField_ShrinksTheBoxRatherThanPushingItsButtonsOffTheWindow() => HeadlessAvalonia.Run(() =>
+    {
+        // What Raymond saw: the logo row's Remove button hanging past the right edge, and the hint text cut off.
+        // A ScrollViewer that scrolls horizontally measures its content unbounded, so a star-sized column never has
+        // to fit — the long path simply made the row wider than the window.
+        var viewModel = _ViewModelWithManyServers();
+        viewModel.LogoSource = "/home/raymond/.config/Cockpit-Dev/project-logos/9362f34330fe4a81b93c2b5e0d7a1f4c-and-then-some-more.png";
+        var window = new ProjectDialog { DataContext = viewModel };
+        window.Show();
+        window.UpdateLayout();
+
+        var overflowing = window.GetVisualDescendants().OfType<Button>()
+            .Select(button => new
+            {
+                button.Content,
+                Right = (button.TranslatePoint(new Point(button.Bounds.Width, 0), window) ?? default).X,
+            })
+            .Where(entry => entry.Right > window.Width + 1)
+            .ToList();
+
+        foreach (var entry in overflowing)
+        {
+            _out.WriteLine($"off the window: {entry.Content} ends at {entry.Right:0.#} of {window.Width:0.#}");
+        }
+
+        window.Close();
+        overflowing.Should().BeEmpty("every control has to fit the dialog it is in");
+    });
+
     private static ProjectDialogViewModel _ViewModelWithManyServers()
     {
         var viewModel = new ProjectDialogViewModel();

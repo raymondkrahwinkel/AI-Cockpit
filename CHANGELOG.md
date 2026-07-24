@@ -46,6 +46,13 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   a new-project button alongside. Above them: how many projects there are, how many you have actually worked on, and
   how many sessions are open. It is always there, as its own tab, and cannot be closed or opened twice. Built for
   someone who would rather not know what a profile or an MCP server is.
+- added: one MCP-server list everywhere it appears — the profile editor, the New-session dialog and the project
+  editor — collapsed by default behind a live "MCP servers · 8 of 11 selected" count, so a dozen checkboxes stop
+  filling three dialogs that are about something else.
+- added: a memory location per project — a folder, kept apart from the source folder. A session starting on the
+  project is told where it is, so it can look things up instead of being told again.
+- changed: a project card offers "Finish setting up" instead of "Start" while the project names no profile. Start
+  would have fallen through to the same dialog as the button beside it, which made the two look identical.
 - added: a logo per project, from a file or a link — SVG included, which is what most logos are; it is stored as the
   picture it draws to. The cockpit keeps a copy of its own, so moving or renaming the original does not lose it, and
   the card shows the project's initial while it has none.

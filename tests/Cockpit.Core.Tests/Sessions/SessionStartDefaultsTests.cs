@@ -152,4 +152,31 @@ public class SessionStartDefaultsTests
         defaults.ProfileLabel.Should().BeNull();
         defaults.EnabledMcpServerNames.Should().BeNull();
     }
+
+    [Fact]
+    public void Resolve_AProjectWithAMemoryLocation_TellsTheSessionWhereToLook()
+    {
+        var project = Project.Create("Cockpit") with
+        {
+            BehaviorPrompt = "Work ticket by ticket.",
+            MemoryRef = "/home/raymond/Notes/Cockpit",
+        };
+        var profile = new SessionProfile("work", new ClaudeConfig("~/.claude")) { SystemPrompt = "You are Olaf." };
+
+        var defaults = SessionStartDefaults.Resolve(project, profile);
+
+        // Told, not loaded: the host does not know what lives there — a folder of notes, a Depot project — and a
+        // session that is told where to look can go and look.
+        defaults.SystemPrompt.Should().Be(
+            "You are Olaf.\n\nWork ticket by ticket.\n\nThis project's memory lives at /home/raymond/Notes/Cockpit. " +
+            "Read it there when you need what this project already knows, and keep it up to date as you work.");
+    }
+
+    [Fact]
+    public void Resolve_AProjectWithoutOne_SaysNothingAboutMemory()
+    {
+        var defaults = SessionStartDefaults.Resolve(Project.Create("Cockpit"), new SessionProfile("work", new ClaudeConfig("~/.claude")));
+
+        defaults.SystemPrompt.Should().BeNull();
+    }
 }
