@@ -35,6 +35,13 @@ public sealed record Project(string Id, string Name)
     public string? DefaultProfileLabel { get; init; }
 
     /// <summary>
+    /// How the profile should behave here, appended to the session's system prompt (the AC-180 seam) rather than
+    /// replacing anything the profile says. This is the override idea at its plainest: the same profile works
+    /// differently per project without a second profile existing. Null/blank appends nothing.
+    /// </summary>
+    public string? BehaviorPrompt { get; init; }
+
+    /// <summary>
     /// Whether new sessions here isolate in their own git worktree (AC-85) when <see cref="SourceDirectory"/> is
     /// a repository. A default only: worktree stays a per-session choice, still overridable in the dialog.
     /// </summary>

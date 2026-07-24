@@ -22,6 +22,8 @@ internal sealed class ProjectEntry
 
     public string? DefaultProfileLabel { get; set; }
 
+    public string? BehaviorPrompt { get; set; }
+
     public bool IsolateInWorktreeByDefault { get; set; }
 
     /// <summary>Absent for a project that changes nothing about the MCP registry, which is most of them.</summary>
@@ -38,6 +40,7 @@ internal sealed class ProjectEntry
         SourceDirectory = project.SourceDirectory,
         GitUrl = project.GitUrl,
         DefaultProfileLabel = project.DefaultProfileLabel,
+        BehaviorPrompt = project.BehaviorPrompt,
         IsolateInWorktreeByDefault = project.IsolateInWorktreeByDefault,
         McpOverlay = ProjectMcpOverlayEntry.FromDomain(project.McpOverlay),
         MemoryRef = project.MemoryRef,
@@ -49,6 +52,7 @@ internal sealed class ProjectEntry
         SourceDirectory = SourceDirectory,
         GitUrl = GitUrl,
         DefaultProfileLabel = DefaultProfileLabel,
+        BehaviorPrompt = BehaviorPrompt,
         IsolateInWorktreeByDefault = IsolateInWorktreeByDefault,
         McpOverlay = McpOverlay?.ToDomain() ?? ProjectMcpOverlay.None,
         MemoryRef = MemoryRef,

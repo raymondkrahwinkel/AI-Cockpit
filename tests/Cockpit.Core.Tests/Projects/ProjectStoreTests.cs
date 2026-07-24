@@ -39,6 +39,7 @@ public class ProjectStoreTests : IDisposable
             SourceDirectory = "/home/raymond/RiderProjects/AI-Cockpit",
             GitUrl = "https://github.com/example/ai-cockpit.git",
             DefaultProfileLabel = "personal",
+            BehaviorPrompt = "Follow the project conventions. Test before opening a PR.",
             IsolateInWorktreeByDefault = true,
             MemoryRef = "depot:ai-cockpit",
             McpOverlay = new ProjectMcpOverlay
