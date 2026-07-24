@@ -56,4 +56,18 @@ public sealed record McpServerConfig
     /// it. Never set for a user-added server.
     /// </summary>
     public bool Internal { get; init; }
+
+    /// <summary>
+    /// Whether every session gets this server whether or not it was selected: kept out of the user-facing pickers
+    /// like <see cref="Internal"/>, but mounted regardless of the per-session selection instead of only when named.
+    /// It is for the cockpit's own plumbing that is not a choice — <c>cockpit-session</c>, which is how a session
+    /// tells the operator what it is working on. Left as an ordinary server it appears in the checklist as
+    /// something to weigh up, and unticking it silently costs the operator their status line.
+    /// <para>
+    /// Mutually exclusive with <see cref="Internal"/>, which is the opposite arrangement (hidden and mounted
+    /// <em>only</em> when a launch names it); a server that set both would be asking to be both always and never
+    /// mounted, and this one wins. Never set for a user-added server.
+    /// </para>
+    /// </summary>
+    public bool AlwaysMounted { get; init; }
 }

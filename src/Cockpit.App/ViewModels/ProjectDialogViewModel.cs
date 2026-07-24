@@ -78,7 +78,7 @@ public partial class ProjectDialogViewModel : ViewModelBase
         var servers = await mcpServerCatalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
         var disabled = project?.McpOverlay.DisabledServerNames.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
 
-        foreach (var server in servers.Where(server => !server.Internal))
+        foreach (var server in servers.Where(server => !server.Internal && !server.AlwaysMounted))
         {
             viewModel.McpServers.Add(new McpServerSelectionItemViewModel(server.Name)
             {

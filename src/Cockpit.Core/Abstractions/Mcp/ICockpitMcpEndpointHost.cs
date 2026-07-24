@@ -19,6 +19,8 @@ public interface ICockpitMcpEndpointHost
     /// are gathered; <see langword="null"/> means always on. <paramref name="isInternal"/> marks it internal-only
     /// (AC-204): hidden from every user-facing MCP selection and the no-selection fan-out, yet still mountable when a
     /// launch names it explicitly — for an endpoint only a specific spawn should mount (the Autopilot CEO/step tools).
+    /// <paramref name="alwaysMounted"/> is the opposite arrangement: hidden from the pickers too, but mounted into
+    /// every session whatever was selected — for cockpit plumbing that is not a choice (<c>cockpit-session</c>).
     /// </summary>
-    Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, CancellationToken cancellationToken = default);
+    Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default);
 }

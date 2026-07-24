@@ -484,7 +484,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             McpServers.Clear();
             // Internal-only endpoints (AC-204, the Autopilot CEO/step tools) never appear here: the run's own agents
             // mount them by name, but an operator must not see or tick them — nor estimate their tool tokens.
-            foreach (var server in registry.Where(server => server.Enabled && !server.Internal))
+            foreach (var server in registry.Where(server => server.Enabled && !server.Internal && !server.AlwaysMounted))
             {
                 var item = new McpServerSelectionItemViewModel(server.Name);
                 item.PropertyChanged += _OnMcpServerToggled;

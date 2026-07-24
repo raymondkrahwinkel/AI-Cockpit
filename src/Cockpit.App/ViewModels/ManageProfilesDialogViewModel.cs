@@ -139,7 +139,7 @@ public partial class ManageProfilesDialogViewModel : ViewModelBase
         // checklist excludes them: a run's agents mount them by name, but an operator never pre-selects them.
         _availableMcpServerNames = _mcpServerCatalog is null
             ? []
-            : [.. (await _mcpServerCatalog.GetServersAsync()).Where(server => server.Enabled && !server.Internal).Select(server => server.Name)];
+            : [.. (await _mcpServerCatalog.GetServersAsync()).Where(server => server.Enabled && !server.Internal && !server.AlwaysMounted).Select(server => server.Name)];
 
         var profiles = await _profileStore.LoadAsync();
         Profiles.Clear();

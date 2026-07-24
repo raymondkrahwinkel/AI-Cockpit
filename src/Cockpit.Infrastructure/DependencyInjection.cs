@@ -23,9 +23,11 @@ public static class DependencyInjection
         services.AddSingleton<AudioEngine, MiniAudioEngine>();
 
         // Built-in cockpit MCP endpoints (#AC-13): CockpitMcpEndpointHost hosts each and auto-publishes it to the
-        // registry as its own MCP server. cockpit-session carries set_status, on by default and available to every
-        // session (including delegated sub-agents, unlike the orchestrator). A plugin adds its own the same way (#AC-12).
-        services.AddSingleton(new CockpitMcpEndpoint("cockpit-session", typeof(SessionStatusTools)));
+        // registry as its own MCP server. cockpit-session carries set_status and is always mounted: telling the
+        // operator what a session is working on is cockpit plumbing, not a capability to weigh up, so it is kept out
+        // of the pickers rather than offered as something to untick. Available to every session (including delegated
+        // sub-agents, unlike the orchestrator). A plugin adds its own the same way (#AC-12).
+        services.AddSingleton(new CockpitMcpEndpoint("cockpit-session", typeof(SessionStatusTools), AlwaysMounted: true));
 
         // cockpit-worktrees (AC-104): the tools an agent uses to isolate a subtask in its own git worktree and clean
         // it up when done. Its own server, like cockpit-session, so a delegated sub-agent has it too.
