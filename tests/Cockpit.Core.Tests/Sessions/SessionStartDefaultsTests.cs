@@ -96,6 +96,51 @@ public class SessionStartDefaultsTests
         SessionStartDefaults.Resolve(project, profile).EnabledMcpServerNames.Should().Equal("youtrack");
     }
 
+    /// <summary>
+    /// The profile says who the session is (AC-142: "You are Olaf; your memory is in the Depot MCP"), the project
+    /// what it is working on. Both apply, identity first — the project appends, it does not replace.
+    /// </summary>
+    [Fact]
+    public void Resolve_BothCarryInstructions_AppendsTheProjectsUnderTheProfiles()
+    {
+        var profile = Profile() with { SystemPrompt = "You are Olaf. Look yourself up in the Depot MCP." };
+        var project = Project.Create("Cockpit") with { BehaviorPrompt = "Test before opening a PR." };
+
+        SessionStartDefaults.Resolve(project, profile).SystemPrompt
+            .Should().Be("You are Olaf. Look yourself up in the Depot MCP.\n\nTest before opening a PR.");
+    }
+
+    [Fact]
+    public void Resolve_OnlyTheProfileSpeaks_UsesItAlone()
+    {
+        var profile = Profile() with { SystemPrompt = "You are Olaf." };
+
+        SessionStartDefaults.Resolve(Project.Create("Cockpit"), profile).SystemPrompt.Should().Be("You are Olaf.");
+    }
+
+    [Fact]
+    public void Resolve_OnlyTheProjectSpeaks_UsesItAlone()
+    {
+        var project = Project.Create("Cockpit") with { BehaviorPrompt = "Test before opening a PR." };
+
+        SessionStartDefaults.Resolve(project, Profile()).SystemPrompt.Should().Be("Test before opening a PR.");
+    }
+
+    [Fact]
+    public void Resolve_NeitherSpeaks_AppendsNothing()
+    {
+        SessionStartDefaults.Resolve(Project.Create("Cockpit"), Profile()).SystemPrompt.Should().BeNull();
+    }
+
+    [Fact]
+    public void Resolve_BlankInstructions_CountAsUnset()
+    {
+        var profile = Profile() with { SystemPrompt = "   " };
+        var project = Project.Create("Cockpit") with { BehaviorPrompt = "\n" };
+
+        SessionStartDefaults.Resolve(project, profile).SystemPrompt.Should().BeNull();
+    }
+
     [Fact]
     public void Resolve_NoProfile_LeavesEveryProfileBackedFieldAlone()
     {

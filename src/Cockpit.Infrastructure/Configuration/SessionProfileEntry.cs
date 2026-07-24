@@ -50,6 +50,9 @@ internal sealed class SessionProfileEntry
     /// <summary>The working directory a New session under this profile pre-fills (AC-130); absent/blank means no default.</summary>
     public string? DefaultWorkingDirectory { get; set; }
 
+    /// <summary>Standing instructions every session under this profile starts with (AC-142); absent/blank appends nothing.</summary>
+    public string? SystemPrompt { get; set; }
+
     public static SessionProfileEntry FromDomain(SessionProfile profile) => new()
     {
         Label = profile.Label,
@@ -71,6 +74,7 @@ internal sealed class SessionProfileEntry
         // list included — "these none" is a real choice, distinct from "no restriction".
         EnabledMcpServers = profile.EnabledMcpServerNames is { } names ? [.. names] : null,
         DefaultWorkingDirectory = string.IsNullOrWhiteSpace(profile.DefaultWorkingDirectory) ? null : profile.DefaultWorkingDirectory,
+        SystemPrompt = string.IsNullOrWhiteSpace(profile.SystemPrompt) ? null : profile.SystemPrompt,
     };
 
     public SessionProfile ToDomain()
@@ -93,6 +97,7 @@ internal sealed class SessionProfileEntry
                 : null,
             EnabledMcpServerNames = EnabledMcpServers is { } names ? [.. names] : null,
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory,
+            SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt,
         };
     }
 }

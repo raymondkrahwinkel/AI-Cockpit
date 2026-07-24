@@ -18,11 +18,16 @@ namespace Cockpit.Core.Sessions;
 /// <param name="IsolateInWorktree">Whether to isolate in a git worktree (AC-85) when the folder is a repository. Still a per-session choice — this only pre-selects it.</param>
 /// <param name="ProfileLabel">The profile to preselect, by label; null leaves the dialog's own selection alone.</param>
 /// <param name="EnabledMcpServerNames">Which servers open ticked; null means no restriction (every offered server).</param>
+/// <param name="SystemPrompt">
+/// The standing instructions to append to the provider's own system prompt: the profile's identity first
+/// (AC-142), then what the project asks of it. Null when neither has anything to say.
+/// </param>
 public sealed record SessionStartDefaults(
     string? WorkingDirectory,
     bool IsolateInWorktree,
     string? ProfileLabel,
-    IReadOnlyList<string>? EnabledMcpServerNames)
+    IReadOnlyList<string>? EnabledMcpServerNames,
+    string? SystemPrompt)
 {
     /// <summary>
     /// The defaults for starting under <paramref name="project"/> and <paramref name="profile"/>, either of which
@@ -44,8 +49,24 @@ public sealed record SessionStartDefaults(
             _FirstNonBlank(project?.SourceDirectory, profile?.DefaultWorkingDirectory, globalWorkingDirectory),
             project?.IsolateInWorktreeByDefault ?? false,
             _FirstNonBlank(project?.DefaultProfileLabel, profile?.Label),
-            profile?.EnabledMcpServerNames);
+            profile?.EnabledMcpServerNames,
+            _JoinPrompts(profile?.SystemPrompt, project?.BehaviorPrompt));
 
     private static string? _FirstNonBlank(params string?[] candidates) =>
         Array.Find(candidates, candidate => !string.IsNullOrWhiteSpace(candidate));
+
+    /// <summary>
+    /// The profile's standing instructions with the project's appended under them, blank-separated. Both apply and
+    /// neither replaces the other: the profile says who the session is, the project what it is working on. Order
+    /// matters — identity first, then the task, so the more specific instruction is the last thing read.
+    /// </summary>
+    private static string? _JoinPrompts(string? profilePrompt, string? projectPrompt)
+    {
+        var parts = new[] { profilePrompt, projectPrompt }
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => part!.Trim())
+            .ToList();
+
+        return parts.Count == 0 ? null : string.Join("\n\n", parts);
+    }
 }
