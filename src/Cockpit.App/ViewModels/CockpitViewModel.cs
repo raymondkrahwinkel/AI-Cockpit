@@ -4784,6 +4784,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-233: what the operator set for themselves, on top of what each provider declared. Null until loaded,
         // and every signal then follows its provider.
         session.UsageThresholds = UsageThresholds;
+
+        // AC-231: how a session asks for a different moment than the one its allowance dictates. The cockpit owns
+        // the dialogs, so it hands the asking down rather than the session reaching for one.
+        session.AskForResumeMoment = _dialogService is { } dialogs
+            ? (suggested, prompt) => dialogs.ShowScheduleResumeDialogAsync(suggested, prompt)
+            : null;
         session.UsagePillVisibleFields = ComposeUsagePillFields();
         session.AutoCloseOnExit = AutoCloseOnExit;
         session.ShowDebugControls = ShowDebugControls;

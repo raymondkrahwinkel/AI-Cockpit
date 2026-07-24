@@ -367,12 +367,21 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
         UsageWarning = $"{name} is {used:0}% used{returns}.";
 
-        // Only an allowance that says when it returns can be scheduled against, and only where its provider
-        // offered it (AC-231). A context window empties on a compaction rather than at a moment, so it never
-        // carries the offer however full it gets.
-        if (signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true } && reading.ResetsAt is { } moment)
+        // The offer waits for the allowance to actually be spent, not for the threshold that warns about it
+        // (Raymond, 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from
+        // yet — a session that can still work does not need scheduling. Measured on the figure as shown, so the
+        // offer appears exactly when the header reads 100%, whatever the provider reported behind the rounding.
+        //
+        // Only an allowance can carry it at all: a context window empties on a compaction rather than at a
+        // moment, so there is no reset to time a resume to however full it gets.
+        if (signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
+            && used >= 100
+            && reading.ResetsAt is { } moment)
         {
-            ResumeAt = moment;
+            // A minute past the reset, never on it (Raymond, 2026-07-24): the rollover is the provider's moment,
+            // not ours, and a prompt landing on the same second can still meet a spent allowance — clock skew
+            // between here and their side is enough. A minute costs nothing and removes the whole question.
+            ResumeAt = moment.AddMinutes(1);
             ResumePrompt = signal.DefaultResumePrompt ?? string.Empty;
             ResumeReason = $"{name} is {used:0}% used";
         }
@@ -399,7 +408,11 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// <summary>Whether the warning carries an offer to pick this session up again when its allowance returns.</summary>
     public bool CanOfferResume => Resumes is not null && ResumeAt is not null && !HasPendingResume;
 
-    partial void OnResumeAtChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(CanOfferResume));
+    partial void OnResumeAtChanged(DateTimeOffset? value)
+    {
+        OnPropertyChanged(nameof(CanOfferResume));
+        OnPropertyChanged(nameof(CanChangeResumeMoment));
+    }
 
     /// <summary>The line shown while a resume is waiting — a silent timer that fires at 07:30 is a surprise, not a feature.</summary>
     [ObservableProperty]
@@ -412,6 +425,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     {
         OnPropertyChanged(nameof(HasPendingResume));
         OnPropertyChanged(nameof(CanOfferResume));
+        OnPropertyChanged(nameof(CanChangeResumeMoment));
     }
 
     /// <summary>Schedules the offered resume: this session, at the allowance's own reset moment, with whatever the prompt field says.</summary>
@@ -427,6 +441,40 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         await scheduler.ScheduleAsync(new ScheduledResume(PaneId, ConversationId, moment, prompt, ResumeReason));
 
         PendingResumeLabel = $"Resuming {moment.ToLocalTime():ddd HH:mm}";
+        UsageWarning = string.Empty;
+    }
+
+    /// <summary>
+    /// Asks the operator for a moment and a prompt, starting from whatever this session would have used. Set by
+    /// the cockpit, which owns the dialogs; null where there is no way to ask, and the override is then not offered.
+    /// </summary>
+    public Func<DateTimeOffset, string, Task<(DateTimeOffset Moment, string Prompt)?>>? AskForResumeMoment { get; set; }
+
+    /// <summary>Whether the offered moment can be overridden — the same offer, with the time and prompt yours to change.</summary>
+    public bool CanChangeResumeMoment => CanOfferResume && AskForResumeMoment is not null;
+
+    /// <summary>
+    /// Schedules the resume at a moment of the operator's choosing instead of the one the allowance dictates
+    /// (AC-231). The reset is the sensible default, not a rule — a week that returns at 11:00 on a Saturday is no
+    /// use to someone who will not be there until Monday.
+    /// </summary>
+    [RelayCommand]
+    private async Task ChangeResumeMomentAsync()
+    {
+        if (Resumes is not { } scheduler || AskForResumeMoment is not { } ask || ResumeAt is not { } suggested)
+        {
+            return;
+        }
+
+        var prompt = string.IsNullOrWhiteSpace(ResumePrompt) ? "continue" : ResumePrompt.Trim();
+        if (await ask(suggested, prompt) is not { } chosen)
+        {
+            return;
+        }
+
+        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, ConversationId, chosen.Moment, chosen.Prompt, ResumeReason));
+
+        PendingResumeLabel = $"Resuming {chosen.Moment.ToLocalTime():ddd HH:mm}";
         UsageWarning = string.Empty;
     }
 

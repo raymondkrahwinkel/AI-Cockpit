@@ -131,13 +131,18 @@
                 CornerRadius="{StaticResource CockpitControlRadius}">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <TextBox Text="{Binding ResumePrompt}" Width="150" FontSize="11" Padding="6,2"
-                             IsVisible="{Binding CanOfferResume}" VerticalAlignment="Center"
+                    <TextBox Text="{Binding ResumePrompt}" Width="150" FontSize="11" Padding="6,0"
+                             IsVisible="{Binding CanOfferResume}"
+                             VerticalAlignment="Stretch" VerticalContentAlignment="Center" MinHeight="0"
                              ToolTip.Tip="What to send when the session picks up again. Starts on the provider's default."/>
                     <Button Content="Resume when it returns" Classes="Compact"
                             Command="{Binding ScheduleResumeCommand}" IsVisible="{Binding CanOfferResume}"
                             VerticalAlignment="Center"
-                            ToolTip.Tip="Send this prompt to the session the moment the allowance rolls over."/>
+                            ToolTip.Tip="Send this prompt a minute after the allowance rolls over."/>
+                    <Button Content="At another time…" Classes="Compact"
+                            Command="{Binding ChangeResumeMomentCommand}" IsVisible="{Binding CanChangeResumeMoment}"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Pick your own moment instead — the reset is the sensible default, not a rule."/>
                     <Button Content="Dismiss" Classes="Compact"
                             Command="{Binding DismissUsageWarningCommand}" VerticalAlignment="Center"
                             ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
