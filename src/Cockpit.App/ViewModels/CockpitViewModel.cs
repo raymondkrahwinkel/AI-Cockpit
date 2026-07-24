@@ -4393,6 +4393,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>
+    /// Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
+    /// choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
+    /// </summary>
+    [RelayCommand]
+    private async Task ScheduleSessionResumeAsync(SessionPanelViewModel session)
+    {
+        if (_dialogService is null || ScheduledResumes is not { } scheduler)
+        {
+            return;
+        }
+
+        var chosen = await _dialogService.ShowScheduleResumeDialogAsync(DateTimeOffset.Now.AddHours(1), "continue");
+        if (chosen is not { } picked)
+        {
+            return;
+        }
+
+        await scheduler.ScheduleAsync(new ScheduledResume(session.PaneId, session.ConversationId, picked.Moment, picked.Prompt, Reason: "Scheduled by hand"));
+        session.PendingResumeLabel = $"Resuming {picked.Moment.ToLocalTime():ddd HH:mm}";
+    }
+
+
     /// <summary>Context-menu Clear status (AC-32): wipe this session's status line, the same as the MCP setting it to empty.</summary>
     [RelayCommand]
     private void ClearSessionStatus(SessionPanelViewModel session) => session.Statusline = string.Empty;

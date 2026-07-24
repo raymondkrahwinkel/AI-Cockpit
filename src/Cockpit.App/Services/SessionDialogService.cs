@@ -324,6 +324,21 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
     }
 
+    public async Task<(DateTimeOffset Moment, string Prompt)?> ShowScheduleResumeDialogAsync(DateTimeOffset suggested, string prompt)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var viewModel = new ScheduleResumeDialogViewModel(suggested, prompt);
+        var dialog = new ScheduleResumeDialog { DataContext = viewModel };
+
+        return await dialog.ShowDialog<ScheduleResumeDialogViewModel?>(owner) is { } chosen
+            ? (chosen.Moment, chosen.Prompt)
+            : null;
+    }
+
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
