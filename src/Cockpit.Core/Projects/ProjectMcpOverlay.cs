@@ -68,7 +68,13 @@ public sealed record ProjectMcpOverlay
             replacements.TryAdd(server.Name, server);
         }
 
-        var replaced = servers.Select(server => replacements.GetValueOrDefault(server.Name, server));
+        // A project's own entry replaces the registry's by name — but never re-enables one the operator switched
+        // off globally. Off in the registry means off everywhere; letting a project overrule that would put a
+        // server the operator had retired back in front of them under its familiar name.
+        var replaced = servers.Select(server =>
+            replacements.TryGetValue(server.Name, out var replacement)
+                ? replacement with { Enabled = replacement.Enabled && server.Enabled }
+                : server);
         var known = servers.Select(server => server.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var added = replacements.Values.Where(server => !known.Contains(server.Name));
 

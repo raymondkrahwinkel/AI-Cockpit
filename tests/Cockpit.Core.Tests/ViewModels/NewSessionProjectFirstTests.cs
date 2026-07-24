@@ -174,6 +174,43 @@ public class NewSessionProjectFirstTests
     }
 
     [Fact]
+    public async Task WhileTheChecklistIsBeingRebuilt_StartIsHeldBack()
+    {
+        // Switching project rebuilds the checklist off disk, and Start reads that checklist. Pressed inside that
+        // window it would carry the previous project's ticks into the new project's session — the folder and the id
+        // from one, the servers from the other. The catalog is held open here so the window is observable at all:
+        // a substitute that answers instantly closes it before a test (or an operator) can look.
+        var project = Project.Create("Cockpit");
+        var pending = new TaskCompletionSource<IReadOnlyList<McpServerConfig>>();
+
+        var profileStore = Substitute.For<ISessionProfileStore>();
+        profileStore.LoadAsync(Arg.Any<CancellationToken>()).Returns([Personal]);
+        var loginChecker = Substitute.For<IProfileLoginChecker>();
+        loginChecker.IsLoggedIn(Arg.Any<SessionProfile>()).Returns(true);
+
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(null, Arg.Any<CancellationToken>()).Returns([]);
+        catalog.GetServersForProjectAsync(Arg.Is<string?>(id => id != null), Arg.Any<CancellationToken>())
+            .Returns(_ => pending.Task);
+
+        var projectStore = Substitute.For<IProjectStore>();
+        projectStore.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings { Projects = [project] });
+
+        var viewModel = new NewSessionDialogViewModel(profileStore, loginChecker, catalog, projectStore: projectStore);
+        await viewModel.LoadAsync();
+        viewModel.CanStart.Should().BeTrue("nothing is in flight yet");
+
+        viewModel.SelectedProject = viewModel.Projects[0];
+
+        viewModel.CanStart.Should().BeFalse("the rebuild is in flight and Start would read the old checklist");
+
+        pending.SetResult([]);
+        await viewModel.McpChecklistRefresh;
+
+        viewModel.CanStart.Should().BeTrue("and released once it landed");
+    }
+
+    [Fact]
     public async Task Confirm_UnderAProjectThatOffersNoServers_SelectsNothingRatherThanLeavingItOpen()
     {
         // The registry has a server; this project's overlay leaves none. A null selection would read downstream as

@@ -8,11 +8,11 @@
     <!-- One MCP checklist for every surface that has one — the profile editor, the New-session dialog and the
          project editor (AC-140). Collapsed by default with a live "N of M selected" count, because the list runs to
          a dozen rows and reads as noise in three dialogs that are about something else.
-         Built from a chevron collapser rather than an Expander, and styled ToggleButton.collapser rather than left
+         Built from a chevron collapser rather than an Expander, and styled ToggleButton.Collapser rather than left
          to the default: a checked ToggleButton takes the accent fill, which turned the quietest row in the dialog
          into the loudest thing on the screen the moment it was opened. -->
     <StackPanel Spacing="4">
-        <ToggleButton Classes="collapser" HorizontalAlignment="Stretch"
+        <ToggleButton Classes="Collapser" HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch"
                       IsChecked="{Binding #Root.IsExpanded, Mode=TwoWay}">
             <StackPanel Orientation="Horizontal" Spacing="6">

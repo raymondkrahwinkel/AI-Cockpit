@@ -1993,10 +1993,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         // A dashboard shows no sessions at all; and a session with no workspace — created before workspaces
-        // existed, or in the design-time graph — belongs to the first one rather than to nothing.
+        // existed, or in the design-time graph — belongs to the first desk that can actually show one. By
+        // position it would belong to whatever happens to sit at index 0, and since the projects overview is a
+        // fixture that survives every close, a cockpit whose session desks were all closed would leave such a
+        // session belonging to a surface that shows no sessions at all: invisible everywhere.
+        var firstSessionsWorkspace = Workspaces.Settings.Workspaces
+            .FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions);
+
         return active.Type == WorkspaceType.Sessions
             && (session.WorkspaceId == active.Id
-                || (session.WorkspaceId.Length == 0 && Workspaces.Settings.Workspaces[0].Id == active.Id));
+                || (session.WorkspaceId.Length == 0 && firstSessionsWorkspace?.Id == active.Id));
     }
 
     /// <summary>

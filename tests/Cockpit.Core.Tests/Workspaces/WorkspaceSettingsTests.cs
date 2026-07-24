@@ -158,4 +158,20 @@ public class WorkspaceSettingsTests
 
         settings.WithActive("gone").ActiveWorkspaceId.Should().Be(settings.ActiveWorkspaceId);
     }
+
+    [Fact]
+    public void Normalized_DroppingADuplicateOverview_KeepsTheOperatorOnTheOneThatSurvived()
+    {
+        // A hand-edited config with two overviews: the operator was on the second, which is the one dropped. They
+        // must land on the surviving overview, not on whichever desk happens to come first.
+        var sessions = Workspace.Create("Sessions", WorkspaceType.Sessions);
+        var first = Workspace.Create("Projects", WorkspaceType.Projects);
+        var second = Workspace.Create("Projects", WorkspaceType.Projects);
+        var settings = new WorkspaceSettings { Workspaces = [sessions, first, second], ActiveWorkspaceId = second.Id };
+
+        var normalized = settings.Normalized();
+
+        normalized.Workspaces.Count(workspace => workspace.Type == WorkspaceType.Projects).Should().Be(1);
+        normalized.Active!.Type.Should().Be(WorkspaceType.Projects);
+    }
 }

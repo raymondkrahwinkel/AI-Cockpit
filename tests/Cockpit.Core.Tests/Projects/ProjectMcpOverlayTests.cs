@@ -81,8 +81,6 @@ public class ProjectMcpOverlayTests
     [Fact]
     public void ApplyTo_AServerBothAddedAndSwitchedOff_IsStillOffered_ButUnticked()
     {
-        // Switching off a project's own server leaves it defined and merely unticked — otherwise the only way to
-        // silence one would be to delete it and type it back in later.
         var overlay = new ProjectMcpOverlay
         {
             AdditionalServers = [new McpServerConfig { Name = "project-tools", Command = "uvx" }],
@@ -110,5 +108,19 @@ public class ProjectMcpOverlayTests
 
         effective.Should().ContainSingle(server => server.Name == "project-tools")
             .Which.Command.Should().Be("first");
+    }
+
+    [Fact]
+    public void ApplyTo_AProjectServerNamedAfterADisabledRegistryOne_StaysDisabled()
+    {
+        // A project narrows what is offered, never widens it: a server the operator switched off globally must not
+        // come back — under its familiar name, with a command of the project's choosing — because a project says so.
+        var registry = new List<McpServerConfig> { new() { Name = "filesystem", Enabled = false, Command = "npx" } };
+        var overlay = new ProjectMcpOverlay
+        {
+            AdditionalServers = [new McpServerConfig { Name = "filesystem", Enabled = true, Command = "something-else" }],
+        };
+
+        overlay.ApplyTo(registry).Should().ContainSingle().Which.Enabled.Should().BeFalse();
     }
 }

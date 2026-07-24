@@ -69,9 +69,16 @@ public sealed record WorkspaceSettings
         // nothing to lose, and two tabs showing the same list is exactly what "exactly once" rules out.
         var overviews = clamped.Where(workspace => workspace.Type == WorkspaceType.Projects).ToList();
         var ordered = clamped.Where(workspace => workspace.Type != WorkspaceType.Projects).ToList();
-        ordered.Add(overviews.Count > 0 ? overviews[0] : _CreateProjects());
+        var overview = overviews.Count > 0 ? overviews[0] : _CreateProjects();
+        ordered.Add(overview);
 
-        var active = ordered.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? ordered[0];
+        // An operator sitting on an overview that was one of several stays on the one that survived, rather than
+        // being walked to whichever desk happens to be first: the tab they were on still exists, under a different id.
+        var wasOnADroppedOverview = overviews.Skip(1).Any(dropped => dropped.Id == ActiveWorkspaceId);
+        var active = wasOnADroppedOverview
+            ? overview
+            : ordered.FirstOrDefault(workspace => workspace.Id == ActiveWorkspaceId) ?? ordered[0];
+
         return new WorkspaceSettings { Workspaces = ordered, ActiveWorkspaceId = active.Id };
     }
 

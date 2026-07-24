@@ -278,25 +278,25 @@
          button. It needs its own styling because the checked state above fills a ToggleButton with the accent,
          which would make the quietest row in a dialog the loudest thing on the screen the moment it is opened.
          Note the selector is by exact type: Button.Subtle does not reach a ToggleButton. -->
-    <Style Selector="ToggleButton.collapser">
+    <Style Selector="ToggleButton.Collapser">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="2"/>
         <Setter Property="Cursor" Value="Hand"/>
     </Style>
-    <Style Selector="ToggleButton.collapser /template/ ContentPresenter">
+    <Style Selector="ToggleButton.Collapser /template/ ContentPresenter">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
-    <Style Selector="ToggleButton.collapser:checked /template/ ContentPresenter">
+    <Style Selector="ToggleButton.Collapser:checked /template/ ContentPresenter">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
-    <Style Selector="ToggleButton.collapser:pointerover /template/ ContentPresenter">
+    <Style Selector="ToggleButton.Collapser:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
-    <Style Selector="ToggleButton.collapser:checked:pointerover /template/ ContentPresenter">
+    <Style Selector="ToggleButton.Collapser:checked:pointerover /template/ ContentPresenter">
         <Setter Property="Background" Value="{StaticResource CockpitPanelBgBrush}"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>

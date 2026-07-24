@@ -35,7 +35,7 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - added: projects — a reusable answer to what a session works on. A project holds a folder (picked or cloned), the
   profile its sessions run under, whether they are isolated in a git worktree, which MCP servers they get, and
   optional instructions for how to behave on that work, so a second codebase no longer means a second nearly
-  identical profile. Manage them in Options → Projects.
+  identical profile. It can carry a logo and a memory location too, and it is managed in a window of its own.
 - added: starting a session from a project — a Projects section in the sidebar whose ▶ starts one on the project's
   own defaults without a dialog, and a right-click menu for the slower routes (a pre-filled New-session dialog, the
   project's folder, its settings). Pick a project at the top of the New-session dialog to fill folder, profile,
@@ -49,6 +49,8 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - added: one MCP-server list everywhere it appears — the profile editor, the New-session dialog and the project
   editor — collapsed by default behind a live "MCP servers · 8 of 11 selected" count, so a dozen checkboxes stop
   filling three dialogs that are about something else.
+- changed: a project can no longer switch a server back on that you had turned off in the global MCP configuration —
+  a project narrows what its sessions get, it never widens it.
 - changed: projects are managed in a window of their own, reached from the sidebar or the overview, instead of a tab
   inside Options — a project is the work the cockpit is pointed at, not a setting of it.
 - changed: the sidebar lists the five most recently worked-on projects rather than all of them, with the rest one

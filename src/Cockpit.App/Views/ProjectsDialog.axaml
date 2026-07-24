@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
-        xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:controls="using:Cockpit.App.Controls"
         xmlns:projects="using:Cockpit.Core.Projects"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -65,19 +65,11 @@
                                     PointerPressed="OnProjectPressed" DoubleTapped="OnProjectDoubleTapped"
                                     Cursor="Hand">
                                 <Grid ColumnDefinitions="Auto,*">
-                                    <Border Grid.Column="0" Width="38" Height="38" CornerRadius="8" Margin="0,0,12,0"
-                                            ClipToBounds="True" VerticalAlignment="Top"
-                                            Background="{StaticResource CockpitPanelBgBrush}"
-                                            BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
-                                        <Panel>
-                                            <TextBlock Text="{Binding Name, Converter={x:Static conv:ProjectInitialConverter.Instance}}"
-                                                       FontSize="16" FontWeight="SemiBold"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                            <Image Source="{Binding LogoPath, Converter={x:Static conv:ProjectLogoConverter.Instance}}"
-                                                   Stretch="UniformToFill"/>
-                                        </Panel>
-                                    </Border>
+                                    <controls:ProjectLogoBadge Grid.Column="0" Size="38" Margin="0,0,12,0"
+                                                               VerticalAlignment="Top"
+                                                               LogoPath="{Binding LogoPath}"
+                                                               ProjectName="{Binding Name}"
+                                                               WellBackground="{StaticResource CockpitPanelBgBrush}"/>
                                     <StackPanel Grid.Column="1" Spacing="2">
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="{Binding Description}" FontSize="11" TextWrapping="Wrap"

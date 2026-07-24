@@ -89,6 +89,8 @@ public sealed class ProjectQuickStart(
         return McpServerRegistryFilter.OfferedToOperator(catalog)
             .Where(server => project.McpOverlay.IsSelectedByDefault(server.Name))
             .Select(server => server.Name)
-            .ToHashSet(StringComparer.Ordinal);
+            // The same comparer the rest of this feature matches names with: a casing difference between the
+            // registry and a hand-written overlay would otherwise drop a server from the launch without a word.
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 }

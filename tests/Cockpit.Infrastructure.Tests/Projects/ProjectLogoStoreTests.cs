@@ -108,6 +108,34 @@ public class ProjectLogoStoreTests : IDisposable
         Directory.EnumerateFiles(_root, "p1.*").Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task AnIdThatClimbsOutOfTheFolder_StoresInsideItAnyway()
+    {
+        // A project id is data from cockpit.json — a hand-written or shared one can hold anything, and it used to
+        // decide the file's path. Writing "../../evil.png" put operator data outside the folder the cockpit owns.
+        var source = WriteFile("source.png", Png());
+        var store = Store();
+
+        var stored = await store.SaveAsync("../../escaped", source);
+
+        stored.Should().NotBeNull();
+        Path.GetFullPath(stored!).Should().StartWith(Path.GetFullPath(_root));
+        store.IsStoredCopy(stored).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RemoveWithAWildcardId_LeavesTheOtherProjectsLogosAlone()
+    {
+        // Remove used to hand the id to a search pattern, so an id of "*" — or one climbing into another folder —
+        // matched, and deleted, files that were never this project's.
+        var store = Store();
+        await store.SaveAsync("keep-me", WriteFile("a.png", Png()));
+
+        store.Remove("*");
+
+        Directory.EnumerateFiles(_root, "keep-me.*").Should().ContainSingle("only this project's own logo is its to remove");
+    }
+
     public void Dispose()
     {
         GC.SuppressFinalize(this);

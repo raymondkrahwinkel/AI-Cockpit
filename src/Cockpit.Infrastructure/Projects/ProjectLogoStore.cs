@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Logging;
 using SkiaSharp;
 using Svg.Skia;
@@ -54,7 +56,7 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
 
             Remove(projectId);
             Directory.CreateDirectory(_Root);
-            var path = Path.Combine(_Root, projectId + extension);
+            var path = Path.Combine(_Root, _FileKey(projectId) + extension);
             await File.WriteAllBytesAsync(path, bytes, cancellationToken).ConfigureAwait(false);
             return path;
         }
@@ -67,9 +69,12 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         }
     }
 
+    // On the separator, not on the bare prefix: a sibling folder whose name merely starts with the same text
+    // (project-logos-backup beside project-logos) is not inside the store, and treating it as the stored copy
+    // would leave the logo pointing at a file the cockpit neither owns nor removes with its project.
     public bool IsStoredCopy(string path) =>
         !string.IsNullOrWhiteSpace(path)
-        && path.StartsWith(_Root, StringComparison.Ordinal);
+        && path.StartsWith(_Root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.Ordinal);
 
     public void Remove(string projectId)
     {
@@ -78,8 +83,12 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
             return;
         }
 
-        // Every extension it could have been stored under: the project keeps one logo, whatever kind of image it is.
-        foreach (var existing in Directory.EnumerateFiles(_Root, projectId + ".*"))
+        // Matched on the file's own name rather than by handing the id to a search pattern: an id is data from
+        // cockpit.json, and a pattern built from it ("../../notes/*") enumerates — and would delete — files well
+        // outside this folder.
+        var key = _FileKey(projectId);
+        foreach (var existing in Directory.EnumerateFiles(_Root)
+            .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), key, StringComparison.Ordinal)))
         {
             try
             {
@@ -100,8 +109,24 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
             return null;
         }
 
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-        return bytes.Length is 0 or > MaxBytes ? null : bytes;
+        // Read with a ceiling rather than buffering whatever arrives: a chunked response carries no Content-Length,
+        // so the header check above cannot see its size and the whole thing would land in memory before anyone
+        // measured it.
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > MaxBytes)
+            {
+                return null;
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.Length == 0 ? null : buffer.ToArray();
     }
 
     private static async Task<byte[]?> _ReadFileAsync(string path, CancellationToken cancellationToken)
@@ -158,6 +183,24 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         using var image = surface.Snapshot();
         using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
         return encoded?.ToArray();
+    }
+
+    /// <summary>
+    /// The file name this project's logo is stored under: its id when that is already nothing but letters, digits,
+    /// dashes and underscores — which is what <see cref="Cockpit.Core.Projects.Project.Create"/> mints — and
+    /// otherwise a hash of it. An id is data off disk, and a hand-written or shared <c>cockpit.json</c> can put
+    /// anything in it, including a path that climbs out of this folder. Hashing keeps such an id usable (the
+    /// project still gets its logo) without ever letting it decide where the file lands.
+    /// </summary>
+    private static string _FileKey(string projectId)
+    {
+        var safe = projectId.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+        if (safe && projectId.Length <= 64)
+        {
+            return projectId;
+        }
+
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(projectId)))[..32];
     }
 
     /// <summary>The source's extension when it looks like an image, else <c>.png</c> — the stored name only has to be stable and unique, and every renderer here sniffs the bytes rather than trusting the name.</summary>

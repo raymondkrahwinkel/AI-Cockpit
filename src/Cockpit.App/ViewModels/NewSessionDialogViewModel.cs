@@ -73,6 +73,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Set while a profile's MCP pre-selection is being applied, so re-ticking the checklist is not mistaken for the operator toggling it.</summary>
     private bool _applyingMcpSelection;
 
+    /// <summary>True while the checklist is being rebuilt for a newly chosen project — Start waits for it (<see cref="CanStart"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanStart))]
+    private bool _isRebuildingMcpChecklist;
+
     /// <summary>
     /// Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
     /// dynamic-options refresh — the profile switch fires exactly one refresh at its end, for whatever kind won.
@@ -446,7 +451,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public bool CanStart =>
         SelectedProfile is not null
         && (IsLocalProfile || IsTty || IsSelectedProfileLoggedIn)
-        && (ResumeMode != SessionResumeMode.BySessionId || !string.IsNullOrWhiteSpace(ResumeSessionId));
+        && (ResumeMode != SessionResumeMode.BySessionId || !string.IsNullOrWhiteSpace(ResumeSessionId))
+        // A project switch rebuilds the checklist off disk, and Start reads that checklist. Pressed inside that
+        // window it would carry the previous project's ticks into the new project's session — the folder and the
+        // id from one, the servers from the other. The caller that opens the dialog on a project already waits for
+        // this; the operator switching project inside the dialog had nothing holding them back.
+        && !IsRebuildingMcpChecklist;
 
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
@@ -539,7 +549,22 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
-        var registry = await _mcpServerCatalog.GetServersForProjectAsync(SelectedProject?.Id);
+        IsRebuildingMcpChecklist = true;
+        ConfirmCommand.NotifyCanExecuteChanged();
+        try
+        {
+            await _RebuildMcpServersAsync();
+        }
+        finally
+        {
+            IsRebuildingMcpChecklist = false;
+            ConfirmCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private async Task _RebuildMcpServersAsync()
+    {
+        var registry = await _mcpServerCatalog!.GetServersForProjectAsync(SelectedProject?.Id);
 
         // What the operator ticked, kept across the rebuild for the servers that survive it. Without this their own
         // edits are gone — every fresh row starts ticked — while _mcpSelectionTouched keeps the profile's saved
