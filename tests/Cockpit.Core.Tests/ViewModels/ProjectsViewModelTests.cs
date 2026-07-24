@@ -52,6 +52,34 @@ public class ProjectsViewModelTests
     }
 
     [Fact]
+    public async Task SidebarProjects_AreTheRecentFew_WithTheRestOneClickAway()
+    {
+        // The sidebar strip is for reaching what you are busy with; a list that grows with every project turns it
+        // back into a menu, so it holds the recent handful and says where the others are.
+        var saved = Enumerable.Range(1, 7)
+            .Select(index => Project.Create($"Project {index}") with { LastOpenedAt = DateTimeOffset.Now.AddMinutes(-index) })
+            .ToArray();
+        var (viewModel, _, _) = Build(saved);
+
+        await viewModel.LoadAsync();
+
+        viewModel.SidebarProjects.Should().HaveCount(5);
+        viewModel.SidebarProjects.Select(project => project.Name).Should().Equal("Project 1", "Project 2", "Project 3", "Project 4", "Project 5");
+        viewModel.HasMoreThanSidebarShows.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task WithFewProjects_TheSidebarShowsThemAll_AndSaysNothingAboutMore()
+    {
+        var (viewModel, _, _) = Build(Project.Create("Cockpit"), Project.Create("Depot"));
+
+        await viewModel.LoadAsync();
+
+        viewModel.SidebarProjects.Should().HaveCount(2);
+        viewModel.HasMoreThanSidebarShows.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task MarkOpened_PersistsWhenItWasWorkedOn()
     {
         var project = Project.Create("Cockpit");

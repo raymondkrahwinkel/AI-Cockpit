@@ -135,16 +135,20 @@ public class CockpitViewModelProjectStartTests
     }
 
     [Fact]
-    public async Task ManageProjects_OpensOptionsOnTheProjectsTab()
+    public async Task ManageProjects_OpensTheProjectsManager_NotOptions()
     {
         var dialogs = Substitute.For<ISessionDialogService>();
-        var vm = NewVm(dialogs);
+        var store = Substitute.For<IProjectStore>();
+        store.LoadAsync(Arg.Any<CancellationToken>()).Returns(new ProjectSettings());
+        var projects = new ProjectsViewModel(store, dialogs);
+        var vm = NewVm(dialogs, projects);
 
         await vm.ManageProjectsCommand.ExecuteAsync(null);
 
-        // The launcher's "Manage projects" is that tab and nothing else — landing on the first tab would make the
-        // operator go looking for what the button named.
-        await dialogs.Received(1).ShowOptionsDialogAsync(vm, "Projects");
+        // Its own window (Raymond, 2026-07-24): a project is the work the cockpit is pointed at, not a setting of
+        // it, and where projects come from is about to widen beyond this machine.
+        await dialogs.Received(1).ShowProjectsDialogAsync(projects);
+        await dialogs.DidNotReceive().ShowOptionsDialogAsync(Arg.Any<CockpitViewModel>());
     }
 
     private static NewSessionResult Confirmed() => new(

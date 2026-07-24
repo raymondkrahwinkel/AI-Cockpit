@@ -203,6 +203,18 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
     }
 
+    public async Task ShowProjectsDialogAsync(ProjectsViewModel projects)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        // The one shared manager, so what this window shows is what the sidebar and the overview show.
+        await projects.LoadAsync();
+        await new ProjectsDialog { DataContext = projects }.ShowDialog(owner);
+    }
+
     public async Task<Project?> ShowProjectDialogAsync(Project? project)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
@@ -312,7 +324,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
     }
 
-    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? selectTab = null)
+    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -320,10 +332,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var dialog = new OptionsDialog { DataContext = viewModel };
-        if (selectTab is { Length: > 0 })
-        {
-            dialog.SelectTab(selectTab);
-        }
 
         await dialog.ShowDialog(owner);
     }

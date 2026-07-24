@@ -36,6 +36,18 @@ public interface ISessionDialogService
     Task ShowManageProfilesDialogAsync();
 
     /// <summary>
+    /// Shows the projects manager (AC-161) in its own window: the saved projects, with add, edit and remove. Its
+    /// own dialog rather than a tab in Options (Raymond, 2026-07-24) — a project is the work the cockpit is pointed
+    /// at, not a setting of it, and where projects come from is about to widen beyond this machine.
+    /// <para>
+    /// Takes <paramref name="projects"/> as a parameter for the same reason <see cref="ShowWorktreesDialogAsync"/>
+    /// does: that view model depends on this service for its editor and its confirmations, so injecting it here
+    /// would be a circle.
+    /// </para>
+    /// </summary>
+    Task ShowProjectsDialogAsync(ProjectsViewModel projects);
+
+    /// <summary>
     /// Shows the project editor (AC-160) for <paramref name="project"/>, or for a new project when it is null,
     /// and returns what the operator saved — null when they cancelled. Persisting is the caller's: this hands
     /// back an edited value the same way the New-session dialog hands back its choices.
@@ -63,10 +75,9 @@ public interface ISessionDialogService
     /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
     /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
-    /// existing option properties/commands. <paramref name="selectTab"/> names the tab to open on by its
-    /// header ("Projects"), instead of the default first one; null opens where the dialog opens itself.
+    /// existing option properties/commands.
     /// </summary>
-    Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? selectTab = null);
+    Task ShowOptionsDialogAsync(CockpitViewModel viewModel);
 
     /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
     Task<string?> PickPluginZipAsync();

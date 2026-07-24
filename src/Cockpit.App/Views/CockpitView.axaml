@@ -345,10 +345,12 @@
                      entirely when no plugin contributes a section (no visual noise at zero plugins). -->
                 <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
 
-                <!-- Projects (AC-164): what a session works on, one click from starting one. Hidden entirely when
-                     there are none, so a cockpit that does not use projects looks exactly as it did. ▶ starts on
-                     the project's own defaults and skips the dialog; the context menu holds the slower routes for
-                     when the operator wants to change something the project would otherwise decide. -->
+                <!-- Projects (AC-164): the few most recently worked on, one click from starting one. Hidden
+                     entirely when there are none, so a cockpit that does not use projects looks exactly as it did.
+                     ▶ starts on the project's own defaults and skips the dialog; the context menu holds the slower
+                     routes for when the operator wants to change something the project would otherwise decide.
+                     Deliberately the recent few and not all of them: this strip is for reaching what you are busy
+                     with, and the overview is where the whole list lives. -->
                 <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,10"
                             IsVisible="{Binding Projects.HasProjects}">
                     <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0,0,2">
@@ -371,7 +373,7 @@
                         </Button>
                     </Grid>
 
-                    <ItemsControl x:Name="ProjectListStrip" ItemsSource="{Binding Projects.RecentProjects}">
+                    <ItemsControl x:Name="ProjectListStrip" ItemsSource="{Binding Projects.SidebarProjects}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="projects:Project">
                                 <!-- Same row treatment as a session (Border.sessionItem): both are things in the
@@ -415,6 +417,13 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <Button Classes="Subtle" Padding="8,2" FontSize="11" HorizontalAlignment="Left"
+                            Foreground="{StaticResource CockpitTextFaintBrush}"
+                            IsVisible="{Binding Projects.HasMoreThanSidebarShows}"
+                            Command="{Binding OpenProjectsWorkspaceCommand}"
+                            Content="All projects →"
+                            ToolTip.Tip="Open the projects overview"/>
                 </StackPanel>
 
                 <ScrollViewer>

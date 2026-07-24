@@ -4460,11 +4460,17 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
     [RelayCommand]
-    private Task OptionsAsync() => _ShowOptionsAsync(selectTab: null);
+    private Task OptionsAsync() => _ShowOptionsAsync();
 
-    /// <summary>Opens Options straight on its Projects tab (AC-162) — the overview's "Manage projects", which is that tab and nothing else.</summary>
+    /// <summary>Opens the projects manager (AC-161) — its own window, not a corner of Options.</summary>
     [RelayCommand]
-    private Task ManageProjectsAsync() => _ShowOptionsAsync("Projects");
+    private async Task ManageProjectsAsync()
+    {
+        if (_dialogService is not null)
+        {
+            await _dialogService.ShowProjectsDialogAsync(Projects);
+        }
+    }
 
     /// <summary>
     /// Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
@@ -4473,7 +4479,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     [RelayCommand]
     private Task OpenProjectsWorkspaceAsync() => Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
 
-    private async Task _ShowOptionsAsync(string? selectTab)
+    private async Task _ShowOptionsAsync()
     {
         if (_dialogService is null)
         {
@@ -4486,8 +4492,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // a moment later without blocking; a timeout inside keeps a slow/hung server from lingering.
         _ = _RefreshVoiceLlmAsync();
         await Plugins.LoadAsync();
-        await Projects.LoadAsync();
-        await _dialogService.ShowOptionsDialogAsync(this, selectTab);
+        await _dialogService.ShowOptionsDialogAsync(this);
     }
 
     /// <summary>

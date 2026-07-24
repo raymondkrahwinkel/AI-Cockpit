@@ -52,6 +52,19 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     /// </summary>
     public ObservableCollection<Project> RecentProjects { get; } = [];
 
+    /// <summary>
+    /// The few most recently worked on, for the sidebar (Raymond, 2026-07-24): that strip is for reaching what you
+    /// are busy with, and a list that grows with every project turns it back into a menu. The rest stay one click
+    /// away in the overview.
+    /// </summary>
+    public ObservableCollection<Project> SidebarProjects { get; } = [];
+
+    /// <summary>How many of them the sidebar shows.</summary>
+    private const int SidebarLimit = 5;
+
+    /// <summary>True when there are more projects than the sidebar shows, so it can say where the others are.</summary>
+    public bool HasMoreThanSidebarShows => Projects.Count > SidebarLimit;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
     private Project? _selectedProject;
@@ -207,11 +220,18 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
             RecentProjects.Add(project);
         }
 
+        SidebarProjects.Clear();
+        foreach (var project in RecentProjects.Take(SidebarLimit))
+        {
+            SidebarProjects.Add(project);
+        }
+
         SelectedProject = Projects.FirstOrDefault(project => project.Id == selectedId);
         OnPropertyChanged(nameof(HasProjects));
         OnPropertyChanged(nameof(ProjectCount));
         OnPropertyChanged(nameof(OpenedProjectCount));
         OnPropertyChanged(nameof(MostRecentProject));
+        OnPropertyChanged(nameof(HasMoreThanSidebarShows));
     }
 
     partial void OnSelectedProjectChanged(Project? value)

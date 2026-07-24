@@ -39,19 +39,6 @@ public partial class OptionsDialog : Window
         Closed += (_, _) => (DataContext as CockpitViewModel)?.StopMicTest();
     }
 
-    /// <summary>Opens straight to the tab headed <paramref name="header"/>. Looked up by header text rather than a hardcoded index, so a future tab reorder can't silently select the wrong one; a header no tab carries leaves the default selection.</summary>
-    public void SelectTab(string header)
-    {
-        foreach (var item in Tabs.Items)
-        {
-            if (item is TabItem tab && Equals(tab.Header, header))
-            {
-                Tabs.SelectedItem = tab;
-                return;
-            }
-        }
-    }
-
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 
     private void OnRefreshDiagnostics(object? sender, RoutedEventArgs e) =>

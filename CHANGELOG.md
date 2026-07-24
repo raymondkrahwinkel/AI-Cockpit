@@ -49,6 +49,10 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 - added: one MCP-server list everywhere it appears — the profile editor, the New-session dialog and the project
   editor — collapsed by default behind a live "MCP servers · 8 of 11 selected" count, so a dozen checkboxes stop
   filling three dialogs that are about something else.
+- changed: projects are managed in a window of their own, reached from the sidebar or the overview, instead of a tab
+  inside Options — a project is the work the cockpit is pointed at, not a setting of it.
+- changed: the sidebar lists the five most recently worked-on projects rather than all of them, with the rest one
+  click away in the overview.
 - added: a memory location per project — a folder, kept apart from the source folder. A session starting on the
   project is told where it is, so it can look things up instead of being told again.
 - changed: a project card offers "Finish setting up" instead of "Start" while the project names no profile. Start
