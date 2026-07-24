@@ -64,11 +64,12 @@
         </Border>
 
         <ScrollViewer Grid.Row="1" Padding="18,16,18,0" VerticalScrollBarVisibility="Auto">
-            <!-- The room the last field needs to scroll clear of the footer sits on the content, not on the
+            <!-- The room the last field needs to end clear of the footer sits on the content, not on the
                  ScrollViewer's padding: padding is not part of what the scroller measures as its extent, so those
                  last pixels stayed unreachable and the bottom row was cut in half against the bar however far you
-                 scrolled — which reads as content running behind it. -->
-            <StackPanel Spacing="18" Margin="0,0,0,28">
+                 scrolled — which reads as content running behind it. Enough of it that the last row ends with air
+                 under it rather than against the bar. -->
+            <StackPanel Spacing="18" Margin="0,0,0,44">
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Name *"/>

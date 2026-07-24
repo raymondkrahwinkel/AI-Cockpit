@@ -51,7 +51,9 @@ public class ProjectDialogScrollTests
         window.Close();
 
         scroll.Extent.Height.Should().BeGreaterThan(scroll.Viewport.Height, "the checklist has to overflow for this to mean anything");
-        gap.Should().BeGreaterThanOrEqualTo(0, "the last row must end above the footer, not half-way behind it");
+        // Not merely non-negative: a row that ends exactly on the footer's edge still reads as pressed against it,
+        // which is what Raymond saw next. The clearance is part of the fix, so it is part of the assertion.
+        gap.Should().BeGreaterThanOrEqualTo(16, "the last row must end with air under it, not against the bar");
     });
 
     private static ProjectDialogViewModel _ViewModelWithManyServers()
