@@ -20,7 +20,9 @@ public sealed class LastOpenedConverter : IValueConverter
             return "Not opened yet";
         }
 
-        var elapsed = DateTimeOffset.Now - openedAt.ToLocalTime();
+        // No conversion to local time first: subtracting two DateTimeOffsets compares the instants they stand for,
+        // whatever offsets they carry, so a project opened on a machine an hour away still reads its true age.
+        var elapsed = DateTimeOffset.Now - openedAt;
 
         // A clock that has moved back (a manual change, a restored config) reads as just now rather than as a
         // negative age: "opened -3 days ago" is nonsense the operator would have to interpret.

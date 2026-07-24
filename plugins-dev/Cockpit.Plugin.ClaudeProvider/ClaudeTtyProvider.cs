@@ -74,12 +74,6 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
     }
 
     /// <summary>
-    /// The launch-only start-default flags for the TTY spawn (<c>internal</c> for unit tests). Deliberately no
-    /// <c>-p</c>/stream-json/permission-prompt-tool: the interactive TUI prompts for permission itself. The session
-    /// id is not forced (<c>--session-id</c> is undocumented for a new interactive session); the cockpit locates the
-    /// live transcript as the new file that appears after launch.
-    /// </summary>
-    /// <summary>
     /// The session's standing instructions and the orchestrator nudge as one value, blank-separated — the
     /// instructions first, since they say who the session is and what it works on, and the nudge is a note about
     /// tools. Null when neither applies, which leaves the flag off entirely.
@@ -94,6 +88,12 @@ internal sealed class ClaudeTtyProvider(Func<string, string?>? managedResolver =
         return parts.Count == 0 ? null : string.Join("\n\n", parts);
     }
 
+    /// <summary>
+    /// The launch-only start-default flags for the TTY spawn (<c>internal</c> for unit tests). Deliberately no
+    /// <c>-p</c>/stream-json/permission-prompt-tool: the interactive TUI prompts for permission itself. The session
+    /// id is not forced (<c>--session-id</c> is undocumented for a new interactive session); the cockpit locates the
+    /// live transcript as the new file that appears after launch.
+    /// </summary>
     internal static List<string> BuildArguments(
         string? permissionMode,
         string? model,
