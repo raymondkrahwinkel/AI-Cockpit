@@ -27,7 +27,7 @@ public class ScheduledResumeCoordinatorTests
     }
 
     private static ScheduledResume Resume(string paneId, DateTimeOffset dueAt, string prompt = "continue") =>
-        new(paneId, ConversationId: null, dueAt, prompt, Reason: "Week is 95% used");
+        new(paneId, dueAt, prompt, Reason: "Week is 95% used");
 
     [Fact]
     public void AResumeIsDue_OnceItsMomentHasArrived()

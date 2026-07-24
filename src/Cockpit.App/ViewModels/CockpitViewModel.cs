@@ -4411,7 +4411,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             return;
         }
 
-        await scheduler.ScheduleAsync(new ScheduledResume(session.PaneId, session.ConversationId, picked.Moment, picked.Prompt, Reason: "Scheduled by hand"));
+        await scheduler.ScheduleAsync(new ScheduledResume(session.PaneId, picked.Moment, picked.Prompt, Reason: "Scheduled by hand"));
         session.PendingResumeLabel = $"Resuming {picked.Moment.ToLocalTime():ddd HH:mm}";
     }
 

@@ -8,17 +8,16 @@ namespace Cockpit.Core.Sessions;
 /// and it has its own approval flow. A resume that starts needing "and then" belongs there instead.
 /// </para>
 /// </summary>
-/// <param name="PaneId">The session pane this was scheduled on, and where the prompt goes if that pane is still open.</param>
-/// <param name="ConversationId">
-/// The provider's own conversation id, so a session that has since been closed can be resumed by id rather than
-/// started fresh. Null when the session never reported one; the resume then only has the open pane to aim at.
+/// <param name="PaneId">
+/// The session pane this was scheduled on, and where the prompt goes. A resume aims at an open pane and nothing
+/// else: reopening a closed conversation to send into it needs the session's whole launch behind it, which this
+/// does not carry — so a resume whose pane is gone lapses and says so (AC-290).
 /// </param>
 /// <param name="DueAt">When to send. For an allowance this is its reset moment; for a hand-scheduled resume, whatever the operator picked.</param>
 /// <param name="Prompt">What to send — the provider's default ("continue") unless the operator wrote something else before scheduling.</param>
 /// <param name="Reason">What this resume is waiting for, in the operator's words ("Week is 95% used"), so a pending line says why it exists.</param>
 public sealed record ScheduledResume(
     string PaneId,
-    string? ConversationId,
     DateTimeOffset DueAt,
     string Prompt,
     string? Reason)

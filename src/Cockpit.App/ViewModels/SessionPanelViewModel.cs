@@ -322,12 +322,6 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     /// </summary>
     public virtual Task<bool> SendPromptAsync(string prompt) => Task.FromResult(false);
 
-    /// <summary>
-    /// The provider's own conversation id, when this session has one — what a resume aims at if the pane has since
-    /// been closed. Null for a session kind or provider that reports none.
-    /// </summary>
-    public virtual string? ConversationId => null;
-
     /// <summary>Dismisses the current warning; the same signal stays quiet until it drops back and crosses again.</summary>
     [RelayCommand]
     private void DismissUsageWarning() => UsageWarning = string.Empty;
@@ -438,7 +432,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         var prompt = string.IsNullOrWhiteSpace(ResumePrompt) ? "continue" : ResumePrompt.Trim();
-        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, ConversationId, moment, prompt, ResumeReason));
+        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, moment, prompt, ResumeReason));
 
         PendingResumeLabel = $"Resuming {moment.ToLocalTime():ddd HH:mm}";
         UsageWarning = string.Empty;
@@ -472,7 +466,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             return;
         }
 
-        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, ConversationId, chosen.Moment, chosen.Prompt, ResumeReason));
+        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, chosen.Moment, chosen.Prompt, ResumeReason));
 
         PendingResumeLabel = $"Resuming {chosen.Moment.ToLocalTime():ddd HH:mm}";
         UsageWarning = string.Empty;

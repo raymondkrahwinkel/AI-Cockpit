@@ -32,7 +32,9 @@
                 <CalendarDatePicker SelectedDate="{Binding Day}" Width="180"/>
                 <TimePicker SelectedTime="{Binding TimeOfDay}" ClockIdentifier="24HourClock"/>
             </StackPanel>
-            <TextBox Text="{Binding Prompt}" AcceptsReturn="True" MinHeight="60"
+            <!-- One line: a terminal reads a line break as "send now", so a two-line prompt would arrive cut in
+                 half with something acting on the first half. -->
+            <TextBox Text="{Binding Prompt}" AcceptsReturn="False"
                      PlaceholderText="What should it pick up with?"/>
         </StackPanel>
     </DockPanel>

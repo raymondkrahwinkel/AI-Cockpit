@@ -602,12 +602,21 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             return Task.FromResult(false);
         }
 
-        // A TUI takes a prompt the way a person gives one: the text, then Enter. Without the newline it sits in the
-        // composer looking sent, which is the failure that looks like success.
-        sink(prompt + "\r");
+        // A TUI takes a prompt the way a person gives one: the text, then Enter. Without the newline it sits in
+        // the composer looking sent, which is the failure that looks like success.
+        //
+        // The text is flattened to a single line first. A terminal reads any carriage return or newline in it as
+        // "send now", so a two-line prompt would submit its first line and leave the rest typed into whatever the
+        // session did next — the instruction arrives cut in half and something acts on the half.
+        sink(_SingleLine(prompt) + "\r");
 
         return Task.FromResult(true);
     }
+
+    // Every line break becomes a space, and the runs that leaves collapse — so a prompt written over a few lines
+    // reads as the one sentence it was meant to be rather than arriving as several submissions.
+    private static string _SingleLine(string text) =>
+        string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
     /// <summary>
     /// Starts reading this session's usage from the file the provider plugin's statusline writes, interpreting it

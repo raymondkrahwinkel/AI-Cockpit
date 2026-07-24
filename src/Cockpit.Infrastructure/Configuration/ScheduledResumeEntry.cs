@@ -9,8 +9,6 @@ internal sealed class ScheduledResumeEntry
 {
     public string PaneId { get; set; } = string.Empty;
 
-    public string? ConversationId { get; set; }
-
     public DateTimeOffset DueAt { get; set; }
 
     public string Prompt { get; set; } = string.Empty;
@@ -20,11 +18,10 @@ internal sealed class ScheduledResumeEntry
     public static ScheduledResumeEntry FromDomain(ScheduledResume resume) => new()
     {
         PaneId = resume.PaneId,
-        ConversationId = resume.ConversationId,
         DueAt = resume.DueAt,
         Prompt = resume.Prompt,
         Reason = resume.Reason,
     };
 
-    public ScheduledResume ToDomain() => new(PaneId, ConversationId, DueAt, Prompt, Reason);
+    public ScheduledResume ToDomain() => new(PaneId, DueAt, Prompt, Reason);
 }

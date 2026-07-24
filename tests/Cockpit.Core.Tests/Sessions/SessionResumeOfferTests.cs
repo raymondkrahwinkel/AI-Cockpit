@@ -192,6 +192,29 @@ public class SessionResumeOfferTests
     }
 
     [Fact]
+    public async Task APromptWrittenOverSeveralLines_ArrivesAsOneInstruction()
+    {
+        // A terminal reads any line break as "send now". Left alone, a two-line prompt would submit its first
+        // line and type the rest into whatever the session did next — the instruction arrives cut in half and
+        // something acts on the half.
+        var sent = new List<string>();
+        var session = new TtyViewModel { PromptSink = sent.Add };
+
+        await session.SendPromptAsync("pick up the migration\nstart with the schema");
+
+        sent.Should().ContainSingle().Which.Should().Be("pick up the migration start with the schema\r");
+    }
+
+    [Fact]
+    public async Task WithNoTerminalBehindIt_TheSessionSaysItCouldNotTakeThePrompt()
+    {
+        // The caller reports a resume that could not be delivered rather than assuming it landed.
+        var session = new TtyViewModel();
+
+        (await session.SendPromptAsync("continue")).Should().BeFalse();
+    }
+
+    [Fact]
     public void WithNoScheduler_NothingIsOffered()
     {
         // The design-time and unit-test graphs have none; the offer must simply not appear rather than throw.
