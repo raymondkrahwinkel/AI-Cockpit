@@ -16,6 +16,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Exclr8.Terminal;
 using Exclr8.Terminal.Buffer;
 using Microsoft.Extensions.DependencyInjection;
@@ -83,6 +84,10 @@ public partial class TtyView : UserControl
     // the view locator, not the DI graph.
     private readonly ITerminalAccessRegistry? _terminals =
         Design.IsDesignMode ? null : Program.Services.GetService<ITerminalAccessRegistry>();
+
+    // Which usage signals this session's provider declares, and how it reads its own statusline snapshot (AC-229).
+    private readonly IPluginTtyProviderRegistry? _ttyProviders =
+        Design.IsDesignMode ? null : Program.Services.GetService<IPluginTtyProviderRegistry>();
 
     // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
     // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
@@ -313,7 +318,14 @@ public partial class TtyView : UserControl
     }
 
     /// <summary>Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (<see cref="OnTerminalBytesToPty"/>).</summary>
-    private void _OnVoiceTranscriptReady(string text)
+    private void _OnVoiceTranscriptReady(string text) => _WriteToPty(text);
+
+    /// <summary>
+    /// Writes text into the pty's stdin, the path a typed keystroke takes. Shared by the voice transcript and by a
+    /// scheduled resume (AC-234), so text that did not come from the keyboard still arrives the one way the TUI
+    /// understands.
+    /// </summary>
+    private void _WriteToPty(string text)
     {
         var pty = _pty;
         if (pty is null)
@@ -329,8 +341,8 @@ public partial class TtyView : UserControl
         }
         catch (Exception)
         {
-            // The pty may have exited between the transcript arriving and the write; the output pump
-            // already observes the exit and updates status, same as a dropped keystroke write.
+            // The pty may have exited between the text arriving and the write; the output pump already observes
+            // the exit and updates status, same as a dropped keystroke write.
         }
     }
 
@@ -686,12 +698,21 @@ public partial class TtyView : UserControl
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;
 
-            // The session's own limits (context window, five-hour and weekly allowance) land in the file its
-            // statusline writes; the launched process is what knows which file that is.
+            // The session's own usage lands in the file its statusline writes; the launched process is what knows
+            // which file that is, and the provider that wrote it is what knows how to read it (AC-229).
             if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is TtyViewModel viewModel)
             {
-                viewModel.TrackLimits(statusFile);
+                var provider = _ttyProviders?.Resolve(_pendingLaunch.Provider.ProviderId);
+                viewModel.UsageProviderId = _pendingLaunch.Provider.ProviderId;
+                viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], provider?.ReadUsage);
             }
+            // A scheduled resume (AC-234) arrives the way a keystroke does — the pty's stdin — so the view, which
+            // owns the pty, is where that route is handed to the session.
+            if (DataContext is TtyViewModel promptTarget)
+            {
+                promptTarget.PromptSink = _WriteToPty;
+            }
+
             // The pty owns the process, so the view is where the meter (#78) learns which one this session is.
             if (_viewModel is not null)
             {

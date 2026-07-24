@@ -951,6 +951,8 @@ public partial class CockpitView : UserControl
 
     private void OnSetSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.SetSessionStatusCommand.Execute(s));
 
+    private void OnScheduleSessionResume(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ScheduleSessionResumeCommand.Execute(s));
+
     private void OnClearSessionStatus(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.ClearSessionStatusCommand.Execute(s));
 
     private void OnMoveSessionUp(object? sender, RoutedEventArgs e) => _InvokeSessionCommand(sender, (c, s) => c.MoveSessionUpCommand.Execute(s));

@@ -324,6 +324,21 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
     }
 
+    public async Task<(DateTimeOffset Moment, string Prompt)?> ShowScheduleResumeDialogAsync(DateTimeOffset suggested, string prompt)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var viewModel = new ScheduleResumeDialogViewModel(suggested, prompt);
+        var dialog = new ScheduleResumeDialog { DataContext = viewModel };
+
+        return await dialog.ShowDialog<ScheduleResumeDialogViewModel?>(owner) is { } chosen
+            ? (chosen.Moment, chosen.Prompt)
+            : null;
+    }
+
     public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
@@ -334,6 +349,15 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var dialog = new OptionsDialog { DataContext = viewModel };
 
         await dialog.ShowDialog(owner);
+
+        // AC-233: the usage thresholds are edited in place like every other option here, so they are written when
+        // the dialog closes. Sessions already open keep the numbers they were started with; the ones started after
+        // this take the new ones.
+        if (viewModel.UsageThresholdSettings is { } thresholds)
+        {
+            await thresholds.SaveAsync();
+            viewModel.UsageThresholds = await thresholds.ReloadAsync();
+        }
     }
 
     // A dashboard travels as ordinary JSON with its own extension: readable enough to look at before you trust

@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
@@ -587,13 +588,51 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
-    /// Starts reading this session's limits from the file the provider plugin's statusline writes.
+    /// Where a prompt goes when something other than the operator sends one (a scheduled resume, AC-234): the same
+    /// pty stdin the keystrokes go to. Set by the view once the terminal is launched, because the pty is the view's
+    /// to own; null before that, and the session then reports it cannot take a prompt yet.
+    /// </summary>
+    public Action<string>? PromptSink { get; set; }
+
+    /// <inheritdoc/>
+    public override Task<bool> SendPromptAsync(string prompt)
+    {
+        if (PromptSink is not { } sink)
+        {
+            return Task.FromResult(false);
+        }
+
+        // A TUI takes a prompt the way a person gives one: the text, then Enter. Without the newline it sits in
+        // the composer looking sent, which is the failure that looks like success.
+        //
+        // The text is flattened to a single line first. A terminal reads any carriage return or newline in it as
+        // "send now", so a two-line prompt would submit its first line and leave the rest typed into whatever the
+        // session did next — the instruction arrives cut in half and something acts on the half.
+        sink(_SingleLine(prompt) + "\r");
+
+        return Task.FromResult(true);
+    }
+
+    // Every line break becomes a space, and the runs that leaves collapse — so a prompt written over a few lines
+    // reads as the one sentence it was meant to be rather than arriving as several submissions.
+    private static string _SingleLine(string text) =>
+        string.Join(' ', text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    /// <summary>
+    /// Starts reading this session's usage from the file the provider plugin's statusline writes, interpreting it
+    /// with that provider's own reader (AC-229) — the host polls, the plugin says what the contents mean.
     /// Polled rather than watched: the file is rewritten whole every few seconds by a shell script, and a
     /// filesystem watcher on a write-then-rename fires more often than it tells you anything.
     /// </summary>
-    public void TrackLimits(string? statusFile)
+    /// <param name="statusFile">Where the provider's statusline drops its snapshots; nothing is tracked without one.</param>
+    /// <param name="signals">What the provider says its sessions can run out of, which names and describes each reading.</param>
+    /// <param name="readUsage">The provider's reader, turning a snapshot's contents into readings.</param>
+    public void TrackLimits(
+        string? statusFile,
+        IReadOnlyList<PluginUsageSignal> signals,
+        Func<string, IReadOnlyList<PluginUsageReading>>? readUsage)
     {
-        if (string.IsNullOrWhiteSpace(statusFile))
+        if (string.IsNullOrWhiteSpace(statusFile) || readUsage is null || signals.Count == 0)
         {
             return;
         }
@@ -608,31 +647,20 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                 {
                     try
                     {
-                        if (File.Exists(statusFile)
-                            && SessionLimits.TryParse(await File.ReadAllTextAsync(statusFile, cancellation)) is { HasAny: true } limits)
+                        if (File.Exists(statusFile))
                         {
-                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            var readings = readUsage(await File.ReadAllTextAsync(statusFile, cancellation));
+                            if (readings.Count > 0)
                             {
-                                ContextUsedPercent = limits.ContextUsedPercent;
-                                RateLimits.Clear();
-                                if (limits.FiveHourUsedPercent is { } fiveHour)
-                                {
-                                    RateLimits.Add(new SessionRateWindow("5h", fiveHour, limits.FiveHourResetsAt));
-                                }
-
-                                if (limits.SevenDayUsedPercent is { } sevenDay)
-                                {
-                                    RateLimits.Add(new SessionRateWindow("wk", sevenDay, limits.SevenDayResetsAt));
-                                }
-
-                                LimitsTooltip = DescribeLimits(limits);
-                            });
+                                await Dispatcher.UIThread.InvokeAsync(() => ApplyUsage(signals, readings));
+                            }
                         }
                     }
                     catch (Exception)
                     {
-                        // A file caught mid-rename, a session that just ended. The next tick sorts it out; a status
-                        // bar must never be a reason for a session to fall over.
+                        // A file caught mid-rename, a session that just ended, a reader that choked on a snapshot
+                        // written half-way. The next tick sorts it out; a status bar must never be a reason for a
+                        // session to fall over.
                     }
 
                     await Task.Delay(TimeSpan.FromSeconds(3), cancellation).ConfigureAwait(false);
@@ -640,13 +668,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             },
             cancellation);
     }
-
-    /// <summary>
-    /// The hover text: what the bars mean, spelled out, plus when each window rolls over — which is the one thing
-    /// a bar cannot say and the thing you actually want when it is nearly full. Only the numbers Claude reported,
-    /// so nothing here is invented.
-    /// </summary>
-    internal static string DescribeLimits(SessionLimits limits) => limits.Describe();
 
     protected override ValueTask DisposeCoreAsync()
     {

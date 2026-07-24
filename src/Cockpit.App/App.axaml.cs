@@ -18,6 +18,10 @@ using Cockpit.Core.Plugins;
 using Cockpit.Core.Secrets;
 using Cockpit.Plugins.Abstractions.Workflows;
 
+using Cockpit.Core.Abstractions.Sessions;
+using Cockpit.Infrastructure.Sessions;
+using Cockpit.Infrastructure.Sessions.Tty;
+using Cockpit.Plugins.Abstractions.Sessions;
 namespace Cockpit.App;
 
 public partial class App : Application
@@ -207,6 +211,18 @@ public partial class App : Application
         // build cut hours later. Reuses the same toast/banner/dedup path; stopped when the view model disposes.
         cockpitViewModel.StartPeriodicUpdateChecks();
 
+        // AC-234: hand the running app its scheduler — resolved here rather than through the view-model's
+        // constructor, so the test and design-time graphs build a cockpit without one and never write to disk.
+        cockpitViewModel.ScheduledResumes = Program.Services.GetService<ScheduledResumeCoordinator>();
+        _ = cockpitViewModel.StartScheduledResumesAsync();
+
+        // AC-233: the operator's own thresholds, loaded once and handed to every session started after this, plus
+        // the settings screen that edits them.
+        if (Program.Services.GetService<IUsageThresholdStore>() is { } thresholdStore)
+        {
+            _ = _LoadUsageThresholdsAsync(cockpitViewModel, thresholdStore);
+        }
+
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
         // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,
         // toasting once when an installed managed CLI (claude/codex) has a newer version available.
@@ -378,5 +394,35 @@ public partial class App : Application
         tray.Clicked += (_, _) => ShowMainWindow();
 
         TrayIcon.SetIcons(this, [tray]);
+    }
+
+    /// <summary>
+    /// Builds the usage-threshold settings (AC-233) from what every registered provider declares — TTY and SDK
+    /// alike, since a provider can offer either route and declares the same signals for both — and hands the saved
+    /// values to the cockpit so sessions started from here judge their figures by them.
+    /// </summary>
+    private static async Task _LoadUsageThresholdsAsync(CockpitViewModel cockpit, IUsageThresholdStore store)
+    {
+        var providers = new List<(string ProviderId, string DisplayName, IReadOnlyList<PluginUsageSignal> Signals)>();
+
+        foreach (var registration in Program.Services.GetService<IPluginTtyProviderRegistry>()?.Registrations ?? [])
+        {
+            providers.Add((registration.ProviderId, registration.DisplayName, registration.UsageSignals));
+        }
+
+        foreach (var registration in Program.Services.GetService<IPluginProviderRegistry>()?.Registrations ?? [])
+        {
+            // A provider registered on both routes declares the same signals for each; list it once.
+            if (!providers.Any(entry => string.Equals(entry.ProviderId, registration.ProviderId, StringComparison.OrdinalIgnoreCase)))
+            {
+                providers.Add((registration.ProviderId, registration.DisplayName, registration.UsageSignals));
+            }
+        }
+
+        var settings = new UsageThresholdsViewModel(store);
+        await settings.LoadAsync(providers);
+
+        cockpit.UsageThresholdSettings = settings;
+        cockpit.UsageThresholds = await store.LoadAsync();
     }
 }

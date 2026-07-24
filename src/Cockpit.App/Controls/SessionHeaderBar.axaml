@@ -110,13 +110,13 @@
                                 <StackPanel Spacing="8" MinWidth="210" Margin="4">
                                     <TextBlock Text="Usage" FontWeight="SemiBold" FontSize="11.5"
                                                Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                                    <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" FontSize="10" Height="14"
+                                    <controls:LimitBar Label="ctx" Percent="{Binding ContextUsedPercent}" Threshold="{Binding ContextThreshold}" FontSize="10" Height="14"
                                                        StretchTrack="True" HorizontalAlignment="Stretch"/>
                                     <ItemsControl ItemsSource="{Binding RateLimits}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="sessions:SessionRateWindow">
                                                 <StackPanel Spacing="1" Margin="0,4,0,0">
-                                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" FontSize="10" Height="14"
+                                                    <controls:LimitBar Label="{Binding Label}" Percent="{Binding UsedPercent}" Threshold="{Binding ThresholdPercent}" FontSize="10" Height="14"
                                                                        StretchTrack="True" HorizontalAlignment="Stretch"/>
                                                     <TextBlock Text="{Binding ResetsAt, Converter={x:Static conv:RateWindowResetConverter.Instance}}"
                                                                FontSize="10" Foreground="{StaticResource CockpitTextFaintBrush}"

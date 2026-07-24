@@ -10,6 +10,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Delegation;
@@ -151,6 +152,27 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private bool _allSessionsIdleNotified = true;
 
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
+
+    /// <summary>
+    /// Holds the prompts waiting to be sent to a session at a future moment (AC-234). Handed in by the app at
+    /// startup rather than taken through the constructor, so the unit-test and design-time graphs — which build
+    /// this view-model from the container — never construct a scheduler, never touch the config file, and never
+    /// leave one running behind a test.
+    /// </summary>
+    public ScheduledResumeCoordinator? ScheduledResumes { get; set; }
+
+    /// <summary>
+    /// The operator's own usage thresholds (AC-233), loaded once and handed to each session as it is created.
+    /// Null in the graphs that never load them, and every signal then warns where its provider said.
+    /// </summary>
+    public UsageThresholdSettings? UsageThresholds { get; set; }
+
+    /// <summary>
+    /// The usage-threshold settings screen (AC-233), rendered from what the providers declared. Handed in by the
+    /// app at startup for the same reason the scheduler is: the test and design-time graphs build a cockpit
+    /// without one and touch no config.
+    /// </summary>
+    public UsageThresholdsViewModel? UsageThresholdSettings { get; set; }
 
     /// <summary>
     /// The sidebar's own display order (AC-115). Kept apart from <see cref="Sessions"/> on purpose: the session
@@ -3084,6 +3106,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// DispatcherTimer, like the plugin/managed-CLI check in <c>App</c>: it ticks on the UI thread, so the check
     /// touches its bound state directly without marshalling.
     /// </summary>
+    /// <summary>
+    /// Starts watching for resumes that have come due (AC-234), and reports whatever lapsed while the cockpit was
+    /// closed. Teaches the coordinator how to find a live session, which only the cockpit knows. Idempotent, and a
+    /// no-op in the graphs that have no coordinator (unit tests, the designer).
+    /// </summary>
+    public Task StartScheduledResumesAsync()
+    {
+        if (ScheduledResumes is not { } coordinator)
+        {
+            return Task.CompletedTask;
+        }
+
+        coordinator.ResolveSession = paneId => Sessions.FirstOrDefault(session => session.PaneId == paneId);
+
+        return coordinator.StartAsync();
+    }
+
     public void StartPeriodicUpdateChecks()
     {
         if (_updates is null || _periodicUpdateTimer is not null)
@@ -4354,6 +4393,29 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
     }
 
+    /// <summary>
+    /// Context-menu "Resume later…" (AC-231): schedules one prompt for this session at a moment of the operator's
+    /// choosing, the route that does not start from a warning. Silently unavailable where nothing can be scheduled.
+    /// </summary>
+    [RelayCommand]
+    private async Task ScheduleSessionResumeAsync(SessionPanelViewModel session)
+    {
+        if (_dialogService is null || ScheduledResumes is not { } scheduler)
+        {
+            return;
+        }
+
+        var chosen = await _dialogService.ShowScheduleResumeDialogAsync(DateTimeOffset.Now.AddHours(1), "continue");
+        if (chosen is not { } picked)
+        {
+            return;
+        }
+
+        await scheduler.ScheduleAsync(new ScheduledResume(session.PaneId, picked.Moment, picked.Prompt, Reason: "Scheduled by hand"));
+        session.PendingResumeLabel = $"Resuming {picked.Moment.ToLocalTime():ddd HH:mm}";
+    }
+
+
     /// <summary>Context-menu Clear status (AC-32): wipe this session's status line, the same as the MCP setting it to empty.</summary>
     [RelayCommand]
     private void ClearSessionStatus(SessionPanelViewModel session) => session.Statusline = string.Empty;
@@ -4714,6 +4776,20 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _SeedSessionPreferences(SessionPanelViewModel session)
     {
         session.ShowTimestamps = ShowTimestamps;
+
+        // AC-231: the one scheduler, so a session can offer to pick itself up when its allowance returns. Null in
+        // the graphs that have none, and the offer simply never appears there.
+        session.Resumes = ScheduledResumes;
+
+        // AC-233: what the operator set for themselves, on top of what each provider declared. Null until loaded,
+        // and every signal then follows its provider.
+        session.UsageThresholds = UsageThresholds;
+
+        // AC-231: how a session asks for a different moment than the one its allowance dictates. The cockpit owns
+        // the dialogs, so it hands the asking down rather than the session reaching for one.
+        session.AskForResumeMoment = _dialogService is { } dialogs
+            ? (suggested, prompt) => dialogs.ShowScheduleResumeDialogAsync(suggested, prompt)
+            : null;
         session.UsagePillVisibleFields = ComposeUsagePillFields();
         session.AutoCloseOnExit = AutoCloseOnExit;
         session.ShowDebugControls = ShowDebugControls;

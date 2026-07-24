@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -234,6 +236,266 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string _limitsTooltip = string.Empty;
 
     /// <summary>
+    /// Folds a provider's usage readings into the header (AC-229), matching each to the signal that declared it.
+    /// On the shared base because it is the one place both session kinds can meet: whatever route reported the
+    /// figures, they land here and the same header renders them.
+    /// <para>
+    /// The host reads nothing into the values beyond the <see cref="PluginUsageSignalKind"/> the provider gave
+    /// them — a fill is the context bar, an allowance is a window with a reset. A reading whose key matches no
+    /// declaration is dropped rather than guessed at, so a provider that renames a signal loses a bar instead of
+    /// gaining a mislabelled one.
+    /// </para>
+    /// </summary>
+    public void ApplyUsage(IReadOnlyList<PluginUsageSignal> signals, IReadOnlyList<PluginUsageReading> readings)
+    {
+        var described = new List<string>(readings.Count);
+        double? context = null;
+        var windows = new List<SessionRateWindow>(readings.Count);
+
+        _thresholds.Clear();
+
+        foreach (var reading in readings)
+        {
+            if (signals.FirstOrDefault(signal => signal.Key == reading.SignalKey) is not { } declared)
+            {
+                continue;
+            }
+
+            if (declared.Kind is PluginUsageSignalKind.Fill)
+            {
+                context = reading.UsedPercent;
+                ContextThreshold = _ResolveThreshold(declared);
+            }
+            else
+            {
+                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt, _ResolveThreshold(declared)));
+            }
+
+            var threshold = _ResolveThreshold(declared);
+            _thresholds[declared.Label] = threshold;
+            described.Add(_DescribeReading(declared, reading));
+            _RaiseOrClearWarning(declared, reading, threshold);
+        }
+
+        ContextUsedPercent = context;
+
+        RateLimits.Clear();
+        foreach (var window in windows)
+        {
+            RateLimits.Add(window);
+        }
+
+        LimitsTooltip = string.Join(Environment.NewLine, described);
+    }
+
+    // The threshold each rendered figure was measured against, by the label it renders under, so the pill and the
+    // bar colour at the point the provider called worth-mentioning rather than at a constant of the host's own.
+    private readonly Dictionary<string, double> _thresholds = [];
+
+    /// <summary>Where the context bar starts to colour, as the provider declared it; null before anything has been reported.</summary>
+    [ObservableProperty]
+    private double? _contextThreshold;
+
+    // Which signals are currently over their threshold, so the bar is raised on the crossing rather than on every
+    // poll. A figure that drops back is forgotten, and crossing again says so again — the reset is real, because a
+    // compaction genuinely empties the window and the next fill is news.
+    private readonly HashSet<string> _announced = [];
+
+    /// <summary>
+    /// What the session bar says about a signal that has passed the point its provider called worth mentioning
+    /// (AC-230), or empty when nothing has. Raised once per crossing: a bar that reappears at 91%, 92%, 93% is
+    /// noise, and noise gets ignored exactly when it matters.
+    /// </summary>
+    [ObservableProperty]
+    private string _usageWarning = string.Empty;
+
+    /// <summary>Whether the session bar shows a usage warning at all.</summary>
+    public bool HasUsageWarning => UsageWarning.Length > 0;
+
+    partial void OnUsageWarningChanged(string value) => OnPropertyChanged(nameof(HasUsageWarning));
+
+    /// <summary>
+    /// Sends a prompt into this session as if it had been typed (AC-234) — how a scheduled resume arrives. Each
+    /// session kind knows its own route (the SDK runtime, the terminal's stdin); the base only knows that a session
+    /// can be spoken to. Returns false when this session cannot take one right now, so a caller reports a resume
+    /// that could not be delivered rather than assuming it landed.
+    /// </summary>
+    public virtual Task<bool> SendPromptAsync(string prompt) => Task.FromResult(false);
+
+    /// <summary>Dismisses the current warning; the same signal stays quiet until it drops back and crosses again.</summary>
+    [RelayCommand]
+    private void DismissUsageWarning() => UsageWarning = string.Empty;
+
+    /// <summary>
+    /// Where this signal warns for this session (AC-233): what the operator set for the profile, else for the
+    /// provider, else what the provider itself declared. One resolver, so the pill, the bar and the warning cannot
+    /// end up judging the same figure by different numbers.
+    /// </summary>
+    private double _ResolveThreshold(PluginUsageSignal signal) =>
+        UsageThresholds?.Resolve(UsageProviderId ?? string.Empty, ActiveProfileLabel, signal.Key, signal.DefaultThresholdPercent)
+        ?? signal.DefaultThresholdPercent;
+
+    /// <summary>The operator's own thresholds, handed in by the cockpit; null means every signal follows its provider's declaration.</summary>
+    public UsageThresholdSettings? UsageThresholds { get; set; }
+
+    /// <summary>Which provider's declarations this session's readings belong to, so a per-provider threshold can be found.</summary>
+    public string? UsageProviderId { get; set; }
+
+    private void _RaiseOrClearWarning(PluginUsageSignal signal, PluginUsageReading reading, double threshold)
+    {
+        if (reading.UsedPercent < threshold)
+        {
+            // Back under: forget it, so the next crossing is announced rather than swallowed as already-said.
+            _announced.Remove(signal.Key);
+            return;
+        }
+
+        if (!_announced.Add(signal.Key))
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(signal.Description) ? signal.Label : signal.Description;
+        var used = Math.Round(reading.UsedPercent, MidpointRounding.AwayFromZero);
+        var returns = reading.ResetsAt is { } at ? $", back {at.ToLocalTime():ddd HH:mm}" : string.Empty;
+
+        UsageWarning = $"{name} is {used:0}% used{returns}.";
+
+        // The offer waits for the allowance to actually be spent, not for the threshold that warns about it
+        // (Raymond, 2026-07-24): warning at 90% is "keep an eye on this", and there is nothing to pick up from
+        // yet — a session that can still work does not need scheduling. Measured on the figure as shown, so the
+        // offer appears exactly when the header reads 100%, whatever the provider reported behind the rounding.
+        //
+        // Only an allowance can carry it at all: a context window empties on a compaction rather than at a
+        // moment, so there is no reset to time a resume to however full it gets.
+        if (signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true }
+            && used >= 100
+            && reading.ResetsAt is { } moment)
+        {
+            // A minute past the reset, never on it (Raymond, 2026-07-24): the rollover is the provider's moment,
+            // not ours, and a prompt landing on the same second can still meet a spent allowance — clock skew
+            // between here and their side is enough. A minute costs nothing and removes the whole question.
+            ResumeAt = moment.AddMinutes(1);
+            ResumePrompt = signal.DefaultResumePrompt ?? string.Empty;
+            ResumeReason = $"{name} is {used:0}% used";
+        }
+    }
+
+    /// <summary>
+    /// Where the prompts waiting on a future moment are kept (AC-231/AC-234). Handed in by the cockpit, which owns
+    /// the one scheduler; null in the graphs that schedule nothing, and the offer then never appears.
+    /// </summary>
+    public ScheduledResumeCoordinator? Resumes { get; set; }
+
+    /// <summary>When the allowance behind the current warning rolls over — the moment a resume would be timed to. Null when nothing schedulable is warned about.</summary>
+    [ObservableProperty]
+    private DateTimeOffset? _resumeAt;
+
+    /// <summary>What a resume would send, starting from the provider's own default and editable before it is scheduled.</summary>
+    [ObservableProperty]
+    private string _resumePrompt = string.Empty;
+
+    /// <summary>Why the offer is there, in the words the warning used, so the pending line can say what it is waiting for.</summary>
+    [ObservableProperty]
+    private string _resumeReason = string.Empty;
+
+    /// <summary>Whether the warning carries an offer to pick this session up again when its allowance returns.</summary>
+    public bool CanOfferResume => Resumes is not null && ResumeAt is not null && !HasPendingResume;
+
+    partial void OnResumeAtChanged(DateTimeOffset? value)
+    {
+        OnPropertyChanged(nameof(CanOfferResume));
+        OnPropertyChanged(nameof(CanChangeResumeMoment));
+    }
+
+    /// <summary>The line shown while a resume is waiting — a silent timer that fires at 07:30 is a surprise, not a feature.</summary>
+    [ObservableProperty]
+    private string _pendingResumeLabel = string.Empty;
+
+    /// <summary>Whether a resume is waiting on this session.</summary>
+    public bool HasPendingResume => PendingResumeLabel.Length > 0;
+
+    partial void OnPendingResumeLabelChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasPendingResume));
+        OnPropertyChanged(nameof(CanOfferResume));
+        OnPropertyChanged(nameof(CanChangeResumeMoment));
+    }
+
+    /// <summary>Schedules the offered resume: this session, at the allowance's own reset moment, with whatever the prompt field says.</summary>
+    [RelayCommand]
+    private async Task ScheduleResumeAsync()
+    {
+        if (Resumes is not { } scheduler || ResumeAt is not { } moment)
+        {
+            return;
+        }
+
+        var prompt = string.IsNullOrWhiteSpace(ResumePrompt) ? "continue" : ResumePrompt.Trim();
+        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, moment, prompt, ResumeReason));
+
+        PendingResumeLabel = $"Resuming {moment.ToLocalTime():ddd HH:mm}";
+        UsageWarning = string.Empty;
+    }
+
+    /// <summary>
+    /// Asks the operator for a moment and a prompt, starting from whatever this session would have used. Set by
+    /// the cockpit, which owns the dialogs; null where there is no way to ask, and the override is then not offered.
+    /// </summary>
+    public Func<DateTimeOffset, string, Task<(DateTimeOffset Moment, string Prompt)?>>? AskForResumeMoment { get; set; }
+
+    /// <summary>Whether the offered moment can be overridden — the same offer, with the time and prompt yours to change.</summary>
+    public bool CanChangeResumeMoment => CanOfferResume && AskForResumeMoment is not null;
+
+    /// <summary>
+    /// Schedules the resume at a moment of the operator's choosing instead of the one the allowance dictates
+    /// (AC-231). The reset is the sensible default, not a rule — a week that returns at 11:00 on a Saturday is no
+    /// use to someone who will not be there until Monday.
+    /// </summary>
+    [RelayCommand]
+    private async Task ChangeResumeMomentAsync()
+    {
+        if (Resumes is not { } scheduler || AskForResumeMoment is not { } ask || ResumeAt is not { } suggested)
+        {
+            return;
+        }
+
+        var prompt = string.IsNullOrWhiteSpace(ResumePrompt) ? "continue" : ResumePrompt.Trim();
+        if (await ask(suggested, prompt) is not { } chosen)
+        {
+            return;
+        }
+
+        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, chosen.Moment, chosen.Prompt, ResumeReason));
+
+        PendingResumeLabel = $"Resuming {chosen.Moment.ToLocalTime():ddd HH:mm}";
+        UsageWarning = string.Empty;
+    }
+
+    /// <summary>Cancels the resume waiting on this session, dropping it from storage rather than only from view.</summary>
+    [RelayCommand]
+    private async Task CancelResumeAsync()
+    {
+        if (Resumes is { } scheduler)
+        {
+            await scheduler.CancelAsync(PaneId);
+        }
+
+        PendingResumeLabel = string.Empty;
+    }
+
+    // One hover line per reading: what it is in words, how far along, and when it comes back. Rounded away from
+    // zero rather than .NET's banker's rounding, which turns 42.5% into 42% and would quietly under-report on the
+    // halves — the wrong direction for a figure you are watching fill up.
+    private static string _DescribeReading(PluginUsageSignal signal, PluginUsageReading reading)
+    {
+        var name = string.IsNullOrWhiteSpace(signal.Description) ? signal.Label : signal.Description;
+        var resets = reading.ResetsAt is { } at ? $" — resets {at.ToLocalTime():ddd HH:mm}" : string.Empty;
+
+        return $"{name}: {Math.Round(reading.UsedPercent, MidpointRounding.AwayFromZero):0}% used{resets}";
+    }
+
+    /// <summary>
     /// The short "kind" chip on the header (AC-37): "TTY" for a terminal session, the provider tag ("SDK", a plugin
     /// name) for an SDK one. Empty hides the chip. On the base so the one SessionHeaderBar renders it for every kind.
     /// </summary>
@@ -384,7 +646,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private UsagePillItem? BuildUsagePillItem(UsagePillField field) => field switch
     {
         UsagePillField.Context when ContextUsedPercent is { } percent =>
-            new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent), $"Context window: {percent:0}% used"),
+            new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx")), $"Context window: {percent:0}% used"),
         UsagePillField.SessionUsage when HasUsage =>
             new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip),
         UsagePillField.FiveHourWindow => WindowPillItem("5h"),
@@ -397,8 +659,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // combined story stays in the chevron's flyout.
     private UsagePillItem? WindowPillItem(string label) =>
         RateLimits.FirstOrDefault(window => window.Label == label) is { } window
-            ? new UsagePillItem($"{label} {window.UsedPercent:0}%", UsageSeverity.BrushKeyFor(window.UsedPercent), $"{label}: {window.UsedPercent:0}% used")
+            ? new UsagePillItem($"{label} {window.UsedPercent:0}%", UsageSeverity.BrushKeyFor(window.UsedPercent, _ThresholdFor(label)), $"{label}: {window.UsedPercent:0}% used")
             : null;
+
+    // What the provider called worth mentioning for the signal behind this label, or null when the figure came
+    // from a route that declares none (an SDK driver reporting windows without signals, or a design-time stub).
+    private double? _ThresholdFor(string label) => _thresholds.TryGetValue(label, out var threshold) ? threshold : null;
 
     /// <summary>
     /// Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the

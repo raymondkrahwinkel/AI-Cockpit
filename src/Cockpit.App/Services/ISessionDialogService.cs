@@ -112,4 +112,10 @@ public interface ISessionDialogService
     /// cancel, leaving the status unchanged.
     /// </summary>
     Task<string?> ShowSetStatusDialogAsync(string currentStatusline);
+
+    /// <summary>
+    /// Asks for a moment and a prompt to pick a session up with (AC-231), starting from <paramref name="suggested"/>.
+    /// Null when the operator backed out.
+    /// </summary>
+    Task<(DateTimeOffset Moment, string Prompt)?> ShowScheduleResumeDialogAsync(DateTimeOffset suggested, string prompt);
 }
