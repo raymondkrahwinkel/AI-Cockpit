@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -30,6 +31,13 @@ public interface ISessionDialogService
 
     /// <summary>Shows the Manage-profiles dialog on its own (e.g. from the sidebar), over the main window.</summary>
     Task ShowManageProfilesDialogAsync();
+
+    /// <summary>
+    /// Shows the project editor (AC-160) for <paramref name="project"/>, or for a new project when it is null,
+    /// and returns what the operator saved — null when they cancelled. Persisting is the caller's: this hands
+    /// back an edited value the same way the New-session dialog hands back its choices.
+    /// </summary>
+    Task<Project?> ShowProjectDialogAsync(Project? project);
 
     /// <summary>Shows the MCP-servers dialog (#26), over the main window, for editing the shared MCP-server registry.</summary>
     Task ShowMcpServersDialogAsync();

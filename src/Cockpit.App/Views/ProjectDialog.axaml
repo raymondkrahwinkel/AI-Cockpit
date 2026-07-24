@@ -1,0 +1,128 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.ProjectDialog"
+        x:DataType="vm:ProjectDialogViewModel"
+        Title="Project"
+        Width="720" Height="720" MinWidth="560" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:ProjectDialogViewModel/>
+    </Design.DataContext>
+
+    <Window.Styles>
+        <!-- A field is a label with an explanation under it, then the control — the shape every section repeats. -->
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style Selector="TextBlock.FieldHint">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,1,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeading">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel>
+        <!-- Header: what this dialog is, in the words of someone who is not a developer. -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1" Padding="18,14">
+            <StackPanel Spacing="2">
+                <TextBlock Text="{Binding DialogTitle}" FontSize="18" FontWeight="SemiBold"
+                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                <TextBlock Text="Anyone can make one — it does not take a developer."
+                           FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer: Cancel and the confirm button, which is the only thing gated on a name. -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="* required" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="{Binding ConfirmLabel}" Command="{Binding SaveCommand}" Classes="Accent"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Padding="18,16">
+            <StackPanel Spacing="18">
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Name *"/>
+                    <TextBlock Classes="FieldHint" Text="What you call this project."/>
+                    <TextBox Text="{Binding Name}" PlaceholderText="Invoices"/>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Description"/>
+                    <TextBlock Classes="FieldHint" Text="In plain words — what is this project for?"/>
+                    <TextBox Text="{Binding Description}" AcceptsReturn="True" TextWrapping="Wrap" Height="60"
+                             PlaceholderText="Read invoices and prepare them for the bookkeeping."/>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Folder"/>
+                    <TextBlock Classes="FieldHint" Text="Where its sessions start. Leave empty for a project without files of its own."/>
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                        <TextBox Grid.Column="0" Text="{Binding SourceDirectory}" PlaceholderText="No folder chosen"/>
+                        <Button Grid.Column="1" Content="Choose…" Command="{Binding BrowseCommand}"/>
+                        <Button Grid.Column="2" Content="Clone…" Command="{Binding CloneCommand}"/>
+                    </Grid>
+                    <TextBlock Classes="FieldHint" Margin="0,4,0,0" IsVisible="{Binding GitUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Text="{Binding GitUrl, StringFormat='Cloned from {0}'}"/>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Profile"/>
+                    <TextBlock Classes="FieldHint" Text="Which profile starts by default. The project uses a profile — it does not replace one."/>
+                    <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
+                              HorizontalAlignment="Stretch" PlaceholderText="Leave the dialog's own choice"/>
+                </StackPanel>
+
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="FieldLabel" Text="Behaviour"/>
+                    <TextBlock Classes="FieldHint" Text="Optional — how should the profile behave here? Added to what the profile already says."/>
+                    <TextBox Text="{Binding BehaviorPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="72"
+                             PlaceholderText="Follow the project conventions. Test before opening a PR; ask when unsure."/>
+                </StackPanel>
+
+                <CheckBox IsChecked="{Binding IsolateInWorktreeByDefault}">
+                    <StackPanel Spacing="1">
+                        <TextBlock Classes="FieldLabel" Text="Isolate new sessions in a git worktree"/>
+                        <TextBlock Classes="FieldHint" Margin="0"
+                                   Text="For code projects — every session starts in its own worktree, still switchable per session."/>
+                    </StackPanel>
+                </CheckBox>
+
+                <StackPanel Spacing="6" IsVisible="{Binding HasMcpServers}">
+                    <TextBlock Classes="SectionHeading" Text="MCP servers"/>
+                    <TextBlock Classes="FieldHint" Margin="0,0,0,2"
+                               Text="Which servers this project's sessions get. Unticking one turns it off here only — the server itself stays in the global configuration."/>
+                    <ItemsControl ItemsSource="{Binding McpServers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
+                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}" Margin="0,1"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

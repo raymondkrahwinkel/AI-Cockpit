@@ -14,6 +14,7 @@ using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -181,6 +182,37 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
             await ShowManageProfilesAsync(owner);
+        }
+    }
+
+    public async Task<Project?> ShowProjectDialogAsync(Project? project)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog);
+        var dialog = new ProjectDialog { DataContext = viewModel };
+
+        // Cloning is answered here rather than in the dialog's code-behind: the clone flow owns a dialog of its
+        // own and the manager that runs it, both of which live on this service.
+        viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
+
+        return await dialog.ShowDialog<Project?>(owner);
+    }
+
+    // Keeps the URL beside the path: a project shows where its folder came from, which the clone dialog's own
+    // result (a local path) cannot say on its own.
+    private async Task _CloneIntoProjectAsync(ProjectDialogViewModel viewModel, Window owner)
+    {
+        var clonesRoot = await _cloneManager.GetEffectiveClonesRootAsync();
+        var cloneViewModel = new CloneFromGitUrlDialogViewModel(_cloneManager, clonesRoot);
+        var dialog = new CloneFromGitUrlDialog { DataContext = cloneViewModel };
+
+        if (await dialog.ShowDialog<string?>(owner) is { Length: > 0 } clonePath)
+        {
+            viewModel.ApplyPickedDirectory(clonePath, cloneViewModel.Url.Trim());
         }
     }
 
