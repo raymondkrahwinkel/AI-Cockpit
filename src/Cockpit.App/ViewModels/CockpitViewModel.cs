@@ -4739,6 +4739,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private void _SeedSessionPreferences(SessionPanelViewModel session)
     {
         session.ShowTimestamps = ShowTimestamps;
+
+        // AC-231: the one scheduler, so a session can offer to pick itself up when its allowance returns. Null in
+        // the graphs that have none, and the offer simply never appears there.
+        session.Resumes = ScheduledResumes;
         session.UsagePillVisibleFields = ComposeUsagePillFields();
         session.AutoCloseOnExit = AutoCloseOnExit;
         session.ShowDebugControls = ShowDebugControls;

@@ -130,14 +130,44 @@
                 BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
                 CornerRadius="{StaticResource CockpitControlRadius}">
             <DockPanel>
-                <Button DockPanel.Dock="Right" Content="Dismiss" Classes="Compact"
-                        Command="{Binding DismissUsageWarningCommand}" VerticalAlignment="Center"
-                        ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBox Text="{Binding ResumePrompt}" Width="150" FontSize="11" Padding="6,2"
+                             IsVisible="{Binding CanOfferResume}" VerticalAlignment="Center"
+                             ToolTip.Tip="What to send when the session picks up again. Starts on the provider's default."/>
+                    <Button Content="Resume when it returns" Classes="Compact"
+                            Command="{Binding ScheduleResumeCommand}" IsVisible="{Binding CanOfferResume}"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Send this prompt to the session the moment the allowance rolls over."/>
+                    <Button Content="Dismiss" Classes="Compact"
+                            Command="{Binding DismissUsageWarningCommand}" VerticalAlignment="Center"
+                            ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <materialIcons:MaterialIcon Kind="GaugeFull" Width="15" Height="15"
                                                 Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
                     <TextBlock Text="{Binding UsageWarning}" VerticalAlignment="Center" FontSize="12"
                                Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+
+        <!-- AC-231: a resume is waiting. Shown for as long as it is pending, with the moment it will fire and a way
+             out — a timer that goes off at 07:30 with nothing on screen saying so is a surprise, not a feature. -->
+        <Border DockPanel.Dock="Top" Margin="0,6,0,0" Padding="8,4"
+                IsVisible="{Binding HasPendingResume}"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitAccentBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Cancel" Classes="Compact"
+                        Command="{Binding CancelResumeCommand}" VerticalAlignment="Center"
+                        ToolTip.Tip="Drop the scheduled resume. Nothing will be sent."/>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="ClockOutline" Width="15" Height="15"
+                                                Foreground="{StaticResource CockpitAccentBrush}"/>
+                    <TextBlock Text="{Binding PendingResumeLabel}" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{StaticResource CockpitAccentBrush}"/>
                 </StackPanel>
             </DockPanel>
         </Border>

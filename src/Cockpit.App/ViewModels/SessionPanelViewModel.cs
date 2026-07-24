@@ -7,6 +7,7 @@ using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
 using Cockpit.Core.Voice;
 using Cockpit.Plugins.Abstractions;
+using Cockpit.App.Services;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.ViewModels;
@@ -349,6 +350,80 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         var returns = reading.ResetsAt is { } at ? $", back {at.ToLocalTime():ddd HH:mm}" : string.Empty;
 
         UsageWarning = $"{name} is {used:0}% used{returns}.";
+
+        // Only an allowance that says when it returns can be scheduled against, and only where its provider
+        // offered it (AC-231). A context window empties on a compaction rather than at a moment, so it never
+        // carries the offer however full it gets.
+        if (signal is { Kind: PluginUsageSignalKind.Allowance, SupportsResume: true } && reading.ResetsAt is { } moment)
+        {
+            ResumeAt = moment;
+            ResumePrompt = signal.DefaultResumePrompt ?? string.Empty;
+            ResumeReason = $"{name} is {used:0}% used";
+        }
+    }
+
+    /// <summary>
+    /// Where the prompts waiting on a future moment are kept (AC-231/AC-234). Handed in by the cockpit, which owns
+    /// the one scheduler; null in the graphs that schedule nothing, and the offer then never appears.
+    /// </summary>
+    public ScheduledResumeCoordinator? Resumes { get; set; }
+
+    /// <summary>When the allowance behind the current warning rolls over — the moment a resume would be timed to. Null when nothing schedulable is warned about.</summary>
+    [ObservableProperty]
+    private DateTimeOffset? _resumeAt;
+
+    /// <summary>What a resume would send, starting from the provider's own default and editable before it is scheduled.</summary>
+    [ObservableProperty]
+    private string _resumePrompt = string.Empty;
+
+    /// <summary>Why the offer is there, in the words the warning used, so the pending line can say what it is waiting for.</summary>
+    [ObservableProperty]
+    private string _resumeReason = string.Empty;
+
+    /// <summary>Whether the warning carries an offer to pick this session up again when its allowance returns.</summary>
+    public bool CanOfferResume => Resumes is not null && ResumeAt is not null && !HasPendingResume;
+
+    partial void OnResumeAtChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(CanOfferResume));
+
+    /// <summary>The line shown while a resume is waiting — a silent timer that fires at 07:30 is a surprise, not a feature.</summary>
+    [ObservableProperty]
+    private string _pendingResumeLabel = string.Empty;
+
+    /// <summary>Whether a resume is waiting on this session.</summary>
+    public bool HasPendingResume => PendingResumeLabel.Length > 0;
+
+    partial void OnPendingResumeLabelChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasPendingResume));
+        OnPropertyChanged(nameof(CanOfferResume));
+    }
+
+    /// <summary>Schedules the offered resume: this session, at the allowance's own reset moment, with whatever the prompt field says.</summary>
+    [RelayCommand]
+    private async Task ScheduleResumeAsync()
+    {
+        if (Resumes is not { } scheduler || ResumeAt is not { } moment)
+        {
+            return;
+        }
+
+        var prompt = string.IsNullOrWhiteSpace(ResumePrompt) ? "continue" : ResumePrompt.Trim();
+        await scheduler.ScheduleAsync(new ScheduledResume(PaneId, ConversationId, moment, prompt, ResumeReason));
+
+        PendingResumeLabel = $"Resuming {moment.ToLocalTime():ddd HH:mm}";
+        UsageWarning = string.Empty;
+    }
+
+    /// <summary>Cancels the resume waiting on this session, dropping it from storage rather than only from view.</summary>
+    [RelayCommand]
+    private async Task CancelResumeAsync()
+    {
+        if (Resumes is { } scheduler)
+        {
+            await scheduler.CancelAsync(PaneId);
+        }
+
+        PendingResumeLabel = string.Empty;
     }
 
     // One hover line per reading: what it is in words, how far along, and when it comes back. Rounded away from
