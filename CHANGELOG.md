@@ -46,8 +46,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
   a new-project button alongside. Above them: how many projects there are, how many you have actually worked on, and
   how many sessions are open. It is always there, as its own tab, and cannot be closed or opened twice. Built for
   someone who would rather not know what a profile or an MCP server is.
-- added: a logo per project, from a file or a link. The cockpit keeps a copy of its own, so moving or renaming the
-  original does not lose it, and the card shows the project's initial while it has none.
+- added: a logo per project, from a file or a link — SVG included, which is what most logos are; it is stored as the
+  picture it draws to. The cockpit keeps a copy of its own, so moving or renaming the original does not lose it, and
+  the card shows the project's initial while it has none.
 - added: standing instructions per profile — who a session is and where its memory lives — appended to whatever the
   provider's own system prompt says, with a project's instructions added under them when a session starts on one.
   Both apply; the more specific one is read last.

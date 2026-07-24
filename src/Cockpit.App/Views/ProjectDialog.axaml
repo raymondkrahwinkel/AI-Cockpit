@@ -76,7 +76,7 @@
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Logo"/>
-                    <TextBlock Classes="FieldHint" Text="An image file or a link to one. The cockpit keeps its own copy, so moving or renaming the original does not lose it."/>
+                    <TextBlock Classes="FieldHint" Text="An image file or a link to one — SVG included. The cockpit keeps its own copy, so moving or renaming the original does not lose it. A link shows here once the project is saved."/>
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
                         <!-- The preview is the check: it shows what the card will show, so a link that is not an
                              image is visible here rather than as a missing picture later. -->

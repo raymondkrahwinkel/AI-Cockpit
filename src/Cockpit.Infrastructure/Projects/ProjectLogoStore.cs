@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using SkiaSharp;
+using Svg.Skia;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Infrastructure.Configuration;
@@ -9,13 +11,19 @@ namespace Cockpit.Infrastructure.Projects;
 /// Stores project logos as files under <c>project-logos/</c> next to <c>cockpit.json</c>, one per project, named
 /// after the project id so a project can only ever have one and removing it needs no bookkeeping.
 /// </summary>
-internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLogoStore>? logger = null)
+internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLogoStore>? logger = null, string? root = null)
     : IProjectLogoStore, ISingletonService
 {
+    /// <summary>Where the copies live. Overridable so a test writes to its own folder rather than the operator's config directory.</summary>
+    private string _Root => root ?? CockpitConfigPath.ProjectLogosRoot;
+
     /// <summary>A logo is a small image; anything past this is not one, and downloading it would be someone else's file transfer.</summary>
     private const int MaxBytes = 8 * 1024 * 1024;
 
-    private static readonly string[] _ImageExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico"];
+    private static readonly string[] _ImageExtensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".ico", ".svg"];
+
+    /// <summary>How large a rasterised SVG is stored, on its longest side: comfortably past the 34px card well and the dialog's preview on a high-DPI screen, and still a small file.</summary>
+    private const float RasterSize = 256f;
 
     public async Task<string?> SaveAsync(string projectId, string source, CancellationToken cancellationToken = default)
     {
@@ -36,9 +44,17 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
                 return null;
             }
 
+            // An SVG is stored as the PNG it draws to. A logo is very often a vector — a company's own is almost
+            // always one — but the surfaces that show it take a decoded bitmap, so converting here is what makes a
+            // link to an .svg work at all rather than quietly falling back to the project's initial.
+            if (_IsSvg(bytes, extension) && _RasterisedSvg(bytes) is { } raster)
+            {
+                (bytes, extension) = (raster, ".png");
+            }
+
             Remove(projectId);
-            Directory.CreateDirectory(CockpitConfigPath.ProjectLogosRoot);
-            var path = Path.Combine(CockpitConfigPath.ProjectLogosRoot, projectId + extension);
+            Directory.CreateDirectory(_Root);
+            var path = Path.Combine(_Root, projectId + extension);
             await File.WriteAllBytesAsync(path, bytes, cancellationToken).ConfigureAwait(false);
             return path;
         }
@@ -53,17 +69,17 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
 
     public bool IsStoredCopy(string path) =>
         !string.IsNullOrWhiteSpace(path)
-        && path.StartsWith(CockpitConfigPath.ProjectLogosRoot, StringComparison.Ordinal);
+        && path.StartsWith(_Root, StringComparison.Ordinal);
 
     public void Remove(string projectId)
     {
-        if (!Directory.Exists(CockpitConfigPath.ProjectLogosRoot))
+        if (!Directory.Exists(_Root))
         {
             return;
         }
 
         // Every extension it could have been stored under: the project keeps one logo, whatever kind of image it is.
-        foreach (var existing in Directory.EnumerateFiles(CockpitConfigPath.ProjectLogosRoot, projectId + ".*"))
+        foreach (var existing in Directory.EnumerateFiles(_Root, projectId + ".*"))
         {
             try
             {
@@ -96,6 +112,52 @@ internal sealed class ProjectLogoStore(HttpClient httpClient, ILogger<ProjectLog
         }
 
         return await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Whether these bytes are an SVG: by extension, or by what the document actually starts with — a URL that serves one need not end in <c>.svg</c>.</summary>
+    private static bool _IsSvg(byte[] bytes, string extension)
+    {
+        if (string.Equals(extension, ".svg", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var start = System.Text.Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 512));
+        return start.Contains("<svg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The SVG drawn onto a PNG at <see cref="RasterSize"/> on its longest side, transparent behind it. Null when
+    /// the document does not parse or draws nothing, which leaves the card on the project's initial rather than on
+    /// an empty square.
+    /// </summary>
+    private static byte[]? _RasterisedSvg(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes);
+        using var svg = new SKSvg();
+        if (svg.Load(stream) is not { } picture || picture.CullRect is { Width: <= 0 } or { Height: <= 0 })
+        {
+            return null;
+        }
+
+        var source = picture.CullRect;
+        var scale = RasterSize / Math.Max(source.Width, source.Height);
+        var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+        var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+
+        using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        surface.Canvas.Clear(SKColors.Transparent);
+        surface.Canvas.Scale(scale);
+
+        // Drawn from the picture's own origin: an SVG whose contents start away from (0,0) would otherwise be
+        // rendered partly outside the surface.
+        surface.Canvas.Translate(-source.Left, -source.Top);
+        surface.Canvas.DrawPicture(picture);
+        surface.Canvas.Flush();
+
+        using var image = surface.Snapshot();
+        using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+        return encoded?.ToArray();
     }
 
     /// <summary>The source's extension when it looks like an image, else <c>.png</c> — the stored name only has to be stable and unique, and every renderer here sniffs the bytes rather than trusting the name.</summary>
