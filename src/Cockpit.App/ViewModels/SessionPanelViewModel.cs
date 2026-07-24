@@ -264,16 +264,17 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             if (declared.Kind is PluginUsageSignalKind.Fill)
             {
                 context = reading.UsedPercent;
-                ContextThreshold = declared.DefaultThresholdPercent;
+                ContextThreshold = _ResolveThreshold(declared);
             }
             else
             {
-                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt, declared.DefaultThresholdPercent));
+                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt, _ResolveThreshold(declared)));
             }
 
-            _thresholds[declared.Label] = declared.DefaultThresholdPercent;
+            var threshold = _ResolveThreshold(declared);
+            _thresholds[declared.Label] = threshold;
             described.Add(_DescribeReading(declared, reading));
-            _RaiseOrClearWarning(declared, reading);
+            _RaiseOrClearWarning(declared, reading, threshold);
         }
 
         ContextUsedPercent = context;
@@ -331,9 +332,24 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     [RelayCommand]
     private void DismissUsageWarning() => UsageWarning = string.Empty;
 
-    private void _RaiseOrClearWarning(PluginUsageSignal signal, PluginUsageReading reading)
+    /// <summary>
+    /// Where this signal warns for this session (AC-233): what the operator set for the profile, else for the
+    /// provider, else what the provider itself declared. One resolver, so the pill, the bar and the warning cannot
+    /// end up judging the same figure by different numbers.
+    /// </summary>
+    private double _ResolveThreshold(PluginUsageSignal signal) =>
+        UsageThresholds?.Resolve(UsageProviderId ?? string.Empty, ActiveProfileLabel, signal.Key, signal.DefaultThresholdPercent)
+        ?? signal.DefaultThresholdPercent;
+
+    /// <summary>The operator's own thresholds, handed in by the cockpit; null means every signal follows its provider's declaration.</summary>
+    public UsageThresholdSettings? UsageThresholds { get; set; }
+
+    /// <summary>Which provider's declarations this session's readings belong to, so a per-provider threshold can be found.</summary>
+    public string? UsageProviderId { get; set; }
+
+    private void _RaiseOrClearWarning(PluginUsageSignal signal, PluginUsageReading reading, double threshold)
     {
-        if (reading.UsedPercent < signal.DefaultThresholdPercent)
+        if (reading.UsedPercent < threshold)
         {
             // Back under: forget it, so the next crossing is announced rather than swallowed as already-said.
             _announced.Remove(signal.Key);

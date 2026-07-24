@@ -264,6 +264,42 @@
                                 <materialIcons:MaterialIcon Classes="hint"
                                     ToolTip.Tip="Applies live to every open TTY session — only the real interactive claude terminal, not the SDK chat view."/>
                             </StackPanel>
+
+                            <!-- AC-233: when the cockpit says a session is running out of something. The rows come
+                                 from what each provider declared, not from a list kept here — a provider that adds
+                                 a signal appears with no change to this screen, and one that reports nothing shows
+                                 no section at all. Empty means "follow the provider", which is why the field shows
+                                 its default as a placeholder rather than pre-filling it. -->
+                            <StackPanel Spacing="8" IsVisible="{Binding UsageThresholdSettings.HasProviders}">
+                                <TextBlock Text="Warn me when a session is running out" FontWeight="SemiBold" FontSize="12"/>
+                                <ItemsControl ItemsSource="{Binding UsageThresholdSettings.Providers}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:UsageThresholdProviderViewModel">
+                                            <StackPanel Spacing="6" Margin="0,0,0,10">
+                                                <TextBlock Text="{Binding DisplayName}" FontSize="11"
+                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                <ItemsControl ItemsSource="{Binding Signals}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:UsageThresholdRowViewModel">
+                                                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                                                        VerticalAlignment="Center" Margin="0,0,0,4">
+                                                                <TextBlock Text="{Binding Label}" Width="150" FontSize="11"
+                                                                           VerticalAlignment="Center"/>
+                                                                <NumericUpDown Value="{Binding Threshold}" Minimum="0" Maximum="100"
+                                                                               Increment="5" FormatString="0" Width="130"
+                                                                               HorizontalContentAlignment="Center"/>
+                                                                <TextBlock Text="{Binding FollowsLabel}" FontSize="11"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

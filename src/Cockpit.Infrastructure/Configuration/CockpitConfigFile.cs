@@ -59,6 +59,9 @@ internal sealed class CockpitConfigFile
 
     public LayoutSettingsEntry? Layout { get; set; }
 
+    /// <summary>The operator's own usage thresholds (AC-233), on top of what each provider declared; null when none were ever set.</summary>
+    public UsageThresholdSettingsEntry? UsageThresholds { get; set; }
+
     /// <summary>Prompts waiting to be sent to a session at a future moment (AC-234) — empty for a cockpit with none scheduled.</summary>
     public List<ScheduledResumeEntry> ScheduledResumes { get; set; } = [];
 

@@ -334,6 +334,15 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         var dialog = new OptionsDialog { DataContext = viewModel };
 
         await dialog.ShowDialog(owner);
+
+        // AC-233: the usage thresholds are edited in place like every other option here, so they are written when
+        // the dialog closes. Sessions already open keep the numbers they were started with; the ones started after
+        // this take the new ones.
+        if (viewModel.UsageThresholdSettings is { } thresholds)
+        {
+            await thresholds.SaveAsync();
+            viewModel.UsageThresholds = await thresholds.ReloadAsync();
+        }
     }
 
     // A dashboard travels as ordinary JSON with its own extension: readable enough to look at before you trust

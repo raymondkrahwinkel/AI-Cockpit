@@ -10,6 +10,7 @@ using Cockpit.App.Plugins;
 using Cockpit.App.Services;
 using Cockpit.Core.Abstractions;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Sessions;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Backup;
 using Cockpit.Core.Abstractions.Delegation;
@@ -159,6 +160,19 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// leave one running behind a test.
     /// </summary>
     public ScheduledResumeCoordinator? ScheduledResumes { get; set; }
+
+    /// <summary>
+    /// The operator's own usage thresholds (AC-233), loaded once and handed to each session as it is created.
+    /// Null in the graphs that never load them, and every signal then warns where its provider said.
+    /// </summary>
+    public UsageThresholdSettings? UsageThresholds { get; set; }
+
+    /// <summary>
+    /// The usage-threshold settings screen (AC-233), rendered from what the providers declared. Handed in by the
+    /// app at startup for the same reason the scheduler is: the test and design-time graphs build a cockpit
+    /// without one and touch no config.
+    /// </summary>
+    public UsageThresholdsViewModel? UsageThresholdSettings { get; set; }
 
     /// <summary>
     /// The sidebar's own display order (AC-115). Kept apart from <see cref="Sessions"/> on purpose: the session
@@ -4743,6 +4757,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // AC-231: the one scheduler, so a session can offer to pick itself up when its allowance returns. Null in
         // the graphs that have none, and the offer simply never appears there.
         session.Resumes = ScheduledResumes;
+
+        // AC-233: what the operator set for themselves, on top of what each provider declared. Null until loaded,
+        // and every signal then follows its provider.
+        session.UsageThresholds = UsageThresholds;
         session.UsagePillVisibleFields = ComposeUsagePillFields();
         session.AutoCloseOnExit = AutoCloseOnExit;
         session.ShowDebugControls = ShowDebugControls;

@@ -703,6 +703,7 @@ public partial class TtyView : UserControl
             if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is TtyViewModel viewModel)
             {
                 var provider = _ttyProviders?.Resolve(_pendingLaunch.Provider.ProviderId);
+                viewModel.UsageProviderId = _pendingLaunch.Provider.ProviderId;
                 viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], provider?.ReadUsage);
             }
             // A scheduled resume (AC-234) arrives the way a keystroke does — the pty's stdin — so the view, which
