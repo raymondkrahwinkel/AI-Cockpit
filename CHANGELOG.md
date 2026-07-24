@@ -32,6 +32,42 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: projects — a reusable answer to what a session works on. A project holds a folder (picked or cloned), the
+  profile its sessions run under, whether they are isolated in a git worktree, which MCP servers they get, and
+  optional instructions for how to behave on that work, so a second codebase no longer means a second nearly
+  identical profile. It can carry a logo and a memory location too, and it is managed in a window of its own.
+- added: starting a session from a project — a Projects section in the sidebar whose ▶ starts one on the project's
+  own defaults without a dialog, and a right-click menu for the slower routes (a pre-filled New-session dialog, the
+  project's folder, its settings). Pick a project at the top of the New-session dialog to fill folder, profile,
+  worktree choice and MCP selection in one go; every field stays changeable, and the dialog is unchanged for anyone
+  with no projects.
+- added: a Projects workspace — "What do you want to work on?" over your projects as cards, most recently worked on
+  first, each showing its logo, what it is, when you last opened it and one Start button, with Open folder, Edit and
+  a new-project button alongside. Above them: how many projects there are, how many you have actually worked on, and
+  how many sessions are open. It is always there, as its own tab, and cannot be closed or opened twice. Built for
+  someone who would rather not know what a profile or an MCP server is.
+- added: one MCP-server list everywhere it appears — the profile editor, the New-session dialog and the project
+  editor — collapsed by default behind a live "MCP servers · 8 of 11 selected" count, so a dozen checkboxes stop
+  filling three dialogs that are about something else.
+- changed: a project can no longer switch a server back on that you had turned off in the global MCP configuration —
+  a project narrows what its sessions get, it never widens it.
+- changed: projects are managed in a window of their own, reached from the sidebar or the overview, instead of a tab
+  inside Options — a project is the work the cockpit is pointed at, not a setting of it.
+- changed: the sidebar lists the five most recently worked-on projects rather than all of them, with the rest one
+  click away in the overview.
+- added: a memory location per project — a folder, kept apart from the source folder. A session starting on the
+  project is told where it is, so it can look things up instead of being told again.
+- changed: a project card offers "Finish setting up" instead of "Start" while the project names no profile. Start
+  would have fallen through to the same dialog as the button beside it, which made the two look identical.
+- added: a logo per project, from a file or a link — SVG included, which is what most logos are; it is stored as the
+  picture it draws to. The cockpit keeps a copy of its own, so moving or renaming the original does not lose it, and
+  the card shows the project's initial while it has none.
+- added: standing instructions per profile — who a session is and where its memory lives — appended to whatever the
+  provider's own system prompt says, with a project's instructions added under them when a session starts on one.
+  Both apply; the more specific one is read last.
+- changed: the cockpit-session server (which lets a session report what it is working on) is mounted into every
+  session instead of being an item to tick, and is no longer offered in the MCP checklists — a status line going
+  missing because a box was left unticked was a cost with nothing to weigh against it.
 - added: an hourly background update re-check while the app is open, so a window left running for a workday still
   learns about a build cut hours after it opened — not just at startup. It reuses the same toast/banner and dedup as
   the startup check (a release is announced once, a dismissed build stays quiet), is gated by the same "check on

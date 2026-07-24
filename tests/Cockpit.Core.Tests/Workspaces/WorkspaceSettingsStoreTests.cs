@@ -25,11 +25,13 @@ public class WorkspaceSettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadAsync_NothingEverSaved_YieldsTheDefaultSingleSessionsWorkspace()
+    public async Task LoadAsync_NothingEverSaved_YieldsTheDefaultSessionsWorkspacePlusTheFixedOverview()
     {
         var settings = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        settings.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Sessions);
+        settings.Workspaces.Should().HaveCount(2);
+        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Sessions);
+        settings.Workspaces.Should().ContainSingle(workspace => workspace.Type == WorkspaceType.Projects);
     }
 
     [Fact]
@@ -47,7 +49,7 @@ public class WorkspaceSettingsStoreTests : IDisposable
         await store.SaveAsync(saved);
         var loaded = await store.LoadAsync();
 
-        loaded.Workspaces.Should().HaveCount(2);
+        loaded.Workspaces.Should().HaveCount(3, "the default's Sessions workspace and its fixed overview, plus the dashboard");
         loaded.ActiveWorkspaceId.Should().Be(dashboard.Id);
         var reloaded = loaded.Workspaces.Single(workspace => workspace.Id == dashboard.Id);
         reloaded.Name.Should().Be("Monitoring");
@@ -117,7 +119,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces.Should().ContainSingle().Which.Panes.Should().ContainSingle()
+        loaded.Workspaces.Should().HaveCount(2, "the saved Sessions workspace, plus the fixed overview Normalized adds");
+        loaded.Workspaces.Single(workspace => workspace.Type == WorkspaceType.Sessions).Panes.Should().ContainSingle()
             .Which.Kind.Should().Be(PaneKind.Terminal);
     }
 
@@ -133,7 +136,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        var workspace = loaded.Workspaces.Should().ContainSingle().Which;
+        loaded.Workspaces.Should().HaveCount(2, "the saved plugin workspace, plus the fixed overview Normalized adds");
+        var workspace = loaded.Workspaces.Single(workspace => workspace.Id == "w1");
         workspace.Type.Should().Be(new WorkspaceType("autopilot.run"));
         workspace.Type.IsBuiltIn.Should().BeFalse();
         workspace.Panes.Should().BeEmpty();
@@ -150,7 +154,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces.Should().ContainSingle().Which.Type.Should().Be(WorkspaceType.Sessions);
+        loaded.Workspaces.Should().HaveCount(2, "the recovered workspace, plus the fixed overview Normalized adds");
+        loaded.Workspaces.Single(workspace => workspace.Id == "w1").Type.Should().Be(WorkspaceType.Sessions);
     }
 
     [Fact]
@@ -167,7 +172,8 @@ public class WorkspaceSettingsStoreTests : IDisposable
         await store.SaveAsync(settings);
         var loaded = await store.LoadAsync();
 
-        loaded.Workspaces.Should().ContainSingle().Which.Type.Id.Should().Be("autopilot.run");
+        loaded.Workspaces.Should().HaveCount(2, "the saved plugin workspace, plus the fixed overview Normalized adds on save");
+        loaded.Workspaces.Single(workspace => workspace.Id == "w1").Type.Id.Should().Be("autopilot.run");
     }
 
     [Fact]
@@ -177,7 +183,7 @@ public class WorkspaceSettingsStoreTests : IDisposable
 
         var loaded = await new WorkspaceSettingsStore(_configPath).LoadAsync();
 
-        loaded.Workspaces.Should().ContainSingle();
+        loaded.Workspaces.Should().HaveCount(2, "the default Sessions workspace plus the fixed overview");
         loaded.Active.Should().NotBeNull();
     }
 

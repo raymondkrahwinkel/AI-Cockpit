@@ -47,6 +47,7 @@ using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Projects;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Shortcuts;
 using Cockpit.Core.Terminal;
@@ -85,6 +86,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITerminalAccessRegistry? _terminals;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
+
+    /// <summary>Composes what a session started from a project opens with (AC-164). Null in the design-time/unit-test graph, where a quick start falls back to the dialog.</summary>
+    private readonly ProjectQuickStart? _projectQuickStart;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
@@ -249,6 +253,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
     public WorktreesViewModel Worktrees { get; }
+
+    /// <summary>The operator's projects (AC-161): the Options tab that manages them and the sidebar section that starts them read this one shared view model.</summary>
+    public ProjectsViewModel Projects { get; }
 
     /// <summary>The workspace tab strip and the active workspace's panes.</summary>
     public WorkspacesViewModel Workspaces { get; }
@@ -1986,10 +1993,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         }
 
         // A dashboard shows no sessions at all; and a session with no workspace — created before workspaces
-        // existed, or in the design-time graph — belongs to the first one rather than to nothing.
+        // existed, or in the design-time graph — belongs to the first desk that can actually show one. By
+        // position it would belong to whatever happens to sit at index 0, and since the projects overview is a
+        // fixture that survives every close, a cockpit whose session desks were all closed would leave such a
+        // session belonging to a surface that shows no sessions at all: invisible everywhere.
+        var firstSessionsWorkspace = Workspaces.Settings.Workspaces
+            .FirstOrDefault(workspace => workspace.Type == WorkspaceType.Sessions);
+
         return active.Type == WorkspaceType.Sessions
             && (session.WorkspaceId == active.Id
-                || (session.WorkspaceId.Length == 0 && Workspaces.Settings.Workspaces[0].Id == active.Id));
+                || (session.WorkspaceId.Length == 0 && firstSessionsWorkspace?.Id == active.Id));
     }
 
     /// <summary>
@@ -2076,6 +2089,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
         Worktrees = new WorktreesViewModel();
+        Projects = new ProjectsViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
         Diagnostics = new DiagnosticsViewModel(null, _BuildSessionDescriptors);
 
@@ -2169,6 +2183,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISecretKeyHolder? secretKeyHolder = null,
         IWorktreeManager? worktreeManager = null,
         WorktreesViewModel? worktrees = null,
+        ProjectsViewModel? projects = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
         ICloneSettingsStore? cloneSettingsStore = null,
         LiveSessionRegistry? liveSessions = null,
@@ -2178,7 +2193,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
         ISessionProfileStore? sessionProfileStore = null,
-        IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
+        IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
+        ProjectQuickStart? projectQuickStart = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2213,6 +2229,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _terminals = terminals;
         _liveSessions = liveSessions;
         Worktrees = worktrees ?? new WorktreesViewModel();
+        Projects = projects ?? new ProjectsViewModel();
+        _projectQuickStart = projectQuickStart;
+
+        // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
+        // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
+        // startup read here; the section simply stays hidden until it lands.
+        _ = Projects.LoadAsync();
         // One source of "which sessions are live" (their pane ids, what worktrees are keyed on): the panel reads it,
         // and it feeds the shared registry the worktree-removal paths (the managed panel and the agent's
         // worktree_remove MCP tool) check, so none of them pulls a running session's checkout out from under it.
@@ -4053,6 +4076,93 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         return paneId;
     }
 
+    /// <summary>
+    /// Starts a session on <paramref name="project"/> with the project's own defaults and no dialog (AC-164) — the
+    /// sidebar's ▶ and the launcher's Start. What it opens with is <see cref="ProjectQuickStart"/>'s to answer; this
+    /// only launches it, through the same path the dialog's result takes.
+    /// </summary>
+    [RelayCommand]
+    private async Task StartProjectSessionAsync(Project? project)
+    {
+        if (project is null)
+        {
+            return;
+        }
+
+        if (_projectQuickStart is not null && await _projectQuickStart.ComposeAsync(project) is { } result)
+        {
+            // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
+            // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
+            // numbering exists to prevent.
+            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
+            return;
+        }
+
+        // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
+        // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
+        await NewSessionForProjectAsync(project);
+    }
+
+    /// <summary>
+    /// Opens the New-session dialog on <paramref name="project"/> (AC-164) — the "New session…" next to the quick
+    /// start, for when the operator wants to change something the project would otherwise decide.
+    /// </summary>
+    [RelayCommand]
+    private async Task NewSessionForProjectAsync(Project? project)
+    {
+        if (project is null || _dialogService is null)
+        {
+            return;
+        }
+
+        if (await _dialogService.ShowNewSessionDialogAsync(project: project) is { } result)
+        {
+            await _LaunchSessionFromResultAsync(result);
+        }
+    }
+
+    /// <summary><paramref name="title"/> if no session carries it, else "<paramref name="title"/> 2", "… 3" — the first free one.</summary>
+    private string _UniqueSessionTitle(string title)
+    {
+        var taken = Sessions.Select(session => session.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(title))
+        {
+            return title;
+        }
+
+        var suffix = 2;
+        while (taken.Contains($"{title} {suffix}"))
+        {
+            suffix++;
+        }
+
+        return $"{title} {suffix}";
+    }
+
+    /// <summary>Opens <paramref name="project"/>'s folder in the operating system's own file manager — the same shell hand-off the worktrees dialog uses.</summary>
+    [RelayCommand]
+    private void OpenProjectFolder(Project? project)
+    {
+        if (project?.SourceDirectory is not { Length: > 0 } directory || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // No handler to open a folder (a headless or unusual environment) — better to do nothing than crash.
+        }
+    }
+
+    /// <summary>Opens the project editor for <paramref name="project"/> from the sidebar, persisting through the same manager the Options tab uses.</summary>
+    [RelayCommand]
+    private Task EditProjectAsync(Project? project) =>
+        project is null ? Task.CompletedTask : Projects.EditAsync(project);
+
     // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording
     // the result on the panel so the context-menu Duplicate can replay it. Returns the started session's PaneId
     // (#AC-96) so a caller that opened the dialog on a plugin's behalf can hand that id back — null when nothing
@@ -4083,7 +4193,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return null;
             }
 
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions, result.ReadingLevel);
+            session.ProjectId = result.ProjectId;
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptionsWithInstructions, result.ReadingLevel);
             paneId = session.PaneId;
         }
         else
@@ -4108,6 +4219,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
             // both for the same launch (see NewSessionResult.PluginTtyOptions).
             var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
+            session.ProjectId = result.ProjectId;
             session.LaunchConfigured(
                 result.Profile,
                 isClaudeProfile ? result.Mode.Value : null,
@@ -4115,7 +4227,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 isClaudeProfile ? result.Effort.Value : null,
                 workingDirectory,
                 result.Resume,
-                result.PluginTtyOptions,
+                result.TtyLaunchOptionsWithInstructions,
                 // #44: the per-session MCP checklist, so a TTY session honours the operator's selection instead of
                 // loading every eligible server (the same set the SDK path passes to StartConfiguredAsync above).
                 result.EnabledMcpServerNames);
@@ -4124,6 +4236,16 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         // A new session may have created (or reattached) a worktree; keep the status-bar counter current.
         _ = Worktrees.RefreshCountAsync();
+
+        // Record that this project was worked on, whichever door the session came through, so the overview can
+        // lead with what is actually used. Fire-and-forget like the worktree count: a small config write must not
+        // hold up a session that has already started, and a failed one costs an ordering, not the work.
+        if (result.ProjectId is { Length: > 0 } projectId
+            && Projects.Projects.FirstOrDefault(project => project.Id == projectId) is { } opened)
+        {
+            _ = Projects.MarkOpenedAsync(opened, DateTimeOffset.Now);
+        }
+
         return paneId;
     }
 
@@ -4344,7 +4466,26 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
     [RelayCommand]
-    private async Task OptionsAsync()
+    private Task OptionsAsync() => _ShowOptionsAsync();
+
+    /// <summary>Opens the projects manager (AC-161) — its own window, not a corner of Options.</summary>
+    [RelayCommand]
+    private async Task ManageProjectsAsync()
+    {
+        if (_dialogService is not null)
+        {
+            await _dialogService.ShowProjectsDialogAsync(Projects);
+        }
+    }
+
+    /// <summary>
+    /// Brings the projects overview to the front, opening it when it is not there (AC-162) — the sidebar's way in,
+    /// so reaching it is not a matter of knowing that a workspace type exists and finding it in the "+" menu.
+    /// </summary>
+    [RelayCommand]
+    private Task OpenProjectsWorkspaceAsync() => Workspaces.OpenWorkspaceAsync(WorkspaceType.Projects.Id);
+
+    private async Task _ShowOptionsAsync()
     {
         if (_dialogService is null)
         {

@@ -1,0 +1,189 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:conv="using:Cockpit.App.Converters"
+        xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="Cockpit.App.Views.ProjectDialog"
+        x:DataType="vm:ProjectDialogViewModel"
+        Title="Project"
+        Width="900" Height="760" MinWidth="700" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource CockpitPanelBgBrush}">
+
+    <Design.DataContext>
+        <vm:ProjectDialogViewModel/>
+    </Design.DataContext>
+
+    <Window.Styles>
+        <!-- A field is a label with an explanation under it, then the control — the shape every section repeats. -->
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style Selector="TextBlock.FieldHint">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,1,0,6"/>
+        </Style>
+        <Style Selector="TextBlock.SectionHeading">
+            <Setter Property="Foreground" Value="{StaticResource CockpitTextPrimaryBrush}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Styles>
+
+    <!-- Three explicit rows rather than a docked fill: the header and the footer are exactly as tall as they need
+         to be and the middle row gets what is left, so the scroll area can never be handed more height than there
+         is and paint its last row under the footer. -->
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- Header: what this dialog is, in the words of someone who is not a developer. -->
+        <Border Grid.Row="0" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,0,0,1" Padding="18,14">
+            <StackPanel Spacing="2">
+                <TextBlock Text="{Binding DialogTitle}" FontSize="18" FontWeight="SemiBold"
+                           Foreground="{StaticResource CockpitTextPrimaryBrush}"/>
+                <TextBlock Text="Anyone can make one — it does not take a developer."
+                           FontSize="12" Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer: Cancel and the confirm button, which is the only thing gated on a name. -->
+        <Border Grid.Row="2" Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="0,1,0,0" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="* required" VerticalAlignment="Center" FontSize="11"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"/>
+                    <Button Content="{Binding ConfirmLabel}" Command="{Binding SaveCommand}" Classes="Accent"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Horizontal scrolling off, deliberately: left on, the scroller measures its content with unbounded
+             width, so a star-sized column never has to fit and a long path pushed the row's buttons off the
+             window instead of shrinking the box. -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <!-- Every inset lives on the content rather than as ScrollViewer.Padding, in both directions: the
+                 scroller leaves its padding out of what it measures, so the bottom rows could not scroll clear of
+                 the footer and a row was measured 18px wider than the window it had to fit — which is how a long
+                 path pushed the buttons beside it off the edge. -->
+            <StackPanel Spacing="26" Margin="28,22,28,48">
+
+                <!-- Three groups, in the order the questions actually arrive: what this project is, where its
+                     things live, and how its sessions run. Ungrouped, the form asked for a folder between a
+                     description and a memory location, and for a profile before it had said what a project was. -->
+                <StackPanel Spacing="14">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="SectionHeading" Text="About this project"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="22">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Classes="FieldLabel" Text="Name *"/>
+                            <TextBlock Classes="FieldHint" Text="What you call this project."/>
+                            <TextBox Text="{Binding Name}" PlaceholderText="Invoices"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="2" MinWidth="200">
+                            <TextBlock Classes="FieldLabel" Text="Logo"/>
+                            <TextBlock Classes="FieldHint" Text="A file or a link — SVG included."/>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <!-- The preview is the check: it shows what the card will show, so a link that is
+                                     not an image is visible here rather than as a missing picture later. -->
+                                <controls:ProjectLogoBadge Grid.Column="0" Size="34" ShowsInitial="False"
+                                                           LogoPath="{Binding LogoSource}"
+                                                           WellBackground="{StaticResource CockpitSecondaryBgBrush}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Button Content="Choose…" Command="{Binding PickLogoCommand}"/>
+                                    <Button Content="Remove" Classes="Subtle"
+                                            Command="{Binding ClearLogoCommand}"
+                                            IsEnabled="{Binding LogoSource, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Description"/>
+                        <TextBlock Classes="FieldHint" Text="In plain words — what is this project for? This is what a colleague reads on its card."/>
+                        <TextBox Text="{Binding Description}" AcceptsReturn="True" TextWrapping="Wrap" Height="60"
+                                 PlaceholderText="Read invoices and prepare them for the bookkeeping."/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2" IsVisible="{Binding LogoSource, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Classes="FieldHint" Margin="0"
+                                   Text="{Binding LogoSource, StringFormat='Logo: {0}'}" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="14">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="SectionHeading" Text="Where its things live"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Folder"/>
+                        <TextBlock Classes="FieldHint" Text="Where its sessions start. Leave empty for a project without files of its own."/>
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                            <TextBox Grid.Column="0" Text="{Binding SourceDirectory}" PlaceholderText="No folder chosen"/>
+                            <Button Grid.Column="1" Content="Choose…" Command="{Binding BrowseCommand}"/>
+                            <Button Grid.Column="2" Content="Clone…" Command="{Binding CloneCommand}"/>
+                        </Grid>
+                        <TextBlock Classes="FieldHint" Margin="0,4,0,0" IsVisible="{Binding GitUrl, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Text="{Binding GitUrl, StringFormat='Cloned from {0}'}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Memory"/>
+                        <TextBlock Classes="FieldHint" Text="Where this project's memory lives — a folder, kept apart from the source folder. Sessions are told about it, so they can look things up instead of being told again."/>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                            <TextBox Grid.Column="0" Text="{Binding MemoryRef}" PlaceholderText="No memory location"/>
+                            <Button Grid.Column="1" Content="Choose…" Command="{Binding PickMemoryCommand}"/>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="14">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="SectionHeading" Text="How its sessions run"/>
+                        <Border Height="1" Background="{StaticResource CockpitHairlineBrush}"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Profile"/>
+                        <TextBlock Classes="FieldHint" Text="Which profile starts by default. The project uses a profile — it does not replace one."/>
+                        <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfileLabel}"
+                                  HorizontalAlignment="Stretch" PlaceholderText="Leave the dialog's own choice"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="FieldLabel" Text="Behaviour"/>
+                        <TextBlock Classes="FieldHint" Text="Optional — how should the profile behave here? Added to what the profile already says."/>
+                        <TextBox Text="{Binding BehaviorPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="72"
+                                 PlaceholderText="Follow the project conventions. Test before opening a PR; ask when unsure."/>
+                    </StackPanel>
+
+                    <CheckBox IsChecked="{Binding IsolateInWorktreeByDefault}">
+                        <StackPanel Spacing="1">
+                            <TextBlock Classes="FieldLabel" Text="Isolate new sessions in a git worktree"/>
+                            <TextBlock Classes="FieldHint" Margin="0"
+                                       Text="For code projects — every session starts in its own worktree, still switchable per session."/>
+                        </StackPanel>
+                    </CheckBox>
+
+                    <controls:McpServerChecklist IsVisible="{Binding HasMcpServers}"
+                                                 Servers="{Binding McpServers}"
+                                                 Hint="Which servers this project's sessions start with ticked. Unticking one turns it off for this project only — the server itself stays in the global configuration, and a session can tick it back on."/>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>

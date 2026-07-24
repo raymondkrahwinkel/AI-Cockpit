@@ -118,6 +118,9 @@ internal sealed class CockpitConfigFile
     /// <summary>User-configured MCP servers (#26), shared by the local-LLM tool-loop and the Claude CLI; owned by the MCP-server store.</summary>
     public List<McpServerEntry> McpServers { get; set; } = [];
 
+    /// <summary>The operator's projects (AC-158) — what a session works on, beside <see cref="Profiles"/> which is who it works as; owned by the project store.</summary>
+    public List<ProjectEntry> Projects { get; set; } = [];
+
     /// <summary>Remembered working directories (recent + favorites) offered in the New-session dialog; owned by the working-path history store.</summary>
     public WorkingPathHistoryEntry? WorkingPaths { get; set; }
 

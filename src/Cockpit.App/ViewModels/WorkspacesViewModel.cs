@@ -186,6 +186,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// <summary>True when the active workspace hosts widgets — gates the ⚙ dashboard settings and the "Add widget" affordance.</summary>
     public bool IsDashboardActive => Active?.Type == WorkspaceType.Dashboard;
 
+    /// <summary>True when the projects overview is the active workspace (AC-162) — the host draws the project cards instead of a grid.</summary>
+    public bool IsProjectsActive => Active?.Type == WorkspaceType.Projects;
+
     /// <summary>
     /// True when the active workspace is a plugin-registered type: the host draws neither the session grid nor the
     /// widget grid, but the plugin's own full-surface body (<see cref="ActivePluginBody"/>).
@@ -207,6 +210,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     [
         new("Sessions", MaterialIconKind.ChatOutline, "AI sessions and terminals", WorkspaceType.Sessions),
         new("Dashboard", MaterialIconKind.ViewDashboardOutline, "Widgets", WorkspaceType.Dashboard),
+        // The projects overview is deliberately absent: it is always open and cannot be added a second time, so
+        // offering it here would be a menu entry whose only possible outcome is nothing happening.
         .. AvailablePluginWorkspaceTypes.Select(type =>
             new WorkspaceMenuOption(type.Title, type.IconKind ?? MaterialIconKind.PuzzleOutline, type.Description, new WorkspaceType(type.Id))),
     ];
@@ -294,13 +299,13 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(type), type)));
 
     /// <summary>
-    /// Brings the workspace of plugin type <paramref name="workspaceTypeId"/> to the front, creating one when none
-    /// is open — the programmatic entry the host exposes for a plugin that surfaces its own workspace on an intent
-    /// ("Start in Autopilot", AC-150). Mirrors <see cref="EnsureSessionWorkspace"/>: an existing one is activated in
-    /// place rather than duplicated, so repeatedly starting runs lands them on the one Autopilot desk instead of
-    /// stacking empty copies. Built-in type ids resolve to their host type, so this is only meaningfully a plugin path.
+    /// Brings the workspace of type <paramref name="workspaceTypeId"/> to the front, creating one when none is open
+    /// — the programmatic entry behind a plugin surfacing its own workspace on an intent ("Start in Autopilot",
+    /// AC-150) and behind the sidebar's way to the projects overview (AC-162). Mirrors
+    /// <see cref="EnsureSessionWorkspace"/>: an existing one is activated in place rather than duplicated, so asking
+    /// twice lands on the one desk instead of stacking empty copies.
     /// </summary>
-    public Task OpenPluginWorkspaceAsync(string workspaceTypeId)
+    public Task OpenWorkspaceAsync(string workspaceTypeId)
     {
         var type = WorkspaceType.FromId(workspaceTypeId);
         if (Active is { } active && active.Type == type)
@@ -313,8 +318,8 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             return _ApplyAsync(Settings.WithActive(existing.Id));
         }
 
-        // Name the tab after the plugin type's registered title ("Autopilot"), the way the "+" menu does — the
-        // WorkspaceType-based _UniqueName only knows the two host names and would label a plugin desk "Sessions".
+        // Name the tab after the plugin type's registered title ("Autopilot"), the way the "+" menu does; a host
+        // type has no registration, and its own id already reads as the title ("Projects").
         var title = _workspaceTypes?.WorkspaceTypes.FirstOrDefault(registration => registration.Id == type.Id)?.Title ?? type.Id;
         return _ApplyAsync(Settings.WithWorkspace(Workspace.Create(_UniqueName(title), type)));
     }
@@ -326,7 +331,12 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// than either.
     /// </summary>
     public bool CanClose(string workspaceId) =>
-        Settings.Workspaces.Count > 1 && Settings.Workspaces.Any(workspace => workspace.Id == workspaceId);
+        Settings.Workspaces.Count > 1
+        && Settings.Workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId) is { } workspace
+        // The projects overview is a fixture: always there, exactly once, never closed. Answering false here is
+        // what greys its ✕ and its menu entry; WorkspaceSettings refuses the removal itself, so a caller that
+        // does not ask still cannot take it away.
+        && workspace.Type != WorkspaceType.Projects;
 
     [RelayCommand]
     private Task CloseWorkspaceAsync(string workspaceId) => _ApplyAsync(Settings.WithoutWorkspace(workspaceId));
@@ -664,6 +674,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(ShowTabStrip));
         OnPropertyChanged(nameof(IsDashboardActive));
         OnPropertyChanged(nameof(IsSessionsActive));
+        OnPropertyChanged(nameof(IsProjectsActive));
         OnPropertyChanged(nameof(IsPluginWorkspaceActive));
         OnPropertyChanged(nameof(ActivePluginBody));
         OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));
@@ -771,6 +782,10 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             : _workspaceTypes?.WorkspaceTypes.FirstOrDefault(type => type.Id == workspace.Type.Id)?.IconKind;
 
     /// <summary>"Dashboard", then "Dashboard 2", … — a name the operator can rename, but never a strip of identical tabs.</summary>
-    private string _UniqueName(WorkspaceType type) =>
-        _UniqueName(type == WorkspaceType.Dashboard ? "Dashboard" : "Sessions");
+    /// <remarks>
+    /// The type's own id is the name: the built-in ids read as titles ("Sessions", "Dashboard", "Launcher"), and a
+    /// plugin type at least says what it is. It used to hard-code the two host names, so every other type — the
+    /// launcher included — came out of this called "Sessions".
+    /// </remarks>
+    private string _UniqueName(WorkspaceType type) => _UniqueName(type.Id);
 }

@@ -12,6 +12,7 @@ using Cockpit.App.Controls;
 using Cockpit.Core.Shortcuts;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Layout;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Workspaces;
 using Exclr8.Terminal;
 
@@ -963,6 +964,25 @@ public partial class CockpitView : UserControl
         if (sender is Control { DataContext: SessionPanelViewModel session } && DataContext is CockpitViewModel cockpit)
         {
             invoke(cockpit, session);
+        }
+    }
+
+    // The project rows' context menu (AC-164). Click handlers rather than command bindings for the same reason the
+    // session rows use them: a ContextMenu is not in the ItemsControl's visual tree, so the {$parent[ItemsControl]}
+    // binding the row's own ▶ uses cannot reach the cockpit from inside the menu.
+    private void OnStartProjectSession(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.StartProjectSessionCommand.Execute(p));
+
+    private void OnNewSessionForProject(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.NewSessionForProjectCommand.Execute(p));
+
+    private void OnOpenProjectFolder(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.OpenProjectFolderCommand.Execute(p));
+
+    private void OnEditProject(object? sender, RoutedEventArgs e) => _InvokeProjectCommand(sender, (c, p) => c.EditProjectCommand.Execute(p));
+
+    private void _InvokeProjectCommand(object? sender, Action<CockpitViewModel, Project> invoke)
+    {
+        if (sender is Control { DataContext: Project project } && DataContext is CockpitViewModel cockpit)
+        {
+            invoke(cockpit, project);
         }
     }
 

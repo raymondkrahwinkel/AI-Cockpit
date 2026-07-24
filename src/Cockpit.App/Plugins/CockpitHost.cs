@@ -150,7 +150,7 @@ internal sealed class CockpitHost(
             return;
         }
 
-        await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenPluginWorkspaceAsync(workspaceTypeId));
+        await Dispatcher.UIThread.InvokeAsync(() => workspaces.OpenWorkspaceAsync(workspaceTypeId));
     }
 
     public void AddTrackerProvider(ITrackerProvider provider)

@@ -23,13 +23,32 @@ public static class McpServerRegistryFilter
     /// operator could check or uncheck, and must keep suppressing that default regardless of this filter.
     /// An explicit selection that names an internal endpoint still mounts it — that is how a run's agents
     /// reach their pane-scoped tools.
+    /// <para>
+    /// <see cref="McpServerConfig.AlwaysMounted"/> endpoints pass through either way: they are the cockpit's own
+    /// plumbing rather than a choice, and they are hidden from the pickers precisely because unticking them is not
+    /// something the operator should be able to do by accident.
+    /// </para>
     /// </summary>
     public static IReadOnlyList<McpServerConfig> ApplySessionSelection(
         IReadOnlyList<McpServerConfig> registry,
         IReadOnlySet<string>? enabledServerNames) =>
         enabledServerNames is null
-            ? [.. registry.Where(server => !server.Internal)]
-            : [.. registry.Where(server => !server.Enabled || enabledServerNames.Contains(server.Name))];
+            ? [.. registry.Where(server => !server.Internal || server.AlwaysMounted)]
+            : [.. registry.Where(server => server.AlwaysMounted || !server.Enabled || enabledServerNames.Contains(server.Name))];
+
+    /// <summary>
+    /// The servers a picker may put in front of the operator: the enabled ones, minus the endpoints that are not a
+    /// choice at all. An <see cref="McpServerConfig.Internal"/> endpoint is the cockpit's own spawn-scoped tooling
+    /// and an <see cref="McpServerConfig.AlwaysMounted"/> one is mounted whatever is ticked, so offering either
+    /// invites an answer that changes nothing — or, worse, one that is silently overruled.
+    /// <para>
+    /// One rule rather than the predicate written out per picker: the New-session checklist, the profile's
+    /// pre-selection, the project editor and the quick start all answer the same question, and four copies had
+    /// already begun to disagree about whether a disabled server counts.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<McpServerConfig> OfferedToOperator(IReadOnlyList<McpServerConfig> registry) =>
+        [.. registry.Where(server => server.Enabled && !server.Internal && !server.AlwaysMounted)];
 
     /// <summary>
     /// The per-session selection a launch should actually apply: the explicit one it was handed, or — when it has

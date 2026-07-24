@@ -1,8 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:controls="using:Cockpit.App.Controls"
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:profiles="using:Cockpit.Core.Profiles"
+        xmlns:projects="using:Cockpit.Core.Projects"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -52,12 +54,38 @@
              switching. SelectedKind/IsSdk/IsTty is the seam for showing/hiding kind-specific fields later. -->
         <StackPanel Margin="16" Spacing="12">
 
+            <!-- Project above profile (AC-163): picking one pre-fills the profile, folder, worktree choice and MCP
+                 checklist below, so the usual case is one choice and Start. Hidden when there are no projects, which
+                 leaves the dialog exactly as it was before they existed. -->
+            <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasProjects}">
+                <!-- The label sits on the control's line, not centred on the column: the right-hand side grows a
+                     hint under the picker, and centring on the pair drops the label below the box it names. The
+                     hint carries its own top margin rather than leaning on the stack's spacing, so a hidden one
+                     takes up nothing at all. -->
+                <TextBlock Grid.Column="0" Text="Project" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
+                           Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                <StackPanel Grid.Column="1">
+                    <ComboBox ItemsSource="{Binding Projects}" SelectedItem="{Binding SelectedProject}"
+                              HorizontalAlignment="Stretch" PlaceholderText="No project">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="projects:Project">
+                                <TextBlock Text="{Binding Name}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding SelectedProjectDescription}" FontSize="11" TextWrapping="Wrap"
+                               Margin="0,3,0,0"
+                               Foreground="{StaticResource CockpitTextFaintBrush}"
+                               IsVisible="{Binding SelectedProjectDescription, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Grid>
+
             <!-- Profile first: its provider decides which of the options below apply (#26). The picker shows
                  the provider (and local model) after the label, e.g. "default (Claude CLI)". -->
-            <Grid ColumnDefinitions="72,*" VerticalAlignment="Center">
-                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Center" FontSize="12.5"
+            <Grid ColumnDefinitions="72,*">
+                <TextBlock Grid.Column="0" Text="Profile" VerticalAlignment="Top" Margin="0,7,0,0" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="3">
+                <StackPanel Grid.Column="1">
                     <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
                               HorizontalAlignment="Stretch">
                         <ComboBox.ItemTemplate>
@@ -67,7 +95,7 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <TextBlock Text="{Binding SelectedProfileConfigDir}" FontFamily="{StaticResource CockpitMonoFont}"
-                               FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
+                               FontSize="11" Margin="0,3,0,0" Foreground="{StaticResource CockpitTextFaintBrush}"
                                IsVisible="{Binding SelectedProfileConfigDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     <TextBlock Text="Not logged in — run 'claude /login' in a terminal for this profile first."
                                FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
@@ -302,30 +330,11 @@
             <Grid ColumnDefinitions="72,*" IsVisible="{Binding HasMcpServers}">
                 <TextBlock Grid.Column="0" Text="MCP" VerticalAlignment="Top" Margin="0,4,0,0" FontSize="12.5"
                            Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
-                <StackPanel Grid.Column="1" Spacing="4">
-                    <ItemsControl ItemsSource="{Binding McpServers}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
-                                <!-- name checkbox on the left, its pre-flight tool-token figure (AC-134) on the right -->
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <CheckBox Grid.Column="0" Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding TokenLabel}" VerticalAlignment="Center"
-                                               Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                               ToolTip.Tip="{Binding TokenTooltip}"/>
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <!-- Pre-flight token estimate for the ticked servers (AC-134): a running total, labelled as a
-                         tools-only estimate, plus a Refresh to re-enumerate if a server's toolset changed. -->
-                    <DockPanel IsVisible="{Binding HasMcpTokenSummary}" Margin="0,2,0,0">
-                        <Button DockPanel.Dock="Right" Content="Refresh" Classes="Subtle" Padding="6,2" FontSize="11"
-                                Command="{Binding RefreshMcpTokensCommand}"
-                                ToolTip.Tip="Re-enumerate the selected servers' tools and recount"/>
-                        <TextBlock Text="{Binding McpToolTokenSummary}" VerticalAlignment="Center" FontSize="11"
-                                   TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                    </DockPanel>
-                </StackPanel>
+                <controls:McpServerChecklist Grid.Column="1"
+                                             Servers="{Binding McpServers}"
+                                             TokenSummary="{Binding McpToolTokenSummary}"
+                                             ShowTokenSummary="{Binding HasMcpTokenSummary}"
+                                             RefreshCommand="{Binding RefreshMcpTokensCommand}"/>
             </Grid>
 
             <!-- TTY hint: the mode/model/effort above are launch-only start defaults here — the real TUI

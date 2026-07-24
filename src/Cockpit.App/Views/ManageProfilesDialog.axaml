@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
+        xmlns:controls="using:Cockpit.App.Controls"
         xmlns:conv="using:Cockpit.App.Converters"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -193,6 +194,15 @@
                             <TextBox Text="{Binding DefaultWorkingDirectory}" FontFamily="{StaticResource CockpitMonoFont}"
                                      PlaceholderText="Optional — pre-fills a new session's folder for this profile"/>
                         </DockPanel>
+                    </StackPanel>
+
+                    <!-- Standing instructions (AC-142): who this profile is and where its knowledge lives. Appended to
+                         the provider's own system prompt, never replacing it, so it works for every provider. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="System prompt" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="88"
+                                 PlaceholderText="Optional — added to every session under this profile, e.g. “You are Olaf. Your memory lives in the Depot MCP; look yourself up there before answering.”"/>
                     </StackPanel>
 
                     <!-- A memory ceiling for the session CLI. Off unless someone types a number, and the warning is
@@ -389,33 +399,12 @@
                         <CheckBox Content="Pre-select MCP servers for this profile"
                                   IsChecked="{Binding RestrictMcpServers}"
                                   ToolTip.Tip="Off: a new session ticks every enabled server (and future ones). On: only the servers ticked below."/>
-                        <StackPanel Spacing="4" IsVisible="{Binding RestrictMcpServers}">
-                            <TextBlock Text="Ticked servers are pre-selected for every new session under this profile; each can still be changed when a session is started."
-                                       FontSize="11" TextWrapping="Wrap"
-                                       Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                            <ItemsControl ItemsSource="{Binding McpServers}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
-                                        <!-- name checkbox, plus the server's pre-flight tool-token figure (AC-134) -->
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <CheckBox Grid.Column="0" Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding TokenLabel}" VerticalAlignment="Center"
-                                                       Margin="8,0,0,0" FontSize="11" Foreground="{StaticResource CockpitTextFaintBrush}"
-                                                       ToolTip.Tip="{Binding TokenTooltip}"/>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <!-- Pre-flight token estimate for the ticked servers (AC-134), so a profile's pre-selection
-                                 shows roughly what it adds; Refresh re-enumerates. -->
-                            <DockPanel IsVisible="{Binding HasMcpTokenSummary}" Margin="0,2,0,0">
-                                <Button DockPanel.Dock="Right" Content="Refresh" Classes="Subtle" Padding="6,2" FontSize="11"
-                                        Command="{Binding RefreshMcpTokensCommand}"
-                                        ToolTip.Tip="Re-enumerate the selected servers' tools and recount"/>
-                                <TextBlock Text="{Binding McpToolTokenSummary}" VerticalAlignment="Center" FontSize="11"
-                                           TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
-                            </DockPanel>
-                        </StackPanel>
+                        <controls:McpServerChecklist IsVisible="{Binding RestrictMcpServers}"
+                                                     Servers="{Binding McpServers}"
+                                                     Hint="Ticked servers are pre-selected for every new session under this profile; each can still be changed when a session is started."
+                                                     TokenSummary="{Binding McpToolTokenSummary}"
+                                                     ShowTokenSummary="{Binding HasMcpTokenSummary}"
+                                                     RefreshCommand="{Binding RefreshMcpTokensCommand}"/>
                     </StackPanel>
 
                     <!-- Per-profile environment variables (AC-22), injected into every session spawned under this

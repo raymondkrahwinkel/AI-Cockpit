@@ -24,4 +24,15 @@ namespace Cockpit.Core.Abstractions.Mcp;
 /// no-selection fan-out, yet still mountable when a launch names it explicitly. For a cockpit endpoint only a
 /// specific spawn should mount (the Autopilot CEO/step tools), never an ordinary operator's to tick.
 /// </param>
-public sealed record CockpitMcpEndpoint(string ServerName, Type ToolsType, Func<bool>? IsEnabled = null, bool Internal = false);
+/// <param name="AlwaysMounted">
+/// When true the endpoint is hidden from every user-facing MCP selection like <paramref name="Internal"/>, but
+/// mounted into every session regardless of what was selected. For the cockpit's own plumbing that is not a
+/// choice to weigh up — <c>cockpit-session</c>, which is how a session says what it is working on: offering it as
+/// a tickable server invites unticking it, and the cost of that is a silently missing status line.
+/// </param>
+public sealed record CockpitMcpEndpoint(
+    string ServerName,
+    Type ToolsType,
+    Func<bool>? IsEnabled = null,
+    bool Internal = false,
+    bool AlwaysMounted = false);

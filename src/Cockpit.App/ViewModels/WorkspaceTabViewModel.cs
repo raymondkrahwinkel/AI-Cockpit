@@ -17,13 +17,14 @@ public sealed partial class WorkspaceTabViewModel(Workspace workspace, bool isAc
 
     /// <summary>
     /// The icon that tells the workspace kinds apart at a glance in the strip: a plugin type's own registered icon
-    /// when it has one, else the host icon for a Sessions/Dashboard workspace, and a neutral plugin mark for a
-    /// plugin type that registered no vector icon.
+    /// when it has one, else the host icon for a built-in workspace, and a neutral plugin mark for a plugin type
+    /// that registered no vector icon.
     /// </summary>
     public MaterialIconKind Icon =>
         icon
         ?? (workspace.Type == WorkspaceType.Dashboard ? MaterialIconKind.ViewDashboardOutline
             : workspace.Type == WorkspaceType.Sessions ? MaterialIconKind.ChatOutline
+            : workspace.Type == WorkspaceType.Projects ? MaterialIconKind.FolderMultipleOutline
             : MaterialIconKind.PuzzleOutline);
 
     /// <summary>The tab's label. Set on commit so the strip updates before the rebuilt tabs arrive from the store.</summary>

@@ -11,9 +11,11 @@ using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Infrastructure.Sessions;
 using Cockpit.Infrastructure.Sessions.Tty;
@@ -44,6 +46,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IWorktreeManager _worktreeManager;
     private readonly IRepositoryCloneManager _cloneManager;
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
+    private readonly IProjectStore _projectStore;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -61,7 +64,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IPluginTtyProviderRegistry ttyProviderRegistry,
         IWorktreeManager worktreeManager,
         IRepositoryCloneManager cloneManager,
-        IVerifyRunnerRegistry verifyRunnerRegistry)
+        IVerifyRunnerRegistry verifyRunnerRegistry,
+        IProjectStore projectStore)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -79,9 +83,10 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _worktreeManager = worktreeManager;
         _cloneManager = cloneManager;
         _verifyRunnerRegistry = verifyRunnerRegistry;
+        _projectStore = projectStore;
     }
 
-    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false)
+    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -92,8 +97,22 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator);
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
+            _projectStore);
         await viewModel.LoadAsync();
+
+        // The project (AC-164) before the prefill, and by identity out of the loaded list rather than the caller's
+        // instance: selecting it runs the dialog's own project handling (folder, profile, worktree, MCP overlay), and
+        // a prefill naming a field explicitly is the more specific answer, so it is applied over the result.
+        if (project is not null)
+        {
+            viewModel.SelectedProject = viewModel.Projects.FirstOrDefault(candidate => candidate.Id == project.Id);
+
+            // Selecting a project rebuilds the checklist from its overlay, and that is a read. Await it before the
+            // dialog is on screen: a dialog that can be started while the rebuild is in flight can start a session
+            // on the servers of no project at all.
+            await viewModel.McpChecklistRefresh;
+        }
 
         // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,
         // and setting properties earlier would be overwritten by the load's own defaulting. Every field is optional
@@ -184,6 +203,49 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
     }
 
+    public async Task ShowProjectsDialogAsync(ProjectsViewModel projects)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return;
+        }
+
+        // The one shared manager, so what this window shows is what the sidebar and the overview show.
+        await projects.LoadAsync();
+        await new ProjectsDialog { DataContext = projects }.ShowDialog(owner);
+    }
+
+    public async Task<Project?> ShowProjectDialogAsync(Project? project)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
+        {
+            return null;
+        }
+
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, _profileStore, _mcpServerCatalog);
+        var dialog = new ProjectDialog { DataContext = viewModel };
+
+        // Cloning is answered here rather than in the dialog's code-behind: the clone flow owns a dialog of its
+        // own and the manager that runs it, both of which live on this service.
+        viewModel.CloneRequested += () => _ = _CloneIntoProjectAsync(viewModel, dialog);
+
+        return await dialog.ShowDialog<Project?>(owner);
+    }
+
+    // Keeps the URL beside the path: a project shows where its folder came from, which the clone dialog's own
+    // result (a local path) cannot say on its own.
+    private async Task _CloneIntoProjectAsync(ProjectDialogViewModel viewModel, Window owner)
+    {
+        var clonesRoot = await _cloneManager.GetEffectiveClonesRootAsync();
+        var cloneViewModel = new CloneFromGitUrlDialogViewModel(_cloneManager, clonesRoot);
+        var dialog = new CloneFromGitUrlDialog { DataContext = cloneViewModel };
+
+        if (await dialog.ShowDialog<string?>(owner) is { Length: > 0 } clonePath)
+        {
+            viewModel.ApplyPickedDirectory(clonePath, cloneViewModel.Url.Trim());
+        }
+    }
+
     // Shows the clone-from-URL dialog over the New-session dialog and returns the local clone path, or null if the
     // operator cancelled. The dialog runs the clone itself (through the injected manager) and surfaces its own
     // failures, so this only ever hands back a directory that is actually on disk.
@@ -262,7 +324,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
     }
 
-    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false)
+    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -270,10 +332,6 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var dialog = new OptionsDialog { DataContext = viewModel };
-        if (selectPluginsTab)
-        {
-            dialog.SelectPluginsTab();
-        }
 
         await dialog.ShowDialog(owner);
     }

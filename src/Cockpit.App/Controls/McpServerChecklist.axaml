@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="Cockpit.App.Controls.McpServerChecklist"
+             x:Name="Root">
+
+    <!-- One MCP checklist for every surface that has one — the profile editor, the New-session dialog and the
+         project editor (AC-140). Collapsed by default with a live "N of M selected" count, because the list runs to
+         a dozen rows and reads as noise in three dialogs that are about something else.
+         Built from a chevron collapser rather than an Expander, and styled ToggleButton.Collapser rather than left
+         to the default: a checked ToggleButton takes the accent fill, which turned the quietest row in the dialog
+         into the loudest thing on the screen the moment it was opened. -->
+    <StackPanel Spacing="4">
+        <ToggleButton Classes="Collapser" HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      IsChecked="{Binding #Root.IsExpanded, Mode=TwoWay}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <materialIcons:MaterialIcon Width="13" Height="13" VerticalAlignment="Center"
+                                            Kind="ChevronRight" IsVisible="{Binding !#Root.IsExpanded}"/>
+                <materialIcons:MaterialIcon Width="13" Height="13" VerticalAlignment="Center"
+                                            Kind="ChevronDown" IsVisible="{Binding #Root.IsExpanded}"/>
+                <TextBlock Text="{Binding #Root.SummaryText}" FontSize="12.5" VerticalAlignment="Center"/>
+            </StackPanel>
+        </ToggleButton>
+
+        <StackPanel Spacing="4" Margin="19,2,0,0" IsVisible="{Binding #Root.IsExpanded}">
+            <TextBlock Text="{Binding #Root.Hint}" FontSize="11" TextWrapping="Wrap"
+                       Margin="0,0,0,2"
+                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                       IsVisible="{Binding #Root.Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+            <ItemsControl ItemsSource="{Binding #Root.Servers}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:McpServerSelectionItemViewModel">
+                        <!-- name checkbox on the left, its pre-flight tool-token figure (AC-134) on the right -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <CheckBox Grid.Column="0" Content="{Binding Name}" IsChecked="{Binding IsEnabledForSession}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding TokenLabel}" VerticalAlignment="Center"
+                                       Margin="8,0,0,0" FontSize="11"
+                                       Foreground="{StaticResource CockpitTextFaintBrush}"
+                                       ToolTip.Tip="{Binding TokenTooltip}"/>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Pre-flight token estimate for the ticked servers (AC-134): a running total, labelled as a
+                 tools-only estimate, plus a Refresh to re-enumerate if a server's toolset changed. -->
+            <DockPanel Margin="0,2,0,0" IsVisible="{Binding #Root.ShowTokenSummary}">
+                <Button DockPanel.Dock="Right" Content="Refresh" Classes="Subtle" Padding="6,2" FontSize="11"
+                        Command="{Binding #Root.RefreshCommand}"
+                        ToolTip.Tip="Re-enumerate the selected servers' tools and recount"/>
+                <TextBlock Text="{Binding #Root.TokenSummary}" VerticalAlignment="Center" FontSize="11"
+                           TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
+            </DockPanel>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

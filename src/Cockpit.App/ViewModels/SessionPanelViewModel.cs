@@ -249,6 +249,21 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string? _worktreeBranch;
 
     /// <summary>
+    /// The project this session works on (AC-163), or null for one belonging to none. On the base for the same
+    /// reason as the branch above: every kind of session can start under a project. Carried rather than resolved
+    /// on demand because a session outlives the dialog that started it — and a project the operator has since
+    /// deleted must not change what a running session was launched with.
+    /// <para>
+    /// Written at launch and not yet read: what a project decides is resolved into the launch itself (its folder,
+    /// its server names, its instructions), so nothing downstream needs to ask which project a running session
+    /// belongs to. It is here for the half that does — a session-scoped MCP fan-out that resolves servers as the
+    /// project sees them rather than by name out of the unscoped registry.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    private string? _projectId;
+
+    /// <summary>
     /// Whether plugin-contributed session-header items show (AC-25/AC-37): true for a real agent session, false for
     /// a plain terminal, where a plugin session indicator has nothing to say. On the base so the one SessionHeaderBar
     /// gates the shared PluginSessionHeaderHost without needing the TTY-only IsTerminal flag.

@@ -63,7 +63,7 @@ internal sealed class CockpitMcpEndpointHost
                 // registered service (the statusline sink, etc.). An endpoint with no gate is always enabled; one that
                 // carries an IsEnabled (AC-34's master switch) is hosted but only advertised to a session while it is on.
                 var tools = ActivatorUtilities.CreateInstance(_services, endpoint.ToolsType);
-                await MountAsync(endpoint.ServerName, tools, isEnabled: endpoint.IsEnabled, isInternal: endpoint.Internal, cancellationToken).ConfigureAwait(false);
+                await MountAsync(endpoint.ServerName, tools, isEnabled: endpoint.IsEnabled, isInternal: endpoint.Internal, alwaysMounted: endpoint.AlwaysMounted, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -74,7 +74,7 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    public async Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, CancellationToken cancellationToken = default)
+    public async Task MountAsync(string serverName, object tools, Func<bool>? isEnabled = null, bool isInternal = false, bool alwaysMounted = false, CancellationToken cancellationToken = default)
     {
         await _mountGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -115,7 +115,7 @@ internal sealed class CockpitMcpEndpointHost
             var url = $"{boundUrl.TrimEnd('/')}/mcp";
             lock (_mountedLock)
             {
-                _mounted.Add(new MountedEndpoint(serverName, url, isEnabled ?? (static () => true), isInternal));
+                _mounted.Add(new MountedEndpoint(serverName, url, isEnabled ?? (static () => true), isInternal, alwaysMounted));
             }
 
             _logger.LogInformation("Cockpit MCP endpoint {ServerName} listening at {McpUrl}.", serverName, url);
@@ -146,6 +146,7 @@ internal sealed class CockpitMcpEndpointHost
                     Enabled = endpoint.IsEnabled(),
                     CockpitHosted = true,
                     Internal = endpoint.Internal,
+                    AlwaysMounted = endpoint.AlwaysMounted,
                 }),
             ];
         }
@@ -188,5 +189,5 @@ internal sealed class CockpitMcpEndpointHost
         }
     }
 
-    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal);
+    private sealed record MountedEndpoint(string Name, string Url, Func<bool> IsEnabled, bool Internal, bool AlwaysMounted = false);
 }

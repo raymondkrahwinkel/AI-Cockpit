@@ -55,6 +55,20 @@ public sealed record SessionProfile(
     /// </summary>
     public string? DefaultWorkingDirectory { get; init; }
 
+    /// <summary>
+    /// Standing instructions every session under this profile starts with (AC-142) — who it is and what it may
+    /// reach: "You are Olaf; your memory lives in the Depot MCP, look yourself up there before answering." Appended
+    /// to the provider's own system prompt rather than replacing it, through the same
+    /// <c>cockpit.append-system-prompt</c> launch option the delegation and Autopilot briefs already use, so every
+    /// provider that honours it (Claude TTY and SDK, the OpenAI-compatible drivers, Codex) gets it unchanged.
+    /// <para>
+    /// This is the profile's half of the identity: it says who the session is, while a project's
+    /// <c>Project.BehaviorPrompt</c> says how to behave on the work at hand. Both apply — the project appends to
+    /// this, it does not replace it. Null/blank appends nothing.
+    /// </para>
+    /// </summary>
+    public string? SystemPrompt { get; init; }
+
     /// <summary>Which backend drives this profile.</summary>
     public SessionProvider Provider => ProviderConfig.Provider;
 

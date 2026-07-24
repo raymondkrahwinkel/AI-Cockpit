@@ -1,4 +1,5 @@
 using Cockpit.App.ViewModels;
+using Cockpit.Core.Projects;
 using Cockpit.Plugins.Abstractions.Sessions;
 
 namespace Cockpit.App.Services;
@@ -17,8 +18,11 @@ public interface ISessionDialogService
     /// <paramref name="isolateInWorktree"/> additionally turns worktree isolation on for the pre-filled folder —
     /// the AC-85 reattach case (starting a session in an existing worktree so starting re-owns it), separate from
     /// <paramref name="prefill"/> because it is a host reattach concern, not one of the plugin-facing prefill fields.
+    /// <paramref name="project"/> opens the dialog on that project (AC-164), so its folder, profile, worktree default
+    /// and MCP overlay apply exactly as if the operator had picked it there — a host concern too, and not a prefill
+    /// field: a project is a thing the dialog knows, while a prefill is a set of values a plugin hands in.
     /// </summary>
-    Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false);
+    Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null);
 
     /// <summary>
     /// Opens the managed-worktrees dialog (AC-85): the git worktrees the cockpit created, their state and owner, with
@@ -30,6 +34,25 @@ public interface ISessionDialogService
 
     /// <summary>Shows the Manage-profiles dialog on its own (e.g. from the sidebar), over the main window.</summary>
     Task ShowManageProfilesDialogAsync();
+
+    /// <summary>
+    /// Shows the projects manager (AC-161) in its own window: the saved projects, with add, edit and remove. Its
+    /// own dialog rather than a tab in Options (Raymond, 2026-07-24) — a project is the work the cockpit is pointed
+    /// at, not a setting of it, and where projects come from is about to widen beyond this machine.
+    /// <para>
+    /// Takes <paramref name="projects"/> as a parameter for the same reason <see cref="ShowWorktreesDialogAsync"/>
+    /// does: that view model depends on this service for its editor and its confirmations, so injecting it here
+    /// would be a circle.
+    /// </para>
+    /// </summary>
+    Task ShowProjectsDialogAsync(ProjectsViewModel projects);
+
+    /// <summary>
+    /// Shows the project editor (AC-160) for <paramref name="project"/>, or for a new project when it is null,
+    /// and returns what the operator saved — null when they cancelled. Persisting is the caller's: this hands
+    /// back an edited value the same way the New-session dialog hands back its choices.
+    /// </summary>
+    Task<Project?> ShowProjectDialogAsync(Project? project);
 
     /// <summary>Shows the MCP-servers dialog (#26), over the main window, for editing the shared MCP-server registry.</summary>
     Task ShowMcpServersDialogAsync();
@@ -52,10 +75,9 @@ public interface ISessionDialogService
     /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
     /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
-    /// existing option properties/commands. <paramref name="selectPluginsTab"/> opens straight to the
-    /// Plugins tab instead of the default first tab.
+    /// existing option properties/commands.
     /// </summary>
-    Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false);
+    Task ShowOptionsDialogAsync(CockpitViewModel viewModel);
 
     /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
     Task<string?> PickPluginZipAsync();

@@ -6,10 +6,13 @@ using CommunityToolkit.Mvvm.Input;
 using Material.Icons;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
+using Cockpit.Core.Mcp;
 using Cockpit.Core.Profiles;
+using Cockpit.Core.Projects;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.WorkingPaths;
 using Cockpit.Core.Worktrees;
@@ -48,6 +51,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     private readonly IPluginTtyProviderRegistry? _ttyProviderRegistry;
     private readonly IPluginProviderRegistry? _sessionProviderRegistry;
     private readonly IWorktreeManager? _worktreeManager;
+    private readonly IProjectStore? _projectStore;
     private WorkingPathHistory _history = WorkingPathHistory.Empty;
     private CancellationTokenSource? _launchOptionsRefreshCts;
     private CancellationTokenSource? _repoDetectCts;
@@ -69,6 +73,11 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// <summary>Set while a profile's MCP pre-selection is being applied, so re-ticking the checklist is not mistaken for the operator toggling it.</summary>
     private bool _applyingMcpSelection;
 
+    /// <summary>True while the checklist is being rebuilt for a newly chosen project — Start waits for it (<see cref="CanStart"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanStart))]
+    private bool _isRebuildingMcpChecklist;
+
     /// <summary>
     /// Set while a profile switch is settling its kind, so the kind change it forces does not itself trigger a
     /// dynamic-options refresh — the profile switch fires exactly one refresh at its end, for whatever kind won.
@@ -80,6 +89,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
     /// <summary>The in-flight background refresh of the active kind's launch options (Codex's model/list), so a test can await it. Completed when none is running.</summary>
     internal Task LaunchOptionsRefresh { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// The in-flight rebuild of the MCP checklist after a project switch. Exposed so a caller that selects a project
+    /// before showing the dialog can wait for it — otherwise the dialog can be on screen, and startable, while the
+    /// checklist still shows the servers of the project it was not opened on.
+    /// </summary>
+    internal Task McpChecklistRefresh { get; private set; } = Task.CompletedTask;
 
     /// <summary>Raised when the dialog should close: the result carries the confirmed choices, or null on cancel.</summary>
     public event Action<NewSessionResult?>? CloseRequested;
@@ -120,6 +136,19 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public bool ShowTtyStartHint => IsTty && IsClaudeProfile;
 
     public ObservableCollection<SessionProfile> Profiles { get; } = [];
+
+    /// <summary>The projects to start under (AC-163); empty for an operator who has made none, which hides the picker.</summary>
+    public ObservableCollection<Project> Projects { get; } = [];
+
+    public bool HasProjects => Projects.Count > 0;
+
+    /// <summary>
+    /// The project this session works on, or null for a session belonging to none — how the cockpit has always
+    /// started one. Picking one pre-fills the folder, profile, worktree choice and MCP checklist through
+    /// <see cref="SessionStartDefaults"/>; every one of them stays editable below.
+    /// </summary>
+    [ObservableProperty]
+    private Project? _selectedProject;
 
     /// <summary>
     /// The shared registry's enabled MCP servers (#44), each with its own checkbox so the operator can opt
@@ -382,7 +411,7 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// launch, so the dialog never offers a kind the launch would then refuse. A local HTTP provider (Ollama/
     /// LM Studio) is never a program a terminal can host, so it has none either way.
     /// </summary>
-    public bool HasTtyProvider => IsClaudeProfile || (_ttyProviderResolver?.Resolve(SelectedProfile) is not null);
+    public bool HasTtyProvider => SessionKindDefaults.HasTtyRoute(SelectedProfile, _ttyProviderResolver);
 
     /// <summary>The declared start defaults for the selected profile's plugin TTY provider (Codex's sandbox policy, say) — empty for Claude/local profiles or a plugin with none declared.</summary>
     public ObservableCollection<PluginTtyOptionSelectionViewModel> PluginTtyOptions { get; } = [];
@@ -422,7 +451,12 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     public bool CanStart =>
         SelectedProfile is not null
         && (IsLocalProfile || IsTty || IsSelectedProfileLoggedIn)
-        && (ResumeMode != SessionResumeMode.BySessionId || !string.IsNullOrWhiteSpace(ResumeSessionId));
+        && (ResumeMode != SessionResumeMode.BySessionId || !string.IsNullOrWhiteSpace(ResumeSessionId))
+        // A project switch rebuilds the checklist off disk, and Start reads that checklist. Pressed inside that
+        // window it would carry the previous project's ticks into the new project's session — the folder and the
+        // id from one, the servers from the other. The caller that opens the dialog on a project already waits for
+        // this; the operator switching project inside the dialog had nothing holding them back.
+        && !IsRebuildingMcpChecklist;
 
     // Design-time constructor for the Avalonia previewer: one logged-in profile so the dialog renders.
     public NewSessionDialogViewModel()
@@ -443,8 +477,10 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         IPluginTtyProviderRegistry? ttyProviderRegistry = null,
         IPluginProviderRegistry? sessionProviderRegistry = null,
         IWorktreeManager? worktreeManager = null,
-        IMcpToolTokenEstimator? tokenEstimator = null)
+        IMcpToolTokenEstimator? tokenEstimator = null,
+        IProjectStore? projectStore = null)
     {
+        _projectStore = projectStore;
         _conversationPicker = conversationPickers?.Pickers.FirstOrDefault();
         _profileStore = profileStore;
         _loginChecker = loginChecker;
@@ -478,41 +514,146 @@ public partial class NewSessionDialogViewModel : ViewModelBase
 
         SelectedProfile = Profiles.FirstOrDefault();
 
-        if (_mcpServerCatalog is not null)
+        // The projects to choose from (AC-163). Loaded before the checklist because picking one changes which
+        // servers are offered — a project's overlay decides what exists for its sessions.
+        if (_projectStore is not null)
         {
-            var registry = await _mcpServerCatalog.GetServersAsync();
-            McpServers.Clear();
-            // Internal-only endpoints (AC-204, the Autopilot CEO/step tools) never appear here: the run's own agents
-            // mount them by name, but an operator must not see or tick them — nor estimate their tool tokens.
-            foreach (var server in registry.Where(server => server.Enabled && !server.Internal))
+            var projects = await _projectStore.LoadAsync();
+            Projects.Clear();
+            foreach (var project in projects.Projects)
             {
-                var item = new McpServerSelectionItemViewModel(server.Name);
-                item.PropertyChanged += _OnMcpServerToggled;
-                McpServers.Add(item);
+                Projects.Add(project);
             }
 
-            OnPropertyChanged(nameof(HasMcpServers));
-            OnPropertyChanged(nameof(HasMcpTokenSummary));
-            OnPropertyChanged(nameof(McpToolTokenSummary));
-
-            // Pre-flight tool-token estimate (AC-134): enumerate each server's tools in the background and roll the
-            // ticked ones into a running total, so the operator sees roughly what the selection costs before starting.
-            _ = _EstimateMcpTokensAsync(refresh: false);
-
-            // The selected profile was set above, before this list existed, so its pre-selection (AC-130) could not
-            // apply yet — apply it now the checklist is populated, unless the operator has already edited it. On a
-            // later profile switch OnSelectedProfileChanged does the same against the already-built list.
-            if (!_mcpSelectionTouched)
-            {
-                _ApplyProfileMcpSelection();
-            }
+            OnPropertyChanged(nameof(HasProjects));
         }
+
+        await _PopulateMcpServersAsync();
 
         if (_workingPathStore is not null)
         {
             _history = await _workingPathStore.LoadAsync();
             _RefreshRememberedPaths();
         }
+    }
+
+    /// <summary>
+    /// (Re)builds the MCP checklist for the selected project (AC-163). Rebuilt rather than merely re-ticked,
+    /// because a project can bring servers of its own — but it never takes one away: every server the registry
+    /// offers stays listed whichever project is picked, and the project's choice shows as the ticks.
+    /// </summary>
+    private async Task _PopulateMcpServersAsync()
+    {
+        if (_mcpServerCatalog is null)
+        {
+            return;
+        }
+
+        IsRebuildingMcpChecklist = true;
+        ConfirmCommand.NotifyCanExecuteChanged();
+        try
+        {
+            await _RebuildMcpServersAsync();
+        }
+        finally
+        {
+            IsRebuildingMcpChecklist = false;
+            ConfirmCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private async Task _RebuildMcpServersAsync()
+    {
+        var registry = await _mcpServerCatalog!.GetServersForProjectAsync(SelectedProject?.Id);
+
+        // What the operator ticked, kept across the rebuild for the servers that survive it. Without this their own
+        // edits are gone — every fresh row starts ticked — while _mcpSelectionTouched keeps the profile's saved
+        // selection from being re-applied, so switching project after one manual untick turned everything back on.
+        var ticked = _mcpSelectionTouched
+            ? McpServers.ToDictionary(server => server.Name, server => server.IsEnabledForSession, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        foreach (var existing in McpServers)
+        {
+            existing.PropertyChanged -= _OnMcpServerToggled;
+        }
+
+        McpServers.Clear();
+        foreach (var server in McpServerRegistryFilter.OfferedToOperator(registry))
+        {
+            // Set before subscribing, so restoring a tick does not read as the operator making one.
+            var item = new McpServerSelectionItemViewModel(server.Name)
+            {
+                IsEnabledForSession = ticked?.GetValueOrDefault(server.Name, true) ?? true,
+            };
+            item.PropertyChanged += _OnMcpServerToggled;
+            McpServers.Add(item);
+        }
+
+        OnPropertyChanged(nameof(HasMcpServers));
+        OnPropertyChanged(nameof(HasMcpTokenSummary));
+        OnPropertyChanged(nameof(McpToolTokenSummary));
+
+        // Pre-flight tool-token estimate (AC-134): enumerate each server's tools in the background and roll the
+        // ticked ones into a running total, so the operator sees roughly what the selection costs before starting.
+        _ = _EstimateMcpTokensAsync(refresh: false);
+
+        // The selected profile was set before this list existed, so its pre-selection (AC-130) could not apply yet —
+        // apply it now the checklist is populated, unless the operator has already edited it. On a later profile
+        // switch OnSelectedProfileChanged does the same against the already-built list.
+        if (!_mcpSelectionTouched)
+        {
+            _ApplyProfileMcpSelection();
+        }
+    }
+
+    /// <summary>
+    /// Applies a chosen project to the dialog (AC-163). The profile is selected first so its own defaults land, then
+    /// the project's values are written over them — that ordering <em>is</em> the precedence rule
+    /// (<see cref="SessionStartDefaults"/>): the project overrides, the profile falls back, and a field the operator
+    /// already touched is left alone either way.
+    /// </summary>
+    /// <summary>
+    /// The chosen project's description, as a flat value rather than a path through <see cref="SelectedProject"/>.
+    /// A binding that walks into a null object yields no value at all, and an <c>IsVisible</c> left with no value
+    /// falls back to visible — which is how the hint under the picker held an empty line open, spacing the Project
+    /// row away from the Profile row whenever no project was chosen.
+    /// </summary>
+    public string? SelectedProjectDescription => SelectedProject?.Description;
+
+    partial void OnSelectedProjectChanged(Project? value)
+    {
+        OnPropertyChanged(nameof(SelectedProjectDescription));
+
+        if (value?.DefaultProfileLabel is { Length: > 0 } label
+            && Profiles.FirstOrDefault(profile => string.Equals(profile.Label, label, StringComparison.OrdinalIgnoreCase)) is { } matched)
+        {
+            SelectedProfile = matched;
+        }
+
+        var defaults = SessionStartDefaults.Resolve(value, SelectedProfile);
+
+        if (!_workingDirectoryTouched && defaults.WorkingDirectory is { Length: > 0 } directory)
+        {
+            _applyingProfileWorkingDirectory = true;
+            try
+            {
+                WorkingDirectory = directory;
+            }
+            finally
+            {
+                _applyingProfileWorkingDirectory = false;
+            }
+        }
+
+        // Only ever turns isolation on: the project asking for it is a default, and a repository check still gates it
+        // (OnIsWorkingDirectoryGitRepoChanged switches it back off for a non-repository folder).
+        if (defaults.IsolateInWorktree)
+        {
+            IsolateInWorktree = true;
+        }
+
+        McpChecklistRefresh = _PopulateMcpServersAsync();
     }
 
     // Ticks the MCP checklist to match the selected profile's saved pre-selection (AC-130): a null restriction ticks
@@ -525,17 +666,33 @@ public partial class NewSessionDialogViewModel : ViewModelBase
             return;
         }
 
+        // A project's choice beats the profile's (Raymond, 2026-07-24): where a project says which servers it works
+        // with, that is the answer, and the profile's saved selection is what a session started without one gets.
+        if (SelectedProject is { } project)
+        {
+            _ApplyMcpSelection(server => project.McpOverlay.IsSelectedByDefault(server.Name));
+            return;
+        }
+
         var restriction = SelectedProfile?.EnabledMcpServerNames is { } names
             ? new HashSet<string>(names, StringComparer.OrdinalIgnoreCase)
             : null;
 
-        // Guard so the re-ticking below does not trip the toggle handler into marking the checklist operator-touched.
+        _ApplyMcpSelection(server => restriction?.Contains(server.Name) ?? true);
+    }
+
+    /// <summary>
+    /// Ticks the checklist by <paramref name="isSelected"/>, guarded so the re-ticking is not mistaken for the
+    /// operator editing it — which would freeze the checklist against the next project or profile switch.
+    /// </summary>
+    private void _ApplyMcpSelection(Func<McpServerSelectionItemViewModel, bool> isSelected)
+    {
         _applyingMcpSelection = true;
         try
         {
             foreach (var server in McpServers)
             {
-                server.IsEnabledForSession = restriction?.Contains(server.Name) ?? true;
+                server.IsEnabledForSession = isSelected(server);
             }
         }
         finally
@@ -990,7 +1147,13 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         }
 
         var name = string.IsNullOrWhiteSpace(SessionName) ? null : SessionName.Trim();
-        IReadOnlySet<string>? enabledMcpServerNames = HasMcpServers
+
+        // An explicit selection whenever a project is in play, empty included: null means "this launch made no
+        // selection", which downstream answers with the profile's saved one over the unscoped registry — and for a
+        // project whose overlay left nothing to offer that would mount exactly the servers it had switched off.
+        // Without a project the old meaning still holds: an empty checklist is a cockpit with no servers, not a
+        // narrowing, and the profile's own selection is the better answer there.
+        IReadOnlySet<string>? enabledMcpServerNames = HasMcpServers || SelectedProject is not null
             ? McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name).ToHashSet()
             : null;
         var workingDirectory = string.IsNullOrWhiteSpace(WorkingDirectory) ? null : WorkingDirectory.Trim();
@@ -1022,11 +1185,18 @@ public partial class NewSessionDialogViewModel : ViewModelBase
         // the belt-and-suspenders so a stale check can never send a true for a non-repo the backend would ignore.
         var isolateInWorktree = IsolateInWorktree && IsWorkingDirectoryGitRepo;
 
+        // Resolved at Start rather than read off the project directly, so what the session actually launches with is
+        // the same precedence every other surface applies (AC-142/AC-163): the profile's identity, the project's
+        // instructions appended under it.
+        var startDefaults = SessionStartDefaults.Resolve(SelectedProject, SelectedProfile);
+
         CloseRequested?.Invoke(new NewSessionResult(
             SelectedKind, SelectedProfile, SelectedPermissionMode, SessionOptionCatalog.ModelForValue(SelectedClaudeModel), SelectedEffort, name,
             enabledMcpServerNames, workingDirectory, _Resume(), pluginTtyOptions, sdkLaunchOptions, isolateInWorktree,
             // A reading level is an SDK-only concept (AC-138); a TTY session carries none, so the override is left null there.
-            IsSdk ? SelectedReadingLevel.Value : null));
+            IsSdk ? SelectedReadingLevel.Value : null,
+            SelectedProject?.Id,
+            startDefaults.SystemPrompt));
     }
 
     [RelayCommand]

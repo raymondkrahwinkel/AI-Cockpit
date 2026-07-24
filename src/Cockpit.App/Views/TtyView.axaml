@@ -17,7 +17,7 @@
 
     <!-- The pane is a Grid so the consent overlay (last child) can dim and cover the whole session. -->
     <Grid>
-    <DockPanel Margin="16">
+    <DockPanel Margin="6,6,6,8">
 
         <!-- Compact one-row session header: the session data (TTY tag with render diagnostics on hover,
              status, profile, working directory, read-aloud/redraw) is left-aligned; the session title is
