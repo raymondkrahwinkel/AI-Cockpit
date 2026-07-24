@@ -32,6 +32,22 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: projects — a reusable answer to what a session works on. A project holds a folder (picked or cloned), the
+  profile its sessions run under, whether they are isolated in a git worktree, which MCP servers they get, and
+  optional instructions for how to behave on that work, so a second codebase no longer means a second nearly
+  identical profile. Manage them in Options → Projects.
+- added: starting a session from a project — a Projects section in the sidebar whose ▶ starts one on the project's
+  own defaults without a dialog, a right-click menu for the slower routes (a pre-filled New-session dialog, the
+  project's folder, its settings), and a Launcher workspace ("What do you want to work on?") that shows the projects
+  as cards with a single Start on each. Pick a project at the top of the New-session dialog to fill folder, profile,
+  worktree choice and MCP selection in one go; every field stays changeable, and the dialog is unchanged for anyone
+  with no projects.
+- added: standing instructions per profile — who a session is and where its memory lives — appended to whatever the
+  provider's own system prompt says, with a project's instructions added under them when a session starts on one.
+  Both apply; the more specific one is read last.
+- changed: the cockpit-session server (which lets a session report what it is working on) is mounted into every
+  session instead of being an item to tick, and is no longer offered in the MCP checklists — a status line going
+  missing because a box was left unticked was a cost with nothing to weigh against it.
 - added: an hourly background update re-check while the app is open, so a window left running for a workday still
   learns about a build cut hours after it opened — not just at startup. It reuses the same toast/banner and dedup as
   the startup check (a release is announced once, a dismissed build stays quiet), is gated by the same "check on
