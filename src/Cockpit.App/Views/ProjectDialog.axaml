@@ -63,10 +63,12 @@
             </Grid>
         </Border>
 
-        <!-- The bottom padding is the room the last row needs to scroll clear of the footer: without it the list
-             ends flush against that edge, and a row cut in half there reads as one hidden behind the bar. -->
-        <ScrollViewer Grid.Row="1" Padding="18,16,18,24" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="18">
+        <ScrollViewer Grid.Row="1" Padding="18,16,18,0" VerticalScrollBarVisibility="Auto">
+            <!-- The room the last field needs to scroll clear of the footer sits on the content, not on the
+                 ScrollViewer's padding: padding is not part of what the scroller measures as its extent, so those
+                 last pixels stayed unreachable and the bottom row was cut in half against the bar however far you
+                 scrolled — which reads as content running behind it. -->
+            <StackPanel Spacing="18" Margin="0,0,0,28">
 
                 <StackPanel Spacing="2">
                     <TextBlock Classes="FieldLabel" Text="Name *"/>
