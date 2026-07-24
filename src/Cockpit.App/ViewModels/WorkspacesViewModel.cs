@@ -186,6 +186,9 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     /// <summary>True when the active workspace hosts widgets — gates the ⚙ dashboard settings and the "Add widget" affordance.</summary>
     public bool IsDashboardActive => Active?.Type == WorkspaceType.Dashboard;
 
+    /// <summary>True when the project launcher is the active workspace (AC-162) — the host draws the project cards instead of a grid.</summary>
+    public bool IsLauncherActive => Active?.Type == WorkspaceType.Launcher;
+
     /// <summary>
     /// True when the active workspace is a plugin-registered type: the host draws neither the session grid nor the
     /// widget grid, but the plugin's own full-surface body (<see cref="ActivePluginBody"/>).
@@ -207,6 +210,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
     [
         new("Sessions", MaterialIconKind.ChatOutline, "AI sessions and terminals", WorkspaceType.Sessions),
         new("Dashboard", MaterialIconKind.ViewDashboardOutline, "Widgets", WorkspaceType.Dashboard),
+        new("Launcher", MaterialIconKind.RocketLaunchOutline, "Pick a project and start", WorkspaceType.Launcher),
         .. AvailablePluginWorkspaceTypes.Select(type =>
             new WorkspaceMenuOption(type.Title, type.IconKind ?? MaterialIconKind.PuzzleOutline, type.Description, new WorkspaceType(type.Id))),
     ];
@@ -664,6 +668,7 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
         OnPropertyChanged(nameof(ShowTabStrip));
         OnPropertyChanged(nameof(IsDashboardActive));
         OnPropertyChanged(nameof(IsSessionsActive));
+        OnPropertyChanged(nameof(IsLauncherActive));
         OnPropertyChanged(nameof(IsPluginWorkspaceActive));
         OnPropertyChanged(nameof(ActivePluginBody));
         OnPropertyChanged(nameof(ShowUnknownPluginWorkspace));

@@ -10,7 +10,7 @@ namespace Cockpit.Core.Tests.Workspaces;
 /// </summary>
 public class WorkspaceTests
 {
-    /// <summary>The two host types crossed with every pane kind — passed via <see cref="TheoryData{T1,T2,T3}"/> because <see cref="WorkspaceType"/> is a value, not an enum constant an attribute can carry.</summary>
+    /// <summary>The host types crossed with every pane kind — passed via <see cref="TheoryData{T1,T2,T3}"/> because <see cref="WorkspaceType"/> is a value, not an enum constant an attribute can carry.</summary>
     public static TheoryData<WorkspaceType, PaneKind, bool> AcceptsCases => new()
     {
         { WorkspaceType.Sessions, PaneKind.AiSession, true },
@@ -19,6 +19,11 @@ public class WorkspaceTests
         { WorkspaceType.Dashboard, PaneKind.Widget, true },
         { WorkspaceType.Dashboard, PaneKind.AiSession, false },
         { WorkspaceType.Dashboard, PaneKind.Terminal, false },
+        // The launcher (AC-162) owns its whole surface the way a plugin type does: it starts sessions, it does
+        // not hold them.
+        { WorkspaceType.Launcher, PaneKind.AiSession, false },
+        { WorkspaceType.Launcher, PaneKind.Terminal, false },
+        { WorkspaceType.Launcher, PaneKind.Widget, false },
     };
 
     [Theory]
@@ -57,6 +62,17 @@ public class WorkspaceTests
     public void FromId_ABlankId_FallsBackToSessions(string? id)
     {
         WorkspaceType.FromId(id).Should().Be(WorkspaceType.Sessions);
+    }
+
+    [Theory]
+    [InlineData("Launcher")]
+    [InlineData("launcher")]
+    public void FromId_TheLauncher_ResolvesToTheBuiltInType(string id)
+    {
+        var type = WorkspaceType.FromId(id);
+
+        type.Should().Be(WorkspaceType.Launcher);
+        type.IsBuiltIn.Should().BeTrue("a saved launcher workspace must not come back as an unknown plugin type");
     }
 
     [Fact]

@@ -63,10 +63,10 @@ public interface ISessionDialogService
     /// <summary>
     /// Shows the Options dialog (#13) over the main window, with <paramref name="viewModel"/> as its
     /// <see cref="Avalonia.Controls.Window.DataContext"/> so its tabs bind straight to the cockpit's
-    /// existing option properties/commands. <paramref name="selectPluginsTab"/> opens straight to the
-    /// Plugins tab instead of the default first tab.
+    /// existing option properties/commands. <paramref name="selectTab"/> names the tab to open on by its
+    /// header ("Projects"), instead of the default first one; null opens where the dialog opens itself.
     /// </summary>
-    Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false);
+    Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? selectTab = null);
 
     /// <summary>Opens a file picker filtered to <c>.zip</c> archives for installing a plugin (#14); returns the chosen path or null if cancelled.</summary>
     Task<string?> PickPluginZipAsync();

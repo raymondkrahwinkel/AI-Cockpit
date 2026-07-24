@@ -4429,7 +4429,13 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
     /// <summary>Opens the Options dialog (#13) from the sidebar, passing this view model as its DataContext.</summary>
     [RelayCommand]
-    private async Task OptionsAsync()
+    private Task OptionsAsync() => _ShowOptionsAsync(selectTab: null);
+
+    /// <summary>Opens Options straight on its Projects tab (AC-162) — the launcher's "Manage projects", which is that tab and nothing else.</summary>
+    [RelayCommand]
+    private Task ManageProjectsAsync() => _ShowOptionsAsync("Projects");
+
+    private async Task _ShowOptionsAsync(string? selectTab)
     {
         if (_dialogService is null)
         {
@@ -4443,7 +4449,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _ = _RefreshVoiceLlmAsync();
         await Plugins.LoadAsync();
         await Projects.LoadAsync();
-        await _dialogService.ShowOptionsDialogAsync(this);
+        await _dialogService.ShowOptionsDialogAsync(this, selectTab);
     }
 
     /// <summary>

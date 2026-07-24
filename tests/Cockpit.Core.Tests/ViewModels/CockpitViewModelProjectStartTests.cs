@@ -76,6 +76,19 @@ public class CockpitViewModelProjectStartTests
         await dialogs.Received(1).ShowProjectDialogAsync(project);
     }
 
+    [Fact]
+    public async Task ManageProjects_OpensOptionsOnTheProjectsTab()
+    {
+        var dialogs = Substitute.For<ISessionDialogService>();
+        var vm = NewVm(dialogs);
+
+        await vm.ManageProjectsCommand.ExecuteAsync(null);
+
+        // The launcher's "Manage projects" is that tab and nothing else — landing on the first tab would make the
+        // operator go looking for what the button named.
+        await dialogs.Received(1).ShowOptionsDialogAsync(vm, "Projects");
+    }
+
     private static NewSessionResult Confirmed() => new(
         SessionKind.Sdk,
         new SessionProfile("default", new ClaudeConfig(@"C:\fake\.claude")),

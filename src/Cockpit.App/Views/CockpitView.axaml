@@ -863,6 +863,71 @@
                 </Panel>
             </DockPanel>
 
+            <!-- The project launcher (AC-162): one question, one answer, Start. A workspace surface like the
+                 session grid and the dashboard rather than a window of its own, so it lives inside the shell the
+                 operator already has open and needs no second window lifetime. Everything the session needs —
+                 folder, profile, MCP servers, instructions — is the project's to know, so a card carries a name,
+                 a description in plain language and nothing to configure. -->
+            <ScrollViewer Grid.Row="1" IsVisible="{Binding Workspaces.IsLauncherActive}">
+                <StackPanel MaxWidth="860" Margin="24,32" HorizontalAlignment="Center">
+                    <TextBlock Text="What do you want to work on?" FontSize="21" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Pick a project to begin." FontSize="13" Margin="0,6,0,20"
+                               HorizontalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                    <ItemsControl ItemsSource="{Binding Projects.Projects}" IsVisible="{Binding Projects.HasProjects}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel HorizontalAlignment="Center"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="projects:Project">
+                                <Border Width="248" Margin="8" Padding="16"
+                                        CornerRadius="{StaticResource CockpitPanelRadius}"
+                                        Background="{StaticResource CockpitPanelBgBrush}"
+                                        BorderBrush="{StaticResource CockpitHairlineBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <!-- The description carries the card: it is what a colleague reads to know
+                                             which one is theirs. MinHeight keeps a card without one the same size
+                                             as its neighbours, so the row of Start buttons stays on one line. -->
+                                        <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
+                                                   MinHeight="36" VerticalAlignment="Top"
+                                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                                        <Button Classes="Accent" HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center" Padding="12,7"
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                                <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13"
+                                                                            VerticalAlignment="Center"/>
+                                                <TextBlock Text="Start" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock IsVisible="{Binding !Projects.HasProjects}" MaxWidth="420"
+                               Text="No projects yet. A project holds the folder, the profile and the MCP servers its sessions start with, so working on it is one click from here."
+                               TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                               HorizontalAlignment="Center"
+                               Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,24,0,0"
+                                HorizontalAlignment="Center">
+                        <Button Content="+ New project" Command="{Binding Projects.AddProjectCommand}"/>
+                        <Button Content="Manage projects" Classes="Subtle"
+                                Command="{Binding ManageProjectsCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
             <!-- Empty state: no session opens on startup; one only exists once the operator creates it. Gated on
                  a Sessions workspace being active, so a dashboard never shows it. -->
             <StackPanel Grid.Row="1" MaxWidth="320" IsVisible="{Binding ShowSessionEmptyState}"

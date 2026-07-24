@@ -196,6 +196,28 @@ public class WorkspacesViewModelTests
     }
 
     [Fact]
+    public async Task IsLauncherActive_TracksTheActiveWorkspacesType_SoTheProjectCardsCanGateOnIt()
+    {
+        var viewModel = _Create(out _);
+        viewModel.IsLauncherActive.Should().BeFalse();
+
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Launcher);
+
+        viewModel.IsLauncherActive.Should().BeTrue();
+        viewModel.IsSessionsActive.Should().BeFalse("the grid and the launcher share the content area");
+        viewModel.IsPluginWorkspaceActive.Should().BeFalse("the launcher is the host's own surface, not a plugin's");
+    }
+
+    [Fact]
+    public void WorkspaceMenuOptions_OfferTheLauncherBesideTheOtherHostTypes()
+    {
+        var viewModel = _Create(out _);
+
+        viewModel.WorkspaceMenuOptions.Select(option => option.Type)
+            .Should().Contain(WorkspaceType.Launcher);
+    }
+
+    [Fact]
     public async Task AddWidget_OnADashboard_PlacesItAtTheFirstFreeCell()
     {
         var viewModel = _Create(out _);

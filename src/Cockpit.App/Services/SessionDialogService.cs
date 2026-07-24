@@ -307,7 +307,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         return lifetime.Windows.LastOrDefault(window => window.IsActive) ?? main;
     }
 
-    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, bool selectPluginsTab = false)
+    public async Task ShowOptionsDialogAsync(CockpitViewModel viewModel, string? selectTab = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -315,9 +315,9 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         }
 
         var dialog = new OptionsDialog { DataContext = viewModel };
-        if (selectPluginsTab)
+        if (selectTab is { Length: > 0 })
         {
-            dialog.SelectPluginsTab();
+            dialog.SelectTab(selectTab);
         }
 
         await dialog.ShowDialog(owner);
