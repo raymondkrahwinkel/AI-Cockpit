@@ -133,14 +133,17 @@ public class ProjectQuickStartTests
     }
 
     [Fact]
-    public async Task WithNothingOnOffer_LeavesTheSelectionUnrestricted()
+    public async Task WithNothingOnOffer_SelectsNothingRatherThanLeavingItOpen()
     {
-        var quickStart = Build([ClaudeProfile]);
+        // The project's overlay decides what its catalog holds, so "nothing offered" can mean the project switched
+        // every server off. A null selection reads downstream as "this launch chose nothing", answered by falling
+        // back to the profile's list over the unscoped registry — which would mount exactly what the project removed.
+        var quickStart = Build([ClaudeProfile with { EnabledMcpServerNames = ["depot"] }]);
         var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
 
         var result = await quickStart.ComposeAsync(project);
 
-        result!.EnabledMcpServerNames.Should().BeNull("no servers offered is not the same as every server switched off");
+        result!.EnabledMcpServerNames.Should().NotBeNull().And.BeEmpty();
     }
 
     [Fact]

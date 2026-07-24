@@ -776,6 +776,10 @@ public sealed partial class WorkspacesViewModel : ObservableObject, ISingletonSe
             : _workspaceTypes?.WorkspaceTypes.FirstOrDefault(type => type.Id == workspace.Type.Id)?.IconKind;
 
     /// <summary>"Dashboard", then "Dashboard 2", … — a name the operator can rename, but never a strip of identical tabs.</summary>
-    private string _UniqueName(WorkspaceType type) =>
-        _UniqueName(type == WorkspaceType.Dashboard ? "Dashboard" : "Sessions");
+    /// <remarks>
+    /// The type's own id is the name: the built-in ids read as titles ("Sessions", "Dashboard", "Launcher"), and a
+    /// plugin type at least says what it is. It used to hard-code the two host names, so every other type — the
+    /// launcher included — came out of this called "Sessions".
+    /// </remarks>
+    private string _UniqueName(WorkspaceType type) => _UniqueName(type.Id);
 }

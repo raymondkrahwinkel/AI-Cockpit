@@ -20,9 +20,13 @@ public interface IMcpServerCatalog
     /// servers are present and the ones it turned off are gone. A null id, or one no project carries, gives
     /// exactly <see cref="GetServersAsync(CancellationToken)"/>.
     /// <para>
-    /// The overlay has to land here rather than at the picker, because everything downstream selects servers
-    /// <em>by name</em> out of this catalog: a project-owned server that the catalog does not know is a name the
-    /// fan-out cannot resolve, and would silently never reach the session.
+    /// What this reaches today is the pickers — the New-session checklist and the project quick start — so an
+    /// overlay that <em>removes</em> a server takes full effect: the name is never offered, never selected, and a
+    /// launch carries only the names it did select. An overlay that <em>adds or replaces</em> one does not yet: the
+    /// session fan-out resolves the selected names against the unscoped registry (<see cref="GetServersAsync"/>),
+    /// where a project-owned server does not exist and a project's replacement of a registry server is not seen. A
+    /// session-scoped fan-out is what closes that, and until it lands nothing in the app can produce such an
+    /// overlay — the project editor only ever switches registry servers off.
     /// </para>
     /// </summary>
     Task<IReadOnlyList<McpServerConfig>> GetServersForProjectAsync(string? projectId, CancellationToken cancellationToken = default);

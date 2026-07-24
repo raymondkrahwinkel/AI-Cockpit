@@ -4085,7 +4085,10 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         if (_projectQuickStart is not null && await _projectQuickStart.ComposeAsync(project) is { } result)
         {
-            await _LaunchSessionFromResultAsync(result);
+            // A second session on the same project is named "Cockpit 2", not a second "Cockpit": the dialog path
+            // numbers its generated names, and two identical rows in the sidebar is exactly the confusion that
+            // numbering exists to prevent.
+            await _LaunchSessionFromResultAsync(result with { SessionName = _UniqueSessionTitle(project.Name) });
             return;
         }
 
@@ -4110,6 +4113,24 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         {
             await _LaunchSessionFromResultAsync(result);
         }
+    }
+
+    /// <summary><paramref name="title"/> if no session carries it, else "<paramref name="title"/> 2", "… 3" — the first free one.</summary>
+    private string _UniqueSessionTitle(string title)
+    {
+        var taken = Sessions.Select(session => session.Title).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(title))
+        {
+            return title;
+        }
+
+        var suffix = 2;
+        while (taken.Contains($"{title} {suffix}"))
+        {
+            suffix++;
+        }
+
+        return $"{title} {suffix}";
     }
 
     /// <summary>Opens <paramref name="project"/>'s folder in the operating system's own file manager — the same shell hand-off the worktrees dialog uses.</summary>

@@ -7,6 +7,11 @@ namespace Cockpit.Core.Projects;
 /// base, and a project turns individual servers off, adds its own, or overrides one by name. Deliberately a
 /// change rather than a list of its own — servers live in one registry, and a project that carried a full copy
 /// would silently drift from it the moment a server is edited there.
+/// <para>
+/// Only <see cref="DisabledServerNames"/> reaches a running session in this increment — see
+/// <c>IMcpServerCatalog.GetServersForProjectAsync</c> for why, and note that nothing in the app can produce an
+/// <see cref="AdditionalServers"/> entry yet: the project editor switches registry servers off and nothing more.
+/// </para>
 /// </summary>
 public sealed record ProjectMcpOverlay
 {

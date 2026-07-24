@@ -155,6 +155,42 @@ public class NewSessionProjectFirstTests
         result?.ProjectId.Should().Be(project.Id);
     }
 
+    [Fact]
+    public async Task SelectingAProject_KeepsTheServersTheOperatorHadAlreadyUnticked()
+    {
+        // The rebuild hands out fresh rows, which start ticked, and an operator who has edited the checklist is
+        // deliberately not re-served the profile's saved selection. Together that turned one manual untick plus a
+        // project switch into every server back on — the opposite of both intents.
+        var project = Project.Create("Cockpit");
+        var viewModel = Build([project], registry: [new McpServerConfig { Name = "depot" }, new McpServerConfig { Name = "youtrack" }]);
+        await viewModel.LoadAsync();
+        viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession = false;
+
+        viewModel.SelectedProject = viewModel.Projects[0];
+        await viewModel.McpChecklistRefresh;
+
+        viewModel.McpServers.Single(server => server.Name == "youtrack").IsEnabledForSession.Should().BeFalse();
+        viewModel.McpServers.Single(server => server.Name == "depot").IsEnabledForSession.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Confirm_UnderAProjectThatOffersNoServers_SelectsNothingRatherThanLeavingItOpen()
+    {
+        // The registry has a server; this project's overlay leaves none. A null selection would read downstream as
+        // "no choice made" and fall back to the profile's list over the unscoped registry — mounting the very server
+        // the project switched off.
+        var project = Project.Create("Cockpit");
+        var viewModel = Build([project], registry: [new McpServerConfig { Name = "depot" }], projectRegistry: []);
+        await viewModel.LoadAsync();
+        viewModel.SelectedProject = viewModel.Projects[0];
+
+        NewSessionResult? result = null;
+        viewModel.CloseRequested += value => result = value;
+        viewModel.ConfirmCommand.Execute(null);
+
+        result?.EnabledMcpServerNames.Should().NotBeNull().And.BeEmpty();
+    }
+
     /// <summary>The AC-142 half: the profile's identity and the project's behaviour reach the launch as one appended prompt.</summary>
     [Fact]
     public async Task Confirm_CarriesTheProfileIdentityWithTheProjectsBehaviourUnderIt()

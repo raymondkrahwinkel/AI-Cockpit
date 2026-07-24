@@ -37,6 +37,20 @@ public static class McpServerRegistryFilter
             : [.. registry.Where(server => server.AlwaysMounted || !server.Enabled || enabledServerNames.Contains(server.Name))];
 
     /// <summary>
+    /// The servers a picker may put in front of the operator: the enabled ones, minus the endpoints that are not a
+    /// choice at all. An <see cref="McpServerConfig.Internal"/> endpoint is the cockpit's own spawn-scoped tooling
+    /// and an <see cref="McpServerConfig.AlwaysMounted"/> one is mounted whatever is ticked, so offering either
+    /// invites an answer that changes nothing — or, worse, one that is silently overruled.
+    /// <para>
+    /// One rule rather than the predicate written out per picker: the New-session checklist, the profile's
+    /// pre-selection, the project editor and the quick start all answer the same question, and four copies had
+    /// already begun to disagree about whether a disabled server counts.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<McpServerConfig> OfferedToOperator(IReadOnlyList<McpServerConfig> registry) =>
+        [.. registry.Where(server => server.Enabled && !server.Internal && !server.AlwaysMounted)];
+
+    /// <summary>
     /// The per-session selection a launch should actually apply: the explicit one it was handed, or — when it has
     /// none — the profile's own saved selection (#44/AC-130). The New-session dialog computes a selection from the
     /// profile's checklist, but a <em>programmatic</em> launch (a plugin/workflow shortcut, a restored session) has

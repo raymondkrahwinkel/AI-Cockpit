@@ -46,6 +46,33 @@ public class ProjectDialogViewModelTests
     }
 
     [Fact]
+    public async Task CreateAsync_ADisabledRegistryServer_IsNotOffered()
+    {
+        var viewModel = await ProjectDialogViewModel.CreateAsync(
+            project: null,
+            ProfileStore("personal"),
+            Catalog(Server("depot"), new McpServerConfig { Name = "off", Enabled = false }));
+
+        // A server switched off in the registry reaches no session at all, so offering it here as a per-project
+        // toggle would promise a project something it cannot have — and every other picker already leaves it out.
+        viewModel.McpServers.Select(server => server.Name).Should().Equal("depot");
+    }
+
+    [Fact]
+    public async Task ToProject_KeepsADisabledNameTheChecklistCannotShow()
+    {
+        // The project switched "gone" off while it existed; it has since left the registry. Saving must not read the
+        // missing row as "switched back on" — that would quietly re-enable a server the operator had turned off.
+        var project = Project.Create("Cockpit") with
+        {
+            McpOverlay = new ProjectMcpOverlay { DisabledServerNames = ["gone"] },
+        };
+        var viewModel = await ProjectDialogViewModel.CreateAsync(project, ProfileStore("personal"), Catalog(Server("depot")));
+
+        viewModel.ToProject().McpOverlay.DisabledServerNames.Should().Contain("gone");
+    }
+
+    [Fact]
     public async Task CreateAsync_InternalServers_AreNotOffered()
     {
         var internalServer = new McpServerConfig { Name = "autopilot-ceo", Internal = true };

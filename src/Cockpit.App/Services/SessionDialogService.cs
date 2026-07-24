@@ -107,6 +107,11 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         if (project is not null)
         {
             viewModel.SelectedProject = viewModel.Projects.FirstOrDefault(candidate => candidate.Id == project.Id);
+
+            // Selecting a project rebuilds the checklist from its overlay, and that is a read. Await it before the
+            // dialog is on screen: a dialog that can be started while the rebuild is in flight can start a session
+            // on the servers of no project at all.
+            await viewModel.McpChecklistRefresh;
         }
 
         // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,

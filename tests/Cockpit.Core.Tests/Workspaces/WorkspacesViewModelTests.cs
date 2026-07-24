@@ -209,6 +209,18 @@ public class WorkspacesViewModelTests
     }
 
     [Fact]
+    public async Task AddWorkspace_NamesTheTabAfterItsType()
+    {
+        // The name used to be picked from a two-way check that called everything-but-Dashboard "Sessions", so a
+        // launcher arrived as a tab named "Sessions" carrying a rocket.
+        var viewModel = _Create(out _);
+
+        await viewModel.AddWorkspaceCommand.ExecuteAsync(WorkspaceType.Launcher);
+
+        viewModel.Active!.Name.Should().Be("Launcher");
+    }
+
+    [Fact]
     public void WorkspaceMenuOptions_OfferTheLauncherBesideTheOtherHostTypes()
     {
         var viewModel = _Create(out _);

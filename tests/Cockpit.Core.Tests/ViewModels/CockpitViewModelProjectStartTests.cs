@@ -2,8 +2,11 @@ using Cockpit.App.Services;
 using Cockpit.App.ViewModels;
 using Cockpit.Core.Abstractions.Audio;
 using Cockpit.Core.Abstractions.Layout;
+using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Notifications;
+using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Projects;
+using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.SessionBehavior;
 using Cockpit.Core.Abstractions.TranscriptDisplay;
 using Cockpit.Core.Abstractions.Voice;
@@ -77,6 +80,25 @@ public class CockpitViewModelProjectStartTests
     }
 
     [Fact]
+    public async Task StartProjectSession_Twice_NumbersTheSecondSession()
+    {
+        var profile = new SessionProfile("work", new ClaudeConfig(@"C:\fake\.claude"));
+        var profiles = Substitute.For<ISessionProfileStore>();
+        profiles.LoadAsync(Arg.Any<CancellationToken>()).Returns([profile]);
+        var catalog = Substitute.For<IMcpServerCatalog>();
+        catalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns([]);
+        var quickStart = new ProjectQuickStart(profiles, catalog, Substitute.For<ITtySessionProviderResolver>());
+        var vm = NewVm(Substitute.For<ISessionDialogService>(), quickStart: quickStart);
+        var project = Project.Create("Cockpit") with { DefaultProfileLabel = "work" };
+
+        await vm.StartProjectSessionCommand.ExecuteAsync(project);
+        await vm.StartProjectSessionCommand.ExecuteAsync(project);
+
+        // Two rows both reading "Cockpit" is exactly what the dialog's own numbering avoids when it generates a name.
+        vm.Sessions.Select(session => session.Title).Should().Equal("Cockpit", "Cockpit 2");
+    }
+
+    [Fact]
     public async Task ManageProjects_OpensOptionsOnTheProjectsTab()
     {
         var dialogs = Substitute.For<ISessionDialogService>();
@@ -97,7 +119,10 @@ public class CockpitViewModelProjectStartTests
         SessionOptionCatalog.DefaultEffort,
         SessionName: null);
 
-    private static CockpitViewModel NewVm(ISessionDialogService dialogs, ProjectsViewModel? projects = null)
+    private static CockpitViewModel NewVm(
+        ISessionDialogService dialogs,
+        ProjectsViewModel? projects = null,
+        ProjectQuickStart? quickStart = null)
     {
         var notificationSettingsStore = Substitute.For<INotificationSettingsStore>();
         notificationSettingsStore.LoadAsync().Returns(new NotificationSettings());
@@ -125,6 +150,7 @@ public class CockpitViewModelProjectStartTests
             layoutSettingsStore,
             voiceSettingsStore,
             terminalSettingsStore,
-            projects: projects);
+            projects: projects,
+            projectQuickStart: quickStart);
     }
 }

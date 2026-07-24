@@ -77,8 +77,9 @@ public partial class ProjectDialogViewModel : ViewModelBase
 
         var servers = await mcpServerCatalog.GetServersAsync(cancellationToken).ConfigureAwait(false);
         var disabled = project?.McpOverlay.DisabledServerNames.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
+        var offered = McpServerRegistryFilter.OfferedToOperator(servers);
 
-        foreach (var server in servers.Where(server => !server.Internal && !server.AlwaysMounted))
+        foreach (var server in offered)
         {
             viewModel.McpServers.Add(new McpServerSelectionItemViewModel(server.Name)
             {
@@ -86,11 +87,20 @@ public partial class ProjectDialogViewModel : ViewModelBase
             });
         }
 
+        // A name this project switched off that the checklist cannot show — the server was disabled in the registry
+        // since, or removed — is kept rather than dropped on save, the way the project's own servers are. Editing
+        // which servers are on must not silently switch one back on because the row for it was not there.
+        viewModel._carriedDisabledServerNames =
+            [.. disabled.Where(name => !offered.Any(server => string.Equals(server.Name, name, StringComparison.OrdinalIgnoreCase)))];
+
         return viewModel;
     }
 
     /// <summary>The project's own servers, carried through untouched: v1 edits which servers are on, not the servers themselves (see <see cref="ToProject"/>).</summary>
     private readonly IReadOnlyList<McpServerConfig> _additionalServers = [];
+
+    /// <summary>The names this project switched off that the checklist has no row for, carried through so saving cannot switch them back on.</summary>
+    private IReadOnlyList<string> _carriedDisabledServerNames = [];
 
     /// <summary>Whether this is an existing project rather than a new one — drives the title and the confirm button.</summary>
     public bool IsEditing { get; }
@@ -155,7 +165,11 @@ public partial class ProjectDialogViewModel : ViewModelBase
             MemoryRef = MemoryRef,
             McpOverlay = new ProjectMcpOverlay
             {
-                DisabledServerNames = [.. McpServers.Where(server => !server.IsEnabledForSession).Select(server => server.Name)],
+                DisabledServerNames =
+                [
+                    .. McpServers.Where(server => !server.IsEnabledForSession).Select(server => server.Name),
+                    .. _carriedDisabledServerNames,
+                ],
                 AdditionalServers = _additionalServers,
             },
         };

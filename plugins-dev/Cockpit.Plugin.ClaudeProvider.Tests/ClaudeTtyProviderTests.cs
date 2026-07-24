@@ -13,7 +13,7 @@ public class ClaudeTtyProviderTests
     [Fact]
     public void BuildArguments_PermissionModeModelEffort_AreFlags()
     {
-        var arguments = ClaudeTtyProvider.BuildArguments("plan", "opus", "high", mcpConfigPath: null, delegationSystemPrompt: null, resume: null, settingsJson: null);
+        var arguments = ClaudeTtyProvider.BuildArguments("plan", "opus", "high", mcpConfigPath: null, appendSystemPrompt: null, resume: null, settingsJson: null);
 
         arguments.Should().ContainInOrder("--permission-mode", "plan");
         arguments.Should().ContainInOrder("--model", "opus");
@@ -53,5 +53,21 @@ public class ClaudeTtyProviderTests
     public void BuildArguments_WithNothingSet_IsEmpty()
     {
         ClaudeTtyProvider.BuildArguments(null, null, null, null, null, null, null).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The standing instructions a profile/project gives a session (AC-142/AC-158) reach the interactive CLI, which
+    /// is what a Claude profile starts as by default — they used to stop at the launch options, so the identity the
+    /// operator typed was quietly dropped for every TTY session while the SDK route honoured it.
+    /// </summary>
+    [Fact]
+    public void AppendedInstructions_CarryTheSessionsOwnInstructionsAheadOfTheOrchestratorNudge()
+    {
+        ClaudeTtyProvider._AppendedInstructions("You are Olaf.", "delegate-prompt")
+            .Should().Be("You are Olaf.\n\ndelegate-prompt");
+
+        ClaudeTtyProvider._AppendedInstructions("You are Olaf.", null).Should().Be("You are Olaf.");
+        ClaudeTtyProvider._AppendedInstructions(null, "delegate-prompt").Should().Be("delegate-prompt");
+        ClaudeTtyProvider._AppendedInstructions("   ", null).Should().BeNull();
     }
 }
