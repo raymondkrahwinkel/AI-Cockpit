@@ -73,10 +73,10 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <TextBlock Text="{Binding SelectedProject.Description}" FontSize="11" TextWrapping="Wrap"
+                    <TextBlock Text="{Binding SelectedProjectDescription}" FontSize="11" TextWrapping="Wrap"
                                Margin="0,3,0,0"
                                Foreground="{StaticResource CockpitTextFaintBrush}"
-                               IsVisible="{Binding SelectedProject.Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                               IsVisible="{Binding SelectedProjectDescription, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
             </Grid>
 

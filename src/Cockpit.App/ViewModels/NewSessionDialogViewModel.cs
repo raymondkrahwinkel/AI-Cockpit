@@ -588,8 +588,18 @@ public partial class NewSessionDialogViewModel : ViewModelBase
     /// (<see cref="SessionStartDefaults"/>): the project overrides, the profile falls back, and a field the operator
     /// already touched is left alone either way.
     /// </summary>
+    /// <summary>
+    /// The chosen project's description, as a flat value rather than a path through <see cref="SelectedProject"/>.
+    /// A binding that walks into a null object yields no value at all, and an <c>IsVisible</c> left with no value
+    /// falls back to visible — which is how the hint under the picker held an empty line open, spacing the Project
+    /// row away from the Profile row whenever no project was chosen.
+    /// </summary>
+    public string? SelectedProjectDescription => SelectedProject?.Description;
+
     partial void OnSelectedProjectChanged(Project? value)
     {
+        OnPropertyChanged(nameof(SelectedProjectDescription));
+
         if (value?.DefaultProfileLabel is { Length: > 0 } label
             && Profiles.FirstOrDefault(profile => string.Equals(profile.Label, label, StringComparison.OrdinalIgnoreCase)) is { } matched)
         {

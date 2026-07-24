@@ -1,18 +1,30 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Cockpit.App.ViewModels"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="Cockpit.App.Controls.McpServerChecklist"
              x:Name="Root">
 
     <!-- One MCP checklist for every surface that has one — the profile editor, the New-session dialog and the
          project editor (AC-140). Collapsed by default with a live "N of M selected" count, because the list runs to
-         a dozen rows and reads as noise in three dialogs that are about something else. -->
-    <Expander IsExpanded="{Binding #Root.IsExpanded, Mode=TwoWay}" HorizontalAlignment="Stretch">
-        <Expander.Header>
-            <TextBlock Text="{Binding #Root.SummaryText}" FontSize="12.5"/>
-        </Expander.Header>
+         a dozen rows and reads as noise in three dialogs that are about something else.
+         Built from a chevron collapser rather than an Expander, and styled ToggleButton.collapser rather than left
+         to the default: a checked ToggleButton takes the accent fill, which turned the quietest row in the dialog
+         into the loudest thing on the screen the moment it was opened. -->
+    <StackPanel Spacing="4">
+        <ToggleButton Classes="collapser" HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      IsChecked="{Binding #Root.IsExpanded, Mode=TwoWay}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <materialIcons:MaterialIcon Width="13" Height="13" VerticalAlignment="Center"
+                                            Kind="ChevronRight" IsVisible="{Binding !#Root.IsExpanded}"/>
+                <materialIcons:MaterialIcon Width="13" Height="13" VerticalAlignment="Center"
+                                            Kind="ChevronDown" IsVisible="{Binding #Root.IsExpanded}"/>
+                <TextBlock Text="{Binding #Root.SummaryText}" FontSize="12.5" VerticalAlignment="Center"/>
+            </StackPanel>
+        </ToggleButton>
 
-        <StackPanel Spacing="4">
+        <StackPanel Spacing="4" Margin="19,2,0,0" IsVisible="{Binding #Root.IsExpanded}">
             <TextBlock Text="{Binding #Root.Hint}" FontSize="11" TextWrapping="Wrap"
                        Margin="0,0,0,2"
                        Foreground="{StaticResource CockpitTextFaintBrush}"
@@ -43,5 +55,5 @@
                            TextWrapping="Wrap" Foreground="{StaticResource CockpitTextFaintBrush}"/>
             </DockPanel>
         </StackPanel>
-    </Expander>
+    </StackPanel>
 </UserControl>
