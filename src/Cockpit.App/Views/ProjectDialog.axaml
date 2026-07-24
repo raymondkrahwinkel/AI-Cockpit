@@ -92,9 +92,9 @@
                         </StackPanel>
                         <StackPanel Grid.Column="1" Spacing="2" MinWidth="200">
                             <TextBlock Classes="FieldLabel" Text="Logo"/>
-                            <TextBlock Classes="FieldHint" Text="A file or a link — SVG included."/>
+                            <TextBlock Classes="FieldHint" Text="A file — SVG included."/>
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <!-- The preview is the check: it shows what the card will show, so a link that is
+                                <!-- The preview is the check: it shows what the card will show, so a file that is
                                      not an image is visible here rather than as a missing picture later. -->
                                 <controls:ProjectLogoBadge Grid.Column="0" Size="34" ShowsInitial="False"
                                                            LogoPath="{Binding LogoSource}"
