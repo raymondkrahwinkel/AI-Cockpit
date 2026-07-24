@@ -962,10 +962,11 @@
                                                        TextTrimming="CharacterEllipsis"/>
                                         </Grid>
                                         <!-- The description carries the card: it is what a colleague reads to know
-                                             which one is theirs. MinHeight keeps a card without one the same size
-                                             as its neighbours, so the row of buttons stays on one line. -->
+                                             which one is theirs. A card without one closes up instead of holding
+                                             the space open — an empty gap reads as something that failed to load. -->
                                         <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
-                                                   MinHeight="36" VerticalAlignment="Top"
+                                                   VerticalAlignment="Top"
+                                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                                    Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
                                         <TextBlock Text="{Binding LastOpenedAt, Converter={x:Static conv:LastOpenedConverter.Instance}}"
                                                    FontSize="11"
