@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Cockpit.App.ViewModels"
         xmlns:controls="using:Cockpit.App.Controls"
+        xmlns:projects="using:Cockpit.Core.Projects"
         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -678,6 +679,58 @@
                         </ScrollViewer>
 
                     </Carousel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Projects">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Border Grid.Column="0" Classes="subnavRail">
+                        <StackPanel>
+                            <TextBlock Classes="subnavGroup" Text="PROJECTS"/>
+                            <ListBox Classes="subnav" SelectedIndex="0">
+                                <ListBoxItem>Projects</ListBoxItem>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                    <ScrollViewer Grid.Column="1">
+                        <StackPanel Spacing="8" Margin="16">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="Projects" FontWeight="SemiBold"/>
+                                <materialIcons:MaterialIcon Classes="hint"
+                                    ToolTip.Tip="A project is what a session works on: its folder, which profile starts by default, how that profile should behave there, and which MCP servers its sessions get. A project uses a profile — it does not replace one, so the same profile can serve several projects."/>
+                            </StackPanel>
+
+                            <TextBlock Text="No projects yet. Add one to start sessions with a folder, a profile and its MCP servers already set."
+                                       TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                       IsVisible="{Binding !Projects.HasProjects}"/>
+
+                            <ListBox ItemsSource="{Binding Projects.Projects}"
+                                     SelectedItem="{Binding Projects.SelectedProject}"
+                                     MaxHeight="320"
+                                     IsVisible="{Binding Projects.HasProjects}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="projects:Project">
+                                        <StackPanel Spacing="1" Margin="0,2">
+                                            <TextBlock Text="{Binding Name}"/>
+                                            <TextBlock Text="{Binding Description}" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                       IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <TextBlock Text="{Binding SourceDirectory}" FontSize="11"
+                                                       Foreground="{StaticResource CockpitTextSecondaryBrush}"
+                                                       IsVisible="{Binding SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Add project…" Command="{Binding Projects.AddProjectCommand}"/>
+                                <Button Content="Edit…" Command="{Binding Projects.EditProjectCommand}"/>
+                                <Button Content="Remove" Command="{Binding Projects.RemoveProjectCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </TabItem>
 

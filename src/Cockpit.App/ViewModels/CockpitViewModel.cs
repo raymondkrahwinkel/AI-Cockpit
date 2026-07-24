@@ -250,6 +250,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
     public WorktreesViewModel Worktrees { get; }
 
+    /// <summary>The "Projects" Options tab (AC-161): what the operator's sessions can work on. Loaded when the Options dialog opens.</summary>
+    public ProjectsViewModel Projects { get; }
+
     /// <summary>The workspace tab strip and the active workspace's panes.</summary>
     public WorkspacesViewModel Workspaces { get; }
 
@@ -2076,6 +2079,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         Plugins = new PluginManagerViewModel();
         DelegatedTasks = new DelegatedTasksViewModel();
         Worktrees = new WorktreesViewModel();
+        Projects = new ProjectsViewModel();
         Security = new SecurityOptionsViewModel(new UnprotectedSecrets());
         Diagnostics = new DiagnosticsViewModel(null, _BuildSessionDescriptors);
 
@@ -2169,6 +2173,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ISecretKeyHolder? secretKeyHolder = null,
         IWorktreeManager? worktreeManager = null,
         WorktreesViewModel? worktrees = null,
+        ProjectsViewModel? projects = null,
         IWorktreeSettingsStore? worktreeSettingsStore = null,
         ICloneSettingsStore? cloneSettingsStore = null,
         LiveSessionRegistry? liveSessions = null,
@@ -2213,6 +2218,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _terminals = terminals;
         _liveSessions = liveSessions;
         Worktrees = worktrees ?? new WorktreesViewModel();
+        Projects = projects ?? new ProjectsViewModel();
         // One source of "which sessions are live" (their pane ids, what worktrees are keyed on): the panel reads it,
         // and it feeds the shared registry the worktree-removal paths (the managed panel and the agent's
         // worktree_remove MCP tool) check, so none of them pulls a running session's checkout out from under it.
@@ -4357,6 +4363,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         // a moment later without blocking; a timeout inside keeps a slow/hung server from lingering.
         _ = _RefreshVoiceLlmAsync();
         await Plugins.LoadAsync();
+        await Projects.LoadAsync();
         await _dialogService.ShowOptionsDialogAsync(this);
     }
 
