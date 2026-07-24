@@ -17,8 +17,7 @@ public partial class UnlockWindow : Window
         InitializeComponent();
         CockpitWindowChrome.Apply(this, "AI-Cockpit");
 
-        // The password box is what the operator came here to type.
-        Opened += (_, _) => this.FindControl<TextBox>("PasswordBox")?.Focus();
+        Opened += (_, _) => TakeFocus();
 
         DataContextChanged += (_, _) =>
         {
@@ -27,6 +26,17 @@ public partial class UnlockWindow : Window
                 viewModel.ResetRequested += OnResetRequested;
             }
         };
+    }
+
+    /// <summary>
+    /// Puts the window in front with the caret in the password box — what the operator came here to type. Called when
+    /// the window opens, and again when the OS unlocks (AC-187): a screen shown while the desktop was still locked was
+    /// never activated on the operator's own desktop, so it needs asking a second time.
+    /// </summary>
+    public void TakeFocus()
+    {
+        Activate();
+        this.FindControl<TextBox>("PasswordBox")?.Focus();
     }
 
     private UnlockViewModel? ViewModel => DataContext as UnlockViewModel;

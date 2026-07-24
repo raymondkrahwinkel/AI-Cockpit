@@ -133,6 +133,52 @@ public class ScreenLockCoordinatorTests
         (await Task.WhenAny(locked.Task, Task.Delay(TimeSpan.FromSeconds(5)))).Should().Be(locked.Task, "the Locked event should reach the gate");
     }
 
+    [Fact]
+    public async Task TheOsUnlocking_WhileTheScreenIsUp_HandsItTheKeyboardBack()
+    {
+        var protection = new FakeProtection { Enabled = true, Unlocked = true };
+        var monitor = new FakeMonitor();
+        var actionStarted = new TaskCompletionSource();
+        var actionRelease = new TaskCompletionSource();
+        var restores = 0;
+
+        var coordinator = new ScreenLockCoordinator(monitor, protection, new FakeSettings(true), NullLogger<ScreenLockCoordinator>.Instance)
+        {
+            LockAction = async () =>
+            {
+                actionStarted.TrySetResult();
+                await actionRelease.Task;
+            },
+            RestoreFocusAction = () => Interlocked.Increment(ref restores),
+        };
+
+        await coordinator.StartAsync();
+
+        // The screen goes up while the OS is still locked — the state AC-187 is about.
+        var locking = coordinator.HandleLockAsync();
+        await actionStarted.Task;
+
+        monitor.RaiseUnlocked();
+
+        restores.Should().Be(1, "the unlock screen was shown on the OS lock desktop and never activated on the operator's own");
+
+        actionRelease.SetResult();
+        (await locking).Should().BeTrue();
+    }
+
+    [Fact]
+    public void TheOsUnlocking_WithNoLockInEffect_DoesNothing()
+    {
+        var restores = 0;
+        var coordinator = new ScreenLockCoordinator(new FakeMonitor(), new FakeProtection { Enabled = true, Unlocked = true }, new FakeSettings(true), NullLogger<ScreenLockCoordinator>.Instance)
+        {
+            RestoreFocusAction = () => Interlocked.Increment(ref restores),
+        };
+
+        coordinator.HandleUnlock().Should().BeFalse("there is no unlock screen of ours to focus");
+        restores.Should().Be(0);
+    }
+
     private static (ScreenLockCoordinator Coordinator, Func<int> Locks) Build(FakeProtection protection, bool optionOn)
     {
         var count = 0;

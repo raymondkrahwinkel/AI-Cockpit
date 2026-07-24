@@ -24,6 +24,7 @@ public partial class App : Application
 {
     private IClassicDesktopStyleApplicationLifetime? _desktop;
     private MainWindow? _mainWindow;
+    private UnlockWindow? _screenLockWindow;
     private DispatcherTimer? _pluginUpdateTimer;
 
     /// <summary>
@@ -106,11 +107,11 @@ public partial class App : Application
     /// thread (the coordinator marshals here), and is idempotent through that coordinator, not on its own — a second
     /// call while the dialog is up would try to own a second modal, which the guard prevents.
     /// </summary>
-    private Task _LockToUnlockScreen()
+    private async Task _LockToUnlockScreen()
     {
         if (_mainWindow is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         // Bring the cockpit to the front first: a lock screen hidden behind a minimized or tray-hidden window reads
@@ -127,7 +128,18 @@ public partial class App : Application
         // dialog is what completes ShowDialog's task.
         viewModel.Unlocked += (_, _) => window.Close();
 
-        return window.ShowDialog(_mainWindow);
+        // Held for as long as the screen is up so the OS unlock can hand it the keyboard (AC-187) — it was shown while
+        // the desktop was still locked, where activation does not stick.
+        _screenLockWindow = window;
+
+        try
+        {
+            await window.ShowDialog(_mainWindow);
+        }
+        finally
+        {
+            _screenLockWindow = null;
+        }
     }
 
     private void _StartCockpit(IClassicDesktopStyleApplicationLifetime desktop)
@@ -168,6 +180,7 @@ public partial class App : Application
         // Its task completes when the operator has unlocked again.
         var screenLock = Program.Services.GetRequiredService<ScreenLockCoordinator>();
         screenLock.LockAction = () => Dispatcher.UIThread.InvokeAsync(_LockToUnlockScreen);
+        screenLock.RestoreFocusAction = () => Dispatcher.UIThread.Post(() => _screenLockWindow?.TakeFocus());
         _ = screenLock.StartAsync();
 
         // Open-mic dictation: expose the coordinator so the sidebar toggle can turn it on/off at
