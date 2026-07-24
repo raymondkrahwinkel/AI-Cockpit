@@ -4089,7 +4089,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 return null;
             }
 
-            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptions, result.ReadingLevel);
+            session.ProjectId = result.ProjectId;
+            await session.StartConfiguredAsync(result.Profile, result.Mode, result.Model, result.Effort, result.EnabledMcpServerNames, workingDirectory, result.Resume, result.SdkLaunchOptionsWithInstructions, result.ReadingLevel);
             paneId = session.PaneId;
         }
         else
@@ -4114,6 +4115,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
             // TTY provider (Codex, say) gets its own declared options via PluginTtyOptions instead, and never
             // both for the same launch (see NewSessionResult.PluginTtyOptions).
             var isClaudeProfile = result.Profile.Provider is SessionProvider.ClaudeCli;
+            session.ProjectId = result.ProjectId;
             session.LaunchConfigured(
                 result.Profile,
                 isClaudeProfile ? result.Mode.Value : null,
@@ -4121,7 +4123,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
                 isClaudeProfile ? result.Effort.Value : null,
                 workingDirectory,
                 result.Resume,
-                result.PluginTtyOptions,
+                result.TtyLaunchOptionsWithInstructions,
                 // #44: the per-session MCP checklist, so a TTY session honours the operator's selection instead of
                 // loading every eligible server (the same set the SDK path passes to StartConfiguredAsync above).
                 result.EnabledMcpServerNames);

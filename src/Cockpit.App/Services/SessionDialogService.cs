@@ -11,6 +11,7 @@ using Cockpit.Core.Abstractions.Clones;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
+using Cockpit.Core.Abstractions.Projects;
 using Cockpit.Core.Abstractions.Verify;
 using Cockpit.Core.Abstractions.WorkingPaths;
 using Cockpit.Core.Abstractions.Worktrees;
@@ -45,6 +46,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
     private readonly IWorktreeManager _worktreeManager;
     private readonly IRepositoryCloneManager _cloneManager;
     private readonly IVerifyRunnerRegistry _verifyRunnerRegistry;
+    private readonly IProjectStore _projectStore;
 
     public SessionDialogService(
         ISessionProfileStore profileStore,
@@ -62,7 +64,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         IPluginTtyProviderRegistry ttyProviderRegistry,
         IWorktreeManager worktreeManager,
         IRepositoryCloneManager cloneManager,
-        IVerifyRunnerRegistry verifyRunnerRegistry)
+        IVerifyRunnerRegistry verifyRunnerRegistry,
+        IProjectStore projectStore)
     {
         _conversationPickers = conversationPickers;
         _delegatedTasks = delegatedTasks;
@@ -80,6 +83,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _worktreeManager = worktreeManager;
         _cloneManager = cloneManager;
         _verifyRunnerRegistry = verifyRunnerRegistry;
+        _projectStore = projectStore;
     }
 
     public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false)
@@ -93,7 +97,8 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         // own MCP servers are offered and per-session uncheckable; the MCP-servers manager stays on the store.
         var viewModel = new NewSessionDialogViewModel(
             _profileStore, _loginChecker, _mcpServerCatalog, _workingPathStore, _conversationPickers,
-            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator);
+            _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
+            _projectStore);
         await viewModel.LoadAsync();
 
         // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,

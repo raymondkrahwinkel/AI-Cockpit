@@ -991,6 +991,9 @@ public class NewSessionDialogViewModelTests
         }
 
         var mcpServerCatalog = Substitute.For<IMcpServerCatalog>();
+        // The dialog asks per project (AC-163) — with no project selected that is the plain catalog, which is what
+        // the real McpServerCatalog returns for a null id.
+        mcpServerCatalog.GetServersForProjectAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(registry.ToList());
         mcpServerCatalog.GetServersAsync(Arg.Any<CancellationToken>()).Returns(registry.ToList());
 
         return new NewSessionDialogViewModel(store, loginChecker, mcpServerCatalog);

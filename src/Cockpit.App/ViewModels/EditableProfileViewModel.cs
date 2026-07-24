@@ -40,6 +40,19 @@ public partial class EditableProfileViewModel : ViewModelBase
     private string _defaultWorkingDirectory;
 
     /// <summary>
+    /// Standing instructions every session under this profile starts with (AC-142) — who it is and where its
+    /// knowledge lives ("you are Olaf; look yourself up in the Depot MCP"). Appended to the provider's own system
+    /// prompt, never replacing it. Empty means none.
+    /// <para>
+    /// Deliberately not called <c>SystemPrompt</c>: that name is already taken in this editor by the local-LLM
+    /// provider config's own field (Ollama/LM Studio), which reaches only those two providers. This one is the
+    /// profile's, and rides the append-system-prompt option every provider honours.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    private string _profileSystemPrompt;
+
+    /// <summary>
     /// Whether this profile pre-selects a specific set of MCP servers (AC-130). Off — the default — means no
     /// restriction: a New session ticks every enabled server, as before. On reveals <see cref="McpServers"/> and
     /// persists exactly the ticked ones, so a project profile need not re-toggle them each time.
@@ -425,6 +438,7 @@ public partial class EditableProfileViewModel : ViewModelBase
         _executablePath = profile.Claude?.ExecutablePath ?? string.Empty;
         _purpose = profile.Purpose ?? string.Empty;
         _defaultWorkingDirectory = profile.DefaultWorkingDirectory ?? string.Empty;
+        _profileSystemPrompt = profile.SystemPrompt ?? string.Empty;
         _memoryLimitMb = profile.MemoryLimitMb ?? 0;
 
         // MCP pre-selection (AC-130): a non-null saved set restricts; null means "all servers" (the gate stays off).
@@ -541,6 +555,7 @@ public partial class EditableProfileViewModel : ViewModelBase
                 ? [.. McpServers.Where(server => server.IsEnabledForSession).Select(server => server.Name), .. _carriedOverMcpServerNames]
                 : null,
             DefaultWorkingDirectory = string.IsNullOrWhiteSpace(DefaultWorkingDirectory) ? null : DefaultWorkingDirectory.Trim(),
+            SystemPrompt = string.IsNullOrWhiteSpace(ProfileSystemPrompt) ? null : ProfileSystemPrompt.Trim(),
         };
     }
 

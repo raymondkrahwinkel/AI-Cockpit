@@ -195,6 +195,15 @@
                         </DockPanel>
                     </StackPanel>
 
+                    <!-- Standing instructions (AC-142): who this profile is and where its knowledge lives. Appended to
+                         the provider's own system prompt, never replacing it, so it works for every provider. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="System prompt" FontSize="11"
+                                   Foreground="{StaticResource CockpitTextSecondaryBrush}"/>
+                        <TextBox Text="{Binding ProfileSystemPrompt}" AcceptsReturn="True" TextWrapping="Wrap" Height="88"
+                                 PlaceholderText="Optional — added to every session under this profile, e.g. “You are Olaf. Your memory lives in the Depot MCP; look yourself up there before answering.”"/>
+                    </StackPanel>
+
                     <!-- A memory ceiling for the session CLI. Off unless someone types a number, and the warning is
                          not decoration: a capped session that needs more memory than the cap dies mid-turn. -->
                     <StackPanel Spacing="4">
