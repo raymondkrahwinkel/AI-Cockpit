@@ -165,7 +165,14 @@
            that must end with a merge-ready pull request, carried to the run's finalizer. An existing template omits it
            and is treated as administrative.
          All three are additions (a default-implemented member, init-properties with defaults, a default no-op event) — a minor. -->
-    <Version>1.26.0</Version>
+    <!-- 1.27.0 (AC-229): usage signals — PluginUsageSignal / PluginUsageSignalKind / PluginUsageReading, plus
+         TtyProviderRegistration.UsageSignals + ReadUsage and SessionProviderRegistration.UsageSignals. A provider
+         declares what its sessions can run out of, how full is worth mentioning, and (TTY) how to read its own
+         statusline snapshot — so the host can warn on it without carrying any provider's format. All init-only with
+         empty/null defaults: an already-compiled plugin keeps its constructors and simply declares no signals, which
+         reads as "measures nothing" rather than as an error. Additions only — a minor; major and abstractionsVersion
+         stay 1. -->
+    <Version>1.27.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>
     <Title>Cockpit Plugin SDK</Title>

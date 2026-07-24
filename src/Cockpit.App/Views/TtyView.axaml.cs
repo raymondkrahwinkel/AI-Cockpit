@@ -16,6 +16,7 @@ using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Terminal;
 using Cockpit.Core.Abstractions.Toasts;
 using Cockpit.Core.Toasts;
+using Cockpit.Infrastructure.Sessions.Tty;
 using Exclr8.Terminal;
 using Exclr8.Terminal.Buffer;
 using Microsoft.Extensions.DependencyInjection;
@@ -83,6 +84,10 @@ public partial class TtyView : UserControl
     // the view locator, not the DI graph.
     private readonly ITerminalAccessRegistry? _terminals =
         Design.IsDesignMode ? null : Program.Services.GetService<ITerminalAccessRegistry>();
+
+    // Which usage signals this session's provider declares, and how it reads its own statusline snapshot (AC-229).
+    private readonly IPluginTtyProviderRegistry? _ttyProviders =
+        Design.IsDesignMode ? null : Program.Services.GetService<IPluginTtyProviderRegistry>();
 
     // #58 diagnostic instrumentation: throttles the per-keystroke TTY-DIAG log line (see
     // OnTerminalInputDiagnostics) to every KeyDiagThrottleEvery-th Input event, so a normal typing burst
@@ -686,11 +691,12 @@ public partial class TtyView : UserControl
             _ptyColumns = _lastColumns;
             _ptyRows = _lastRows;
 
-            // The session's own limits (context window, five-hour and weekly allowance) land in the file its
-            // statusline writes; the launched process is what knows which file that is.
+            // The session's own usage lands in the file its statusline writes; the launched process is what knows
+            // which file that is, and the provider that wrote it is what knows how to read it (AC-229).
             if (pty is ITtyStatusFile { StatusFile: { } statusFile } && DataContext is TtyViewModel viewModel)
             {
-                viewModel.TrackLimits(statusFile);
+                var provider = _ttyProviders?.Resolve(_pendingLaunch.Provider.ProviderId);
+                viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], provider?.ReadUsage);
             }
             // The pty owns the process, so the view is where the meter (#78) learns which one this session is.
             if (_viewModel is not null)

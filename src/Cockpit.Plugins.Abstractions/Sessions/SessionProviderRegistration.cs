@@ -33,6 +33,15 @@ public sealed record SessionProviderRegistration(
     public IReadOnlyList<PluginSessionLaunchOption> Options { get; init; } = [];
 
     /// <summary>
+    /// What sessions under this provider can run out of (AC-229) — the SDK mirror of
+    /// <see cref="TtyProviderRegistration.UsageSignals"/>. An SDK driver already reports its figures through
+    /// <c>PluginSessionStatus</c> at each turn boundary; this says what those figures <em>are</em>, so the host can
+    /// warn on them and offer to resume against them. Empty (the default) when the provider measures nothing.
+    /// Init-only, so an already-compiled plugin keeps its constructor and simply declares none.
+    /// </summary>
+    public IReadOnlyList<PluginUsageSignal> UsageSignals { get; init; } = [];
+
+    /// <summary>
     /// An optional way to refresh <see cref="Options"/> with live values when the New-session dialog opens for a
     /// profile under this provider — Codex fills its Model choices from the app-server's <c>model/list</c> here,
     /// which the static declaration cannot know. The argument is the profile's opaque config JSON (whatever

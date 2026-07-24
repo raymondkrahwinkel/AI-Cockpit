@@ -234,6 +234,64 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private string _limitsTooltip = string.Empty;
 
     /// <summary>
+    /// Folds a provider's usage readings into the header (AC-229), matching each to the signal that declared it.
+    /// On the shared base because it is the one place both session kinds can meet: whatever route reported the
+    /// figures, they land here and the same header renders them.
+    /// <para>
+    /// The host reads nothing into the values beyond the <see cref="PluginUsageSignalKind"/> the provider gave
+    /// them — a fill is the context bar, an allowance is a window with a reset. A reading whose key matches no
+    /// declaration is dropped rather than guessed at, so a provider that renames a signal loses a bar instead of
+    /// gaining a mislabelled one.
+    /// </para>
+    /// </summary>
+    public void ApplyUsage(IReadOnlyList<PluginUsageSignal> signals, IReadOnlyList<PluginUsageReading> readings)
+    {
+        var described = new List<string>(readings.Count);
+        double? context = null;
+        var windows = new List<SessionRateWindow>(readings.Count);
+
+        foreach (var reading in readings)
+        {
+            if (signals.FirstOrDefault(signal => signal.Key == reading.SignalKey) is not { } declared)
+            {
+                continue;
+            }
+
+            if (declared.Kind is PluginUsageSignalKind.Fill)
+            {
+                context = reading.UsedPercent;
+            }
+            else
+            {
+                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt));
+            }
+
+            described.Add(_DescribeReading(declared, reading));
+        }
+
+        ContextUsedPercent = context;
+
+        RateLimits.Clear();
+        foreach (var window in windows)
+        {
+            RateLimits.Add(window);
+        }
+
+        LimitsTooltip = string.Join(Environment.NewLine, described);
+    }
+
+    // One hover line per reading: what it is in words, how far along, and when it comes back. Rounded away from
+    // zero rather than .NET's banker's rounding, which turns 42.5% into 42% and would quietly under-report on the
+    // halves — the wrong direction for a figure you are watching fill up.
+    private static string _DescribeReading(PluginUsageSignal signal, PluginUsageReading reading)
+    {
+        var name = string.IsNullOrWhiteSpace(signal.Description) ? signal.Label : signal.Description;
+        var resets = reading.ResetsAt is { } at ? $" — resets {at.ToLocalTime():ddd HH:mm}" : string.Empty;
+
+        return $"{name}: {Math.Round(reading.UsedPercent, MidpointRounding.AwayFromZero):0}% used{resets}";
+    }
+
+    /// <summary>
     /// The short "kind" chip on the header (AC-37): "TTY" for a terminal session, the provider tag ("SDK", a plugin
     /// name) for an SDK one. Empty hides the chip. On the base so the one SessionHeaderBar renders it for every kind.
     /// </summary>

@@ -59,6 +59,8 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
             CreateTranscriptReader = _ => new ClaudeTranscriptReader(),
             IsLoggedIn = ClaudeProfileDiscovery.IsLoggedIn,
             DetectProfiles = ClaudeProfileDiscovery.Detect,
+            UsageSignals = ClaudeUsageSignals.Declarations,
+            ReadUsage = ClaudeUsageSignals.Read,
         });
 
         // The SDK/session-driver route (weg A): the headless stream-json driver, whose tool-approval prompts ride the
@@ -92,6 +94,10 @@ public sealed class ClaudeProviderPlugin : ICockpitPlugin
                 new PluginSessionLaunchOption(ClaudeSdkSessionDriver.EffortOptionKey, "Effort", ClaudeOptionChoices.EffortLevels, "medium")
                     { ChoiceLabels = ClaudeOptionChoices.EffortLabels },
             ],
+
+            // The same three things a Claude session runs out of, whichever route it opened through — an SDK
+            // session already reports the figures at each turn boundary, so this only says what they are.
+            UsageSignals = ClaudeUsageSignals.Declarations,
         });
     }
 

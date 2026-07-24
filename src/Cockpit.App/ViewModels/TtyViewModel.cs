@@ -5,6 +5,7 @@ using Cockpit.Core.Abstractions;
 using Cockpit.Core.Abstractions.Sessions;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
+using Cockpit.Plugins.Abstractions.Sessions;
 using Cockpit.Core.Configuration;
 using Cockpit.Core.Profiles;
 using Cockpit.Core.Terminal;
@@ -587,13 +588,20 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
-    /// Starts reading this session's limits from the file the provider plugin's statusline writes.
+    /// Starts reading this session's usage from the file the provider plugin's statusline writes, interpreting it
+    /// with that provider's own reader (AC-229) — the host polls, the plugin says what the contents mean.
     /// Polled rather than watched: the file is rewritten whole every few seconds by a shell script, and a
     /// filesystem watcher on a write-then-rename fires more often than it tells you anything.
     /// </summary>
-    public void TrackLimits(string? statusFile)
+    /// <param name="statusFile">Where the provider's statusline drops its snapshots; nothing is tracked without one.</param>
+    /// <param name="signals">What the provider says its sessions can run out of, which names and describes each reading.</param>
+    /// <param name="readUsage">The provider's reader, turning a snapshot's contents into readings.</param>
+    public void TrackLimits(
+        string? statusFile,
+        IReadOnlyList<PluginUsageSignal> signals,
+        Func<string, IReadOnlyList<PluginUsageReading>>? readUsage)
     {
-        if (string.IsNullOrWhiteSpace(statusFile))
+        if (string.IsNullOrWhiteSpace(statusFile) || readUsage is null || signals.Count == 0)
         {
             return;
         }
@@ -608,31 +616,20 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
                 {
                     try
                     {
-                        if (File.Exists(statusFile)
-                            && SessionLimits.TryParse(await File.ReadAllTextAsync(statusFile, cancellation)) is { HasAny: true } limits)
+                        if (File.Exists(statusFile))
                         {
-                            await Dispatcher.UIThread.InvokeAsync(() =>
+                            var readings = readUsage(await File.ReadAllTextAsync(statusFile, cancellation));
+                            if (readings.Count > 0)
                             {
-                                ContextUsedPercent = limits.ContextUsedPercent;
-                                RateLimits.Clear();
-                                if (limits.FiveHourUsedPercent is { } fiveHour)
-                                {
-                                    RateLimits.Add(new SessionRateWindow("5h", fiveHour, limits.FiveHourResetsAt));
-                                }
-
-                                if (limits.SevenDayUsedPercent is { } sevenDay)
-                                {
-                                    RateLimits.Add(new SessionRateWindow("wk", sevenDay, limits.SevenDayResetsAt));
-                                }
-
-                                LimitsTooltip = DescribeLimits(limits);
-                            });
+                                await Dispatcher.UIThread.InvokeAsync(() => ApplyUsage(signals, readings));
+                            }
                         }
                     }
                     catch (Exception)
                     {
-                        // A file caught mid-rename, a session that just ended. The next tick sorts it out; a status
-                        // bar must never be a reason for a session to fall over.
+                        // A file caught mid-rename, a session that just ended, a reader that choked on a snapshot
+                        // written half-way. The next tick sorts it out; a status bar must never be a reason for a
+                        // session to fall over.
                     }
 
                     await Task.Delay(TimeSpan.FromSeconds(3), cancellation).ConfigureAwait(false);
@@ -640,13 +637,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
             },
             cancellation);
     }
-
-    /// <summary>
-    /// The hover text: what the bars mean, spelled out, plus when each window rolls over — which is the one thing
-    /// a bar cannot say and the thing you actually want when it is nearly full. Only the numbers Claude reported,
-    /// so nothing here is invented.
-    /// </summary>
-    internal static string DescribeLimits(SessionLimits limits) => limits.Describe();
 
     protected override ValueTask DisposeCoreAsync()
     {
