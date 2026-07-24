@@ -244,6 +244,15 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: a finished session's worktree is cleaned up again once its work has landed. The panel judged this by
+  walking history — which a squash merge rewrites — so a worktree whose pull request had been squashed stayed
+  behind forever, "Clean up finished" could never sweep it, and every finished session left another one on the
+  pile. It now asks whether removing the folder could actually lose anything: work that is in the base branch,
+  or pushed to a remote, or already in the base under a rewritten commit, is safe to remove. The pill says what
+  is genuinely left, "N commit(s) only here", instead of counting commits that live somewhere else too. It also
+  no longer measures against a base branch that has not been pulled since the merge landed. A released
+  worktree's branch is deleted only when its work is in the base branch itself — a branch that is safe merely
+  because it was pushed is kept, since a remote can be force-pushed or its branch deleted.
 - fixed: an Autopilot run whose autonomy mode was left on a permission-bypassing setting no longer has its
   Claude steps refused for "the profile does not confine to the worktree". The run now coerces that setting
   back to the safe "acceptEdits" mode for every step — the implementation step and both review gates alike —

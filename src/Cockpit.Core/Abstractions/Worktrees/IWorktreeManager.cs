@@ -35,14 +35,15 @@ public interface IWorktreeManager
 
     /// <summary>
     /// The live state of every registered worktree for the management panel (AC-85): each registry record plus what
-    /// git reports about it now — folder-exists, uncommitted-changes, commits-ahead — so the panel shows clean vs.
-    /// dirty and a destructive remove can be gated behind consent rather than losing work silently.
+    /// git reports about it now — folder-exists, uncommitted-changes, commits-that-exist-only-here — so the panel
+    /// shows clean vs. dirty and a destructive remove can be gated behind consent rather than losing work silently.
     /// </summary>
     Task<IReadOnlyList<WorktreeStatus>> GetStatusesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Whether the worktree has neither uncommitted changes nor commits ahead of the base it was branched from —
-    /// the test teardown uses to decide a worktree is removable rather than work to keep (cleanup-policy A).
+    /// Whether the worktree holds neither uncommitted changes nor a commit that exists nowhere else — not in its base
+    /// branch, not on a remote, and not in the base under a rewritten commit (AC-266). The test teardown uses this to
+    /// decide a worktree is removable rather than work to keep (cleanup-policy A).
     /// </summary>
     Task<bool> IsCleanAsync(WorktreeRecord record, CancellationToken cancellationToken = default);
 
@@ -50,7 +51,7 @@ public interface IWorktreeManager
     /// Whether the worktree still holds uncommitted changes or untracked files right now (a non-empty
     /// <c>git status --porcelain</c>) — the exact content a force-remove would discard; committed history stays on the
     /// branch. The agent-facing remove tool gates a dirty removal behind operator consent on this, not on
-    /// <see cref="IsCleanAsync"/>: a worktree that only has commits ahead — which a force-remove keeps on the branch —
+    /// <see cref="IsCleanAsync"/>: a worktree that only carries commits — which a force-remove keeps on the branch —
     /// is not prompted for. Untracked files count deliberately: a force-remove deletes them too, and they may be work
     /// the agent has not committed, so their loss is the operator's call, not a silent one.
     /// </summary>
@@ -73,8 +74,8 @@ public interface IWorktreeManager
 
     /// <summary>
     /// Tears down the worktrees a session owned when it closes (AC-85, cleanup-policy A): a provably clean one — no
-    /// changes and no commits ahead of its base — is removed along with its branch; one that holds work is kept and
-    /// marked retained, shown for review and never auto-removed. Called on session close.
+    /// changes and no commit that exists only there — is removed along with its branch; one that holds work is kept
+    /// and marked retained, shown for review and never auto-removed. Called on session close.
     /// </summary>
     Task ReleaseAsync(string sessionId, CancellationToken cancellationToken = default);
 

@@ -249,7 +249,7 @@ public sealed class WorktreeManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task GetStatusesAsync_ReportsClean_ThenDirty_ThenAheadOfBase()
+    public async Task GetStatusesAsync_ReportsClean_ThenDirty_ThenHoldingACommitThatExistsNowhereElse()
     {
         var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
 
@@ -262,9 +262,9 @@ public sealed class WorktreeManagerTests : IDisposable
 
         _Git(record.Path, "add", "-A");
         _Git(record.Path, "commit", "-m", "work");
-        var ahead = (await _manager.GetStatusesAsync()).Single();
-        ahead.CommitsAhead.Should().Be(1);
-        ahead.IsClean.Should().BeFalse();
+        var holdingWork = (await _manager.GetStatusesAsync()).Single();
+        holdingWork.StrandableCommits.Should().Be(1);
+        holdingWork.IsClean.Should().BeFalse();
     }
 
     [Fact]
@@ -281,8 +281,82 @@ public sealed class WorktreeManagerTests : IDisposable
         _Git(_repo, "merge", "--no-ff", "wt", "-m", "merge wt");
 
         var status = (await _manager.GetStatusesAsync()).Single();
-        status.CommitsAhead.Should().Be(0);
+        status.StrandableCommits.Should().Be(0);
         status.IsClean.Should().BeTrue();
+        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_WorktreeWhoseCommitIsPushedButNotMerged_IsClean()
+    {
+        // Raymond's rule (AC-266): pushed is safe. The session is gone and its commit lives on the remote, so
+        // removing the folder loses nothing — waiting for a merge would keep every finished worktree until its PR
+        // lands, which is exactly the pile-up the isolated-workspace switch was supposed to avoid.
+        _AddRemote();
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "change.txt", "work\n");
+        _Git(record.Path, "push", "origin", "wt");
+
+        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_WorktreeWithACommitThatWasNeverPushed_IsNotClean()
+    {
+        // The guard on the rule above: a remote existing must not make everything read as safe. Only work that is
+        // actually on it counts — this is the side where being wrong loses commits.
+        _AddRemote();
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "change.txt", "work\n");
+
+        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_WorktreeSquashMergedIntoBase_IsClean()
+    {
+        // The squash-merge GitHub does on a PR: the base holds the work under a brand-new commit, so the branch's own
+        // commit is reachable from nowhere and counting history by identity calls it unmerged forever (AC-266).
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "change.txt", "work\n");
+
+        _Git(_repo, "merge", "--squash", "wt");
+        _Git(_repo, "commit", "-m", "squashed wt");
+
+        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_WorktreeWithSeveralCommitsSquashedIntoBase_IsClean()
+    {
+        // The same merge on a branch that took more than one commit — the case patch-id comparison cannot see, since
+        // the single squashed commit matches none of the originals. The files it touched decide instead.
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "one.txt", "first\n");
+        _Commit(record.Path, "two.txt", "second\n");
+        _Commit(record.Path, "one.txt", "first, revised\n");
+
+        _Git(_repo, "merge", "--squash", "wt");
+        _Git(_repo, "commit", "-m", "squashed wt");
+
+        (await _manager.IsCleanAsync(record)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_MergedOnTheRemoteWhileTheLocalBaseLagsBehind_IsClean()
+    {
+        // The second half of what Raymond hit: the merge landed on origin/main, but his local main had not been
+        // pulled since. Measuring against the local tip alone reports merged work as unmerged, so the base ref must
+        // follow whichever tip this repository knows to be further along.
+        _AddRemote();
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "change.txt", "work\n");
+
+        _Git(_repo, "merge", "--squash", "wt");
+        _Git(_repo, "commit", "-m", "squashed wt");
+        _Git(_repo, "push", "origin", "main");
+        _Git(_repo, "reset", "--hard", "HEAD~1");
+
         (await _manager.IsCleanAsync(record)).Should().BeTrue();
     }
 
@@ -301,6 +375,94 @@ public sealed class WorktreeManagerTests : IDisposable
         var legacy = record with { BaseBranch = null };
 
         (await _manager.IsCleanAsync(legacy)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_WorktreeWhoseOnlyUnmergedCommitIsAMerge_IsNotClean()
+    {
+        // An evil merge: every ordinary commit it carries is already in the base, and the only thing that is not lives
+        // in the merge commit's own tree. `git cherry` prints no line at all for a merge, so the patch comparison sees
+        // an empty answer and would call the branch fully present. That merge's content exists nowhere else.
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+
+        _Git(_repo, "checkout", "-b", "side");
+        _Commit(_repo, "side.txt", "side work\n");
+        _Git(_repo, "checkout", "main");
+        _Git(_repo, "merge", "--no-ff", "side", "-m", "merge side into main");
+
+        _Git(record.Path, "merge", "--no-ff", "--no-commit", "side");
+        File.WriteAllText(Path.Combine(record.Path, "resolved.txt"), "only in the merge\n");
+        _Git(record.Path, "add", "-A");
+        _Git(record.Path, "commit", "-m", "merge side, with a fix of its own");
+
+        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_UnmergedWorkInAFileGitQuotes_IsNotClean()
+    {
+        // git renders a non-ASCII path as "caf\303\251.txt" — quoted and octal-escaped — and a pathspec built from
+        // that text matches no file, which git reports as "no difference": the content check's safe-looking answer
+        // for a branch whose work it never actually compared.
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "café.txt", "unmerged work\n");
+
+        (await _manager.IsCleanAsync(record)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WorktreeSafeOnlyBecauseItWasPushed_KeepsTheBranch()
+    {
+        // Removing the folder is fine — a checkout is reproducible — but the proof it is safe is a remote-tracking
+        // ref, and that is this repository's last view of a remote, not the remote. A force-push or a deleted remote
+        // branch makes it a lie, and the branch is then the only place those commits still live.
+        // Pushed with -u, the way a session that opened a PR leaves it: git itself would then allow `branch -d`,
+        // because the branch is merged into its upstream. That permission is exactly what must not be taken.
+        _AddRemote();
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "change.txt", "work\n");
+        _Git(record.Path, "push", "-u", "origin", "wt");
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        Directory.Exists(record.Path).Should().BeFalse();
+        _Git(_repo, "branch", "--list", "wt").Should().Contain("wt");
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_WorktreeWhoseWorkIsInTheBase_DropsTheBranchToo()
+    {
+        // The other side of the rule above: once the work is in the base itself there is nothing the branch still
+        // holds, and leaving it would pile up a dead ref per finished session.
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "change.txt", "work\n");
+        _Git(_repo, "merge", "--no-ff", "wt", "-m", "merge wt");
+
+        await _manager.ReleaseAsync(_sessionId);
+
+        Directory.Exists(record.Path).Should().BeFalse();
+        _Git(_repo, "branch", "--list", "wt").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task IsCleanAsync_MergedOnASlashNamedBaseBranchTrackedOnARemote_IsClean()
+    {
+        // The base branch a session forks from is not always 'main': a session started on 'feat/thing' records that
+        // as its base, and the local-lags-behind fix has to work for it just the same.
+        _AddRemote();
+        _Git(_repo, "checkout", "-b", "feat/thing");
+        _Commit(_repo, "feature.txt", "feature\n");
+        _Git(_repo, "push", "-u", "origin", "feat/thing");
+
+        var record = await _manager.CreateAsync(_sessionId, "wt", _repo);
+        _Commit(record.Path, "change.txt", "work\n");
+
+        _Git(_repo, "merge", "--squash", "wt");
+        _Git(_repo, "commit", "-m", "squashed wt");
+        _Git(_repo, "push", "origin", "feat/thing");
+        _Git(_repo, "reset", "--hard", "HEAD~1");
+
+        (await _manager.IsCleanAsync(record)).Should().BeTrue();
     }
 
     [Fact]
@@ -345,6 +507,22 @@ public sealed class WorktreeManagerTests : IDisposable
         {
             Directory.Delete(_tempRoot, recursive: true);
         }
+    }
+
+    /// <summary>A bare repository as origin, with main already on it — the "has somewhere to be pushed to" fixture.</summary>
+    private void _AddRemote()
+    {
+        var remote = Path.Combine(_tempRoot, "remote.git");
+        _Git(_tempRoot, "init", "--bare", remote);
+        _Git(_repo, "remote", "add", "origin", remote);
+        _Git(_repo, "push", "-u", "origin", "main");
+    }
+
+    private static void _Commit(string workingDirectory, string file, string content)
+    {
+        File.WriteAllText(Path.Combine(workingDirectory, file), content);
+        _Git(workingDirectory, "add", "-A");
+        _Git(workingDirectory, "commit", "-m", $"work on {file}");
     }
 
     private static string _Git(string workingDirectory, params string[] arguments)

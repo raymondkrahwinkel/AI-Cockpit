@@ -56,6 +56,6 @@ public class WorktreesViewModelTests
     private static ManagedWorktreeRowViewModel _Row(bool isOwnerLive)
     {
         var record = new WorktreeRecord("session", "/repo", "/state/worktrees/ab/cockpit-x", "cockpit/x", "0123456789abcdef0123456789abcdef01234567", DateTimeOffset.UtcNow);
-        return new ManagedWorktreeRowViewModel(new WorktreeStatus(record, Exists: true, HasUncommittedChanges: false, CommitsAhead: 0), isOwnerLive);
+        return new ManagedWorktreeRowViewModel(new WorktreeStatus(record, Exists: true, HasUncommittedChanges: false, StrandableCommits: 0), isOwnerLive);
     }
 }
