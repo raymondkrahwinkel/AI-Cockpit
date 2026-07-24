@@ -106,6 +106,23 @@ public class NewSessionProjectFirstTests
         viewModel.WorkingDirectory.Should().Be("/home/raymond/project-dir");
     }
 
+    /// <summary>
+    /// Changing the profile after picking a project leaves the project's folder standing: the profile is the
+    /// fallback, so a profile without a folder of its own has nothing to say here and must not blank the field.
+    /// </summary>
+    [Fact]
+    public async Task SwitchingProfileUnderAProject_KeepsTheProjectsFolder()
+    {
+        var project = Project.Create("Cockpit") with { SourceDirectory = "/home/raymond/project-dir" };
+        var viewModel = Build([project]);
+        await viewModel.LoadAsync();
+
+        viewModel.SelectedProject = viewModel.Projects[0];
+        viewModel.SelectedProfile = viewModel.Profiles.Single(profile => profile.Label == "work");
+
+        viewModel.WorkingDirectory.Should().Be("/home/raymond/project-dir");
+    }
+
     /// <summary>A folder the operator typed is theirs; picking a project must not overwrite it.</summary>
     [Fact]
     public async Task SelectingAProject_LeavesAFolderTheOperatorAlreadyTypedAlone()
