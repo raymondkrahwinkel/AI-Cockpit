@@ -153,10 +153,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
     /// <summary>
-    /// Holds the prompts waiting to be sent to a session at a future moment (AC-234). Null in the unit-test and
-    /// design-time graphs, where nothing is scheduled and nothing should be written to disk.
+    /// Holds the prompts waiting to be sent to a session at a future moment (AC-234). Handed in by the app at
+    /// startup rather than taken through the constructor, so the unit-test and design-time graphs — which build
+    /// this view-model from the container — never construct a scheduler, never touch the config file, and never
+    /// leave one running behind a test.
     /// </summary>
-    public ScheduledResumeCoordinator? ScheduledResumes { get; private set; }
+    public ScheduledResumeCoordinator? ScheduledResumes { get; set; }
 
     /// <summary>
     /// The sidebar's own display order (AC-115). Kept apart from <see cref="Sessions"/> on purpose: the session
@@ -2200,11 +2202,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessRegistry? terminals = null,
         ISessionProfileStore? sessionProfileStore = null,
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
-        ProjectQuickStart? projectQuickStart = null,
-        ScheduledResumeCoordinator? scheduledResumes = null)
+        ProjectQuickStart? projectQuickStart = null)
     {
-        ScheduledResumes = scheduledResumes;
-
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
         //
