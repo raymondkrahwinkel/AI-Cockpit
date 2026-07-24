@@ -85,6 +85,58 @@ public class SessionUsageDisplayTests
     }
 
     [Fact]
+    public void CrossingTheThreshold_RaisesTheBarOnce()
+    {
+        // Every poll re-reads the same file. A bar that reappears at 91%, 92%, 93% is noise, and noise gets
+        // ignored exactly when it matters — so the crossing speaks, not the state.
+        var session = Build();
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 91, null)]);
+        session.HasUsageWarning.Should().BeTrue();
+        session.UsageWarning.Should().Contain("Week is 91% used");
+
+        session.DismissUsageWarningCommand.Execute(null);
+        session.ApplyUsage(Signals, [new PluginUsageReading("weekly", 92, null)]);
+
+        session.HasUsageWarning.Should().BeFalse("the same crossing has already been announced");
+    }
+
+    [Fact]
+    public void DroppingBackAndClimbingAgain_SpeaksAgain()
+    {
+        // A compaction genuinely empties the context, so the next fill is news rather than a repeat.
+        var session = Build();
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 55, null)]);
+        session.DismissUsageWarningCommand.Execute(null);
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 12, null)]);
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 51, null)]);
+
+        session.HasUsageWarning.Should().BeTrue();
+    }
+
+    [Fact]
+    public void BelowTheThreshold_NothingIsSaid()
+    {
+        var session = Build();
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("context", 49, null), new PluginUsageReading("weekly", 89, null)]);
+
+        session.HasUsageWarning.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AWarningAboutAnAllowance_SaysWhenItComesBack()
+    {
+        // The one thing a bar cannot show, and the thing you want most when it is nearly gone.
+        var session = Build();
+
+        session.ApplyUsage(Signals, [new PluginUsageReading("five-hour", 95, DateTimeOffset.Now.AddHours(2))]);
+
+        session.UsageWarning.Should().Contain("back");
+    }
+
+    [Fact]
     public void AfterACompaction_TheContextFigureGoesBackToSilence()
     {
         // Claude reports no context percentage right after a /compact. The bar must go quiet rather than keep

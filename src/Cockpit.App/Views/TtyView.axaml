@@ -51,6 +51,28 @@
             </DockPanel>
         </Border>
 
+        <!-- AC-230: the usage warning — raised once when a signal passes the point its provider called worth
+             mentioning (a context window filling, an allowance nearly spent), and dismissible. Same shape as the
+             agent bar below it, in the amber the pill uses at the same threshold, so one language says "watch
+             this" wherever it appears. -->
+        <Border DockPanel.Dock="Top" Margin="0,0,0,6" Padding="8,4"
+                IsVisible="{Binding HasUsageWarning}"
+                Background="{StaticResource CockpitSecondaryBgBrush}"
+                BorderBrush="{StaticResource CockpitStatusWaitingBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CockpitControlRadius}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Dismiss" Classes="Compact"
+                        Command="{Binding DismissUsageWarningCommand}" VerticalAlignment="Center"
+                        ToolTip.Tip="Hide this warning. It comes back if the figure drops and climbs past the threshold again."/>
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="GaugeFull" Width="15" Height="15"
+                                                Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                    <TextBlock Text="{Binding UsageWarning}" VerticalAlignment="Center" FontSize="12"
+                               Foreground="{StaticResource CockpitStatusWaitingBrush}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
         <!-- AC-34: the "agent connected" bar — always visible while an agent is coupled to this pane through the
              terminal-access MCP, the counterpart to both the operator and the agent being able to type. Its
              Disconnect is the reactive kill-switch: it interrupts a running command and breaks the coupling at once. -->

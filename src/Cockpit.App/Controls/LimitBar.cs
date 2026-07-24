@@ -43,6 +43,17 @@ public sealed class LimitBar : TemplatedControl
         set => SetValue(PercentProperty, value);
     }
 
+    /// <summary>How full this figure has to be before it colours, as its provider declared it; null falls back to <see cref="UsageSeverity.FallbackThreshold"/>.</summary>
+    public static readonly StyledProperty<double?> ThresholdProperty =
+        AvaloniaProperty.Register<LimitBar, double?>(nameof(Threshold));
+
+    /// <inheritdoc cref="ThresholdProperty"/>
+    public double? Threshold
+    {
+        get => GetValue(ThresholdProperty);
+        set => SetValue(ThresholdProperty, value);
+    }
+
     public static readonly StyledProperty<bool> StretchTrackProperty =
         AvaloniaProperty.Register<LimitBar, bool>(nameof(StretchTrack));
 
@@ -59,7 +70,7 @@ public sealed class LimitBar : TemplatedControl
 
     static LimitBar()
     {
-        AffectsRender<LimitBar>(PercentProperty, LabelProperty, StretchTrackProperty);
+        AffectsRender<LimitBar>(PercentProperty, LabelProperty, StretchTrackProperty, ThresholdProperty);
         AffectsMeasure<LimitBar>(PercentProperty, LabelProperty, StretchTrackProperty);
 
         // Nothing to report, nothing to draw: Claude says nothing about the rate limits before the first response,
@@ -135,10 +146,16 @@ public sealed class LimitBar : TemplatedControl
         new(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             new Typeface(FontFamily), FontSize, brush);
 
-    private IBrush FillFor(double percent) =>
-        percent >= UsageSeverity.CriticalAbove ? CriticalBrush
-        : percent >= UsageSeverity.WarnAbove ? WarnBrush
-        : NormalBrush;
+    // Amber where this signal's provider said it starts to matter, red halfway from there to full. The threshold
+    // travels with the figure rather than living here, so the bar, the pill and the warning cannot disagree.
+    private IBrush FillFor(double percent)
+    {
+        var warnAt = Threshold ?? UsageSeverity.FallbackThreshold;
+
+        return percent >= UsageSeverity.CriticalAt(warnAt) ? CriticalBrush
+            : percent >= warnAt ? WarnBrush
+            : NormalBrush;
+    }
 
     // Resolved from the theme so a palette change carries: the same tokens the session status dots use.
     private IBrush TrackBrush => Brush("CockpitHairlineBrush", Brushes.DimGray);

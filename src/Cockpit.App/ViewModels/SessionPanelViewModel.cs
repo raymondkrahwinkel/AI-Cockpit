@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Cockpit.Core.Abstractions.Voice;
 using Cockpit.Core.Sessions;
 using Cockpit.Core.UsagePill;
@@ -250,6 +251,8 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         double? context = null;
         var windows = new List<SessionRateWindow>(readings.Count);
 
+        _thresholds.Clear();
+
         foreach (var reading in readings)
         {
             if (signals.FirstOrDefault(signal => signal.Key == reading.SignalKey) is not { } declared)
@@ -260,13 +263,16 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
             if (declared.Kind is PluginUsageSignalKind.Fill)
             {
                 context = reading.UsedPercent;
+                ContextThreshold = declared.DefaultThresholdPercent;
             }
             else
             {
-                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt));
+                windows.Add(new SessionRateWindow(declared.Label, reading.UsedPercent, reading.ResetsAt, declared.DefaultThresholdPercent));
             }
 
+            _thresholds[declared.Label] = declared.DefaultThresholdPercent;
             described.Add(_DescribeReading(declared, reading));
+            _RaiseOrClearWarning(declared, reading);
         }
 
         ContextUsedPercent = context;
@@ -278,6 +284,57 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
         }
 
         LimitsTooltip = string.Join(Environment.NewLine, described);
+    }
+
+    // The threshold each rendered figure was measured against, by the label it renders under, so the pill and the
+    // bar colour at the point the provider called worth-mentioning rather than at a constant of the host's own.
+    private readonly Dictionary<string, double> _thresholds = [];
+
+    /// <summary>Where the context bar starts to colour, as the provider declared it; null before anything has been reported.</summary>
+    [ObservableProperty]
+    private double? _contextThreshold;
+
+    // Which signals are currently over their threshold, so the bar is raised on the crossing rather than on every
+    // poll. A figure that drops back is forgotten, and crossing again says so again — the reset is real, because a
+    // compaction genuinely empties the window and the next fill is news.
+    private readonly HashSet<string> _announced = [];
+
+    /// <summary>
+    /// What the session bar says about a signal that has passed the point its provider called worth mentioning
+    /// (AC-230), or empty when nothing has. Raised once per crossing: a bar that reappears at 91%, 92%, 93% is
+    /// noise, and noise gets ignored exactly when it matters.
+    /// </summary>
+    [ObservableProperty]
+    private string _usageWarning = string.Empty;
+
+    /// <summary>Whether the session bar shows a usage warning at all.</summary>
+    public bool HasUsageWarning => UsageWarning.Length > 0;
+
+    partial void OnUsageWarningChanged(string value) => OnPropertyChanged(nameof(HasUsageWarning));
+
+    /// <summary>Dismisses the current warning; the same signal stays quiet until it drops back and crosses again.</summary>
+    [RelayCommand]
+    private void DismissUsageWarning() => UsageWarning = string.Empty;
+
+    private void _RaiseOrClearWarning(PluginUsageSignal signal, PluginUsageReading reading)
+    {
+        if (reading.UsedPercent < signal.DefaultThresholdPercent)
+        {
+            // Back under: forget it, so the next crossing is announced rather than swallowed as already-said.
+            _announced.Remove(signal.Key);
+            return;
+        }
+
+        if (!_announced.Add(signal.Key))
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(signal.Description) ? signal.Label : signal.Description;
+        var used = Math.Round(reading.UsedPercent, MidpointRounding.AwayFromZero);
+        var returns = reading.ResetsAt is { } at ? $", back {at.ToLocalTime():ddd HH:mm}" : string.Empty;
+
+        UsageWarning = $"{name} is {used:0}% used{returns}.";
     }
 
     // One hover line per reading: what it is in words, how far along, and when it comes back. Rounded away from
@@ -442,7 +499,7 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     private UsagePillItem? BuildUsagePillItem(UsagePillField field) => field switch
     {
         UsagePillField.Context when ContextUsedPercent is { } percent =>
-            new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent), $"Context window: {percent:0}% used"),
+            new UsagePillItem($"ctx {percent:0}%", UsageSeverity.BrushKeyFor(percent, _ThresholdFor("ctx")), $"Context window: {percent:0}% used"),
         UsagePillField.SessionUsage when HasUsage =>
             new UsagePillItem(UsageSummary, "CockpitTextSecondaryBrush", UsageTooltip),
         UsagePillField.FiveHourWindow => WindowPillItem("5h"),
@@ -455,8 +512,12 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
     // combined story stays in the chevron's flyout.
     private UsagePillItem? WindowPillItem(string label) =>
         RateLimits.FirstOrDefault(window => window.Label == label) is { } window
-            ? new UsagePillItem($"{label} {window.UsedPercent:0}%", UsageSeverity.BrushKeyFor(window.UsedPercent), $"{label}: {window.UsedPercent:0}% used")
+            ? new UsagePillItem($"{label} {window.UsedPercent:0}%", UsageSeverity.BrushKeyFor(window.UsedPercent, _ThresholdFor(label)), $"{label}: {window.UsedPercent:0}% used")
             : null;
+
+    // What the provider called worth mentioning for the signal behind this label, or null when the figure came
+    // from a route that declares none (an SDK driver reporting windows without signals, or a design-time stub).
+    private double? _ThresholdFor(string label) => _thresholds.TryGetValue(label, out var threshold) ? threshold : null;
 
     /// <summary>
     /// Raised for each chunk of visible text this session produces (assistant text, tool output, or — for the
