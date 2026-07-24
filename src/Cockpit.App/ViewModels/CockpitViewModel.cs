@@ -153,6 +153,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     public ObservableCollection<SessionPanelViewModel> Sessions { get; } = [];
 
     /// <summary>
+    /// Holds the prompts waiting to be sent to a session at a future moment (AC-234). Null in the unit-test and
+    /// design-time graphs, where nothing is scheduled and nothing should be written to disk.
+    /// </summary>
+    public ScheduledResumeCoordinator? ScheduledResumes { get; private set; }
+
+    /// <summary>
     /// The sidebar's own display order (AC-115). Kept apart from <see cref="Sessions"/> on purpose: the session
     /// grid binds straight to <see cref="Sessions"/> and keeps its own positional cell layout, so reordering the
     /// strip must never touch <see cref="Sessions"/> — moving an item there rebuilds its pane (a fresh TTY with no
@@ -2194,8 +2200,11 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessRegistry? terminals = null,
         ISessionProfileStore? sessionProfileStore = null,
         IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
-        ProjectQuickStart? projectQuickStart = null)
+        ProjectQuickStart? projectQuickStart = null,
+        ScheduledResumeCoordinator? scheduledResumes = null)
     {
+        ScheduledResumes = scheduledResumes;
+
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
         //
@@ -3084,6 +3093,23 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// DispatcherTimer, like the plugin/managed-CLI check in <c>App</c>: it ticks on the UI thread, so the check
     /// touches its bound state directly without marshalling.
     /// </summary>
+    /// <summary>
+    /// Starts watching for resumes that have come due (AC-234), and reports whatever lapsed while the cockpit was
+    /// closed. Teaches the coordinator how to find a live session, which only the cockpit knows. Idempotent, and a
+    /// no-op in the graphs that have no coordinator (unit tests, the designer).
+    /// </summary>
+    public Task StartScheduledResumesAsync()
+    {
+        if (ScheduledResumes is not { } coordinator)
+        {
+            return Task.CompletedTask;
+        }
+
+        coordinator.ResolveSession = paneId => Sessions.FirstOrDefault(session => session.PaneId == paneId);
+
+        return coordinator.StartAsync();
+    }
+
     public void StartPeriodicUpdateChecks()
     {
         if (_updates is null || _periodicUpdateTimer is not null)

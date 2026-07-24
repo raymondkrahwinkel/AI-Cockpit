@@ -312,6 +312,20 @@ public abstract partial class SessionPanelViewModel : ViewModelBase, IAsyncDispo
 
     partial void OnUsageWarningChanged(string value) => OnPropertyChanged(nameof(HasUsageWarning));
 
+    /// <summary>
+    /// Sends a prompt into this session as if it had been typed (AC-234) — how a scheduled resume arrives. Each
+    /// session kind knows its own route (the SDK runtime, the terminal's stdin); the base only knows that a session
+    /// can be spoken to. Returns false when this session cannot take one right now, so a caller reports a resume
+    /// that could not be delivered rather than assuming it landed.
+    /// </summary>
+    public virtual Task<bool> SendPromptAsync(string prompt) => Task.FromResult(false);
+
+    /// <summary>
+    /// The provider's own conversation id, when this session has one — what a resume aims at if the pane has since
+    /// been closed. Null for a session kind or provider that reports none.
+    /// </summary>
+    public virtual string? ConversationId => null;
+
     /// <summary>Dismisses the current warning; the same signal stays quiet until it drops back and crosses again.</summary>
     [RelayCommand]
     private void DismissUsageWarning() => UsageWarning = string.Empty;

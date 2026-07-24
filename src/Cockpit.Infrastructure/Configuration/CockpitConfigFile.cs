@@ -59,6 +59,9 @@ internal sealed class CockpitConfigFile
 
     public LayoutSettingsEntry? Layout { get; set; }
 
+    /// <summary>Prompts waiting to be sent to a session at a future moment (AC-234) — empty for a cockpit with none scheduled.</summary>
+    public List<ScheduledResumeEntry> ScheduledResumes { get; set; } = [];
+
     /// <summary>The terminal-access master switch (AC-34); owned by the terminal-access settings store. Absent/false means the cockpit-terminal MCP is not advertised to any session.</summary>
     public TerminalAccessSettingsEntry? TerminalAccess { get; set; }
 

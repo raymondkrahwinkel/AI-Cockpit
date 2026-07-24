@@ -588,6 +588,28 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     }
 
     /// <summary>
+    /// Where a prompt goes when something other than the operator sends one (a scheduled resume, AC-234): the same
+    /// pty stdin the keystrokes go to. Set by the view once the terminal is launched, because the pty is the view's
+    /// to own; null before that, and the session then reports it cannot take a prompt yet.
+    /// </summary>
+    public Action<string>? PromptSink { get; set; }
+
+    /// <inheritdoc/>
+    public override Task<bool> SendPromptAsync(string prompt)
+    {
+        if (PromptSink is not { } sink)
+        {
+            return Task.FromResult(false);
+        }
+
+        // A TUI takes a prompt the way a person gives one: the text, then Enter. Without the newline it sits in the
+        // composer looking sent, which is the failure that looks like success.
+        sink(prompt + "\r");
+
+        return Task.FromResult(true);
+    }
+
+    /// <summary>
     /// Starts reading this session's usage from the file the provider plugin's statusline writes, interpreting it
     /// with that provider's own reader (AC-229) — the host polls, the plugin says what the contents mean.
     /// Polled rather than watched: the file is rewritten whole every few seconds by a shell script, and a

@@ -194,6 +194,10 @@ public partial class App : Application
         // build cut hours later. Reuses the same toast/banner/dedup path; stopped when the view model disposes.
         cockpitViewModel.StartPeriodicUpdateChecks();
 
+        // AC-234: pick up whatever was scheduled before this run, report what lapsed while the cockpit was closed,
+        // and start watching the clock for the rest.
+        _ = cockpitViewModel.StartScheduledResumesAsync();
+
         var pluginUpdateChecker = Program.Services.GetRequiredService<IPluginUpdateChecker>();
         // The managed-CLI update check (#AC-20) rides the same timer: one look on startup, then every 15 minutes,
         // toasting once when an installed managed CLI (claude/codex) has a newer version available.

@@ -1460,6 +1460,19 @@ public partial class SessionViewModel : SessionPanelViewModel, ITransientService
         UsageTooltip = _usage.Tooltip;
     }
 
+    /// <inheritdoc/>
+    public override async Task<bool> SendPromptAsync(string prompt)
+    {
+        if (_runtime is null)
+        {
+            return false;
+        }
+
+        await _runtime.SendUserMessageAsync(prompt).ConfigureAwait(false);
+
+        return true;
+    }
+
     // Pulls the driver's latest limits into the header bars. Read at each turn boundary rather than on a timer:
     // the provider reports how full the context window is when a turn ends, so that is when the numbers change —
     // and a session with no limits feed simply reads null and keeps the bars hidden.

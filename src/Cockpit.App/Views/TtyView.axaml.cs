@@ -318,7 +318,14 @@ public partial class TtyView : UserControl
     }
 
     /// <summary>Writes a finished voice transcript as raw bytes into the pty's stdin — the same path a typed keystroke takes (<see cref="OnTerminalBytesToPty"/>).</summary>
-    private void _OnVoiceTranscriptReady(string text)
+    private void _OnVoiceTranscriptReady(string text) => _WriteToPty(text);
+
+    /// <summary>
+    /// Writes text into the pty's stdin, the path a typed keystroke takes. Shared by the voice transcript and by a
+    /// scheduled resume (AC-234), so text that did not come from the keyboard still arrives the one way the TUI
+    /// understands.
+    /// </summary>
+    private void _WriteToPty(string text)
     {
         var pty = _pty;
         if (pty is null)
@@ -334,8 +341,8 @@ public partial class TtyView : UserControl
         }
         catch (Exception)
         {
-            // The pty may have exited between the transcript arriving and the write; the output pump
-            // already observes the exit and updates status, same as a dropped keystroke write.
+            // The pty may have exited between the text arriving and the write; the output pump already observes
+            // the exit and updates status, same as a dropped keystroke write.
         }
     }
 
@@ -698,6 +705,13 @@ public partial class TtyView : UserControl
                 var provider = _ttyProviders?.Resolve(_pendingLaunch.Provider.ProviderId);
                 viewModel.TrackLimits(statusFile, provider?.UsageSignals ?? [], provider?.ReadUsage);
             }
+            // A scheduled resume (AC-234) arrives the way a keystroke does — the pty's stdin — so the view, which
+            // owns the pty, is where that route is handed to the session.
+            if (DataContext is TtyViewModel promptTarget)
+            {
+                promptTarget.PromptSink = _WriteToPty;
+            }
+
             // The pty owns the process, so the view is where the meter (#78) learns which one this session is.
             if (_viewModel is not null)
             {
