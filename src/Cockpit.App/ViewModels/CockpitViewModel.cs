@@ -47,6 +47,7 @@ using Cockpit.Core.Audio;
 using Cockpit.Core.Debugging;
 using Cockpit.Core.Layout;
 using Cockpit.Core.Notifications;
+using Cockpit.Core.Projects;
 using Cockpit.Core.SessionBehavior;
 using Cockpit.Core.Shortcuts;
 using Cockpit.Core.Terminal;
@@ -85,6 +86,9 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     private readonly ITerminalAccessRegistry? _terminals;
     private readonly LiveSessionRegistry? _liveSessions;
     private readonly ISessionDialogService? _dialogService;
+
+    /// <summary>Composes what a session started from a project opens with (AC-164). Null in the design-time/unit-test graph, where a quick start falls back to the dialog.</summary>
+    private readonly ProjectQuickStart? _projectQuickStart;
     private readonly IAudioCaptureService? _captureService;
     private readonly IAudioPlaybackService? _playbackService;
     private readonly IAttentionNotifier? _attentionNotifier;
@@ -250,7 +254,7 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
     /// <summary>The git worktrees the cockpit created (AC-85): the status-bar counter and the management dialog read this one shared view model.</summary>
     public WorktreesViewModel Worktrees { get; }
 
-    /// <summary>The "Projects" Options tab (AC-161): what the operator's sessions can work on. Loaded when the Options dialog opens.</summary>
+    /// <summary>The operator's projects (AC-161): the Options tab that manages them and the sidebar section that starts them read this one shared view model.</summary>
     public ProjectsViewModel Projects { get; }
 
     /// <summary>The workspace tab strip and the active workspace's panes.</summary>
@@ -2183,7 +2187,8 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         ITerminalAccessSettingsStore? terminalAccessSettingsStore = null,
         ITerminalAccessRegistry? terminals = null,
         ISessionProfileStore? sessionProfileStore = null,
-        IWorkspaceTypeRegistry? workspaceTypeRegistry = null)
+        IWorkspaceTypeRegistry? workspaceTypeRegistry = null,
+        ProjectQuickStart? projectQuickStart = null)
     {
         // Without a store this is the default single Sessions workspace and nothing persists — which is exactly
         // what the unit-test and design-time graphs want, and is why the tab strip stays hidden there.
@@ -2219,6 +2224,12 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
         _liveSessions = liveSessions;
         Worktrees = worktrees ?? new WorktreesViewModel();
         Projects = projects ?? new ProjectsViewModel();
+        _projectQuickStart = projectQuickStart;
+
+        // The sidebar's Projects section (AC-164) is on screen from startup, so the list is read now rather than
+        // when Options opens — which used to be the only thing that needed it. Fire-and-forget like every other
+        // startup read here; the section simply stays hidden until it lands.
+        _ = Projects.LoadAsync();
         // One source of "which sessions are live" (their pane ids, what worktrees are keyed on): the panel reads it,
         // and it feeds the shared registry the worktree-removal paths (the managed panel and the agent's
         // worktree_remove MCP tool) check, so none of them pulls a running session's checkout out from under it.
@@ -4058,6 +4069,72 @@ public partial class CockpitViewModel : ViewModelBase, ISingletonService, IAsync
 
         return paneId;
     }
+
+    /// <summary>
+    /// Starts a session on <paramref name="project"/> with the project's own defaults and no dialog (AC-164) — the
+    /// sidebar's ▶ and the launcher's Start. What it opens with is <see cref="ProjectQuickStart"/>'s to answer; this
+    /// only launches it, through the same path the dialog's result takes.
+    /// </summary>
+    [RelayCommand]
+    private async Task StartProjectSessionAsync(Project? project)
+    {
+        if (project is null)
+        {
+            return;
+        }
+
+        if (_projectQuickStart is not null && await _projectQuickStart.ComposeAsync(project) is { } result)
+        {
+            await _LaunchSessionFromResultAsync(result);
+            return;
+        }
+
+        // The project names no profile that still exists, so there is nothing to start it on. Ask rather than fail
+        // quietly: the dialog opens on the project, leaving the operator only the choice the project cannot make.
+        await NewSessionForProjectAsync(project);
+    }
+
+    /// <summary>
+    /// Opens the New-session dialog on <paramref name="project"/> (AC-164) — the "New session…" next to the quick
+    /// start, for when the operator wants to change something the project would otherwise decide.
+    /// </summary>
+    [RelayCommand]
+    private async Task NewSessionForProjectAsync(Project? project)
+    {
+        if (project is null || _dialogService is null)
+        {
+            return;
+        }
+
+        if (await _dialogService.ShowNewSessionDialogAsync(project: project) is { } result)
+        {
+            await _LaunchSessionFromResultAsync(result);
+        }
+    }
+
+    /// <summary>Opens <paramref name="project"/>'s folder in the operating system's own file manager — the same shell hand-off the worktrees dialog uses.</summary>
+    [RelayCommand]
+    private void OpenProjectFolder(Project? project)
+    {
+        if (project?.SourceDirectory is not { Length: > 0 } directory || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            // No handler to open a folder (a headless or unusual environment) — better to do nothing than crash.
+        }
+    }
+
+    /// <summary>Opens the project editor for <paramref name="project"/> from the sidebar, persisting through the same manager the Options tab uses.</summary>
+    [RelayCommand]
+    private Task EditProjectAsync(Project? project) =>
+        project is null ? Task.CompletedTask : Projects.EditAsync(project);
 
     // Mints and starts the matching session (SDK chat or TTY terminal) from a confirmed result, recording
     // the result on the panel so the context-menu Duplicate can replay it. Returns the started session's PaneId

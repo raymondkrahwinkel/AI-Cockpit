@@ -86,7 +86,7 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
         _projectStore = projectStore;
     }
 
-    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false)
+    public async Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } owner })
         {
@@ -100,6 +100,14 @@ public sealed class SessionDialogService : ISessionDialogService, ISingletonServ
             _ttyProviderResolver, _ttyProviderRegistry, _pluginProviderRegistry, _worktreeManager, _tokenEstimator,
             _projectStore);
         await viewModel.LoadAsync();
+
+        // The project (AC-164) before the prefill, and by identity out of the loaded list rather than the caller's
+        // instance: selecting it runs the dialog's own project handling (folder, profile, worktree, MCP overlay), and
+        // a prefill naming a field explicitly is the more specific answer, so it is applied over the result.
+        if (project is not null)
+        {
+            viewModel.SelectedProject = viewModel.Projects.FirstOrDefault(candidate => candidate.Id == project.Id);
+        }
 
         // Prefill (#AC-96): seed the dialog's fields *after* LoadAsync — the profile lookup needs the loaded list,
         // and setting properties earlier would be overwritten by the load's own defaulting. Every field is optional

@@ -4,6 +4,7 @@
              xmlns:conv="using:Cockpit.App.Converters"
              xmlns:controls="using:Cockpit.App.Controls"
              xmlns:layout="using:Cockpit.Core.Layout"
+             xmlns:projects="using:Cockpit.Core.Projects"
              xmlns:ws="using:Cockpit.Core.Workspaces"
              xmlns:widgets="using:Cockpit.Plugins.Abstractions.Widgets"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
@@ -27,6 +28,15 @@
             <Setter Property="Opacity" Value="0"/>
         </Style>
         <Style Selector="Border.sessionItem:pointerover Button.closeSession">
+            <Setter Property="Opacity" Value="1"/>
+        </Style>
+
+        <!-- The project rows' ▶ hides the same way, for the same reason (AC-164): a column of play buttons
+             reads as a list of things to launch, where the sidebar's job is to show what is already running. -->
+        <Style Selector="Border.sessionItem Button.startProject">
+            <Setter Property="Opacity" Value="0"/>
+        </Style>
+        <Style Selector="Border.sessionItem:pointerover Button.startProject">
             <Setter Property="Opacity" Value="1"/>
         </Style>
 
@@ -334,6 +344,64 @@
                      session list. Built in code-behind from CockpitViewModel.PluginSideSections; hidden
                      entirely when no plugin contributes a section (no visual noise at zero plugins). -->
                 <StackPanel DockPanel.Dock="Bottom" x:Name="PluginSectionsHost" Spacing="4" IsVisible="False"/>
+
+                <!-- Projects (AC-164): what a session works on, one click from starting one. Hidden entirely when
+                     there are none, so a cockpit that does not use projects looks exactly as it did. ▶ starts on
+                     the project's own defaults and skips the dialog; the context menu holds the slower routes for
+                     when the operator wants to change something the project would otherwise decide. -->
+                <StackPanel DockPanel.Dock="Top" Spacing="2" Margin="0,0,0,10"
+                            IsVisible="{Binding Projects.HasProjects}">
+                    <Grid ColumnDefinitions="*,Auto" Margin="2,0,0,2">
+                        <TextBlock Grid.Column="0" Text="Projects" FontSize="11" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource CockpitTextFaintBrush}"/>
+                        <Button Grid.Column="1" Classes="Subtle" Padding="4,0"
+                                Foreground="{StaticResource CockpitTextFaintBrush}"
+                                Command="{Binding Projects.AddProjectCommand}"
+                                ToolTip.Tip="New project">
+                            <materialIcons:MaterialIcon Kind="Plus" Width="12" Height="12"/>
+                        </Button>
+                    </Grid>
+
+                    <ItemsControl x:Name="ProjectListStrip" ItemsSource="{Binding Projects.Projects}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="projects:Project">
+                                <!-- Same row treatment as a session (Border.sessionItem): both are things in the
+                                     sidebar you point at, and a second look for the same gesture would only say
+                                     they behave differently. Background/border stay out of the markup for the
+                                     reason the session rows document — a local value beats the style. -->
+                                <Border Classes="sessionItem" Margin="0,0,0,2" Padding="8,5"
+                                        CornerRadius="{StaticResource CockpitControlRadius}"
+                                        ToolTip.Tip="{Binding Description}">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Start session" Click="OnStartProjectSession"/>
+                                            <MenuItem Header="New session…" Click="OnNewSessionForProject"/>
+                                            <Separator/>
+                                            <MenuItem Header="Open folder" Click="OnOpenProjectFolder"
+                                                      IsEnabled="{Binding SourceDirectory, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <MenuItem Header="Edit project" Click="OnEditProject"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <!-- Hover-revealed quick start, mirroring the session rows' hover ✕. -->
+                                        <Button Grid.Column="1" Classes="Subtle startProject"
+                                                Padding="4,0" VerticalAlignment="Center"
+                                                Foreground="{StaticResource CockpitAccentBrush}"
+                                                Command="{Binding $parent[ItemsControl].((vm:CockpitViewModel)DataContext).StartProjectSessionCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Start a session on this project">
+                                            <materialIcons:MaterialIcon Kind="Play" Width="13" Height="13"/>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
 
                 <ScrollViewer>
                     <!-- The sidebar lists only the workspace now showing, so it never offers a session the grid

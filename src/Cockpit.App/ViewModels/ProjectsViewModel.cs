@@ -72,9 +72,17 @@ public partial class ProjectsViewModel : ViewModelBase, ISingletonService
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
-    private async Task EditProjectAsync()
+    private Task EditProjectAsync() =>
+        SelectedProject is { } project ? EditAsync(project) : Task.CompletedTask;
+
+    /// <summary>
+    /// Opens the editor for <paramref name="project"/> and saves what comes back. Public because the sidebar
+    /// (AC-164) edits the project under the pointer rather than a selection — one editing path either way, so a
+    /// project edited from the sidebar and one edited from Options are written the same.
+    /// </summary>
+    public async Task EditAsync(Project project)
     {
-        if (_dialogs is null || SelectedProject is not { } project)
+        if (_dialogs is null)
         {
             return;
         }

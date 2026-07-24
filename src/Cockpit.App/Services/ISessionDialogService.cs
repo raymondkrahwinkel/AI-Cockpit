@@ -18,8 +18,11 @@ public interface ISessionDialogService
     /// <paramref name="isolateInWorktree"/> additionally turns worktree isolation on for the pre-filled folder —
     /// the AC-85 reattach case (starting a session in an existing worktree so starting re-owns it), separate from
     /// <paramref name="prefill"/> because it is a host reattach concern, not one of the plugin-facing prefill fields.
+    /// <paramref name="project"/> opens the dialog on that project (AC-164), so its folder, profile, worktree default
+    /// and MCP overlay apply exactly as if the operator had picked it there — a host concern too, and not a prefill
+    /// field: a project is a thing the dialog knows, while a prefill is a set of values a plugin hands in.
     /// </summary>
-    Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false);
+    Task<NewSessionResult?> ShowNewSessionDialogAsync(NewSessionPrefill? prefill = null, bool isolateInWorktree = false, Project? project = null);
 
     /// <summary>
     /// Opens the managed-worktrees dialog (AC-85): the git worktrees the cockpit created, their state and owner, with
