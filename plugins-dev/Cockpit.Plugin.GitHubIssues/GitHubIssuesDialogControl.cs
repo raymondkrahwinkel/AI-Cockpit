@@ -196,11 +196,10 @@ internal sealed class GitHubIssuesDialogControl : UserControl
             Content = new Border { MaxWidth = 680, Margin = new Thickness(0, 10, 0, 0), Child = _detailBody },
         };
 
-        // Deliberately not wrapped, for two reasons that point the same way. The preview shows the prompt exactly
-        // as it will be sent, and re-flowing it would misrepresent a text whose own line breaks are part of it.
-        // And wrapping is not merely unwanted here but unsafe: Avalonia 12.0.5 never finishes laying out a
-        // wrapped run that contains line breaks — it allocates until the process is killed, and this template
-        // always contains them. Long lines scroll sideways instead (see promptScroll).
+        // Deliberately not wrapped: the preview shows the prompt exactly as it will be sent, and re-flowing it
+        // would misrepresent a text whose own line breaks are part of what goes out. Long lines scroll sideways
+        // instead (see promptScroll). Wrapping would lay out fine — the height cap below is what keeps the
+        // preview from crowding out the body; this is a readability choice, not a technical constraint.
         _promptPreview = new SelectableTextBlock
         {
             TextWrapping = TextWrapping.NoWrap,

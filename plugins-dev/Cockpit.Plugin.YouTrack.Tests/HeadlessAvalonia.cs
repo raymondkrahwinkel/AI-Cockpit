@@ -35,8 +35,14 @@ public sealed class HeadlessAvalonia : IDisposable
 
             _uiThread = new Thread(() =>
             {
+                // Skia rather than headless drawing, deliberately: headless drawing stubs out text shaping, so
+                // glyphs measure without real widths. Layout assertions then prove less than they appear to — and
+                // a wrapped run containing line breaks never finishes measuring at all, allocating until the
+                // process is killed (which took an OOM kill of the whole machine to notice). Real measurement
+                // costs a Skia reference and makes what these tests assert about layout actually true.
                 AppBuilder.Configure<DialogTestApp>()
-                    .UseHeadless(new AvaloniaHeadlessPlatformOptions())
+                    .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+                    .UseSkia()
                     .SetupWithoutStarting();
 
                 ready.Set();
