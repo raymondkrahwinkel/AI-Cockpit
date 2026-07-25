@@ -49,21 +49,39 @@ public class ScreenshotInjectionTests
     /// down the pty: exactly what an operator does by hand, which is how this route was found.
     /// </summary>
     [Fact]
-    public async Task ATerminalSession_PutsItOnTheClipboard_AndSendsThePasteKey()
+    public async Task ATerminalSession_PutsItOnTheClipboard_AndAsksTheTerminalToPaste()
     {
         var clipboard = new FakeScreenshotClipboard();
         var session = _CreateTtySession(clipboard);
-        var toPty = new List<string>();
-        session.VoiceTranscriptReady += toPty.Add;
+        var pastes = 0;
+        session.PasteRequested += () => pastes++;
 
         var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().BeNull();
         clipboard.Written.Should().ContainSingle().Which.Should().Equal(Png);
-        // ContainSingle().Which rather than Equal(…, because): the params-string overload of Equal would take
-        // the explanation for a second expected element.
-        toPty.Should().ContainSingle("Ctrl+V is what makes the TUI go and read the clipboard")
-            .Which.Should().Be("\u0016");
+        pastes.Should().Be(1, "the terminal's own paste is what makes the TUI read the clipboard");
+    }
+
+    /// <summary>
+    /// On Windows the capture reads the image off the clipboard, so it is already there — and writing it back is
+    /// not a harmless no-op. Measured on 2026-07-25: the round trip replaced what the OS had put there with our
+    /// own re-encoding, and afterwards even a manual Ctrl+V no longer pasted. Worse than not working, because it
+    /// destroys what the operator had on their clipboard.
+    /// </summary>
+    [Fact]
+    public async Task AnImageTheClipboardAlreadyHolds_IsNotWrittenBack()
+    {
+        var clipboard = new FakeScreenshotClipboard { ReadResult = Png };
+        var session = _CreateTtySession(clipboard);
+        var pastes = 0;
+        session.PasteRequested += () => pastes++;
+
+        var reason = await session.InjectScreenshotAsync(Png);
+
+        reason.Should().BeNull();
+        clipboard.Written.Should().BeEmpty("it is already on the clipboard; rewriting it is what broke it");
+        pastes.Should().Be(1, "the paste is still what makes the TUI read it");
     }
 
     /// <summary>
@@ -76,14 +94,14 @@ public class ScreenshotInjectionTests
     {
         var clipboard = new FakeScreenshotClipboard { AcceptsWrites = false };
         var session = _CreateTtySession(clipboard);
-        var toPty = new List<string>();
-        session.VoiceTranscriptReady += toPty.Add;
+        var pastes = 0;
+        session.PasteRequested += () => pastes++;
 
         var reason = await session.InjectScreenshotAsync(Png);
 
         reason.Should().NotBeNull();
         reason.Should().Contain("clipboard");
-        toPty.Should().BeEmpty("asking the TUI to paste an image that is not there is worse than saying so");
+        pastes.Should().Be(0, "asking the TUI to paste an image that is not there is worse than saying so");
     }
 
     /// <summary>Design-time and test graphs have no clipboard wired; that is a reason to report, not something to crash on.</summary>

@@ -104,9 +104,14 @@ public sealed class ScreenshotCoordinator : ISingletonService
         _isCapturing = true;
         try
         {
+            // Logged either side of the picker, because without it the only evidence a capture ever ran is a
+            // timeout two minutes later — which is exactly how long diagnosing the first real failure took.
+            _logger.LogInformation("Screen capture starting for session '{Session}'.", session.Title);
+
             var png = await _capture.CaptureInteractiveAsync(cancellationToken).ConfigureAwait(true);
             if (png is null)
             {
+                _logger.LogInformation("Screen capture produced nothing — cancelled, or the picker was never completed.");
                 // Cancelled, or a platform that captures nothing. Silent on purpose: pressing Escape on the
                 // picker is the ordinary way to change your mind, and a toast for it would be nagging.
                 return;
@@ -114,7 +119,12 @@ public sealed class ScreenshotCoordinator : ISingletonService
 
             if (await session.InjectScreenshotAsync(png).ConfigureAwait(true) is { } reason)
             {
+                _logger.LogInformation("Screen capture of {Bytes} bytes was not taken: {Reason}", png.Length, reason);
                 _toasts.Show(reason, ToastSeverity.Warning);
+            }
+            else
+            {
+                _logger.LogInformation("Screen capture of {Bytes} bytes went into session '{Session}'.", png.Length, session.Title);
             }
         }
         catch (OperationCanceledException)

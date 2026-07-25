@@ -33,13 +33,6 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     private readonly ITtySessionProviderResolver? _providerResolver;
     private readonly ISessionTranscriptReader? _transcriptReader;
     private readonly IScreenshotClipboard? _screenshotClipboard;
-
-    /// <summary>
-    /// Ctrl+V as the pty sees it: the single control byte <c>0x16</c>, written as an escape rather than typed so
-    /// it stays readable in source and cannot be mangled by an editor. The same byte the terminal control emits
-    /// when the operator presses the key themselves — which is exactly why this route works (AC-226).
-    /// </summary>
-    private const string PasteKeystroke = "\u0016";
     private SessionProfile? _configuredProfile;
     private string? _configuredPermissionMode;
     private string? _configuredModel;
@@ -241,9 +234,15 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// </summary>
     public override Task<bool> FeedVerifyResultAsync(string caption, byte[] screenshotPng) => Task.FromResult(false);
 
+    /// <summary>Without a clipboard there is no channel at all, so the button says so instead of offering a paste that cannot happen. Null once one is wired — which it is in the real graph.</summary>
+    protected override string? ScreenshotKindRefusal =>
+        _screenshotClipboard is null
+            ? "This terminal session has no clipboard to pass the screenshot through."
+            : null;
+
     /// <summary>
-    /// Puts a captured screenshot on the system clipboard and sends the TUI its own paste key (AC-226) — exactly
-    /// what an operator does by hand, which is how this route was found.
+    /// Gets a captured screenshot onto the system clipboard and sends the TUI its own paste key (AC-226) —
+    /// exactly what an operator does by hand, which is how this route was found.
     /// </summary>
     /// <remarks>
     /// A pty carries bytes, and no byte sequence means "here is an image" to a program reading one — bracketed
@@ -255,35 +254,65 @@ public partial class TtyViewModel : SessionPanelViewModel, ITransientService
     /// prompt, and the sentence that goes with the screenshot is the operator's to type.
     /// </para>
     /// <para>
-    /// Two honest limits. The clipboard really is replaced — there is no private channel to hand a TUI an image,
-    /// so whatever was copied is gone, as it is when you paste one yourself. And what the TUI does with the key
-    /// is the TUI's: <c>claude</c> reads the clipboard, a plain shell treats Ctrl+V as quoted-insert and will
-    /// take its next keystroke literally. Raymond's call (2026-07-25): every terminal session gets it rather than
-    /// gating on the provider, since a terminal session here is a claude session in practice.
+    /// Two honest limits. Where the image has to be written, the clipboard really is replaced — there is no
+    /// private channel to hand a TUI an image, so whatever was copied is gone, as it is when you paste one
+    /// yourself. And what the TUI does with the key is the TUI's: <c>claude</c> reads the clipboard, a plain shell
+    /// treats Ctrl+V as quoted-insert and will take its next keystroke literally. Raymond's call (2026-07-25):
+    /// every terminal session gets it rather than gating on the provider, since a terminal session here is a
+    /// claude session in practice.
     /// </para>
     /// </remarks>
-    /// <summary>Without a clipboard there is no channel at all, so the button says so instead of offering a paste that cannot happen. Null once one is wired — which it is in the real graph.</summary>
-    protected override string? ScreenshotKindRefusal =>
-        _screenshotClipboard is null
-            ? "This terminal session has no clipboard to pass the screenshot through."
-            : null;
-
     protected override async Task<string?> OnScreenshotCapturedAsync(byte[] screenshotPng)
     {
-        if (_screenshotClipboard is null)
+        if (_screenshotClipboard is not { } clipboard)
         {
             return ScreenshotKindRefusal;
         }
 
-        if (!await _screenshotClipboard.TrySetImageAsync(screenshotPng))
+        // The Windows capture comes off the clipboard to begin with, so the image is already there and putting it
+        // back is not a no-op: it replaces a clipboard entry the OS wrote with our own re-encoding, and that
+        // re-encoding is not one the TUI can paste. Measured on 2026-07-25 — after a capture even a manual Ctrl+V
+        // no longer pasted, which is worse than not working: it destroyed what was on the clipboard.
+        if (!await _IsAlreadyOnClipboardAsync(clipboard, screenshotPng) && !await clipboard.TrySetImageAsync(screenshotPng))
         {
             // Sending the paste key now would ask the TUI to paste an image that is not there, and it would
             // answer with its own "no image in clipboard" — an error about the wrong thing.
             return "The screenshot could not be put on the clipboard, so it was not pasted.";
         }
 
-        VoiceTranscriptReady?.Invoke(PasteKeystroke);
+        if (PasteRequested is null)
+        {
+            return "This terminal session is not on screen, so there is nothing to paste into.";
+        }
+
+        PasteRequested.Invoke();
         return null;
+    }
+
+    /// <summary>
+    /// Asks the view to perform the terminal's own paste — the same thing that happens when the operator presses
+    /// the paste key on the control.
+    /// </summary>
+    /// <remarks>
+    /// An event to the view rather than bytes down the pty, and that distinction is the whole lesson of AC-226.
+    /// Writing <c>0x16</c> into the pty was built on the assumption that the paste key travels that way; measured
+    /// on 2026-07-25, it does not — pressing Ctrl+V on this terminal never puts that byte on the wire, so the
+    /// TUI never saw a paste and nothing arrived. The control handles the key itself. So instead of guessing what
+    /// it emits, this drives the control the way a keyboard does and lets it do whatever it already does.
+    /// </remarks>
+    public event Action? PasteRequested;
+
+    /// <summary>
+    /// Whether the clipboard already holds exactly this image — true on the Windows route, where the capture read
+    /// it from there in the first place. Comparing beats trusting the platform: it keeps the terminal route from
+    /// knowing which capture it is talking to, and a write that is not needed is a write that cannot go wrong.
+    /// </summary>
+    private static async Task<bool> _IsAlreadyOnClipboardAsync(IScreenshotClipboard clipboard, byte[] screenshotPng)
+    {
+        var onClipboard = await clipboard.TryReadImageAsync();
+        return onClipboard is not null
+            && onClipboard.Length == screenshotPng.Length
+            && onClipboard.AsSpan().SequenceEqual(screenshotPng);
     }
 
     private Action<Action> _scheduleAutoSubmit = _DelayAutoSubmitOnUiThread;
