@@ -258,6 +258,12 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Fixed
 
+- fixed: right-clicking a session in the sidebar, or a workspace tab, no longer starts dragging it. Both strips
+  armed their reorder on any mouse button, so opening the context menu and moving the pointer to what it opened —
+  Rename, typically — quietly moved the session or the workspace to a different position on the way there. They
+  now reorder on the left button only, and a drag lets go as soon as the button is up instead of staying stuck to
+  the pointer until the next click lands somewhere.
+
 - fixed: a finished session's worktree is cleaned up again once its work has landed. The panel judged this by
   walking history — which a squash merge rewrites — so a worktree whose pull request had been squashed stayed
   behind forever, "Clean up finished" could never sweep it, and every finished session left another one on the
