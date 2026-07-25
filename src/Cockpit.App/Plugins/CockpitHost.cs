@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Cockpit.App.ViewModels;
+using Cockpit.App.Views;
 using Cockpit.Core.Abstractions.Mcp;
 using Cockpit.Core.Abstractions.Profiles;
 using Cockpit.Core.Abstractions.Toasts;
@@ -239,6 +240,9 @@ internal sealed class CockpitHost(
             onOpenSettings: contributionSink.HasPluginSettings(pluginId)
                 ? () => contributionSink.OpenPluginSettingsAsync(pluginId)
                 : null);
+
+    /// <summary>Delegates to the cockpit's own <see cref="MarkdownView"/> — no second parser, one markdown idiom for both the transcript and every plugin dialog.</summary>
+    public Control CreateMarkdownView(string markdown) => new MarkdownView { Markdown = markdown };
 
     public void OnSettingsSaved(Action callback) =>
         contributionSink.AddSettingsSavedHandler(pluginId, callback);

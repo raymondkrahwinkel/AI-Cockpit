@@ -171,7 +171,12 @@
          statusline snapshot — so the host can warn on it without carrying any provider's format. All init-only with
          empty/null defaults: an already-compiled plugin keeps its constructors and simply declares no signals, which
          reads as "measures nothing" rather than as an error. Additions only — a minor; major and abstractionsVersion
-         stay 1. -->
+         stay 1.
+         Also in 1.27.0 (AC-296): ICockpitHost.CreateMarkdownView — renders markdown the way the transcript does, so a
+         plugin dialog showing an issue description gets the host's look without carrying a parser. A default interface
+         method returning the raw text in a wrapping SelectableTextBlock, which is what every plugin rendered before the
+         seam existed: an already-compiled plugin and a test fake keep working unchanged. Additive, so it folds into
+         this same minor; abstractionsVersion stays 1. -->
     <Version>1.27.0</Version>
     <AssemblyVersion>1.8.0.0</AssemblyVersion>
     <PackageId>Cockpit.Plugins.Abstractions</PackageId>

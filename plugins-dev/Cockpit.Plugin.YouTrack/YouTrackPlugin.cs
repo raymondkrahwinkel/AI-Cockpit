@@ -57,8 +57,12 @@ public sealed class YouTrackPlugin : ICockpitPlugin, IPluginMcpProvider
         // through this, tracker-neutrally.
         host.AddTrackerProvider(new YouTrackTrackerProvider(settings));
 
+        // 1280×860 (AC-297, up from 1040×700): the chips strip, fixed action toolbar and rendered description
+        // all want more room than the old size gave them. PluginDialogHost clamps this against the cockpit's own
+        // window size (94%) the same way it clamps MinWidth/MinHeight, so a smaller screen still gets a dialog
+        // that fits rather than one cropped at 1280 (verified in PluginDialogHost._TryCreateWindow).
         void OpenIssues() =>
-            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links, stateChanges), 1040, 700);
+            _ = host.ShowDialogAsync("YouTrack Issues", () => new YouTrackDialogControl(settings, host, links, stateChanges), 1280, 860);
 
         host.AddSideMenuButton("YouTrack", OpenIssues);
 
