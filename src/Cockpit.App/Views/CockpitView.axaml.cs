@@ -509,6 +509,14 @@ public partial class CockpitView : UserControl
         {
             cockpit.Workspaces.SelectWorkspaceCommand.Execute(tab.Id);
 
+            // Only the left button reorders — the same rule the session rows follow (AC-277). This strip has its own
+            // Rename in the tab context menu, so arming on a right-click left the tab following the pointer on the
+            // way to the rename box and silently reordered the workspaces. Selecting above already happened.
+            if (!e.GetCurrentPoint(border).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
             // Arm a possible reorder. Selecting first means a drag that never passes the threshold still did
             // what a click does, rather than the tab needing two gestures to both switch and move.
             _draggingTab = tab;
@@ -532,6 +540,14 @@ public partial class CockpitView : UserControl
         // ever moved.
         if (_draggingTab is null || WorkspaceTabStrip?.ItemsPanelRoot is not { } strip || DataContext is not CockpitViewModel cockpit)
         {
+            return;
+        }
+
+        // A move with the button up means the gesture ended somewhere this handler never saw — let go rather than
+        // leaving a tab glued to the pointer, the same rule the widget drag and the session rows apply.
+        if (!e.GetCurrentPoint(strip).Properties.IsLeftButtonPressed)
+        {
+            _draggingTab = null;
             return;
         }
 
