@@ -32,6 +32,9 @@ All notable changes to AI-Cockpit are recorded here, newest first. The format fo
 
 ### Added
 
+- added: the plugin SDK is downloadable. Every release and nightly now carries the plugin contract as a NuGet
+  package plus a zip of the bare assembly, so a plugin can be built in its own repository instead of inside
+  this one — the guide's "Getting the SDK outside the repo" has the two lines of project setup that takes.
 - added: the cockpit now says when a session is running out of something — its context window filling up, or a
   usage allowance nearly spent — in a bar above the session, once when it crosses the line rather than on every
   refresh. Each provider decides what its sessions can run out of and when it is worth mentioning, so the numbers

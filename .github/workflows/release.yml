@@ -137,6 +137,17 @@ jobs:
             "artifacts/ai-cockpit-${{ steps.version.outputs.version }}-x86_64.AppImage"
           rm -rf artifacts/appimage
 
+      # The plugin SDK rides along with the host it is the contract for: the release that carries a contribution
+      # point is the release an out-of-repo plugin author has something to pin to. Packed on the Linux leg only —
+      # a library package is platform-independent, so building it three times would just be three identical
+      # files racing for the same asset name. Its version is the SDK's own (the .csproj's <Version>, semver on
+      # the contract's members), deliberately not the tag: host and contract move on separate axes. Not pushed
+      # to nuget.org — see the header of scripts/pack-sdk.sh for why the feed waits.
+      - name: Plugin SDK
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: scripts/pack-sdk.sh artifacts
+
       # The curated notes built once in the changelog job. body_path is the changelog's [Unreleased]
       # section; generate_release_notes then appends the full commit list beneath it, so the release
       # page reads as "what changed, in prose" followed by "every commit, in full". Each platform's
